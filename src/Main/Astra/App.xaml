@@ -1,0 +1,25 @@
+﻿<Application x:Class="Astra.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Astra"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 样式资源 -->
+                <!-- 引用控件库的样式（使用 Pack URI） -->
+                <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/IconGeometries.xaml" />
+                <!--<ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/SkinDefault.xaml" />-->
+                <ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/Theme.xaml" />
+               
+                <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/Light/Colors.xaml" />
+
+                <!--<ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Styles/Windows/WindowStyle.xaml" />-->
+                <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/Generic.xaml" />
+
+
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
+

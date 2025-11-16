@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWPF>true</UseWPF>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!-- 禁用在输出路径中追加目标框架 -->
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+		<!-- ⭐ 自动从程序集名称提取插件名称（去掉 "Astra.Plugins." 前缀） -->
+		<PluginName Condition="'$(PluginName)' == ''">$([System.String]::Copy('$(AssemblyName)').Replace('Astra.Plugins.', ''))</PluginName>
+
+		<!-- ⭐ 设置输出路径到主应用程序的 Plugins\{PluginName} 目录 -->
+		<BaseOutputPath>..\..\Bin</BaseOutputPath>
+		<OutputPath>$(BaseOutputPath)\$(Configuration)\Plugins\$(PluginName)</OutputPath>
+
+		<!-- ⭐ 阻止复制依赖项到输出目录 -->
+		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- ⭐ 项目引用：不复制依赖项（主程序已包含这些库） -->
+	
+		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Update="Astra.Plugins.AudioPlayer.addin">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	</ItemGroup>
+
+
+	<!-- ⭐ 构建后清理：只保留插件自己的 DLL 和 .addin 文件 -->
+	<Target Name="CleanPluginOutput" AfterTargets="Build">
+		<ItemGroup>
+			<!-- 获取插件自己的输出文件 -->
+			<PluginFiles Include="$(OutputPath)$(AssemblyName).dll" />
+			<PluginFiles Include="$(OutputPath)$(AssemblyName).pdb" />
+			<PluginFiles Include="$(OutputPath)$(AssemblyName).deps.json" />
+			<PluginFiles Include="$(OutputPath)$(AssemblyName).addin" />
+
+			<!-- 获取所有输出文件 -->
+			<AllOutputFiles Include="$(OutputPath)*.dll" />
+			<AllOutputFiles Include="$(OutputPath)*.pdb" />
+			<AllOutputFiles Include="$(OutputPath)*.deps.json" />
+			<AllOutputFiles Include="$(OutputPath)*.json" />
+			<AllOutputFiles Include="$(OutputPath)*.xml" />
+
+			<!-- 排除插件自己的文件，得到需要删除的文件 -->
+			<FilesToDelete Include="@(AllOutputFiles)" Exclude="@(PluginFiles)" />
+		</ItemGroup>
+
+		<!-- 删除不需要的文件 -->
+		<Delete Files="@(FilesToDelete)" ContinueOnError="true" />
+
+		<Message Text="已清理插件输出目录，只保留插件文件: $(AssemblyName).dll, $(AssemblyName).pdb, $(AssemblyName).deps.json, $(AssemblyName).addin, $(AssemblyName).config.json" Importance="high" />
+	</Target>
+
+	<!-- ⭐ 将设备配置同步到 Bin/Configs/Devices 目录 -->
+	<Target Name="CopyDeviceConfigToBin" AfterTargets="Build" Condition="Exists('Astra.Plugins.AudioPlayer.config.json')">
+		<PropertyGroup>
+			<DeviceConfigOutputDir>$(BaseOutputPath)\$(Configuration)\Configs\Devices</DeviceConfigOutputDir>
+			<DeviceConfigOutputFile>$(DeviceConfigOutputDir)\Astra.Plugins.AudioPlayer.config.json</DeviceConfigOutputFile>
+		</PropertyGroup>
+		<MakeDir Directories="$(DeviceConfigOutputDir)" />
+		<Copy SourceFiles="Astra.Plugins.AudioPlayer.config.json" DestinationFiles="$(DeviceConfigOutputFile)" SkipUnchangedFiles="true" />
+		<Message Text="已同步 NVH 设备配置到 $(DeviceConfigOutputFile)" Importance="high" />
+	</Target>
+</Project>

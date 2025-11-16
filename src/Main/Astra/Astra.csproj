@@ -1,0 +1,65 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <BaseOutputPath>..\..\Bin</BaseOutputPath>
+
+	  <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+
+	  <!-- ⭐ 版本信息设置 -->
+	  <Version>1.0.0</Version>
+	  <!--<AssemblyVersion>1.0.0.0</AssemblyVersion>
+	  <FileVersion>1.0.0.0</FileVersion>-->
+
+	  <!-- ⭐ 产品信息 -->
+	  <Product>NVH自动化测试平台</Product>
+	  <Company>比亚迪股份有限公司</Company>
+	
+	  <Description>面向工业领域的智能平台系统</Description>
+
+	  <!-- ⭐ 程序集信息 -->
+	  <AssemblyTitle>Astra</AssemblyTitle>
+	  <NeutralLanguage>zh-CN</NeutralLanguage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Examples\**" />
+    <EmbeddedResource Remove="Examples\**" />
+    <None Remove="Examples\**" />
+    <Page Remove="Examples\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
+    <ProjectReference Include="..\..\Libraries\NavStack\NavStack.csproj" />
+    <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="HandyControl" Version="3.5.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Settings.Designer.cs">
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+
+</Project>

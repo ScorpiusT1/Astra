@@ -1,0 +1,17 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ==================== 控件样式集合 ==================== -->
+    <ResourceDictionary.MergedDictionaries>
+
+        <!-- 按照依赖顺序引用 -->
+        <ResourceDictionary Source="../Styles/Controls/CommonStyles.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/InputStyles.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/Buttons.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/Badges.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/ProgressBars.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/Cards.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/DataGrids.xaml" />
+
+    </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

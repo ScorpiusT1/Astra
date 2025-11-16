@@ -1,0 +1,306 @@
+<Window x:Class="Astra.Views.LoginDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="clr-namespace:Astra.Core.Access;assembly=Astra.Core"
+        xmlns:converters="clr-namespace:Astra.Converters"
+        xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
+        Title="用户登录"
+        SizeToContent="Height"
+        Width="450"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Background="Transparent"
+        AllowsTransparency="True"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+        <!-- 错误提示与抖动动画 -->
+        <Storyboard x:Key="ShakeStoryboard">
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                           Duration="0:0:0.35">
+                <EasingDoubleKeyFrame KeyTime="0:0:0"
+                                      Value="0" />
+                <EasingDoubleKeyFrame KeyTime="0:0:0.06"
+                                      Value="-8">
+                    <EasingDoubleKeyFrame.EasingFunction>
+                        <QuadraticEase EasingMode="EaseOut" />
+                    </EasingDoubleKeyFrame.EasingFunction>
+                </EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.12"
+                                      Value="8">
+                    <EasingDoubleKeyFrame.EasingFunction>
+                        <QuadraticEase EasingMode="EaseOut" />
+                    </EasingDoubleKeyFrame.EasingFunction>
+                </EasingDoubleKeyFrame>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.18"
+                                      Value="-6" />
+                <EasingDoubleKeyFrame KeyTime="0:0:0.24"
+                                      Value="6" />
+                <EasingDoubleKeyFrame KeyTime="0:0:0.3"
+                                      Value="-3" />
+                <EasingDoubleKeyFrame KeyTime="0:0:0.35"
+                                      Value="0" />
+            </DoubleAnimationUsingKeyFrames>
+        </Storyboard>
+        <converters:UserRoleToStringConverter x:Key="UserRoleToStringConverter" />
+        <converters:FirstLetterConverter x:Key="FirstLetterConverter" />
+        <converters:UserRoleToColorConverter x:Key="UserRoleToColorConverter" />
+
+        <!-- ComboBoxItem美观样式 -->
+        <Style x:Key="ModernComboBoxItemStyle"
+               TargetType="ComboBoxItem">
+            <Setter Property="Background"
+                    Value="Transparent" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="Padding"
+                    Value="8,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="8"
+                                Margin="4,2">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- 鼠标悬停 -->
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter TargetName="border"
+                                        Property="Background"
+                                        Value="{DynamicResource LightPrimaryBrush}" />
+                            </Trigger>
+                            <!-- 选中状态 -->
+                            <Trigger Property="IsSelected"
+                                     Value="True">
+                                <Setter TargetName="border"
+                                        Property="Background"
+                                        Value="{DynamicResource LightPrimaryBrush}" />
+                            </Trigger>
+                            <!-- 高亮状态（键盘导航） -->
+                            <Trigger Property="IsHighlighted"
+                                     Value="True">
+                                <Setter TargetName="border"
+                                        Property="Background"
+                                        Value="{DynamicResource LightPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource SurfaceBrush}"
+            CornerRadius="16"
+            BorderBrush="{DynamicResource PrimaryBrush}"
+            BorderThickness="1.5"
+            helpers:BorderClipHelper.ClipToBounds="True"
+            MouseLeftButtonDown="RootBorder_MouseLeftButtonDown">
+        <Border.RenderTransform>
+            <TranslateTransform />
+        </Border.RenderTransform>
+        <Border.Effect>
+            <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                              Opacity="0.2"
+                              BlurRadius="32"
+                              ShadowDepth="6" />
+        </Border.Effect>
+
+        <Grid Margin="32,24"
+              Cursor="">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+         
+            <!-- 标题 -->
+            <StackPanel Grid.Row="0"
+                        Margin="0,0,0,24">
+                <TextBlock Text="🔐 用户登录"
+                           FontSize="22"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                <TextBlock Text="请选择用户并输入密码"
+                           FontSize="13"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           Margin="0,6,0,0" />
+            </StackPanel>
+
+            <!-- 关闭按钮 - 位于窗体右上角 -->
+            <Button x:Name="CloseButton"
+                    Grid.Row="0"
+                    Grid.RowSpan="2"                                       
+                    Margin="0,-8,-8,0"
+                    Style="{DynamicResource CloseButtonStyle}"
+                    Click="CloseButton_Click" />
+
+
+            <!-- 用户选择 -->
+            <StackPanel Grid.Row="1"
+                        Margin="0,0,0,16">
+                <TextBlock Text="选择用户"
+                           FontSize="13"
+                           FontWeight="Medium"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           Margin="0,0,0,8" />
+                <ComboBox x:Name="UserComboBox"
+                          ItemsSource="{Binding AvailableUsers, RelativeSource={RelativeSource AncestorType=Window}}"
+                          SelectedItem="{Binding SelectedUser, RelativeSource={RelativeSource AncestorType=Window}}"
+                          Height="44"
+                          FontSize="14"
+                          Padding="14,0"
+                          Background="{DynamicResource SurfaceBrush}"
+                          Foreground="{DynamicResource PrimaryTextBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          BorderThickness="1.5"
+                          Style="{StaticResource ModernComboBoxStyle}"
+                          ItemContainerStyle="{StaticResource ModernComboBoxItemStyle}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="4">
+                                <Border Width="32"
+                                        Height="32"
+                                        CornerRadius="8"
+                                        Background="{Binding Role, Converter={StaticResource UserRoleToColorConverter}}"
+                                        Margin="0,0,12,0">
+                                    <TextBlock Text="{Binding Username, Converter={StaticResource FirstLetterConverter}}"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               Foreground="{Binding Role, Converter={StaticResource UserRoleToColorConverter}, ConverterParameter=Dark}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Username}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource PrimaryTextBrush}" />
+                                    <TextBlock Text="{Binding Role, Converter={StaticResource UserRoleToStringConverter}}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+
+            <!-- 密码输入 -->
+            <StackPanel Grid.Row="2"
+                        Margin="0,0,0,24">
+                <TextBlock Text="密码"
+                           FontSize="13"
+                           FontWeight="Medium"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           Margin="0,0,0,8" />
+                <PasswordBox x:Name="PasswordInput"
+                             Height="44"
+                             Padding="14,0"
+                             FontSize="14"
+                             Style="{StaticResource ModernPasswordBoxStyle}"
+                             Background="{DynamicResource SurfaceBrush}"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             BorderBrush="{DynamicResource BorderBrush}"
+                             BorderThickness="1.5">
+
+                </PasswordBox>
+                <TextBlock x:Name="ErrorText"
+                           Text=""
+                           Visibility="Collapsed"
+                           Margin="0,8,0,0"
+                           Foreground="{DynamicResource DangerBrush}"
+                           FontSize="12" />
+            </StackPanel>
+
+            <!-- 按钮 -->
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button Content="取消"
+                        Width="120"
+                        Height="44"
+                        Margin="0,0,12,0"
+                        Click="CancelButton_Click"
+                        Background="{DynamicResource ThirdlyRegionBrush}"
+                        Foreground="{DynamicResource PrimaryTextBrush}"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        BorderThickness="0"
+                        Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="border"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="10"
+                                                Padding="20,10">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver"
+                                                     Value="True">
+                                                <Setter TargetName="border"
+                                                        Property="Background"
+                                                        Value="{DynamicResource SecondaryRegionBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button Content="登录"
+                        Width="120"
+                        Height="44"
+                        Click="LoginButton_Click"
+                        Background="{DynamicResource PrimaryBrush}"
+                        Foreground="{DynamicResource ReverseTextBrush}"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        BorderThickness="0"
+                        Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="border"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="10"
+                                                Padding="20,10">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver"
+                                                     Value="True">
+                                                <Setter TargetName="border"
+                                                        Property="Background"
+                                                        Value="{DynamicResource DarkPrimaryBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

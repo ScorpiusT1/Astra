@@ -1,0 +1,134 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+
+
+Cursor Rules - 上位机开发工程师配置
+基础设置
+始终使用中文回答问题和提供解释
+用户是上位机开发工程师及上位机软件架构师，具备10年以上工业自动化和设备通信经验
+提供实时性、稳定性和工业级应用的技术建议
+重点关注设备通信、数据采集和人机界面
+技术栈偏好
+主要技术
+.NET 8
+WPF (首选UI框架)
+WinForms (传统项目维护)
+System.IO.Ports (串口通信)
+System.Net.Sockets (网络通信)
+Timer 和 Threading (实时任务)
+UI框架优先级
+WPF - 现代工业界面开发
+WinForms - 简单快速的传统界面
+Blazor Server - Web版监控界面 (可选)
+MAUI - 跨平台需求 (新项目考虑)
+通信协议和库
+Modbus: NModbus4, EasyModbus
+TCP/IP: Socket编程，HPSocket
+串口通信: SerialPort, 自定义协议解析
+OPC: OPC Client libraries, OPC UA
+工业以太网: EtherNet/IP, Profinet
+数据库: SQLite (本地), SQL Server (企业级)
+常用NuGet库清单
+UI框架和控件库
+WPF核心库
+CommunityToolkit.Mvvm - MVVM框架，提供RelayCommand、ObservableObject等
+Microsoft.Xaml.Behaviors.Wpf - WPF行为库，事件触发器和行为
+HandyControl - 现代化WPF控件库，工业风格界面
+MaterialDesignInXamlToolkit - Material Design风格控件
+ModernWpf - Windows 10/11现代化样式
+Syncfusion.SfSkinManager.WPF - Syncfusion皮肤管理器
+第三方控件库
+HandyControl - WPF控件套件
+图表和数据可视化
+ScottPlot - 免费2D图表库
+依赖注入和IoC容器
+Microsoft.Extensions.DependencyInjection - 微软官方DI容器
+Autofac - 功能强大的IoC容器
+Unity - 微软Unity容器
+通信和协议库
+Modbus通信
+NModbus - .NET Modbus库
+EasyModbus - 简单易用的Modbus库
+FluentModbus - 现代化Modbus客户端/服务器
+Modbus.Net - 完整的Modbus实现
+串口和网络通信
+System.IO.Ports - 官方串口库
+SerialPortStream - 高性能串口库
+HPSocket - 高性能Socket服务器框架
+OPC通信
+OPCClientToolKit - OPC DA客户端工具包
+UA-.NETStandard - OPC UA官方.NET库
+LibUA - 开源OPC UA库
+Workstation.UaClient - 现代化OPC UA客户端
+数据库和ORM
+SqlSugar - 简单易用的ORM
+Entity Framework Core - 微软官方ORM
+System.Data.SQLite - SQLite数据库驱动
+配置和设置管理
+Newtonsoft.Json - JSON配置处理
+Microsoft.Extensions.Configuration - 微软官方配置库
+Microsoft.Extensions.Options - 选项模式配置
+ConfigurationBuilder - 配置构建器
+日志和监控
+Serilog - 结构化日志库 (推荐)
+NLog - 灵活的日志平台
+Microsoft.Extensions.Logging - 微软官方日志抽象
+log4net - Apache日志库.NET版本
+Serilog.Sinks.File - Serilog文件输出
+Serilog.Sinks.Console - Serilog控制台输出
+Serilog.Sinks.SQLite - Serilog SQLite输出
+序列化和数据处理
+Newtonsoft.Json - JSON序列化库
+System.Text.Json - 微软官方JSON库
+CsvHelper - CSV文件处理
+MiniExcel - Office文档处理
+任务调度和后台服务
+Quartz.NET - 企业级任务调度器
+Hangfire - 后台任务处理库
+Microsoft.Extensions.Hosting - 通用主机服务
+TopShelf - Windows服务创建框架
+FluentScheduler - 简单任务调度器
+网络和HTTP客户端
+RestSharp - REST API客户端库
+Microsoft.Extensions.Http - HTTP客户端工厂
+实用工具库
+AutoMapper - 对象映射库
+内存和性能优化
+System.Memory - 高性能内存操作
+System.Buffers - 缓冲区管理
+加密和安全
+System.Security.Cryptography - 系统加密库
+数学和算法
+MathNet.Numerics - 数学和统计库
+工业级代码标准
+程序设计六大原则 (SOLID + 扩展)
+1. 单一职责原则 (Single Responsibility Principle, SRP)
+设备驱动: 每个驱动类只负责一种设备的通信逻辑
+数据处理: 数据采集、转换、存储分离到不同的类
+界面逻辑: View只负责显示，ViewModel处理界面逻辑，Model处理数据
+通信协议: 每个协议类只实现一种通信协议的解析
+2. 开闭原则 (Open/Closed Principle, OCP)
+插件架构: 使用接口和抽象类支持新设备驱动的扩展
+协议扩展: 通过继承和接口实现新通信协议的支持
+功能模块: 通过装饰器模式扩展功能而不修改原有代码
+配置驱动: 通过配置文件和工厂模式实现功能扩展
+3. 里氏替换原则 (Liskov Substitution Principle, LSP)
+设备接口: 所有设备实现类可以互相替换而不影响系统运行
+通信抽象: 不同协议的实现类可以透明替换
+数据源: 不同数据源(数据库、文件、网络)可以无缝替换
+4. 接口隔离原则 (Interface Segregation Principle, ISP)
+设备功能分组: 读取接口、写入接口、配置接口分离
+通信能力: 同步通信、异步通信、事件通知接口分离
+UI职责: 数据显示、用户交互、配置管理接口分离
+5. 依赖倒置原则 (Dependency Inversion Principle, DIP)
+依赖注入: 使用DI容器管理所有依赖关系
+接口编程: 依赖抽象接口而非具体实现类
+配置抽象: 配置管理通过接口抽象，支持多种配置源
+6. 迪米特法则 (Law of Demeter, LoD)
+模块间通信: 通过事件总线或消息队列减少直接依赖
+层次架构: 严格控制跨层调用，通过Service层封装业务逻辑
+组件封装: 组件内部细节不对外暴露，只提供必要的公共接口

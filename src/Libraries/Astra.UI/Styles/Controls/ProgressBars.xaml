@@ -1,0 +1,154 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ==================== Success 进度条 ==================== -->
+    <Style x:Key="ProgressBarSuccessStyle"
+           TargetType="ProgressBar">
+        <Setter Property="Height"
+                Value="8" />
+        <Setter Property="BorderThickness"
+                Value="0" />
+        <Setter Property="Background"
+                Value="{DynamicResource BackgroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="4">
+                        <Grid>
+                            <Border x:Name="PART_Track"
+                                    CornerRadius="4" />
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0.5"
+                                                         EndPoint="1,0.5">
+                                        <GradientStop Color="{DynamicResource SuccessColor}"
+                                                      Offset="0" />
+                                        <GradientStop Color="{DynamicResource DarkSuccessColor}"
+                                                      Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+
+    <!-- ==================== Warning 进度条 ==================== -->
+    <Style x:Key="ProgressBarWarningStyle"
+           TargetType="ProgressBar">
+        <Setter Property="Height"
+                Value="8" />
+        <Setter Property="BorderThickness"
+                Value="0" />
+        <Setter Property="Background"
+                Value="{DynamicResource BackgroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="4">
+                        <Grid>
+                            <Border x:Name="PART_Track"
+                                    CornerRadius="4" />
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0.5"
+                                                         EndPoint="1,0.5">
+                                        <GradientStop Color="{DynamicResource WarningColor}"
+                                                      Offset="0" />
+                                        <GradientStop Color="{DynamicResource DarkWarningColor}"
+                                                      Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+
+    <!-- ==================== Danger 进度条 ==================== -->
+    <Style x:Key="ProgressBarDangerStyle"
+           TargetType="ProgressBar">
+        <Setter Property="Height"
+                Value="8" />
+        <Setter Property="BorderThickness"
+                Value="0" />
+        <Setter Property="Background"
+                Value="{DynamicResource BackgroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="4">
+                        <Grid>
+                            <Border x:Name="PART_Track"
+                                    CornerRadius="4" />
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0.5"
+                                                         EndPoint="1,0.5">
+                                        <GradientStop Color="{DynamicResource DangerColor}"
+                                                      Offset="0" />
+                                        <GradientStop Color="{DynamicResource DarkDangerColor}"
+                                                      Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+
+    <!-- ==================== Info/Primary 进度条 ==================== -->
+    <Style x:Key="ProgressBarInfoStyle"
+           TargetType="ProgressBar">
+        <Setter Property="Height"
+                Value="8" />
+        <Setter Property="BorderThickness"
+                Value="0" />
+        <Setter Property="Background"
+                Value="{DynamicResource BackgroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="4">
+                        <Grid>
+                            <Border x:Name="PART_Track"
+                                    CornerRadius="4" />
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0.5"
+                                                         EndPoint="1,0.5">
+                                        <GradientStop Color="{DynamicResource PrimaryColor}"
+                                                      Offset="0" />
+                                        <GradientStop Color="{DynamicResource DarkPrimaryColor}"
+                                                      Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -1,0 +1,708 @@
+<UserControl x:Class="Astra.Views.PermissionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Astra.Views"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
+             xmlns:viewmodels="clr-namespace:Astra.ViewModels"
+             xmlns:converters="clr-namespace:Astra.Converters"
+             xmlns:System="clr-namespace:System;assembly=mscorlib"
+                xmlns:models="clr-namespace:Astra.Core.Access.Models;assembly=Astra.Core"
+             d:DataContext="{d:DesignInstance Type=viewmodels:PermissionViewModel}"
+             mc:Ignorable="d"
+             Background="{DynamicResource BackgroundBrush}">
+
+    <UserControl.Resources>
+        <!-- 转换器 -->
+        <converters:UserRoleToStringConverter x:Key="UserRoleToStringConverter" />
+        <converters:BoolToStatusConverter x:Key="BoolToStatusConverter" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+        <!-- 改进的DataGrid样式 -->
+        <Style x:Key="ModernDataGridStyle"
+               TargetType="DataGrid"
+               BasedOn="{StaticResource DataGridBaseStyle}">
+            <Setter Property="Background"
+                    Value="Transparent" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
+            <Setter Property="GridLinesVisibility"
+                    Value="None" />
+            <Setter Property="RowBackground"
+                    Value="Transparent" />
+            <Setter Property="AlternatingRowBackground"
+                    Value="{DynamicResource ThirdlyRegionBrush}" />
+            <Setter Property="HeadersVisibility"
+                    Value="Column" />
+            <Setter Property="CanUserAddRows"
+                    Value="False" />
+            <Setter Property="CanUserDeleteRows"
+                    Value="False" />
+            <Setter Property="IsReadOnly"
+                    Value="True" />
+            <Setter Property="SelectionMode"
+                    Value="Single" />
+            <Setter Property="SelectionUnit"
+                    Value="FullRow" />
+            <Setter Property="AutoGenerateColumns"
+                    Value="False" />
+            <Setter Property="RowHeight"
+                    Value="56" />
+            <Setter Property="FontSize"
+                    Value="14" />
+            <Setter Property="RowHeaderWidth"
+                    Value="0" />
+
+        </Style>
+
+        <!-- 改进的DataGrid列头样式 -->
+        <Style x:Key="ModernDataGridColumnHeaderStyle"
+               TargetType="DataGridColumnHeader">
+            <Setter Property="Background"
+                    Value="{DynamicResource SecondaryRegionBrush}" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="FontWeight"
+                    Value="Bold" />
+            <Setter Property="FontSize"
+                    Value="13" />
+            <Setter Property="Padding"
+                    Value="16,12" />
+            <Setter Property="BorderThickness"
+                    Value="0,0,0,2" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource BorderBrush}" />
+            <Setter Property="HorizontalContentAlignment"
+                    Value="Left" />
+            <Setter Property="VerticalContentAlignment"
+                    Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridColumnHeader">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 改进的DataGrid行样式 -->
+        <Style x:Key="ModernDataGridRowStyle"
+               TargetType="DataGridRow">
+            <Setter Property="Background"
+                    Value="Transparent" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
+            <Setter Property="Margin"
+                    Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridRow">
+                        <Border x:Name="DGR_Border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent"
+                                BorderThickness="0"
+                                SnapsToDevicePixels="True"
+                                Margin="0">
+                            <SelectiveScrollingGrid>
+                                <SelectiveScrollingGrid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </SelectiveScrollingGrid.ColumnDefinitions>
+                                <SelectiveScrollingGrid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </SelectiveScrollingGrid.RowDefinitions>
+                                <DataGridCellsPresenter Grid.Column="1"
+                                                        ItemsPanel="{TemplateBinding ItemsPanel}"
+                                                        SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                                <DataGridDetailsPresenter Grid.Column="1"
+                                                          Grid.Row="1"
+                                                          SelectiveScrollingGrid.SelectiveScrollingOrientation="{Binding AreRowDetailsFrozen, ConverterParameter={x:Static SelectiveScrollingOrientation.Vertical}, Converter={x:Static DataGrid.RowDetailsScrollingConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                          Visibility="{TemplateBinding DetailsVisibility}" />
+                                <DataGridRowHeader Grid.RowSpan="2"
+                                                   SelectiveScrollingGrid.SelectiveScrollingOrientation="Vertical"
+                                                   Visibility="{Binding HeadersVisibility, ConverterParameter={x:Static DataGridHeadersVisibility.Row}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" />
+                            </SelectiveScrollingGrid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter TargetName="DGR_Border"
+                                        Property="Background"
+                                        Value="{DynamicResource SecondaryRegionBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected"
+                                     Value="True">
+                                <Setter TargetName="DGR_Border"
+                                        Property="Background"
+                                        Value="{DynamicResource LightPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 改进的DataGrid单元格样式 -->
+        <Style TargetType="DataGridCell">
+            <Setter Property="Background"
+                    Value="Transparent" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
+            <Setter Property="FocusVisualStyle"
+                    Value="{x:Null}" />
+            <Setter Property="Padding"
+                    Value="16,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected"
+                         Value="True">
+                    <Setter Property="Background"
+                            Value="Transparent" />
+                    <Setter Property="Foreground"
+                            Value="{DynamicResource PrimaryTextBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- 主容器：使用 Grid 响应式布局 -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <!-- 页面标题（固定高度） -->
+            <RowDefinition Height="Auto" />
+            <!-- 添加用户表单（固定高度） -->
+            <RowDefinition Height="*" />
+            <!-- 用户列表（填充剩余空间） -->
+            <RowDefinition Height="Auto" />
+            <!-- 状态栏（固定高度） -->
+        </Grid.RowDefinitions>
+
+        <!-- 页面标题 -->
+        <Border Grid.Row="0"
+                Style="{StaticResource ModernCardStyle}"
+                Margin="20,16,20,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 图标 -->
+                <Border Grid.Column="0"
+                        Width="64"
+                        Height="64"
+                        Background="{DynamicResource LightPrimaryBrush}"
+                        CornerRadius="16"
+                        Margin="0,0,20,0">
+                    <TextBlock Text="👥"
+                               FontSize="32"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <!-- 标题和描述 -->
+                <StackPanel Grid.Column="1"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="权限管理"
+                               Style="{StaticResource PageTitleStyle}"
+                               Margin="0,0,0,6" />
+                    <TextBlock Text="管理用户权限和角色，确保系统安全访问 [仅管理员可访问]"
+                               FontSize="14"
+                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                </StackPanel>
+
+                <!-- 统计卡片 - 优化版 -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="0,0,0,0">
+                    <Border Background="{DynamicResource LightPrimaryBrush}"
+                            Style="{StaticResource StatCardStyle}"
+                            Margin="0,0,8,0">
+                        <StackPanel MinWidth="110">
+                            <TextBlock Text="👤"
+                                       FontSize="26"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,10" />
+                            <TextBlock Text="{Binding TotalUsers}"
+                                       FontSize="34"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryBrush}"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,6" />
+                            <TextBlock Text="总用户数"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="{DynamicResource LightWarningBrush}"
+                            Style="{StaticResource StatCardStyle}">
+                        <StackPanel MinWidth="110">
+                            <TextBlock Text="🔑"
+                                       FontSize="26"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,10" />
+                            <TextBlock Text="{Binding AdminCount}"
+                                       FontSize="34"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,6" />
+                            <TextBlock Text="管理员"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 添加用户表单 -->
+        <Border Grid.Row="1"
+                Style="{StaticResource ModernCardStyle}"
+                Margin="20,0,20,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 表单标题 -->
+                <Grid Grid.Row="0"
+                      Margin="0,0,0,12">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="➕"
+                                   FontSize="20"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0" />
+                        <TextBlock Text="添加新用户"
+                                   Style="{StaticResource SectionTitleStyle}"
+                                   VerticalAlignment="Center" />
+                        <!-- 调试信息 -->
+                        <!--<TextBlock Text="{Binding IsAdministrator}"
+                                   FontSize="12"
+                                   Foreground="Red"
+                                   VerticalAlignment="Center"
+                                   Margin="20,0,0,0" />-->
+                    </StackPanel>
+
+                    <!--<StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="280"
+                                 Style="{StaticResource ModernTextBoxStyle}"
+                                 Margin="0,0,12,0">
+                            <TextBox.Template>
+                                <ControlTemplate TargetType="TextBox">
+                                    <Border x:Name="border"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="10">
+                                        <Grid>
+                                            <ScrollViewer x:Name="PART_ContentHost"
+                                                          Margin="{TemplateBinding Padding}"
+                                                          VerticalAlignment="Center" />
+                                            <TextBlock Text="🔍 搜索用户..."
+                                                       Foreground="{DynamicResource ThirdlyTextBrush}"
+                                                       VerticalAlignment="Center"
+                                                       Margin="14,0"
+                                                       IsHitTestVisible="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility"
+                                                                Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource TemplatedParent}}"
+                                                                         Value="">
+                                                                <Setter Property="Visibility"
+                                                                        Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsFocused"
+                                                 Value="True">
+                                            <Setter TargetName="border"
+                                                    Property="BorderBrush"
+                                                    Value="{DynamicResource PrimaryBrush}" />
+                                            <Setter TargetName="border"
+                                                    Property="BorderThickness"
+                                                    Value="2" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </TextBox.Template>
+                        </TextBox>
+
+                        <Button Style="{StaticResource InfoButtonStyle}"
+                                Content="🔄 刷新"
+                                Command="{Binding LoadUsersCommand}"
+                                Padding="16,12" />
+                    </StackPanel>-->
+                </Grid>
+
+                <!-- 表单内容 - 优化版 -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.2*"
+                                          MinWidth="140" />
+                        <ColumnDefinition Width="1.2*"
+                                          MinWidth="140" />
+                        <ColumnDefinition Width="1*"
+                                          MinWidth="120" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0"
+                                Margin="0,0,12,0">
+                        <TextBlock Text="用户名 *"
+                                   Style="{StaticResource FieldLabelStyle}" />
+                        <TextBox Text="{Binding NewUsername, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource ModernTextBoxStyle}"
+                                 MaxLength="50" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Margin="0,0,12,0">
+                        <TextBlock Text="密码 *"
+                                   Style="{StaticResource FieldLabelStyle}" />
+                        <PasswordBox x:Name="PasswordBox"
+                                     Style="{StaticResource ModernPasswordBoxStyle}"
+                                     helpers:PasswordHelper.Attach="True"
+                                     helpers:PasswordHelper.Password="{Binding NewPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="100" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Margin="0,0,12,0">
+                        <TextBlock Text="角色 *"
+                                   Style="{StaticResource FieldLabelStyle}" />
+                        <ComboBox SelectedValue="{Binding SelectedRole, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  SelectedValuePath="Tag"
+                                  Style="{StaticResource ModernComboBoxStyle}">
+                            <ComboBoxItem Content="👨‍💼 操作员"
+                                          Tag="{x:Static models:UserRole.Operator}" />
+                            <ComboBoxItem Content="👨‍🔧 工程师"
+                                          Tag="{x:Static models:UserRole.Engineer}" />
+                            <ComboBoxItem Content="👨‍💻 管理员"
+                                          Tag="{x:Static models:UserRole.Administrator}" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <Button Grid.Column="3"
+                            Style="{StaticResource SuccessButtonStyle}"
+                            Content="➕ 添加用户"
+                            Command="{Binding AddUserCommand}"
+                            VerticalAlignment="Bottom"
+                            Padding="28,12"
+                            Margin="0"
+                            IsEnabled="{Binding CanAddUser}" />
+                </Grid>
+
+                <!-- 校验信息 -->
+                <Border Grid.Row="2"
+                        Background="{DynamicResource LightWarningBrush}"
+                        CornerRadius="8"
+                        Padding="12,8"
+                        Margin="0,12,0,0"
+                        Visibility="{Binding ValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="{Binding ValidationMessage}"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="13" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- 用户列表 -->
+        <Border Grid.Row="2"
+                Style="{StaticResource ModernCardStyle}"
+                Margin="20,0,20,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 列表标题 -->
+                <StackPanel Grid.Row="0"
+                            Orientation="Horizontal"
+                            Margin="0,0,0,12">
+                    <TextBlock Text="📋"
+                               FontSize="20"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+                    <TextBlock Text="用户列表"
+                               Style="{StaticResource SectionTitleStyle}"
+                               VerticalAlignment="Center" />
+                    <Border Background="{DynamicResource LightInfoBrush}"
+                            CornerRadius="8"
+                            Padding="10,4"
+                            Margin="12,0,0,0">
+                        <TextBlock>
+                            <Run Text="{Binding Users.Count, Mode=OneWay}"
+                                 FontWeight="Bold"
+                                 Foreground="{DynamicResource InfoBrush}" />
+                            <Run Text=" 条记录"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource SecondaryTextBrush}" />
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+
+                <!-- 数据网格容器 -->
+                <Border Grid.Row="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="12"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource BorderBrush}">
+                    <Grid x:Name="DataGridContainer">
+                        <DataGrid ItemsSource="{Binding Users}"
+                                  Height="{Binding ElementName=DataGridContainer, Path=ActualHeight}"
+                                  SelectedItem="{Binding SelectedUser}"
+                                  Style="{StaticResource ModernDataGridStyle}"
+                                  ColumnHeaderStyle="{StaticResource ModernDataGridColumnHeaderStyle}"
+                                  RowStyle="{StaticResource ModernDataGridRowStyle}"
+                                  RowBackground="Transparent"
+                                  AlternatingRowBackground="{DynamicResource ThirdlyRegionBrush}"
+                                  AlternationCount="2"
+                                  IsReadOnly="False"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.CanContentScroll="True"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="用户名"
+                                                    Binding="{Binding Username}"
+                                                    Width="2*"
+                                                    IsReadOnly="True"
+                                                    MinWidth="140">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="FontWeight"
+                                                    Value="SemiBold" />
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource PrimaryTextBrush}" />
+                                            <Setter Property="FontSize"
+                                                    Value="14" />
+                                            <Setter Property="VerticalAlignment"
+                                                    Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTemplateColumn Header="角色"
+                                                        Width="1.5*"
+                                                        MinWidth="140"
+                                                        IsReadOnly="False">
+                                    <!-- 显示模板 - 非编辑状态 -->
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource LightPrimaryBrush}"
+                                                    CornerRadius="10"
+                                                    Padding="14,8"
+                                                    HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding Role, Converter={StaticResource UserRoleToStringConverter}}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource PrimaryBrush}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+
+                                    <!-- 编辑模板 - 仅管理员可编辑 -->
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <ComboBox SelectedValue="{Binding Role, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      SelectedValuePath="Tag"
+                                                      FontSize="13"
+                                                      Height="40"
+                                                      BorderBrush="{DynamicResource PrimaryBrush}"
+                                                      BorderThickness="2"
+                                                      Background="{DynamicResource SurfaceBrush}"
+                                                      IsEnabled="{Binding DataContext.IsAdministrator, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      SelectionChanged="RoleComboBox_SelectionChanged"
+                                                      GotFocus="RoleComboBox_GotFocus">
+                                                <ComboBoxItem Content="👨‍💼 操作员"
+                                                              Tag="{x:Static models:UserRole.Operator}" />
+                                                <ComboBoxItem Content="👨‍🔧 工程师"
+                                                              Tag="{x:Static models:UserRole.Engineer}" />
+                                                <ComboBoxItem Content="👨‍💻 管理员"
+                                                              Tag="{x:Static models:UserRole.Administrator}" />
+                                            </ComboBox>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTextColumn Header="创建时间"
+                                                    Binding="{Binding CreateTime, StringFormat='yyyy-MM-dd HH:mm'}"
+                                                    Width="1.8*"
+                                                    MinWidth="140">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource SecondaryTextBrush}" />
+                                            <Setter Property="FontSize"
+                                                    Value="13" />
+                                            <Setter Property="VerticalAlignment"
+                                                    Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTextColumn Header="最后修改"
+                                                    Binding="{Binding LastModifyTime, StringFormat='yyyy-MM-dd HH:mm'}"
+                                                    Width="1.8*"
+                                                    MinWidth="140">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource SecondaryTextBrush}" />
+                                            <Setter Property="FontSize"
+                                                    Value="13" />
+                                            <Setter Property="VerticalAlignment"
+                                                    Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTemplateColumn Header="操作"
+                                                        Width="1*"
+                                                        MinWidth="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                               
+                                                <Button Content="🗑️ 删除"
+                                                        Style="{StaticResource DangerButtonStyle}"
+                                                        Margin="0"
+                                                        Padding="16,8"
+                                                        Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Visibility="{Binding DataContext.IsAdministrator, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- 状态栏 -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="16,10"
+                Margin="20,0,20,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 状态图标 -->
+                <Border Grid.Column="0"
+                        Width="32"
+                        Height="32"
+                        Background="{DynamicResource LightInfoBrush}"
+                        CornerRadius="8"
+                        VerticalAlignment="Center"
+                        Margin="0,0,12,0">
+                    <TextBlock Text="ℹ️"
+                               FontSize="16"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <!-- 状态消息 - 优化版 -->
+                <StackPanel Grid.Column="1"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusMessage}"
+                               FontSize="14"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               FontWeight="Medium" />
+                    <TextBlock Text="系统运行正常"
+                               FontSize="12"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Margin="0,3,0,0" />
+                </StackPanel>
+
+                <!-- 状态指示器 - 优化版 -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Border Background="{DynamicResource SuccessBrush}"
+                            CornerRadius="8"
+                            Padding="10,6"
+                            Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8"
+                                     Height="8"
+                                     Fill="{DynamicResource ReverseTextBrush}"
+                                     Margin="0,0,8,0" />
+                            <TextBlock Text="{Binding IsLoading, Converter={StaticResource BoolToStatusConverter}}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource ReverseTextBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="{DynamicResource LightPrimaryBrush}"
+                            CornerRadius="8"
+                            Padding="10,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="👥"
+                                       FontSize="13"
+                                       Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding TotalUsers}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

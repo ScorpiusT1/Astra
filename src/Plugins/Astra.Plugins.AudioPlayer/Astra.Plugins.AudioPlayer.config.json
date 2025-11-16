@@ -1,0 +1,19 @@
+﻿{
+  "Devices": [
+    {
+      "DeviceName": "采集卡设备1",
+      "SN": "DLXX5P10",
+      "SampleRate": 51200,
+      "ChannelCount": 8,  
+      "BufferSize": 8192,   
+    },
+    {
+      "DeviceName": "采集卡设备2",
+      "SN": "DLXX5P11",
+      "SampleRate": 51200,
+      "ChannelCount": 8,
+      "BufferSize": 51200
+    }
+  ]
+}
+

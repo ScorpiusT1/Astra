@@ -1,0 +1,186 @@
+﻿<Window x:Class="Astra.UI.Styles.Controls.ModernMessageBox"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Astra.UI.Styles.Controls"
+        xmlns:helpers="clr-namespace:Astra.UI.Helpers"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        MinWidth="400"
+        MaxWidth="600">
+
+    <Window.Resources>
+        <!-- 弹窗入场动画 -->
+        <Storyboard x:Key="ShowAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                             From="0"
+                             To="1"
+                             Duration="0:0:0.2">
+                <DoubleAnimation.EasingFunction>
+                    <QuadraticEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                             From="0.9"
+                             To="1"
+                             Duration="0:0:0.3">
+                <DoubleAnimation.EasingFunction>
+                    <BackEase EasingMode="EaseOut"
+                              Amplitude="0.3" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                             From="0.9"
+                             To="1"
+                             Duration="0:0:0.3">
+                <DoubleAnimation.EasingFunction>
+                    <BackEase EasingMode="EaseOut"
+                              Amplitude="0.3" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <!-- 图标脉动动画 -->
+        <Storyboard x:Key="IconPulseAnimation"
+                    RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                             From="1"
+                             To="0.6"
+                             Duration="0:0:1.5"
+                             AutoReverse="True">
+                <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+    </Window.Resources>
+
+    <Window.RenderTransform>
+        <ScaleTransform ScaleX="1"
+                        ScaleY="1" />
+    </Window.RenderTransform>
+    <Window.RenderTransformOrigin>0.5,0.5</Window.RenderTransformOrigin>
+
+    <Border x:Name="DragArea"
+            Background="{DynamicResource SurfaceBrush}"
+            CornerRadius="16"
+            BorderThickness="1"
+            helpers:BorderClipHelper.ClipToBounds="True"
+            BorderBrush="{DynamicResource PrimaryBrush}"
+            MouseLeftButtonDown="DragArea_MouseLeftButtonDown">
+        <Border.Effect>
+            <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                              Opacity="0.25"
+                              BlurRadius="40"
+                              ShadowDepth="8"
+                              Direction="270" />
+        </Border.Effect>
+
+        <Grid Cursor="">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 顶部装饰条 -->
+            <Border x:Name="TopBar"
+                    Grid.Row="0"
+                    Height="6"
+                    CornerRadius="16,16,0,0"
+                    Background="{DynamicResource PrimaryBrush}" />
+
+            <!-- 关闭按钮 - 位于窗体右上角 -->
+            <Button x:Name="CloseButton"
+                    Grid.Row="0"
+                    Grid.RowSpan="2"                  
+                    Margin="0,8,8,0"
+                    Style="{StaticResource CloseButtonStyle}"
+                    Click="CloseButton_Click"
+                    Cursor="Hand">
+
+            </Button>
+
+            <!-- 内容区域 -->
+            <Grid Grid.Row="1"
+                  Margin="32,24,32,24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 图标区域 -->
+                <Border x:Name="IconContainer"
+                        Grid.Row="0"
+                        Width="60"
+                        Height="60"
+                        CornerRadius="30"
+                        HorizontalAlignment="Center"
+                        Margin="0,0,0,16">
+                    <Border.Effect>
+                        <DropShadowEffect Color="{DynamicResource PrimaryColor}"
+                                          Opacity="0.3"
+                                          BlurRadius="20"
+                                          ShadowDepth="0" />
+                    </Border.Effect>
+                    <Path x:Name="IconPath"
+                          Stretch="Uniform"
+                          Fill="{DynamicResource ReverseTextBrush}"
+                          Width="30"
+                          Height="30"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center" />
+                </Border>
+
+                <!-- 标题 -->
+                <TextBlock x:Name="TitleText"
+                           Grid.Row="1"
+                           FontSize="20"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,12" />
+
+                <!-- 消息内容 -->
+                <Border Grid.Row="2"
+                        Background="{DynamicResource ThirdlyRegionBrush}"
+                        CornerRadius="12"
+                        Padding="20,16"
+                        Margin="0,0,0,0">
+                    <ScrollViewer MaxHeight="300"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="MessageText"
+                                   FontSize="14"
+                                   LineHeight="22"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Left" />
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- 按钮区域 -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource SecondaryRegionBrush}"
+                    CornerRadius="0,0,16,16"
+                    Padding="24,16">
+                <StackPanel x:Name="ButtonPanel"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <!-- 按钮将在代码中动态添加 -->
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+
+</Window>
