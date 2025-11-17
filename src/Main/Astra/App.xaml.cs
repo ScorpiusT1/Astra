@@ -30,6 +30,7 @@ namespace Astra
     ///   - ThemeInitializationService: 主题初始化
     ///   - ApplicationStartupService: 启动流程
     ///   - ServiceRegistrationConfigurator: 服务注册
+    ///   - SingleInstanceService: 单实例检查
     ///   
     /// ✅ 代码简洁：从 327 行减少到 ~80 行
     /// ✅ 易于维护：每个服务职责清晰
@@ -40,12 +41,14 @@ namespace Astra
         public static IServiceProvider ServiceProvider { get; private set; }
 
         private readonly ThemeInitializationService _themeService;
+        private readonly SingleInstanceService _singleInstanceService;
         private ApplicationStartupService _startupService;
 		private ILogger<App> _logger = NullLogger<App>.Instance;
 
         public App()
         {
             _themeService = new ThemeInitializationService();
+            _singleInstanceService = new SingleInstanceService();
             RegisterGlobalExceptionHandlers();
             MonitorApplicationExit();
         }
@@ -53,6 +56,19 @@ namespace Astra
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+
+            // 检查是否已有实例运行
+            if (!_singleInstanceService.EnsureSingleInstance())
+            {
+                // 如果已有实例运行，显示提示并退出
+                ModernMessageBox.Show(
+                    "应用程序已在运行",
+                    "应用程序已经在运行中，无法启动多个实例。",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                Shutdown();
+                return;
+            }
 
             // 初始化主题
             _themeService.Initialize();
@@ -67,6 +83,7 @@ namespace Astra
 				try
 				{
 					var resolvedLogger = ServiceProvider.GetService<ILogger<App>>();
+
 					if (resolvedLogger != null)
 					{
 						_logger = resolvedLogger;
@@ -110,6 +127,9 @@ namespace Astra
                 {
                     disposable.Dispose();
                 }
+
+                // 释放单实例服务资源
+                _singleInstanceService?.Dispose();
             }
             finally
             {

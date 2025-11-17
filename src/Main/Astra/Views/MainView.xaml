@@ -19,8 +19,7 @@
            WindowStartupLocation="CenterScreen"
            Title=""
            ShowIcon="False"
-           Height="768"
-           Width="1280"
+         
            MouseMove="MainWindow_MouseMove"
            KeyDown="MainWindow_KeyDown"
            MouseDown="MainWindow_MouseDown"
