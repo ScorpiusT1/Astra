@@ -138,6 +138,11 @@ namespace Astra.Bootstrap.Services
                 if (_context.Services != null)
                 {
                     UpdateSplashScreen(95, "构建服务容器...", null);
+                    
+                    // 在构建服务提供者之前，将 BootstrapContext 注册到服务集合中
+                    // 这样其他组件可以通过 DI 容器访问 BootstrapContext 和其中的数据（如 PluginHost）
+                    _context.Services.AddSingleton(_context);
+                    
                     _context.ServiceProvider = _context.Services.BuildServiceProvider();
                 }
 

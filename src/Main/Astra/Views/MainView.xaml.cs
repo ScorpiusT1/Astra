@@ -63,12 +63,24 @@ namespace Astra.Views
 
         protected override void OnClosed(System.EventArgs e)
         {
-            if (DataContext is MainViewViewModel vm)
+            try
             {
-                vm.Navigation.Dispose();
-                vm.UserMenu?.Dispose();
+                // 注意：DataContext 可能已经在 App.xaml.cs 中被设置为 null
+                // 所以这里需要检查是否为 null
+                if (DataContext is MainViewViewModel vm)
+                {
+                    vm.Navigation?.Dispose();
+                    vm.UserMenu?.Dispose();
+                }
             }
-            base.OnClosed(e);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainView.OnClosed] 清理资源时出错: {ex.Message}");
+            }
+            finally
+            {
+                base.OnClosed(e);
+            }
         }
 
         #region 全局活动监听 - 重置自动退出计时器

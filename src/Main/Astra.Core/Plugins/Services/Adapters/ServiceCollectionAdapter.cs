@@ -9,32 +9,67 @@ namespace Astra.Core.Plugins.Services.Adapters
 	/// <summary>
 	/// 将 Microsoft.Extensions.DependencyInjection 的 IServiceCollection/IServiceProvider
 	/// 适配为本系统的 IServiceRegistry，以便无缝接入标准 .NET 生态（Logging/Options/HostedService 等）。
+	/// 
+	/// ⭐ 改进：支持接受已构建的 IServiceProvider，确保单例服务在应用级别共享
+	/// 
 	/// 说明：
 	/// - 基础的 Singleton/Scoped/Transient 注册完全映射；
 	/// - Resolve/ResolveAll 使用 ServiceProvider 获取；
+	/// - 如果提供了 externalServiceProvider，将优先使用它（确保单例共享）；
 	/// - Decorator/Metadata/Named 等高级特性在 Microsoft DI 中无原生等价，提供受限实现或抛出不支持；
 	/// </summary>
 	public class ServiceCollectionAdapter : IServiceRegistry, IDisposable
 	{
 		private readonly IServiceCollection _services;
-		private ServiceProvider _serviceProvider;
+		private readonly IServiceProvider _externalServiceProvider;
+		private ServiceProvider _internalServiceProvider;
 		private readonly Dictionary<string, object> _named = new();
+		private bool _ownsServiceProvider = false;
 
+		/// <summary>
+		/// 使用 IServiceCollection 创建适配器（会构建自己的 ServiceProvider）
+		/// </summary>
 		public ServiceCollectionAdapter(IServiceCollection services)
 		{
 			_services = services ?? throw new ArgumentNullException(nameof(services));
+			_externalServiceProvider = null;
+			_ownsServiceProvider = true;
 			RebuildProvider();
 		}
 
+		/// <summary>
+		/// 使用已构建的 IServiceProvider 创建适配器（共享单例服务）
+		/// ⭐ 推荐使用此构造函数，确保插件系统和主应用共享同一个 ServiceProvider 实例
+		/// </summary>
+		public ServiceCollectionAdapter(IServiceCollection services, IServiceProvider externalServiceProvider)
+		{
+			_services = services ?? throw new ArgumentNullException(nameof(services));
+			_externalServiceProvider = externalServiceProvider ?? throw new ArgumentNullException(nameof(externalServiceProvider));
+			_ownsServiceProvider = false;
+		}
+
+		/// <summary>
+		/// 获取当前使用的 ServiceProvider（优先使用外部提供的）
+		/// </summary>
+		private IServiceProvider CurrentServiceProvider => _externalServiceProvider ?? _internalServiceProvider;
+
 		private void RebuildProvider()
 		{
-			_serviceProvider?.Dispose();
-			_serviceProvider = _services.BuildServiceProvider();
+			// 如果使用外部 ServiceProvider，不需要重建
+			if (_externalServiceProvider != null)
+			{
+				return;
+			}
+
+			_internalServiceProvider?.Dispose();
+			_internalServiceProvider = _services.BuildServiceProvider();
 		}
 
 		public void RegisterSingleton<TService, TImplementation>() where TImplementation : TService
 		{
 			_services.AddSingleton(typeof(TService), typeof(TImplementation));
+			// ⚠️ 如果使用外部 ServiceProvider，注册新服务后需要重新构建
+			// 但为了保持兼容性，这里仍然调用 RebuildProvider（对于外部 ServiceProvider 是 no-op）
 			RebuildProvider();
 		}
 
@@ -58,17 +93,17 @@ namespace Astra.Core.Plugins.Services.Adapters
 
 		public object Resolve(Type serviceType)
 		{
-			return _serviceProvider.GetRequiredService(serviceType);
+			return CurrentServiceProvider.GetRequiredService(serviceType);
 		}
 
 		public TService Resolve<TService>()
 		{
-			return _serviceProvider.GetRequiredService<TService>();
+			return CurrentServiceProvider.GetRequiredService<TService>();
 		}
 
 		public IEnumerable<TService> ResolveAll<TService>()
 		{
-			return _serviceProvider.GetServices<TService>();
+			return CurrentServiceProvider.GetServices<TService>();
 		}
 
 		public void Unregister<TService>()
@@ -151,7 +186,11 @@ namespace Astra.Core.Plugins.Services.Adapters
 
 		public void Dispose()
 		{
-			_serviceProvider?.Dispose();
+			// 只释放自己创建的 ServiceProvider，不释放外部提供的
+			if (_ownsServiceProvider)
+			{
+				_internalServiceProvider?.Dispose();
+			}
 		}
 	}
 }

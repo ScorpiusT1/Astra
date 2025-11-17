@@ -150,7 +150,7 @@ namespace Astra.Core.Devices.Extensions
 
             if (level == LogLevel.Warning)
             {
-                logger.Warning($"设备状态变更: {device.DeviceName} ({device.DeviceId}) - {oldStatus} -> {newStatus}", 
+                logger.Warn($"设备状态变更: {device.DeviceName} ({device.DeviceId}) - {oldStatus} -> {newStatus}", 
                              LogCategory.System, data, triggerUIEvent);
             }
             else
@@ -197,7 +197,7 @@ namespace Astra.Core.Devices.Extensions
             }
             else
             {
-                logger.Warning($"设备发送数据失败: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data, triggerUIEvent);
+                logger.Warn($"设备发送数据失败: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data, triggerUIEvent);
             }
         }
 

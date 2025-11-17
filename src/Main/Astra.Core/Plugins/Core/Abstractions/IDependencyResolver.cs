@@ -1,4 +1,7 @@
-﻿namespace Astra.Core.Plugins.Abstractions
+﻿using System;
+using System.Collections.Generic;
+
+namespace Astra.Core.Plugins.Abstractions
 {
     /// <summary>
     /// 依赖解析器接口

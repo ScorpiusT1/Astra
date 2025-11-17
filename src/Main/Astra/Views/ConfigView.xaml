@@ -5,46 +5,132 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
+             xmlns:behaviors="clr-namespace:Astra.Behaviors"
              d:DataContext="{d:DesignInstance Type=viewmodels:ConfigViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
-    <Grid Margin="24">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </UserControl.Resources>
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 标题区域 -->
+        <!-- 工具栏 -->
         <Border Grid.Row="0"
-                Background="{DynamicResource CardBrush}"
-                CornerRadius="12"
-                Padding="24"
-                Margin="0,0,0,24">
-            <StackPanel>
-                <TextBlock Text="配置管理"
-                           FontSize="24"
-                           FontWeight="Bold"
-                           Foreground="{DynamicResource PrimaryTextBrush}"
-                           Margin="0,0,0,8" />
-                <TextBlock Text="系统配置和参数设置，个性化定制测试环境"
-                           FontSize="14"
-                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,12">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="🔄 刷新"
+                        Command="{Binding RefreshConfigTreeCommand}"
+                        Padding="12,6"
+                        Margin="0,0,8,0"
+                        Cursor="Hand" />
+                <TextBlock Text="{Binding Title}"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
             </StackPanel>
         </Border>
 
-        <!-- 内容区域 -->
-        <Border Grid.Row="1"
-                Background="{DynamicResource CardBrush}"
-                CornerRadius="12"
-                Padding="24">
-            <StackPanel>
-                <TextBlock Text="配置管理功能开发中..."
-                           FontSize="18"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
-            </StackPanel>
-        </Border>
+        <!-- 主内容区域 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧树状导航 -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Text="配置树"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource SecondaryTextBrush}"
+                               Margin="16,16,16,12" />
+
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <TreeView x:Name="ConfigTreeView"
+                                  ItemsSource="{Binding TreeNodes}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Padding="8">
+                            <TreeView.ItemContainerStyle>
+                                <Style TargetType="TreeViewItem"
+                                       BasedOn="{StaticResource TreeNodeStyle}">
+                                    <Setter Property="IsExpanded"
+                                            Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                    <Setter Property="IsSelected"
+                                            Value="{Binding IsSelected, Mode=TwoWay}" />
+                                    <Setter Property="behaviors:TreeViewItemBehaviors.SelectedCommand"
+                                            Value="{Binding DataContext.NodeSelectedCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" />
+                                    <Setter Property="behaviors:TreeViewItemBehaviors.SelectedCommandParameter"
+                                            Value="{Binding}" />
+                                </Style>
+                            </TreeView.ItemContainerStyle>
+
+                            <TreeView.Resources>
+                                <!-- 第一层：设备配置/传感器配置 -->
+                                <HierarchicalDataTemplate DataType="{x:Type viewmodels:TreeNodeViewModel}"
+                                                          ItemsSource="{Binding Children}">
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Icon}"
+                                                       FontSize="14"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Header}"
+                                                       Margin="6,0,0,0"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Content="+"
+                                                Style="{StaticResource AddButton}"
+                                                Margin="8,0,0,0"
+                                                Visibility="{Binding ShowAddButton, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Command="{Binding DataContext.AddDeviceConfigCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
+                                </HierarchicalDataTemplate>
+                            </TreeView.Resources>
+                        </TreeView>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 右侧配置面板 -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0"
+                    Margin="20"
+                    CornerRadius="8">
+                <ContentControl x:Name="ConfigContentRegion"
+                                Margin="0"
+                                Loaded="ConfigContentRegion_Loaded" />
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

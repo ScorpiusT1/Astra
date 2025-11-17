@@ -471,5 +471,11 @@ namespace Astra.Core.Plugins.Caching
                 }
             );
         }
+
+        public async Task DiscoverAndLoadPluginsAsync(string pluginDirectory)
+        {
+            // 发现和加载插件不需要缓存，直接委托给基础宿主
+            await _baseHost.DiscoverAndLoadPluginsAsync(pluginDirectory);
+        }
     }
 }

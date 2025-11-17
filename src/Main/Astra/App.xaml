@@ -17,6 +17,8 @@
                 <!--<ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Styles/Windows/WindowStyle.xaml" />-->
                 <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/Generic.xaml" />
 
+                <ResourceDictionary Source="pack://application:,,,/Astra;component/Styles/TreeStyles.xaml" />
+
 
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

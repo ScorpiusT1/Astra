@@ -219,7 +219,7 @@ namespace Astra.Core.Logs
             Log(LogLevel.Info, category, message, data, null, triggerUIEvent);
         }
 
-        public void Warning(string message, LogCategory category = LogCategory.System, Dictionary<string, object> data = null, bool? triggerUIEvent = null)
+        public void Warn(string message, LogCategory category = LogCategory.System, Dictionary<string, object> data = null, bool? triggerUIEvent = null)
         {
             Log(LogLevel.Warning, category, message, data, null, triggerUIEvent);
         }

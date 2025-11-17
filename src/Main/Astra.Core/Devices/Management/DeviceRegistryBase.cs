@@ -90,7 +90,7 @@ namespace Astra.Core.Devices.Management
                 var factory = SelectFactory(config);
                 if (factory == null)
                 {
-                    Logger?.Warning($"未找到可用于配置 {config.DeviceName} ({config.DeviceId}) 的设备工厂", LogCategory.Device);
+                    Logger?.Warn($"未找到可用于配置 {config.DeviceName} ({config.DeviceId}) 的设备工厂", LogCategory.Device);
                     continue;
                 }
 
@@ -102,7 +102,7 @@ namespace Astra.Core.Devices.Management
 
                     if (device == null)
                     {
-                        Logger?.Warning($"工厂 {factory.GetType().Name} 创建的设备类型不匹配，已忽略", LogCategory.Device);
+                        Logger?.Warn($"工厂 {factory.GetType().Name} 创建的设备类型不匹配，已忽略", LogCategory.Device);
                         created?.Dispose();
                         continue;
                     }
@@ -116,14 +116,14 @@ namespace Astra.Core.Devices.Management
                 if (string.IsNullOrWhiteSpace(device.DeviceId))
                 {
                     device.Dispose();
-                    Logger?.Warning("设备 DeviceId 为空，已忽略该配置", LogCategory.Device);
+                    Logger?.Warn("设备 DeviceId 为空，已忽略该配置", LogCategory.Device);
                     continue;
                 }
 
                 if (!_devices.TryAdd(device.DeviceId, device))
                 {
                     device.Dispose();
-                    Logger?.Warning($"设备 {device.DeviceId} 已存在，忽略重复配置", LogCategory.Device);
+                    Logger?.Warn($"设备 {device.DeviceId} 已存在，忽略重复配置", LogCategory.Device);
                     continue;
                 }
 
@@ -196,7 +196,7 @@ namespace Astra.Core.Devices.Management
                 }
                 catch (Exception ex)
                 {
-                    Logger?.Warning($"注销设备 {deviceId} 时发生异常: {ex.Message}", LogCategory.Device);
+                    Logger?.Warn($"注销设备 {deviceId} 时发生异常: {ex.Message}", LogCategory.Device);
                 }
 
                 device.Dispose();
@@ -220,7 +220,7 @@ namespace Astra.Core.Devices.Management
                 }
                 catch (Exception ex)
                 {
-                    Logger?.Warning($"注销设备 {deviceId} 时发生异常: {ex.Message}", LogCategory.Device);
+                    Logger?.Warn($"注销设备 {deviceId} 时发生异常: {ex.Message}", LogCategory.Device);
                 }
 
                 device.Dispose();
@@ -247,7 +247,7 @@ namespace Astra.Core.Devices.Management
             var result = DeviceManager.RegisterDevice(device);
             if (!result.Success)
             {
-                Logger?.Warning($"设备 {device.DeviceName} 注册失败: {result.ErrorMessage}", LogCategory.Device);
+                Logger?.Warn($"设备 {device.DeviceName} 注册失败: {result.ErrorMessage}", LogCategory.Device);
             }
         }
 
@@ -263,7 +263,7 @@ namespace Astra.Core.Devices.Management
 
         protected virtual void OnDeviceLoadFailed(TDevice device, string reason)
         {
-            Logger?.Warning($"设备 {device.DeviceName} 加载失败：{reason}", LogCategory.Device);
+            Logger?.Warn($"设备 {device.DeviceName} 加载失败：{reason}", LogCategory.Device);
         }
 
         protected virtual Task<bool> InitializeDeviceAsync(TDevice device, CancellationToken cancellationToken)

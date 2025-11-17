@@ -12,16 +12,29 @@ namespace Astra.Core.Plugins.Manifest.Serializers
     /// </summary>
     public class XmlManifestSerializer : IManifestSerializer
     {
-        private readonly XmlSerializer _serializer = new(typeof(AddinManifest));
+        private XmlSerializer _serializer;
+
+        private XmlSerializer Serializer
+        {
+            get
+            {
+                if (_serializer == null)
+                {
+                    // 延迟初始化，避免在构造函数中抛出异常
+                    _serializer = new XmlSerializer(typeof(AddinManifest));
+                }
+                return _serializer;
+            }
+        }
 
         public AddinManifest Deserialize(Stream stream)
         {
-            return _serializer.Deserialize(stream) as AddinManifest;
+            return Serializer.Deserialize(stream) as AddinManifest;
         }
 
         public void Serialize(AddinManifest manifest, Stream stream)
         {
-            _serializer.Serialize(stream, manifest);
+            Serializer.Serialize(stream, manifest);
         }
 
         public bool CanHandle(string filePath)

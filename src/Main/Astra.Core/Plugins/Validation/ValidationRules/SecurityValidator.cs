@@ -76,7 +76,7 @@ namespace Astra.Core.Plugins.Validation.ValidationRules
                     if (IsDangerousAssembly(reference.Name))
                     {
                         // 警告但不阻止
-                        Console.WriteLine($"Warning: Plugin references potentially dangerous assembly: {reference.Name}");
+                        Console.WriteLine($"Warn: Plugin references potentially dangerous assembly: {reference.Name}");
                     }
                 }
             }

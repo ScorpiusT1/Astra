@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AddinManifest>
+	<Schema>http://pluginsystem.org/schema/v1</Schema>
+	<Addin>
+		<Id>Astra.Plugins.DataAcquisition</Id>
+		<Name>数据采集插件</Name>
+		<Version>1.0.0</Version>
+		<Description>提供数据采集卡设备的数据采集功能，支持多通道、高采样率的数据采集</Description>
+		<Author>Astra Team</Author>
+		<Copyright>Copyright © Astra Team</Copyright>
+		<Website />
+		<IconPath />
+		<Runtime>
+			<Assembly>Astra.Plugins.DataAcquisition.dll</Assembly>
+			<TypeName>Astra.Plugins.DataAcquisition.DataAcquisitionPlugin</TypeName>
+			<TargetFramework>net8.0-windows</TargetFramework>
+		</Runtime>
+		<Dependencies />
+		<Permissions>
+			<Required />
+		</Permissions>
+	</Addin>
+</AddinManifest>
+

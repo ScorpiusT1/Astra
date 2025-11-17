@@ -73,10 +73,16 @@ namespace Astra.Core.Plugins.Host
 		/// 通过 <see cref="ServiceCollectionAdapter"/> 适配到本框架的 <see cref="IServiceRegistry"/>，
 		/// 并在未显式注册的情况下补齐必要的核心服务（Logging/Config/Discovery/Loading 等）。
 		/// </summary>
-		public static IPluginHost CreateDefaultHost(IServiceCollection services, HostConfiguration config)
+		/// <param name="services">服务集合</param>
+		/// <param name="config">宿主配置</param>
+		/// <param name="externalServiceProvider">可选的外部 ServiceProvider，如果提供，将确保单例服务共享</param>
+		public static IPluginHost CreateDefaultHost(IServiceCollection services, HostConfiguration config, IServiceProvider externalServiceProvider = null)
 		{
-			// 适配到系统内的 IServiceRegistry
-			var registry = new ServiceCollectionAdapter(services);
+			// ⭐ 如果提供了外部 ServiceProvider，使用它创建适配器（确保单例共享）
+			// 否则，适配器会构建自己的 ServiceProvider
+			var registry = externalServiceProvider != null
+				? new ServiceCollectionAdapter(services, externalServiceProvider)
+				: new ServiceCollectionAdapter(services);
 
 			// 确保必要基础服务存在（若外部未注册，则补齐）
 			// 注意：在 IServiceCollection 路径下，IServiceScopeFactory 由微软 DI 提供，这里不再强行注册自定义实现
@@ -123,8 +129,58 @@ namespace Astra.Core.Plugins.Host
 					maxConcurrentLoads: Math.Max(2, config.Performance.MaxConcurrentLoads));
 				registry.RegisterSingleton<IPluginLoader>(loader);
 			}
+			
+			// 注册验证器（默认规则 + 自定义扩展）
+			if (registry.TryResolve<IPluginValidator>() == null)
+			{
+				var validator = new PluginValidator();
+
+				// 默认验证规则（这些类在 Astra.Core.Plugins.Validation 命名空间中）
+				validator.AddRule(new AssemblyExistsRule());
+				validator.AddRule(new DependencyValidRule());
+				validator.AddRule(new VersionValidRule());
+
+				// 自定义扩展规则
+				if (config.Services.EnableDefaultValidationRules)
+				{
+					foreach (var ruleType in config.Services.ValidationRules)
+					{
+						validator.AddRule((IValidationRule)Activator.CreateInstance(ruleType));
+					}
+				}
+
+				registry.RegisterSingleton<IPluginValidator>(validator);
+			}
 
 			var perf = CreatePerformanceServices(config.Performance);
+			
+			// 注册性能服务（如果已创建）
+			// 注意：即使未启用性能监控，也注册一个默认实例，避免解析失败
+			if (registry.TryResolve<IPerformanceMonitor>() == null)
+			{
+				if (perf.PerformanceMonitor != null)
+				{
+					registry.RegisterSingleton<IPerformanceMonitor>(perf.PerformanceMonitor);
+				}
+				else
+				{
+					// 注册一个默认的性能监控器（即使未启用，也提供空实现以避免解析失败）
+					registry.RegisterSingleton<IPerformanceMonitor>(new PerformanceMonitor());
+				}
+			}
+			if (perf.MemoryManager != null && registry.TryResolve<IMemoryManager>() == null)
+			{
+				registry.RegisterSingleton<IMemoryManager>(perf.MemoryManager);
+			}
+			if (perf.ConcurrencyManager != null && registry.TryResolve<IConcurrencyManager>() == null)
+			{
+				registry.RegisterSingleton<IConcurrencyManager>(perf.ConcurrencyManager);
+			}
+			if (perf.CacheManager != null && registry.TryResolve<ICacheManager>() == null)
+			{
+				registry.RegisterSingleton<ICacheManager>(perf.CacheManager);
+			}
+			
 			ServiceLocator.Initialize(registry);
 
 			// 根据 Host 安全配置补充验证规则（签名与白名单）
@@ -338,7 +394,8 @@ namespace Astra.Core.Plugins.Host
         {
             var services = new PerformanceServices();
             
-            if (config.EnablePerformanceMonitoring)
+            // 如果启用了并发控制或缓存，需要性能监控器
+            if (config.EnablePerformanceMonitoring || config.EnableConcurrencyControl || config.EnableCaching)
             {
                 services.PerformanceMonitor = new PerformanceMonitor();
             }
@@ -350,11 +407,21 @@ namespace Astra.Core.Plugins.Host
             
             if (config.EnableConcurrencyControl)
             {
+                // 确保 PerformanceMonitor 已创建
+                if (services.PerformanceMonitor == null)
+                {
+                    services.PerformanceMonitor = new PerformanceMonitor();
+                }
                 services.ConcurrencyManager = new ConcurrencyManager(services.PerformanceMonitor);
             }
             
             if (config.EnableCaching)
             {
+                // 确保 PerformanceMonitor 已创建
+                if (services.PerformanceMonitor == null)
+                {
+                    services.PerformanceMonitor = new PerformanceMonitor();
+                }
                 services.CacheManager = new CacheManager(services.PerformanceMonitor);
             }
             

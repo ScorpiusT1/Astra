@@ -301,15 +301,40 @@ namespace Astra.Core.Plugins.Concurrency
 
         private void ResetCounter(object state)
         {
-            if (!_disposed)
+            if (_disposed)
+                return;
+
+            try
             {
                 var currentCount = _semaphore.CurrentCount;
+                
+                // 如果当前计数已经达到或超过目标值，不需要重置
+                if (currentCount >= _requestsPerSecond)
+                    return;
+                
                 var toRelease = _requestsPerSecond - currentCount;
                 
-                if (toRelease > 0)
+                // 确保 toRelease 在有效范围内（0 < toRelease <= _requestsPerSecond）
+                // 理论上，由于上面的检查，toRelease 应该总是 > 0 且 <= _requestsPerSecond
+                // 但为了安全起见，仍然进行检查
+                if (toRelease > 0 && toRelease <= _requestsPerSecond)
                 {
-                    _semaphore.Release(toRelease);
+                    // 使用 try-catch 处理可能的竞态条件
+                    // 如果其他线程同时修改了信号量状态，可能会抛出 SemaphoreFullException
+                    try
+                    {
+                        _semaphore.Release(toRelease);
+                    }
+                    catch (SemaphoreFullException)
+                    {
+                        // 如果信号量已满，说明已经有足够的可用计数，忽略此异常
+                        // 这种情况可能发生在并发场景下，多个线程同时尝试重置
+                    }
                 }
+            }
+            catch (ObjectDisposedException)
+            {
+                // 如果信号量已被释放，忽略此异常
             }
         }
 
@@ -364,6 +389,15 @@ namespace Astra.Core.Plugins.Concurrency
                 () => _baseHost.GetServiceAsync<T>(),
                 "GetService",
                 new ConcurrencyConfig { MaxConcurrency = 10, Timeout = TimeSpan.FromSeconds(30) }
+            );
+        }
+
+        public async Task DiscoverAndLoadPluginsAsync(string pluginDirectory)
+        {
+            await _concurrencyManager.ExecuteWithConcurrencyControl(
+                () => _baseHost.DiscoverAndLoadPluginsAsync(pluginDirectory),
+                "DiscoverAndLoadPlugins",
+                new ConcurrencyConfig { MaxConcurrency = 1, Timeout = TimeSpan.FromMinutes(10) }
             );
         }
     }

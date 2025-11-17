@@ -17,7 +17,7 @@ namespace Astra.ViewModels
     /// ✅ 用户菜单功能：UserMenuViewModel
     /// ✅ 会话状态：通过 UserSessionService 共享
     /// </summary>
-    public partial class MainViewViewModel : ObservableObject
+    public partial class MainViewViewModel : ObservableObject, IDisposable
     {
         /// <summary>
         /// 导航相关功能（页面导航、菜单管理）

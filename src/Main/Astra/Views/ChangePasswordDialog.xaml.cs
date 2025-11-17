@@ -49,7 +49,7 @@ namespace Astra.Views
             if (string.IsNullOrWhiteSpace(OldPassword))
             {
                 ToastHelper.ShowError("请输入当前密码");
-                //MessageBox.Show("请输入当前密码", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                //MessageBox.Show("请输入当前密码", "提示", MessageBoxButton.OK, MessageBoxImage.Warn);
                 OldPasswordInput.Focus();
                 return;
             }
@@ -64,7 +64,7 @@ namespace Astra.Views
                 }
                 catch
                 {
-                    //MessageBox.Show("当前密码不正确", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    //MessageBox.Show("当前密码不正确", "提示", MessageBoxButton.OK, MessageBoxImage.Warn);
                     ToastHelper.ShowError("当前密码不正确");
                     OldPasswordInput.Clear();
                     OldPasswordInput.Focus();
@@ -78,7 +78,7 @@ namespace Astra.Views
 
             if (string.IsNullOrWhiteSpace(NewPassword))
             {
-                //MessageBox.Show("请输入新密码", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                //MessageBox.Show("请输入新密码", "提示", MessageBoxButton.OK, MessageBoxImage.Warn);
                 ToastHelper.ShowInfo("请输入新密码");
                 NewPasswordInput.Focus();
                 return;

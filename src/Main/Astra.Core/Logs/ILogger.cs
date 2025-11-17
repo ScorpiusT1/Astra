@@ -36,13 +36,13 @@ namespace Astra.Core.Logs
         void Info(string message, LogCategory category = LogCategory.System, Dictionary<string, object> data = null, bool? triggerUIEvent = null);
 
         /// <summary>
-        /// 记录 Warning 日志
+        /// 记录 Warn 日志
         /// </summary>
         /// <param name="message">日志消息</param>
         /// <param name="category">日志分类</param>
         /// <param name="data">附加数据</param>
         /// <param name="triggerUIEvent">是否触发UI更新事件（null则使用配置默认值）</param>
-        void Warning(string message, LogCategory category = LogCategory.System, Dictionary<string, object> data = null, bool? triggerUIEvent = null);
+        void Warn(string message, LogCategory category = LogCategory.System, Dictionary<string, object> data = null, bool? triggerUIEvent = null);
 
         /// <summary>
         /// 记录 Error 日志

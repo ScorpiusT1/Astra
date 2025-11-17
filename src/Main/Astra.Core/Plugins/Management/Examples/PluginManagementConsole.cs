@@ -94,33 +94,4 @@ namespace Astra.Core.Plugins.Management.Examples
             Console.WriteLine("  tool config get myplugin enabled  Get plugin setting");
         }
     }
-
-    ///// <summary>
-    ///// 插件管理控制台应用程序入口点
-    ///// </summary>
-    //public class Program
-    //{
-    //    public static async Task Main(string[] args)
-    //    {
-    //        // 这里需要从实际的插件系统获取服务
-    //        // 在实际应用中，这些服务应该从依赖注入容器中获取
-            
-    //        Console.WriteLine("Plugin Management Console Example");
-    //        Console.WriteLine("=================================");
-    //        Console.WriteLine();
-    //        Console.WriteLine("Note: This is a demonstration of how to use the");
-    //        Console.WriteLine("Plugin Management Tools. In a real application,");
-    //        Console.WriteLine("you would initialize the plugin system first.");
-    //        Console.WriteLine();
-
-    //        // 模拟创建工具管理器
-    //        // var toolManager = PluginManagementToolFactory.CreateDefaultManager(host, lifecycleManager, messageBus, configStore);
-            
-    //        // var console = new PluginManagementConsole(toolManager);
-    //        // await console.RunAsync();
-
-    //        Console.WriteLine("Demo completed. Press any key to exit...");
-    //        Console.ReadKey();
-    //    }
-    //}
 }

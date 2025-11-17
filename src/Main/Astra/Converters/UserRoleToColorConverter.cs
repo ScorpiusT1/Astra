@@ -13,7 +13,7 @@ namespace Astra.Converters
     /// 用于将不同的用户权限级别转换为对应的主题颜色
     /// 权限与颜色的映射关系:
     /// - 管理员: 使用 Danger 色系 (红色)
-    /// - 工程师: 使用 Warning 色系 (橙色)
+    /// - 工程师: 使用 Warn 色系 (橙色)
     /// - 操作员: 使用 Info 色系 (青色)
     /// </summary>
     public class UserRoleToColorConverter : IValueConverter
@@ -64,7 +64,7 @@ namespace Astra.Converters
                     ? "DarkDangerBrush"      // 深红色文字
                     : "LightDangerBrush",    // 浅红色背景
                 
-                // 工程师: 使用 Warning 色系 (橙色) - 中级权限
+                // 工程师: 使用 Warn 色系 (橙色) - 中级权限
                 UserRole.Engineer => parameterType == "Dark"
                     ? "DarkWarningBrush"     // 深橙色文字
                     : "LightWarningBrush",   // 浅橙色背景

@@ -93,7 +93,7 @@ namespace Astra.Core.Plugins.Host
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var descriptors = await _discovery.DiscoverAsync(pluginDirectory);
             stopwatch.Stop();
-            try { _services.Resolve<IPerformanceMonitor>()?.RecordOperation("discover", stopwatch.Elapsed); } catch { }
+            try { _services.ResolveOrDefault<IPerformanceMonitor>()?.RecordOperation("discover", stopwatch.Elapsed); } catch { }
 
             // 2. 验证插件
             var validDescriptors = new List<PluginDescriptor>();
@@ -139,7 +139,6 @@ namespace Astra.Core.Plugins.Host
 
             var sortedDescriptors = graph.TopologicalSort();
 
-            // 4. 按依赖顺序加载插件
             // 4. 按依赖顺序加载插件（并发控制优先由装饰器处理，若未启用则串行）
             // 并发控制：如系统未启用装饰器，则在此按配置限制并发
             var concurrency = _services.ResolveOrDefault<IConcurrencyManager>();
@@ -220,7 +219,7 @@ namespace Astra.Core.Plugins.Host
                     var swLoadAsm = System.Diagnostics.Stopwatch.StartNew();
                     var assembly = loadContext.LoadFromAssemblyPath(descriptor.AssemblyPath);
                     swLoadAsm.Stop();
-                    try { _services.Resolve<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "load_assembly", swLoadAsm.Elapsed); } catch { }
+                    try { _services.ResolveOrDefault<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "load_assembly", swLoadAsm.Elapsed); } catch { }
                     var pluginType = assembly.GetType(descriptor.TypeName);
 
                     if (pluginType == null)
@@ -304,7 +303,7 @@ namespace Astra.Core.Plugins.Host
                         var swInit = System.Diagnostics.Stopwatch.StartNew();
                         await plugin.InitializeAsync(context, CancellationToken.None);
                         swInit.Stop();
-                        try { _services.Resolve<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "initialize", swInit.Elapsed); } catch { }
+                        try { _services.ResolveOrDefault<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "initialize", swInit.Elapsed); } catch { }
                     }
                     catch (Exception ex)
                     {
@@ -317,7 +316,7 @@ namespace Astra.Core.Plugins.Host
                         var swEnable = System.Diagnostics.Stopwatch.StartNew();
                         await plugin.OnEnableAsync(CancellationToken.None);
                         swEnable.Stop();
-                        try { _services.Resolve<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "enable", swEnable.Elapsed); } catch { }
+                        try { _services.ResolveOrDefault<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "enable", swEnable.Elapsed); } catch { }
                     }
                     catch (Exception ex)
                     {
