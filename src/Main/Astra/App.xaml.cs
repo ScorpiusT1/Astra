@@ -84,6 +84,9 @@ namespace Astra
             {
                 _startupService = new ApplicationStartupService(Dispatcher, Shutdown);
                 ServiceProvider = await _startupService.StartAsync();
+                
+                // ⭐ 创建主窗口（原 MainWindowCreationTask 的功能）
+                await CreateMainWindowAsync();
 
 				// 初始化日志
 				try
@@ -118,21 +121,17 @@ namespace Astra
 				// ⭐ 迁移插件注册的设备到主应用的 DeviceManager
 				try
 				{
-					await MigratePluginDevicesToMainDeviceManagerAsync();
+					//await MigratePluginDevicesToMainDeviceManagerAsync();
 				}
 				catch (Exception ex)
 				{
 					_logger.LogError(ex, "[App] 迁移插件设备失败");
-					System.Diagnostics.Debug.WriteLine($"[App] 迁移插件设备失败: {ex.Message}");
 				}
 
                 // 启动完成后注册主窗口关闭事件
                 if (MainWindow != null)
                 {
                     MainWindow.Closing += OnMainWindowClosing;
-
-					// 注册区域与导航（集中在引导器中）
-					await Astra.Bootstrap.NavigationBootstrapper.InitializeAsync(MainWindow, ServiceProvider, Dispatcher, _logger);
                 }
             });
         }
@@ -159,24 +158,18 @@ namespace Astra
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("[App] ========== 检查插件设备迁移 ==========");
-                
                 // 获取主应用的 DeviceManager
                 var mainDeviceManager = ServiceProvider?.GetService<Astra.Core.Devices.Management.IDeviceManager>();
                 if (mainDeviceManager == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("[App] ⚠️ 主应用 DeviceManager 为 null，无法检查迁移");
                     return;
                 }
                 
                 var mainDeviceCount = mainDeviceManager.GetDeviceCount();
-                System.Diagnostics.Debug.WriteLine($"[App] 主应用 DeviceManager 实例哈希码: {mainDeviceManager.GetHashCode()}");
-                System.Diagnostics.Debug.WriteLine($"[App] 主应用当前设备数量: {mainDeviceCount}");
                 
                 // 如果主应用已经有设备，说明插件已经成功使用主应用的 DeviceManager，不需要迁移
                 if (mainDeviceCount > 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[App] ✅ 主应用已有 {mainDeviceCount} 个设备，插件已正确使用主应用的 DeviceManager，无需迁移");
                     return;
                 }
                 
@@ -184,11 +177,8 @@ namespace Astra
                 var pluginHost = ServiceProvider?.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
                 if (pluginHost == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("[App] ⚠️ 插件宿主为 null，无法检查迁移");
                     return;
                 }
-                
-                System.Diagnostics.Debug.WriteLine($"[App] 已加载插件数量: {pluginHost.LoadedPlugins.Count}");
                 
                 // 遍历所有已加载的插件，检查是否有设备需要迁移
                 int totalDevicesToMigrate = 0;
@@ -218,18 +208,15 @@ namespace Astra
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[App] 检查插件 {plugin.Name} 时出错: {ex.Message}");
+                        // 静默处理检查插件时的错误
                     }
                 }
                 
                 // 如果没有设备需要迁移，直接返回
                 if (totalDevicesToMigrate == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine("[App] ✅ 没有设备需要迁移，插件已正确使用主应用的 DeviceManager");
                     return;
                 }
-                
-                System.Diagnostics.Debug.WriteLine($"[App] 发现 {totalDevicesToMigrate} 个设备需要迁移，开始迁移...");
                 
                 // 执行迁移
                 int migratedCount = 0;
@@ -254,11 +241,6 @@ namespace Astra
                                         if (result.Success)
                                         {
                                             migratedCount++;
-                                            System.Diagnostics.Debug.WriteLine($"[App] ✅ 迁移设备: {device.DeviceName} (ID: {device.DeviceId})");
-                                        }
-                                        else
-                                        {
-                                            System.Diagnostics.Debug.WriteLine($"[App] ❌ 迁移设备失败: {device.DeviceName}, 原因: {result.ErrorMessage}");
                                         }
                                     }
                                 }
@@ -267,46 +249,13 @@ namespace Astra
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[App] 迁移插件 {plugin.Name} 的设备时出错: {ex.Message}");
+                        // 静默处理迁移插件设备时的错误
                     }
-                }
-                
-                var finalDeviceCount = mainDeviceManager.GetDeviceCount();
-                System.Diagnostics.Debug.WriteLine($"[App] 迁移完成，共迁移 {migratedCount} 个设备，主应用设备总数: {finalDeviceCount}");
-                System.Diagnostics.Debug.WriteLine("[App] ========== 设备迁移完成 ==========");
-                
-                // ⭐ 如果迁移了设备，延迟触发 ConfigViewModel 刷新
-                if (migratedCount > 0)
-                {
-                    System.Diagnostics.Debug.WriteLine("[App] 延迟触发 ConfigViewModel 刷新...");
-                    Dispatcher.InvokeAsync(async () =>
-                    {
-                        await Task.Delay(1000);
-                        
-                        try
-                        {
-                            var configViewModel = ServiceProvider?.GetService<ViewModels.ConfigViewModel>();
-                            if (configViewModel != null)
-                            {
-                                System.Diagnostics.Debug.WriteLine("[App] 找到 ConfigViewModel，触发刷新");
-                                configViewModel.RefreshConfigTreeCommand?.Execute(null);
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine("[App] ConfigViewModel 尚未创建，将通过事件自动刷新");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[App] 触发 ConfigViewModel 刷新时出错: {ex.Message}");
-                        }
-                    }, System.Windows.Threading.DispatcherPriority.Background);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[App] ❌ 检查/迁移插件设备时发生异常: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"  堆栈: {ex.StackTrace}");
+                _logger?.LogError(ex, "[App] 检查/迁移插件设备时发生异常");
                 // 不抛出异常，避免影响应用启动
             }
         }
@@ -673,6 +622,72 @@ namespace Astra
 
 
         private bool _isCleaningUp = false;
+
+        /// <summary>
+        /// 创建主窗口（原 MainWindowCreationTask 的功能）
+        /// </summary>
+        private async Task CreateMainWindowAsync()
+        {
+            try
+            {
+                if (ServiceProvider == null)
+                {
+                    return;
+                }
+
+                // 在 UI 线程创建窗口
+                MainView mainWindow = null;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        mainWindow = ServiceProvider.GetRequiredService<MainView>();
+
+                        // ⭐ 验证 DataContext 是否正确设置
+                        if (mainWindow != null)
+                        {
+                            var dataContext = mainWindow.DataContext;
+
+                            // 如果 DataContext 为 null，尝试手动设置
+                            if (dataContext == null)
+                            {
+                                try
+                                {
+                                    var viewModel = ServiceProvider.GetService<MainViewViewModel>();
+                                    if (viewModel != null)
+                                    {
+                                        mainWindow.DataContext = viewModel;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger?.LogError(ex, "[App] 手动设置 DataContext 失败");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "[App] 创建主窗口时出错");
+                        throw;
+                    }
+                });
+
+                if (mainWindow == null)
+                {
+                    throw new InvalidOperationException("无法创建主窗口 MainView");
+                }
+
+                // ⭐ 注意：不要在这里设置 Application.Current.MainWindow
+                // 因为窗口还没有显示，如果此时设置，其他代码尝试设置 Owner 时会报错
+                // Application.Current.MainWindow 会在 ShowMainWindow 中设置（在 Show() 之后）
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[App] 创建主窗口失败");
+                throw;
+            }
+        }
     }
 
 }

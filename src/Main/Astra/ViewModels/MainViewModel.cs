@@ -278,10 +278,16 @@ namespace Astra.ViewModels
         /// </summary>
         public async Task InitializeNavigationAsync()
         {
+            System.Diagnostics.Debug.WriteLine("[MainViewModel] InitializeNavigationAsync 开始执行");
+            _logger?.LogInformation("[MainViewModel] InitializeNavigationAsync 开始执行");
+            
             try
             {
 				// 确保区域服务事件已订阅（若 App 注册在本方法之后）
 				var regionService = _regionManager.GetNavigationService(RegionNames.MainRegion);
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 区域服务: {regionService != null}");
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] RegionManager: {_regionManager != null}");
+                _logger?.LogInformation($"[MainViewModel] 区域服务: {regionService != null}");
 
 				if (regionService != null)
 				{
@@ -289,14 +295,47 @@ namespace Astra.ViewModels
 					regionService.NavigationFailed -= OnNavigationFailed;
 					regionService.Navigated += OnNavigated;
 					regionService.NavigationFailed += OnNavigationFailed;
+                    System.Diagnostics.Debug.WriteLine("[MainViewModel] 区域服务事件已订阅");
+                    _logger?.LogInformation("[MainViewModel] 区域服务事件已订阅");
+				}
+				else
+				{
+					System.Diagnostics.Debug.WriteLine("[MainViewModel] ⚠️ 区域服务为 null，无法订阅事件");
+					System.Diagnostics.Debug.WriteLine("[MainViewModel] ⚠️ 可能原因：区域未注册或 MainFrame 未初始化");
+					_logger?.LogWarning("[MainViewModel] 区域服务为 null，无法订阅事件");
+					
+					// ⚠️ 区域未注册，延迟重试
+					await Task.Delay(500);
+					regionService = _regionManager.GetNavigationService(RegionNames.MainRegion);
+					if (regionService == null)
+					{
+						System.Diagnostics.Debug.WriteLine("[MainViewModel] ❌ 延迟重试后区域服务仍为 null");
+						_logger?.LogError("[MainViewModel] 区域服务初始化失败，导航可能无法正常工作");
+						// 不返回，继续尝试导航（可能区域会在导航时自动注册）
+					}
+					else
+					{
+						System.Diagnostics.Debug.WriteLine("[MainViewModel] ✅ 延迟重试后区域服务已可用");
+						regionService.Navigated -= OnNavigated;
+						regionService.NavigationFailed -= OnNavigationFailed;
+						regionService.Navigated += OnNavigated;
+						regionService.NavigationFailed += OnNavigationFailed;
+					}
 				}
 
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 准备导航到: {NavigationKeys.Home}");
+                _logger?.LogInformation($"[MainViewModel] 准备导航到: {NavigationKeys.Home}");
+                
                 await NavigateAsync(NavigationKeys.Home);
-                _logger.LogInformation("[MainViewModel] 导航初始化完成");
+                
+                System.Diagnostics.Debug.WriteLine("[MainViewModel] InitializeNavigationAsync 完成");
+                _logger?.LogInformation("[MainViewModel] 导航初始化完成");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[MainViewModel] 导航初始化失败");
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 导航初始化异常: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 堆栈: {ex.StackTrace}");
+                _logger?.LogError(ex, "[MainViewModel] 导航初始化失败");
             }
         }
 
@@ -308,6 +347,8 @@ namespace Astra.ViewModels
         [RelayCommand]
         private async Task NavigateAsync(object parameter)
         {
+            System.Diagnostics.Debug.WriteLine($"[MainViewModel] NavigateAsync 被调用，parameter: {parameter}");
+            
             string pageKey = null;
             NavigationMenuItem menuItem = null;
 
@@ -323,10 +364,17 @@ namespace Astra.ViewModels
             }
 
             if (string.IsNullOrEmpty(pageKey))
+            {
+                System.Diagnostics.Debug.WriteLine("[MainViewModel] ⚠️ NavigateAsync: pageKey 为空");
+                _logger?.LogWarning("[MainViewModel] NavigateAsync: pageKey 为空");
                 return;
+            }
 
             try
             {
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] NavigateAsync 开始，pageKey: {pageKey}");
+                _logger?.LogInformation("[MainViewModel] NavigateAsync 开始，pageKey: {PageKey}", pageKey);
+                
                 // ⭐ 在导航前验证权限
                 if (menuItem == null)
                 {
@@ -339,7 +387,11 @@ namespace Astra.ViewModels
                             menuItem = fromAgg;
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MainViewModel] 从聚合器查找菜单项失败: {ex.Message}");
+                        _logger?.LogWarning(ex, "[MainViewModel] 从聚合器查找菜单项失败");
+                    }
                 }
 
                 if (menuItem != null)
@@ -348,17 +400,38 @@ namespace Astra.ViewModels
 
                     if (!_navigationGuard.CanNavigate(currentUser, menuItem))
                     {
-                        _logger.LogWarning("[MainViewModel] 权限不足，无法导航到: {PageKey}", pageKey);
+                        System.Diagnostics.Debug.WriteLine($"[MainViewModel] ⚠️ 权限不足，无法导航到: {pageKey}");
+                        _logger?.LogWarning("[MainViewModel] 权限不足，无法导航到: {PageKey}", pageKey);
                         return;
                     }
                 }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[MainViewModel] 未找到菜单项，跳过权限检查，直接导航");
+                    _logger?.LogInformation("[MainViewModel] 未找到菜单项，跳过权限检查，直接导航");
+                }
 
-                _logger.LogInformation("[MainViewModel] 导航到: {PageKey}", pageKey);
-				await _navigationManager.NavigateAsync(pageKey);
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 调用 NavigationManager.NavigateAsync: {pageKey}");
+                _logger?.LogInformation("[MainViewModel] 调用 NavigationManager.NavigateAsync: {PageKey}", pageKey);
+                
+                var navResult = await _navigationManager.NavigateAsync(pageKey);
+                
+                if (navResult.Success)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainViewModel] ✅ 导航成功: {pageKey}");
+                    _logger?.LogInformation("[MainViewModel] 导航成功: {PageKey}", pageKey);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainViewModel] ❌ 导航失败: {pageKey}, 错误: {navResult.Message}");
+                    _logger?.LogWarning("[MainViewModel] 导航失败: {PageKey}, 错误: {Error}", pageKey, navResult.Message);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[MainViewModel] 导航失败");
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] ❌ 导航异常: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 堆栈: {ex.StackTrace}");
+                _logger?.LogError(ex, "[MainViewModel] 导航失败: {PageKey}", pageKey);
             }
         }
 

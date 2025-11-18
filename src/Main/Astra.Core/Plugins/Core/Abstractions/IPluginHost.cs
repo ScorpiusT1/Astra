@@ -15,5 +15,7 @@
         /// </summary>
         /// <param name="pluginDirectory">插件根目录</param>
         Task DiscoverAndLoadPluginsAsync(string pluginDirectory);
+
+        void UpdateExternalServiceProvider(IServiceProvider externalServiceProvider);
     }
 }

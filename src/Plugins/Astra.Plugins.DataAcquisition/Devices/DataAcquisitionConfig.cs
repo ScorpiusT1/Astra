@@ -9,7 +9,8 @@ using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
 
 namespace Astra.Plugins.DataAcquisition.Devices
-{    
+{
+    [DeviceConfigUI(typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
     public class DataAcquisitionConfig : DeviceConfig
     {
         private string _serialNumber = string.Empty;

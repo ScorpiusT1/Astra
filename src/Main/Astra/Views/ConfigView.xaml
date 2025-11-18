@@ -19,26 +19,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 工具栏 -->
-        <Border Grid.Row="0"
-                Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="16,12">
-            <StackPanel Orientation="Horizontal">
-                <Button Content="🔄 刷新"
-                        Command="{Binding RefreshConfigTreeCommand}"
-                        Padding="12,6"
-                        Margin="0,0,8,0"
-                        Cursor="Hand" />
-                <TextBlock Text="{Binding Title}"
-                           FontSize="16"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"
-                           Margin="8,0,0,0" />
-            </StackPanel>
-        </Border>
-
         <!-- 主内容区域 -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>

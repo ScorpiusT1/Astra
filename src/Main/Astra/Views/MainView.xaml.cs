@@ -42,6 +42,8 @@ namespace Astra.Views
 
         private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine("[MainView.OnLoaded] 开始执行");
+            
             // 确保MainFrame不为null
             if (MainFrame == null)
             {
@@ -57,7 +59,23 @@ namespace Astra.Views
             // 初始化导航
             if (DataContext is MainViewViewModel viewModel)
             {
-                await viewModel.Navigation.InitializeNavigationAsync();
+                System.Diagnostics.Debug.WriteLine($"[MainView.OnLoaded] DataContext 是 MainViewViewModel，开始初始化导航");
+                System.Diagnostics.Debug.WriteLine($"[MainView.OnLoaded] Navigation: {viewModel.Navigation != null}");
+                
+                try
+                {
+                    await viewModel.Navigation.InitializeNavigationAsync();
+                    System.Diagnostics.Debug.WriteLine("[MainView.OnLoaded] 导航初始化调用完成");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainView.OnLoaded] 导航初始化异常: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[MainView.OnLoaded] 堆栈: {ex.StackTrace}");
+                }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainView.OnLoaded] DataContext 不是 MainViewViewModel，类型: {DataContext?.GetType().Name ?? "null"}");
             }
         }
 

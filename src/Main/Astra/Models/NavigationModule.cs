@@ -24,13 +24,13 @@ namespace Astra.Models
 
         public void RegisterTypes(INavigationConfiguration configuration, IServiceCollection services)
         {
-            // 注册页面
+            // 注册页面类型到导航配置
+            // 注意：路由映射在 NavigationBootstrapper 中完成
             configuration.RegisterPage<HomeView, HomeViewModel>(NavigationKeys.Home);
             configuration.RegisterPage<SequenceView, SequenceViewModel>(NavigationKeys.Sequence);
             configuration.RegisterPage<PermissionView, PermissionViewModel>(NavigationKeys.Permission); // ⭐ 使用重构后的 ViewModel
             configuration.RegisterPage<ConfigView, ConfigViewModel>(NavigationKeys.Config);
             configuration.RegisterPage<DebugView, DebugViewModel>(NavigationKeys.Debug);
-            configuration.RegisterPage<PermissionView, PermissionViewModel>(NavigationKeys.Permission);
 
             System.Diagnostics.Debug.WriteLine($"[{ModuleName}] 注册类型完成");
         }

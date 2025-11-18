@@ -400,5 +400,10 @@ namespace Astra.Core.Plugins.Concurrency
                 new ConcurrencyConfig { MaxConcurrency = 1, Timeout = TimeSpan.FromMinutes(10) }
             );
         }
+
+        public void UpdateExternalServiceProvider(IServiceProvider externalServiceProvider)
+        {
+            _baseHost.UpdateExternalServiceProvider(externalServiceProvider);
+        }
     }
 }

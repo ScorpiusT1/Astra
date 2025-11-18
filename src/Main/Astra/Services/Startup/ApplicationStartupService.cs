@@ -6,9 +6,13 @@ using Astra.UI.Helpers;
 using Astra.Utilities;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
+using System;
+using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using NavStack.Core;
+using NavStack.Services;
 
 namespace Astra.Services.Startup
 {
@@ -39,20 +43,12 @@ namespace Astra.Services.Startup
                 ConfigureServices(_bootstrapper);
                 AddTasks(_bootstrapper);
 
-                Debug.WriteLine("开始执行启动流程...");
-
                 var result = await _bootstrapper.RunAsync();
 
                 return await HandleStartupResult(result);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("========================================");
-                Debug.WriteLine($"启动过程发生异常: {ex.GetType().Name}");
-                Debug.WriteLine($"消息: {ex.Message}");
-                Debug.WriteLine($"堆栈: {ex.StackTrace}");
-                Debug.WriteLine("========================================");
-
                 ShowFatalError(ex);
                 _shutdownAction(-1);
                 return null;
@@ -89,13 +85,9 @@ namespace Astra.Services.Startup
         {
             bootstrapper.ConfigureServices(services =>
             {
-                Debug.WriteLine("开始注册服务...");
-
                 // 使用服务注册配置器
                 var configurator = new ServiceRegistrationConfigurator();
                 configurator.ConfigureServices(services);
-
-                Debug.WriteLine("服务注册完成");
             });
         }
 
@@ -103,19 +95,17 @@ namespace Astra.Services.Startup
         {
             bootstrapper
                 .AddTask(new ConfigurationLoadTask())
-                .AddTask(new PluginLoadTask());
+                .AddTask(new PluginLoadTask())
+                .AddTask(new NavigationInitializationTask());
         }
 
         private async Task<IServiceProvider> HandleStartupResult(BootstrapResult result)
         {
             if (result.IsCancelled)
             {
-                Debug.WriteLine("用户取消了启动");
                 _shutdownAction(0);
                 return null;
             }
-
-            Debug.WriteLine($"启动流程完成: IsSuccess={result.IsSuccess}, IsCancelled={result.IsCancelled}");
 
             if (result.IsSuccess)
             {
@@ -123,7 +113,6 @@ namespace Astra.Services.Startup
             }
             else
             {
-                Debug.WriteLine("启动失败");
                 ShowStartupError(result);
                 _shutdownAction(-1);
                 return null;
@@ -132,43 +121,129 @@ namespace Astra.Services.Startup
 
         private async Task<IServiceProvider> ShowMainWindow(BootstrapResult result)
         {
-            Debug.WriteLine("启动成功，准备显示主窗口...");
-
             var context = _bootstrapper.GetContext();
             var serviceProvider = context.ServiceProvider;
 
-            Debug.WriteLine($"ServiceProvider: {serviceProvider != null}");
-
-            // ⭐ 从 ServiceProvider 获取主窗口实例
-            var mainView = serviceProvider.GetRequiredService<MainView>();
-            Debug.WriteLine($"MainWindow: {mainView != null}");
+            // ⭐ 从上下文或 ServiceProvider 获取主窗口实例
+            var mainView = context.GetData<MainView>("MainView") 
+                ?? serviceProvider.GetRequiredService<MainView>();
 
             await _dispatcher.InvokeAsync(() =>
             {
                 if (mainView != null)
                 {
-                    Debug.WriteLine($"设置 MainWindow: {mainView.GetType().Name}");
                     Application.Current.MainWindow = mainView;
-
-                    Debug.WriteLine("调用 Show()...");
                     mainView.Show();
-
                     Application.Current.ShutdownMode = ShutdownMode.OnMainWindowClose;
-
-                    Debug.WriteLine($"窗口可见性: {mainView.IsVisible}");
-                    Debug.WriteLine($"窗口状态: {mainView.WindowState}");
-
                     mainView.Activate();
                     mainView.Focus();
-
-                    Debug.WriteLine("主窗口已显示");
                 }
                 else
                 {
-                    Debug.WriteLine("⚠️ 警告：MainWindow 为 null");
                     throw new InvalidOperationException("主窗口创建失败：mainView 为 null");
                 }
             }, DispatcherPriority.Send);
+
+            // ⭐ 等待窗口完全加载，确保 MainFrame 已初始化
+            await _dispatcher.InvokeAsync(async () =>
+            {
+                if (mainView != null)
+                {
+                    // 如果窗口尚未加载，等待 Loaded 事件
+                    if (!mainView.IsLoaded)
+                    {
+                        var tcs = new TaskCompletionSource<bool>();
+                        RoutedEventHandler handler = null;
+                        handler = (s, e) =>
+                        {
+                            mainView.Loaded -= handler;
+                            tcs.SetResult(true);
+                        };
+                        mainView.Loaded += handler;
+                        await tcs.Task;
+                    }
+
+                    // ⭐ 确保导航初始化：如果 MainView.OnLoaded 没有触发导航，这里手动触发
+                    if (mainView.DataContext is Astra.ViewModels.MainViewViewModel viewModel)
+                    {
+                        // 检查是否已经导航过
+                        var navManager = serviceProvider.GetService<NavStack.Services.INavigationManager>();
+                        if (navManager != null && mainView.MainFrame != null)
+                        {
+                            try
+                            {
+                                // ⭐ 关键：确保使用最终 ServiceProvider 的 NavigationManager 和 RegionManager
+                                // NavigationInitializationTask 可能使用了临时 ServiceProvider，导致路由映射丢失
+                                
+                                // 1. 注册区域
+                                var regionManager = serviceProvider.GetService<NavStack.Regions.IRegionManager>();
+                                if (regionManager != null && mainView.MainFrame != null)
+                                {
+                                    regionManager.RegisterRegion(Astra.Utilities.RegionNames.MainRegion, mainView.MainFrame);
+                                }
+                                
+                                // 2. ⭐ 重新注册路由映射（确保使用最终 ServiceProvider 的 NavigationManager）
+                                if (navManager != null)
+                                {
+                                    // ⭐ 验证 MainViewModel 使用的 NavigationManager 实例是否相同
+                                    var vmNavManager = viewModel.Navigation.GetType()
+                                        .GetField("_navigationManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                        ?.GetValue(viewModel.Navigation);
+                                    
+                                    if (vmNavManager != null && vmNavManager.GetHashCode() != navManager.GetHashCode())
+                                    {
+                                        // 使用 MainViewModel 实际使用的实例注册路由
+                                        navManager = vmNavManager as NavStack.Services.INavigationManager;
+                                    }
+                                    
+                                    navManager.RegisterForRegion(
+                                        Astra.Utilities.RegionNames.MainRegion, 
+                                        Astra.Utilities.NavigationKeys.Home, 
+                                        typeof(Astra.Views.HomeView), 
+                                        typeof(Astra.ViewModels.HomeViewModel));
+                                    navManager.RegisterForRegion(
+                                        Astra.Utilities.RegionNames.MainRegion, 
+                                        Astra.Utilities.NavigationKeys.Config, 
+                                        typeof(Astra.Views.ConfigView), 
+                                        typeof(Astra.ViewModels.ConfigViewModel));
+                                    navManager.RegisterForRegion(
+                                        Astra.Utilities.RegionNames.MainRegion, 
+                                        Astra.Utilities.NavigationKeys.Debug, 
+                                        typeof(Astra.Views.DebugView), 
+                                        typeof(Astra.ViewModels.DebugViewModel));
+                                    navManager.RegisterForRegion(
+                                        Astra.Utilities.RegionNames.MainRegion, 
+                                        Astra.Utilities.NavigationKeys.Sequence, 
+                                        typeof(Astra.Views.SequenceView), 
+                                        typeof(Astra.ViewModels.SequenceViewModel));
+                                    navManager.RegisterForRegion(
+                                        Astra.Utilities.RegionNames.MainRegion, 
+                                        Astra.Utilities.NavigationKeys.Permission, 
+                                        typeof(Astra.Views.PermissionView), 
+                                        typeof(Astra.ViewModels.PermissionViewModel));
+                                }
+
+                                // 确保 IFrameNavigationService.Frame 已设置
+                                var frameNavService = serviceProvider.GetService<IFrameNavigationService>();
+                                if (frameNavService != null && mainView.MainFrame != null)
+                                {
+                                    frameNavService.Frame = mainView.MainFrame;
+                                }
+
+                                // 如果还没有导航，触发导航初始化
+                                if (string.IsNullOrEmpty(viewModel.Navigation.CurrentPageKey))
+                                {
+                                    await viewModel.Navigation.InitializeNavigationAsync();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // 导航初始化失败不影响程序启动，只记录日志
+                            }
+                        }
+                    }
+                }
+            }, DispatcherPriority.Loaded);
 
             // ⭐ 启动后自动登录操作员账号
             await AutoLoginOperator(serviceProvider);
@@ -209,7 +284,6 @@ namespace Astra.Services.Startup
 
                 if (userManagementService == null || sessionService == null)
                 {
-                    Debug.WriteLine("[AutoLogin] 服务未初始化，跳过自动登录");
                     return;
                 }
 
@@ -218,23 +292,15 @@ namespace Astra.Services.Startup
 
                 if (lastOperator != null)
                 {
-                    Debug.WriteLine($"[AutoLogin] 找到最后登录的操作员: {lastOperator.Username}");
-                    
                     // 自动登录
                     await _dispatcher.InvokeAsync(() =>
                     {
                         sessionService.Login(lastOperator);
-                        Debug.WriteLine($"[AutoLogin] ✅ 自动登录成功: {lastOperator.Username}, 权限: {lastOperator.Role}");
                     });
-                }
-                else
-                {
-                    Debug.WriteLine("[AutoLogin] 数据库中没有操作员账号，不自动登录");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[AutoLogin] 自动登录失败: {ex.Message}");
                 // 自动登录失败不影响程序启动，只记录日志
             }
         }

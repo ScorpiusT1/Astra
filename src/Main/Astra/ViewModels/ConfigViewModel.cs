@@ -40,12 +40,12 @@ namespace Astra.ViewModels
             // 从服务提供者获取依赖
             _serviceProvider = App.ServiceProvider;
             _deviceManager = _serviceProvider?.GetService<IDeviceManager>();
-            
+
             System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 构造函数：ServiceProvider={_serviceProvider != null}, DeviceManager={_deviceManager != null}");
-            
+
             // 从服务提供者获取 PluginHost（已由 PluginLoadTask 注册为单例）
             _pluginHost = _serviceProvider?.GetService<IPluginHost>();
-            
+
             // 如果获取不到，记录警告（但不影响功能，因为可以扫描所有已加载的程序集）
             if (_pluginHost == null)
             {
@@ -62,11 +62,11 @@ namespace Astra.ViewModels
                 _deviceManager.DeviceRegistered += OnDeviceRegistered;
                 _deviceManager.DeviceUnregistered += OnDeviceUnregistered;
                 System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 已订阅设备注册/注销事件");
-                
+
                 // 立即检查一次设备数量
                 var deviceCount = _deviceManager.GetDeviceCount();
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 当前已注册设备数量: {deviceCount}");
-                
+
                 // 输出 DeviceManager 实例的哈希码，用于验证是否是同一个实例
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] DeviceManager 实例哈希码: {_deviceManager.GetHashCode()}");
             }
@@ -75,31 +75,10 @@ namespace Astra.ViewModels
                 System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 警告：DeviceManager 为 null，无法订阅设备事件");
             }
 
-            // 延迟初始化配置树，确保插件和设备都已加载完成
-            // 使用 Dispatcher.InvokeAsync 确保在 UI 线程上执行
-            // 增加延迟时间，确保插件加载完成
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
-            {
-                System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 开始初始化配置树（延迟执行）");
-                
-                // 等待一段时间，确保插件和设备都已注册完成
-                await Task.Delay(2000); // 延迟 2 秒
-                
-                // 再次检查设备数量
-                if (_deviceManager != null)
-                {
-                    var deviceCount = _deviceManager.GetDeviceCount();
-                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 延迟后检查设备数量: {deviceCount}");
-                    
-                    // ⭐ 如果设备数量大于 0，说明设备已经迁移完成，立即刷新配置树
-                    if (deviceCount > 0)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 检测到 {deviceCount} 个设备，立即刷新配置树");
-                    }
-                }
-                
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+            {              
                 InitializeConfigTree();
-            }, System.Windows.Threading.DispatcherPriority.Loaded);
+            });
         }
 
         /// <summary>
@@ -108,7 +87,7 @@ namespace Astra.ViewModels
         private void OnDeviceRegistered(object sender, DeviceRegisteredEventArgs e)
         {
             System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] OnDeviceRegistered: 设备已注册 - DeviceId={e.DeviceId}, DeviceType={e.DeviceType}");
-            
+
             // 在 UI 线程上刷新配置树
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
@@ -123,7 +102,7 @@ namespace Astra.ViewModels
         private void OnDeviceUnregistered(object sender, DeviceUnregisteredEventArgs e)
         {
             System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] OnDeviceUnregistered: 设备已注销 - DeviceId={e.DeviceId}");
-            
+
             // 在 UI 线程上刷新配置树
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
@@ -211,8 +190,8 @@ namespace Astra.ViewModels
             try
             {
                 var types = assembly.GetTypes()
-                    .Where(t => !t.IsAbstract && 
-                                !t.IsInterface && 
+                    .Where(t => !t.IsAbstract &&
+                                !t.IsInterface &&
                                 typeof(DeviceConfig).IsAssignableFrom(t) &&
                                 t != typeof(DeviceConfig));
 
@@ -223,7 +202,7 @@ namespace Astra.ViewModels
 
                     // 获取 DeviceConfigUIAttribute 特性
                     var uiAttribute = type.GetCustomAttribute<DeviceConfigUIAttribute>();
-                    
+
                     var configInfo = new DeviceConfigInfo
                     {
                         ConfigType = type,
@@ -282,14 +261,14 @@ namespace Astra.ViewModels
         private void BuildConfigTree()
         {
             System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 开始构建配置树...");
-            
+
             // 1. 获取已注册的设备实例
             var registeredDevices = GetRegisteredDevices();
             System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 已注册设备数量: {registeredDevices.Count}");
-            
+
             // 2. 按设备类型分组（先按已注册的设备，再按配置类型）
             var deviceTypeGroups = new Dictionary<Astra.Core.Devices.DeviceType, List<object>>();
-            
+
             // 2.1 添加已注册的设备实例
             foreach (var device in registeredDevices)
             {
@@ -301,19 +280,19 @@ namespace Astra.ViewModels
                 deviceTypeGroups[deviceType].Add(device);
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 添加设备到树: {device.DeviceName} (Type: {deviceType})");
             }
-            
+
             // 2.2 添加配置类型（如果该类型还没有设备实例）
             var groupedConfigs = _deviceConfigTypes.Values
                 .GroupBy(c => c.DeviceType)
                 .OrderBy(g => g.Key);
-            
+
             foreach (var group in groupedConfigs)
             {
                 if (!deviceTypeGroups.ContainsKey(group.Key))
                 {
                     deviceTypeGroups[group.Key] = new List<object>();
                 }
-                
+
                 // 只为没有设备实例的配置类型添加配置类型节点
                 if (deviceTypeGroups[group.Key].Count == 0)
                 {
@@ -323,16 +302,16 @@ namespace Astra.ViewModels
                     }
                 }
             }
-            
+
             // 3. 构建树节点
             foreach (var kvp in deviceTypeGroups.OrderBy(g => g.Key))
             {
                 var deviceType = kvp.Key;
                 var items = kvp.Value;
-                
+
                 if (items.Count == 0)
                     continue;
-                
+
                 var deviceTypeNode = new TreeNodeViewModel
                 {
                     Header = GetDeviceTypeDisplayName(deviceType),
@@ -342,22 +321,22 @@ namespace Astra.ViewModels
                     AddDeviceType = deviceType.ToString(),
                     Tag = deviceType
                 };
-                
+
                 // 为每个设备实例或配置类型创建子节点
                 foreach (var item in items)
                 {
                     TreeNodeViewModel itemNode;
-                    
+
                     if (item is Astra.Core.Devices.Interfaces.IDevice device)
                     {
                         // 设备实例节点
                         var deviceConfig = GetDeviceConfig(device);
                         var configInfo = deviceConfig != null ? GetConfigInfoForDevice(deviceConfig) : null;
-                        
+
                         itemNode = new TreeNodeViewModel
                         {
                             Header = device.DeviceName ?? device.DeviceId ?? "未知设备",
-                            Icon = GetDeviceStatusIcon(device),
+                            Icon = GetDeviceTypeIcon(device.Type),
                             Tag = new DeviceInstanceInfo
                             {
                                 Device = device,
@@ -382,47 +361,47 @@ namespace Astra.ViewModels
                     {
                         continue;
                     }
-                    
+
                     deviceTypeNode.Children.Add(itemNode);
                 }
-                
+
                 TreeNodes.Add(deviceTypeNode);
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 添加设备类型节点: {deviceTypeNode.Header}，包含 {deviceTypeNode.Children.Count} 个子节点");
             }
-            
+
             System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 配置树构建完成，共 {TreeNodes.Count} 个设备类型节点");
         }
-        
+
         /// <summary>
         /// 获取已注册的设备实例
         /// </summary>
         private List<Astra.Core.Devices.Interfaces.IDevice> GetRegisteredDevices()
         {
             var devices = new List<Astra.Core.Devices.Interfaces.IDevice>();
-            
+
             System.Diagnostics.Debug.WriteLine("[ConfigViewModel] GetRegisteredDevices: 开始获取设备");
-            
+
             if (_deviceManager == null)
             {
                 System.Diagnostics.Debug.WriteLine("[ConfigViewModel] GetRegisteredDevices: DeviceManager 为 null");
                 return devices;
             }
-            
+
             try
             {
                 // 先检查设备数量
                 var deviceCount = _deviceManager.GetDeviceCount();
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] GetRegisteredDevices: DeviceManager.GetDeviceCount() = {deviceCount}");
-                
+
                 // 获取所有设备
                 var result = _deviceManager.GetAllDevices();
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] GetRegisteredDevices: GetAllDevices() 结果 - Success={result.Success}, ErrorMessage={result.ErrorMessage}");
-                
+
                 if (result.Success && result.Data != null)
                 {
                     devices.AddRange(result.Data);
                     System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] GetRegisteredDevices: 成功获取 {devices.Count} 个设备");
-                    
+
                     // 输出设备详情用于调试
                     if (devices.Count > 0)
                     {
@@ -447,10 +426,10 @@ namespace Astra.ViewModels
                 System.Diagnostics.Debug.WriteLine($"  异常类型: {ex.GetType().Name}");
                 System.Diagnostics.Debug.WriteLine($"  堆栈: {ex.StackTrace}");
             }
-            
+
             return devices;
         }
-        
+
         /// <summary>
         /// 从设备获取配置对象
         /// </summary>
@@ -461,12 +440,12 @@ namespace Astra.ViewModels
                 // 尝试通过反射获取 CurrentConfig 属性
                 var deviceType = device.GetType();
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 尝试获取设备配置，设备类型: {deviceType.Name}");
-                
+
                 // 方法1：检查是否实现了 IConfigurable<TConfig>
                 var configurableInterface = deviceType.GetInterfaces()
-                    .FirstOrDefault(i => i.IsGenericType && 
+                    .FirstOrDefault(i => i.IsGenericType &&
                                          i.GetGenericTypeDefinition() == typeof(Astra.Core.Devices.Interfaces.IConfigurable<>));
-                
+
                 if (configurableInterface != null)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备实现了 IConfigurable<{configurableInterface.GetGenericArguments()[0].Name}>");
@@ -481,13 +460,13 @@ namespace Astra.ViewModels
                         }
                     }
                 }
-                
+
                 // 方法2：直接查找 CurrentConfig 属性
-                var directProperty = deviceType.GetProperty("CurrentConfig", 
-                    System.Reflection.BindingFlags.Public | 
-                    System.Reflection.BindingFlags.Instance | 
+                var directProperty = deviceType.GetProperty("CurrentConfig",
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.Instance |
                     System.Reflection.BindingFlags.NonPublic);
-                
+
                 if (directProperty != null)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 找到 CurrentConfig 属性");
@@ -508,23 +487,23 @@ namespace Astra.ViewModels
                 System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 获取设备配置时发生错误: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"  堆栈: {ex.StackTrace}");
             }
-            
+
             System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法获取设备配置，返回 null");
             return null;
         }
-        
+
         /// <summary>
         /// 为设备配置获取配置信息
         /// </summary>
         private DeviceConfigInfo GetConfigInfoForDevice(DeviceConfig config)
         {
             var configType = config.GetType();
-            
+
             if (_deviceConfigTypes.TryGetValue(configType, out var configInfo))
             {
                 return configInfo;
             }
-            
+
             // 如果缓存中没有，创建一个新的配置信息
             var uiAttribute = configType.GetCustomAttribute<DeviceConfigUIAttribute>();
             return new DeviceConfigInfo
@@ -535,7 +514,7 @@ namespace Astra.ViewModels
                 DeviceType = config.Type
             };
         }
-        
+
         /// <summary>
         /// 获取设备状态图标
         /// </summary>
@@ -648,16 +627,16 @@ namespace Astra.ViewModels
                 // 3. 设置 ViewModel（如果指定了）
                 if (configView != null && configInfo.ViewModelType != null)
                 {
-                    var viewModel = Activator.CreateInstance(configInfo.ViewModelType);
+                    var viewModel = Activator.CreateInstance(configInfo.ViewModelType, deviceConfig);
                     configView.DataContext = viewModel;
-                    
+
                     // 如果提供了设备配置对象，尝试设置到 ViewModel
                     if (deviceConfig != null)
                     {
                         try
                         {
                             var viewModelType = viewModel.GetType();
-                            var configProperty = viewModelType.GetProperty("Config") ?? 
+                            var configProperty = viewModelType.GetProperty("Config") ??
                                                 viewModelType.GetProperty("DeviceConfig");
                             if (configProperty != null && configProperty.PropertyType.IsAssignableFrom(deviceConfig.GetType()))
                             {
@@ -754,28 +733,23 @@ namespace Astra.ViewModels
                     // 创建新的配置实例
                     try
                     {
-                        var newConfig = Activator.CreateInstance(configInfo.ConfigType) as DeviceConfig;
+                        DeviceConfig? newConfig = Activator.CreateInstance(configInfo.ConfigType) as DeviceConfig;
+
                         if (newConfig != null)
                         {
                             // 设置默认值
                             newConfig.DeviceName = $"新{GetConfigTypeDisplayName(configInfo.ConfigType)}";
-                            
-                            // 加载配置界面并设置为编辑模式
-                            LoadConfigView(configInfo);
-                            
-                            // 如果配置界面有 ViewModel，设置配置对象
-                            if (_configContentRegion?.Content is UserControl configView &&
-                                configView.DataContext != null)
+
+                            // 配置类型节点（用于添加新设备）
+                            var itemNode = new TreeNodeViewModel
                             {
-                                // 尝试设置配置对象（如果 ViewModel 有相应的属性）
-                                var viewModelType = configView.DataContext.GetType();
-                                var configProperty = viewModelType.GetProperty("Config") ?? 
-                                                    viewModelType.GetProperty("DeviceConfig");
-                                if (configProperty != null && configProperty.PropertyType.IsAssignableFrom(configInfo.ConfigType))
-                                {
-                                    configProperty.SetValue(configView.DataContext, newConfig);
-                                }
-                            }
+                                Header = GetConfigTypeDisplayName(configInfo.ConfigType),
+                                Icon = GetDeviceTypeIcon(newConfig.Type),
+                                Tag = new DeviceInstanceInfo() { Config = newConfig, ConfigInfo = configInfo },
+                            };
+
+                            node.Children.Add(itemNode);
+                            SelectedNode = itemNode;
                         }
                     }
                     catch (Exception ex)
@@ -797,7 +771,7 @@ namespace Astra.ViewModels
             public Type ViewModelType { get; set; }
             public Astra.Core.Devices.DeviceType DeviceType { get; set; }
         }
-        
+
         /// <summary>
         /// 设备实例信息
         /// </summary>

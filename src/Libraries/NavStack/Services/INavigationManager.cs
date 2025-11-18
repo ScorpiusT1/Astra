@@ -29,7 +29,7 @@ namespace NavStack.Services
 		/// <param name="regionName">区域名称</param>
 		/// <param name="itemId">导航项标识（作为页面键）</param>
 		/// <param name="viewType">视图类型</param>
-		void RegisterForRegion(string regionName, string itemId, System.Type viewType);
+		void RegisterForRegion(string regionName, string itemId, System.Type viewType, Type viewModelType);
 
 		/// <summary>
 		/// 直接向区域发起导航请求（以页面键）

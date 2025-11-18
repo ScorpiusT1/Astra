@@ -21,20 +21,22 @@ namespace Astra.Core.Plugins.Services.Adapters
 	public class ServiceCollectionAdapter : IServiceRegistry, IDisposable
 	{
 		private readonly IServiceCollection _services;
-		private readonly IServiceProvider _externalServiceProvider;
+		private IServiceProvider _externalServiceProvider; // ⭐ 改为非 readonly，支持后续更新
 		private ServiceProvider _internalServiceProvider;
 		private readonly Dictionary<string, object> _named = new();
 		private bool _ownsServiceProvider = false;
+		private bool _needsRebuild = false; // 标记是否需要重建 ServiceProvider
 
 		/// <summary>
-		/// 使用 IServiceCollection 创建适配器（会构建自己的 ServiceProvider）
+		/// 使用 IServiceCollection 创建适配器（延迟构建 ServiceProvider，只在需要时构建）
+		/// ⭐ 优化：不在构造函数中立即构建，避免不必要的重复构建
 		/// </summary>
 		public ServiceCollectionAdapter(IServiceCollection services)
 		{
 			_services = services ?? throw new ArgumentNullException(nameof(services));
 			_externalServiceProvider = null;
 			_ownsServiceProvider = true;
-			RebuildProvider();
+			_needsRebuild = true; // 标记需要构建，但不立即构建
 		}
 
 		/// <summary>
@@ -50,9 +52,89 @@ namespace Astra.Core.Plugins.Services.Adapters
 
 		/// <summary>
 		/// 获取当前使用的 ServiceProvider（优先使用外部提供的）
+		/// ⭐ 优化：延迟构建，只在第一次需要解析服务时才构建
+		/// 
+		/// 注意：此属性每次访问都会重新计算，优先返回 _externalServiceProvider。
+		/// 当调用 SetExternalServiceProvider 后，下次访问此属性时会自动使用新的 ServiceProvider。
 		/// </summary>
-		private IServiceProvider CurrentServiceProvider => _externalServiceProvider ?? _internalServiceProvider;
+		private IServiceProvider CurrentServiceProvider
+		{
+			get
+			{
+				// ⭐ 优先使用外部 ServiceProvider（如果已设置）
+				if (_externalServiceProvider != null)
+				{
+					return _externalServiceProvider;
+				}
 
+				// 延迟构建：只在第一次需要时才构建内部 ServiceProvider
+				if (_internalServiceProvider == null || _needsRebuild)
+				{
+					RebuildProvider();
+				}
+
+				return _internalServiceProvider;
+			}
+		}
+
+		/// <summary>
+		/// 获取当前使用的 ServiceProvider（公共方法，供外部访问）
+		/// ⭐ 用于确保插件系统和主应用共享同一个 ServiceProvider 实例
+		/// </summary>
+		public IServiceProvider GetServiceProvider()
+		{
+			return CurrentServiceProvider;
+		}
+
+		/// <summary>
+		/// 设置外部 ServiceProvider（用于在主程序构建 ServiceProvider 后更新）
+		/// ⭐ 这样可以让插件系统使用主程序构建好的全局 ServiceProvider，确保单例服务共享
+		/// 
+		/// 注意：设置后，CurrentServiceProvider 会自动使用新的 _externalServiceProvider，
+		/// 因为 CurrentServiceProvider 的 getter 会优先检查 _externalServiceProvider
+		/// </summary>
+		/// <param name="externalServiceProvider">主程序构建的 ServiceProvider</param>
+		public void SetExternalServiceProvider(IServiceProvider externalServiceProvider)
+		{
+			if (externalServiceProvider == null)
+			{
+				throw new ArgumentNullException(nameof(externalServiceProvider));
+			}
+
+			// ⭐ 延迟释放：不立即释放 _internalServiceProvider，避免阻塞 UI 线程
+			// 如果之前有内部 ServiceProvider，标记为待释放（在后台线程中异步释放）
+			if (_ownsServiceProvider && _internalServiceProvider != null)
+			{
+				// 将当前的 _internalServiceProvider 标记为待释放
+				var providerToDispose = _internalServiceProvider;
+				_internalServiceProvider = null;
+				
+				// ⭐ 在后台线程中异步释放，避免阻塞 UI 线程
+				// 使用 Task.Run 确保释放操作不会阻塞当前线程
+				System.Threading.Tasks.Task.Run(() =>
+				{
+					try
+					{
+						providerToDispose.Dispose();
+					}
+					catch
+					{
+						// 忽略释放过程中的异常，避免影响主流程
+					}
+				});
+			}
+
+			// ⭐ 设置外部 ServiceProvider 后，CurrentServiceProvider 会自动使用它
+			// 因为 CurrentServiceProvider 的 getter 会优先检查 _externalServiceProvider
+			_externalServiceProvider = externalServiceProvider;
+			
+            _ownsServiceProvider = false;
+			_needsRebuild = false; // 使用外部 ServiceProvider，不需要重建
+		}
+
+		/// <summary>
+		/// 重建 ServiceProvider（只在需要时调用）
+		/// </summary>
 		private void RebuildProvider()
 		{
 			// 如果使用外部 ServiceProvider，不需要重建
@@ -63,32 +145,45 @@ namespace Astra.Core.Plugins.Services.Adapters
 
 			_internalServiceProvider?.Dispose();
 			_internalServiceProvider = _services.BuildServiceProvider();
+			_needsRebuild = false;
 		}
 
 		public void RegisterSingleton<TService, TImplementation>() where TImplementation : TService
 		{
 			_services.AddSingleton(typeof(TService), typeof(TImplementation));
-			// ⚠️ 如果使用外部 ServiceProvider，注册新服务后需要重新构建
-			// 但为了保持兼容性，这里仍然调用 RebuildProvider（对于外部 ServiceProvider 是 no-op）
-			RebuildProvider();
+			// ⭐ 优化：只标记需要重建，不立即重建（延迟到第一次解析时）
+			// 如果使用外部 ServiceProvider，标记无效（因为不会使用内部 ServiceProvider）
+			if (_externalServiceProvider == null)
+			{
+				_needsRebuild = true;
+			}
 		}
 
 		public void RegisterSingleton<TService>(TService instance)
 		{
 			_services.AddSingleton(typeof(TService), instance);
-			RebuildProvider();
+			if (_externalServiceProvider == null)
+			{
+				_needsRebuild = true;
+			}
 		}
 
 		public void RegisterTransient<TService, TImplementation>() where TImplementation : TService
 		{
 			_services.AddTransient(typeof(TService), typeof(TImplementation));
-			RebuildProvider();
+			if (_externalServiceProvider == null)
+			{
+				_needsRebuild = true;
+			}
 		}
 
 		public void RegisterScoped<TService, TImplementation>() where TImplementation : TService
 		{
 			_services.AddScoped(typeof(TService), typeof(TImplementation));
-			RebuildProvider();
+			if (_externalServiceProvider == null)
+			{
+				_needsRebuild = true;
+			}
 		}
 
 		public object Resolve(Type serviceType)
@@ -163,7 +258,10 @@ namespace Astra.Core.Plugins.Services.Adapters
 				default:
 					throw new ArgumentOutOfRangeException(nameof(lifetime), lifetime, null);
 			}
-			RebuildProvider();
+			if (_externalServiceProvider == null)
+			{
+				_needsRebuild = true;
+			}
 		}
 
 		public void RegisterWithMetadata<TService, TImplementation>(ServiceLifetime lifetime, Dictionary<string, object> metadata) where TImplementation : TService
@@ -181,15 +279,32 @@ namespace Astra.Core.Plugins.Services.Adapters
 					_services.AddTransient(typeof(TService), typeof(TImplementation));
 					break;
 			}
-			RebuildProvider();
+			if (_externalServiceProvider == null)
+			{
+				_needsRebuild = true;
+			}
 		}
 
 		public void Dispose()
 		{
 			// 只释放自己创建的 ServiceProvider，不释放外部提供的
-			if (_ownsServiceProvider)
+			if (_ownsServiceProvider && _internalServiceProvider != null)
 			{
-				_internalServiceProvider?.Dispose();
+				var providerToDispose = _internalServiceProvider;
+				_internalServiceProvider = null;
+				
+				// ⭐ 在后台线程中异步释放，避免阻塞 UI 线程
+				System.Threading.Tasks.Task.Run(() =>
+				{
+					try
+					{
+						providerToDispose.Dispose();
+					}
+					catch
+					{
+						// 忽略释放过程中的异常
+					}
+				});
 			}
 		}
 	}

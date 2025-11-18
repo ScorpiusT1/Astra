@@ -10,7 +10,7 @@ namespace NavStack.Configuration
         void RegisterPage<TView>(string key, bool singleton = false) where TView : FrameworkElement;
         void RegisterPage<TView, TViewModel>(string key, bool singleton = false)
             where TView : FrameworkElement;
-		void RegisterPage(string key, System.Type viewType, System.Type viewModelType = null, bool singleton = false);
+		void RegisterPage(string key, System.Type viewType, System.Type viewModelType, bool singleton = false);
 
         PageRegistration GetPageRegistration(string key);
         IEnumerable<PageRegistration> GetAllRegistrations();

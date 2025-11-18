@@ -4,13 +4,13 @@ using System.Windows;
 using System.Windows.Threading;
 using Astra.Utilities;
 using Astra.ViewModels;
+using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NavStack.Regions;
 using NavStack.Services;
-using Astra.Services.Navigation;
 
 namespace Astra.Bootstrap
 {
@@ -48,8 +48,13 @@ namespace Astra.Bootstrap
 					vm?.EnsureRegionSubscriptions();
 					if (navManager != null)
 					{
-						var registry = serviceProvider.GetService<INavigationRegistryProvider>() ?? new DefaultNavigationRegistryProvider();
-						registry.Register(RegionNames.MainRegion, navManager);
+						// 注册导航路由映射：NavigationKey -> (regionName, pageKey)
+						// 注意：页面类型已在 NavigationModule 中注册，此处只建立路由映射
+						navManager.RegisterForRegion(RegionNames.MainRegion, NavigationKeys.Home, typeof(HomeView), typeof(HomeViewModel));
+						navManager.RegisterForRegion(RegionNames.MainRegion, NavigationKeys.Config, typeof(ConfigView), typeof(ConfigViewModel));
+						navManager.RegisterForRegion(RegionNames.MainRegion, NavigationKeys.Debug, typeof(DebugView), typeof(DebugViewModel));
+						navManager.RegisterForRegion(RegionNames.MainRegion, NavigationKeys.Sequence, typeof(SequenceView), typeof(SequenceViewModel));
+						navManager.RegisterForRegion(RegionNames.MainRegion, NavigationKeys.Permission, typeof(PermissionView), typeof(PermissionViewModel));
 
 						try
 						{

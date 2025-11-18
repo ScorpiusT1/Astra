@@ -477,5 +477,10 @@ namespace Astra.Core.Plugins.Caching
             // 发现和加载插件不需要缓存，直接委托给基础宿主
             await _baseHost.DiscoverAndLoadPluginsAsync(pluginDirectory);
         }
+
+        public void UpdateExternalServiceProvider(IServiceProvider externalServiceProvider)
+        {
+            _baseHost.UpdateExternalServiceProvider(externalServiceProvider);
+        }
     }
 }

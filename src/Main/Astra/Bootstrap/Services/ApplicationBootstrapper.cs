@@ -1,6 +1,7 @@
 ﻿using Astra.Bootstrap.Core;
 using Astra.Bootstrap.Tasks;
 using Astra.Bootstrap.UI;
+using Astra.Core.Plugins.Abstractions;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -144,6 +145,27 @@ namespace Astra.Bootstrap.Services
                     _context.Services.AddSingleton(_context);
                     
                     _context.ServiceProvider = _context.Services.BuildServiceProvider();
+                    
+                    // ⭐ 更新 PluginHost 的 ServiceCollectionAdapter，使其使用主程序构建的全局 ServiceProvider
+                    // 这样可以确保插件系统和主应用共享同一个 ServiceProvider 实例，保证单例服务的一致性
+                    try
+                    {
+                        var pluginHost = _context.ServiceProvider.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
+
+                        if (pluginHost is IPluginHost host)
+                        {
+                            host.UpdateExternalServiceProvider(_context.ServiceProvider);
+                            _context.Logger?.LogInfo("已更新 PluginHost 的 ServiceProvider，插件系统现在使用主程序的全局 ServiceProvider");
+                            
+                            // ⭐ 在所有服务构建完成后，加载插件
+                            await LoadPluginsAfterServiceProviderBuilt(host);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _context.Logger?.LogWarning($"更新 PluginHost 的 ServiceProvider 失败：{ex.Message}");
+                        // 非关键错误，不影响启动流程
+                    }
                 }
 
                 stopwatch.Stop();
@@ -154,7 +176,7 @@ namespace Astra.Bootstrap.Services
 
                 // 6. 显示完成状态
                 UpdateSplashScreen(100, "启动完成", null);
-                await Task.Delay(500);
+                await Task.Delay(200);
             }
             catch (Exception ex)
             {
@@ -276,6 +298,68 @@ namespace Astra.Bootstrap.Services
         public BootstrapContext GetContext()
         {
             return _context;
+        }
+
+        /// <summary>
+        /// 在所有服务构建完成后加载插件
+        /// ⭐ 这样可以确保插件系统使用主程序构建的全局 ServiceProvider
+        /// </summary>
+        private async Task LoadPluginsAfterServiceProviderBuilt(IPluginHost pluginHost)
+        {
+            try
+            {
+                // 从 BootstrapContext 获取插件目录信息
+                var pluginDirectory = _context.GetData<string>("PluginDirectory");
+                if (string.IsNullOrEmpty(pluginDirectory))
+                {
+                    _context.Logger?.LogInfo("未找到插件目录信息，跳过插件加载");
+                    return;
+                }
+
+                var pluginCount = _context.GetData<int>("PluginCount", 0);
+                if (pluginCount == 0)
+                {
+                    _context.Logger?.LogInfo("未发现插件，跳过加载");
+                    return;
+                }
+
+                UpdateSplashScreen(96, $"正在加载 {pluginCount} 个插件...", null);
+
+                _context.Logger?.LogInfo($"开始加载插件（共 {pluginCount} 个）...");
+
+                // 使用插件宿主发现并加载插件
+                await pluginHost.DiscoverAndLoadPluginsAsync(pluginDirectory);
+
+                // 获取已加载的插件列表
+                var loadedPlugins = pluginHost.LoadedPlugins;
+                var loadedCount = loadedPlugins.Count;
+
+                _context.SetData("LoadedPlugins", loadedCount);
+                _context.SetData("PluginList", loadedPlugins.Select(p => new
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Version = p.Version
+                }).ToList());
+
+                if (loadedCount > 0)
+                {
+                    var pluginNames = string.Join(", ", loadedPlugins.Select(p => p.Name));
+                    _context.Logger?.LogInfo($"成功加载 {loadedCount} 个插件: {pluginNames}");
+                    UpdateSplashScreen(99, $"已加载 {loadedCount} 个插件", null);
+                }
+                else
+                {
+                    _context.Logger?.LogWarning("未成功加载任何插件");
+                    UpdateSplashScreen(99, "未成功加载插件", null);
+                }
+            }
+            catch (Exception ex)
+            {
+                _context.Logger?.LogError($"加载插件时发生错误：{ex.Message}", ex);
+                UpdateSplashScreen(99, $"插件加载失败: {ex.Message}", null);
+                // 非关键错误，不影响启动流程
+            }
         }
     }
 }

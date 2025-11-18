@@ -95,43 +95,37 @@
                       Margin="0,0,0,15"/>
 
             <!-- 分组和槽位 -->
-            <Grid Grid.Row="8" Margin="0,0,0,15">
+            <Grid Grid.Row="8"
+                  Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="20"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="分组ID:" Margin="0,0,0,5"/>
-                    <TextBox Grid.Row="1" Text="{Binding GroupId, UpdateSourceTrigger=PropertyChanged}" 
-                             hc:InfoElement.Placeholder="G0"/>
+                    <TextBlock Grid.Row="0"
+                               Text="分组ID:"
+                               Margin="0,0,0,5" />
+                    <TextBox Grid.Row="1"
+                             Text="{Binding GroupId, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="G0" />
                 </Grid>
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="槽位ID:" Margin="0,0,0,5"/>
-                    <TextBox Grid.Row="1" Text="{Binding SlotId, UpdateSourceTrigger=PropertyChanged}" 
-                             hc:InfoElement.Placeholder="S0"/>
+                    <TextBlock Grid.Row="0"
+                               Text="槽位ID:"
+                               Margin="0,0,0,5" />
+                    <TextBox Grid.Row="1"
+                             Text="{Binding SlotId, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="S0" />
                 </Grid>
-            </Grid>
-
-            <!-- 设备ID（只读） -->
-            <Grid Grid.Row="9">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="设备ID:" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="{Binding DeviceId}" 
-                           VerticalAlignment="Center" 
-                           Foreground="Gray" 
-                           IsEnabled="False"/>
             </Grid>
         </Grid>
     </ScrollViewer>

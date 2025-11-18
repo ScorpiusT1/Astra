@@ -61,7 +61,7 @@ namespace Astra.Views
                     }
                     
                     System.Diagnostics.Debug.WriteLine("[ConfigView] 执行刷新配置树命令");
-                    viewModel.RefreshConfigTreeCommand.Execute(null);
+                   
                 }, System.Windows.Threading.DispatcherPriority.Background);
             }
             else

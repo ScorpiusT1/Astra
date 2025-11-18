@@ -78,7 +78,9 @@ namespace Astra.Services.Dialogs
                 DialogType.ChangePassword => new ChangePasswordDialog(_userManagementService)
                 {
                     Username = parameter as string,
-                    Owner = Application.Current.MainWindow
+                    Owner = Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded 
+                        ? Application.Current.MainWindow 
+                        : null
                 },
 
 
@@ -93,7 +95,9 @@ namespace Astra.Services.Dialogs
         {
             var dialog = new LoginDialog(_userManagementService)
             {
-                Owner = Application.Current.MainWindow
+                Owner = Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded 
+                    ? Application.Current.MainWindow 
+                    : null
             };
 
             // ⭐ 加载用户列表

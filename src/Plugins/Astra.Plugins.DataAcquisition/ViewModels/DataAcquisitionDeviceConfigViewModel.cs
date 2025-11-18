@@ -140,10 +140,6 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
         public string DeviceId => _config?.DeviceId ?? string.Empty;
 
-        public DataAcquisitionDeviceConfigViewModel()
-        {
-        }
-
         public DataAcquisitionDeviceConfigViewModel(DataAcquisitionConfig config)
         {
             Config = config;

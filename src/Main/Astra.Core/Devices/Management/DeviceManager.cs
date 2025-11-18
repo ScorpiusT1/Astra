@@ -19,7 +19,9 @@ namespace Astra.Core.Devices.Management
     {
         private readonly ConcurrentDictionary<string, IDevice> _devices;
         private readonly ConcurrentDictionary<string, DeviceStatus> _deviceStatus;
+        private readonly List<string> _deviceOrder; // 维护设备ID的插入顺序
         private readonly object _lockObject = new object();
+        private readonly object _orderLockObject = new object(); // 专门用于保护顺序列表的锁
         private readonly ILogger _logger;
         private readonly IDeviceUsageService _usageService;
         private readonly IDeviceEventPublisher _eventPublisher;
@@ -39,6 +41,7 @@ namespace Astra.Core.Devices.Management
         {
             _devices = new ConcurrentDictionary<string, IDevice>();
             _deviceStatus = new ConcurrentDictionary<string, DeviceStatus>();
+            _deviceOrder = new List<string>();
             _logger = logger; // 允许为 null，扩展方法会处理
 
             _usageService = usageService ?? DeviceUsageService.Null;
@@ -62,6 +65,12 @@ namespace Astra.Core.Devices.Management
 
             if (_devices.TryAdd(device.DeviceId, device))
             {
+                // 添加到顺序列表末尾
+                lock (_orderLockObject)
+                {
+                    _deviceOrder.Add(device.DeviceId);
+                }
+
                 // 订阅设备事件
                 SubscribeDeviceEvents(device);
 
@@ -103,6 +112,12 @@ namespace Astra.Core.Devices.Management
 
             if (_devices.TryRemove(deviceId, out var device))
             {
+                // 从顺序列表中移除
+                lock (_orderLockObject)
+                {
+                    _deviceOrder.Remove(deviceId);
+                }
+
                 // 取消订阅设备事件
                 UnsubscribeDeviceEvents(device);
 
@@ -150,7 +165,12 @@ namespace Astra.Core.Devices.Management
 
         public OperationResult UnregisterAllDevices()
         {
-            var deviceIds = _devices.Keys.ToList();
+            List<string> deviceIds;
+            lock (_orderLockObject)
+            {
+                deviceIds = _deviceOrder.ToList();
+            }
+
             int successCount = 0;
 
             foreach (var deviceId in deviceIds)
@@ -179,24 +199,41 @@ namespace Astra.Core.Devices.Management
 
         public OperationResult<List<IDevice>> GetAllDevices()
         {
-            var devices = _devices.Values.ToList();
+            List<IDevice> devices;
+            lock (_orderLockObject)
+            {
+                devices = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out _))
+                    .Select(id => _devices[id])
+                    .ToList();
+            }
             return OperationResult<List<IDevice>>.Succeed(devices, $"共 {devices.Count} 个设备");
         }
 
         public OperationResult<List<IDevice>> GetDevicesByType(DeviceType type)
         {
-            var devices = _devices.Values
-                .Where(d => d.Type == type)
-                .ToList();
+            List<IDevice> devices;
+            lock (_orderLockObject)
+            {
+                devices = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out var device) && device.Type == type)
+                    .Select(id => _devices[id])
+                    .ToList();
+            }
 
             return OperationResult<List<IDevice>>.Succeed(devices, $"找到 {devices.Count} 个 {type} 类型的设备");
         }
 
         public OperationResult<List<IDevice>> GetDevicesByStatus(DeviceStatus status)
         {
-            var devices = _devices.Values
-                .Where(d => d.Status == status)
-                .ToList();
+            List<IDevice> devices;
+            lock (_orderLockObject)
+            {
+                devices = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out var device) && device.Status == status)
+                    .Select(id => _devices[id])
+                    .ToList();
+            }
 
             return OperationResult<List<IDevice>>.Succeed(devices, $"找到 {devices.Count} 个 {status} 状态的设备");
         }
@@ -229,9 +266,18 @@ namespace Astra.Core.Devices.Management
         {
             var results = new Dictionary<string, OperationResult>();
 
-            foreach (var kvp in _devices)
+            List<string> deviceIds;
+            lock (_orderLockObject)
             {
-                results[kvp.Key] = kvp.Value.Connect();
+                deviceIds = _deviceOrder.ToList();
+            }
+
+            foreach (var deviceId in deviceIds)
+            {
+                if (_devices.TryGetValue(deviceId, out var device))
+                {
+                    results[deviceId] = device.Connect();
+                }
             }
 
             int successCount = results.Count(r => r.Value.Success);
@@ -245,9 +291,18 @@ namespace Astra.Core.Devices.Management
         {
             var results = new Dictionary<string, OperationResult>();
 
-            foreach (var kvp in _devices)
+            List<string> deviceIds;
+            lock (_orderLockObject)
             {
-                results[kvp.Key] = kvp.Value.Disconnect();
+                deviceIds = _deviceOrder.ToList();
+            }
+
+            foreach (var deviceId in deviceIds)
+            {
+                if (_devices.TryGetValue(deviceId, out var device))
+                {
+                    results[deviceId] = device.Disconnect();
+                }
             }
 
             int successCount = results.Count(r => r.Value.Success);
@@ -261,11 +316,20 @@ namespace Astra.Core.Devices.Management
         {
             var results = new Dictionary<string, OperationResult>();
 
-            var devicesToConnect = _devices.Where(kvp => kvp.Value.Type == type);
-
-            foreach (var kvp in devicesToConnect)
+            List<string> deviceIds;
+            lock (_orderLockObject)
             {
-                results[kvp.Key] = kvp.Value.Connect();
+                deviceIds = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out var device) && device.Type == type)
+                    .ToList();
+            }
+
+            foreach (var deviceId in deviceIds)
+            {
+                if (_devices.TryGetValue(deviceId, out var device))
+                {
+                    results[deviceId] = device.Connect();
+                }
             }
 
             int successCount = results.Count(r => r.Value.Success);
@@ -279,11 +343,20 @@ namespace Astra.Core.Devices.Management
         {
             var results = new Dictionary<string, OperationResult>();
 
-            var devicesToDisconnect = _devices.Where(kvp => kvp.Value.Type == type);
-
-            foreach (var kvp in devicesToDisconnect)
+            List<string> deviceIds;
+            lock (_orderLockObject)
             {
-                results[kvp.Key] = kvp.Value.Disconnect();
+                deviceIds = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out var device) && device.Type == type)
+                    .ToList();
+            }
+
+            foreach (var deviceId in deviceIds)
+            {
+                if (_devices.TryGetValue(deviceId, out var device))
+                {
+                    results[deviceId] = device.Disconnect();
+                }
             }
 
             int successCount = results.Count(r => r.Value.Success);
@@ -297,22 +370,31 @@ namespace Astra.Core.Devices.Management
         {
             var results = new Dictionary<string, OperationResult>();
 
-            foreach (var kvp in _devices)
+            List<string> deviceIds;
+            lock (_orderLockObject)
             {
-                if (kvp.Value.IsOnline)
+                deviceIds = _deviceOrder.ToList();
+            }
+
+            foreach (var deviceId in deviceIds)
+            {
+                if (!_devices.TryGetValue(deviceId, out var device))
+                    continue;
+
+                if (device.IsOnline)
                 {
-                    if (kvp.Value is IDataTransfer dataTransfer)
+                    if (device is IDataTransfer dataTransfer)
                     {
-                        results[kvp.Key] = dataTransfer.Send(message);
+                        results[deviceId] = dataTransfer.Send(message);
                     }
                     else
                     {
-                        results[kvp.Key] = OperationResult.Fail("设备不支持数据传输", ErrorCodes.NotSupported);
+                        results[deviceId] = OperationResult.Fail("设备不支持数据传输", ErrorCodes.NotSupported);
                     }
                 }
                 else
                 {
-                    results[kvp.Key] = OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
+                    results[deviceId] = OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
                 }
             }
 
@@ -327,24 +409,33 @@ namespace Astra.Core.Devices.Management
         {
             var results = new Dictionary<string, OperationResult>();
 
-            var devicesToSend = _devices.Where(kvp => kvp.Value.Type == type);
-
-            foreach (var kvp in devicesToSend)
+            List<string> deviceIds;
+            lock (_orderLockObject)
             {
-                if (kvp.Value.IsOnline)
+                deviceIds = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out var device) && device.Type == type)
+                    .ToList();
+            }
+
+            foreach (var deviceId in deviceIds)
+            {
+                if (!_devices.TryGetValue(deviceId, out var device))
+                    continue;
+
+                if (device.IsOnline)
                 {
-                    if (kvp.Value is IDataTransfer dataTransfer)
+                    if (device is IDataTransfer dataTransfer)
                     {
-                        results[kvp.Key] = dataTransfer.Send(message);
+                        results[deviceId] = dataTransfer.Send(message);
                     }
                     else
                     {
-                        results[kvp.Key] = OperationResult.Fail("设备不支持数据传输", ErrorCodes.NotSupported);
+                        results[deviceId] = OperationResult.Fail("设备不支持数据传输", ErrorCodes.NotSupported);
                     }
                 }
                 else
                 {
-                    results[kvp.Key] = OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
+                    results[deviceId] = OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
                 }
             }
 
@@ -361,10 +452,16 @@ namespace Astra.Core.Devices.Management
 
         public OperationResult<Dictionary<string, DeviceStatus>> GetAllDeviceStatus()
         {
-            var statusDict = _devices.ToDictionary(
-                kvp => kvp.Key,
-                kvp => kvp.Value.Status
-            );
+            Dictionary<string, DeviceStatus> statusDict;
+            lock (_orderLockObject)
+            {
+                statusDict = _deviceOrder
+                    .Where(id => _devices.TryGetValue(id, out _))
+                    .ToDictionary(
+                        id => id,
+                        id => _devices[id].Status
+                    );
+            }
 
             return OperationResult<Dictionary<string, DeviceStatus>>.Succeed(statusDict);
         }
@@ -412,16 +509,24 @@ namespace Astra.Core.Devices.Management
                     {
                         try
                         {
-                            // 检查所有设备状态
-                            foreach (var kvp in _devices)
+                            // 检查所有设备状态（按添加顺序）
+                            List<string> deviceIds;
+                            lock (_orderLockObject)
                             {
-                                var device = kvp.Value;
+                                deviceIds = _deviceOrder.ToList();
+                            }
+
+                            foreach (var deviceId in deviceIds)
+                            {
+                                if (!_devices.TryGetValue(deviceId, out var device))
+                                    continue;
+
                                 var currentStatus = device.Status;
 
                                 // 如果状态发生变化，更新记录
-                                if (_deviceStatus.TryGetValue(kvp.Key, out var lastStatus) && lastStatus != currentStatus)
+                                if (_deviceStatus.TryGetValue(deviceId, out var lastStatus) && lastStatus != currentStatus)
                                 {
-                                    _deviceStatus[kvp.Key] = currentStatus;
+                                    _deviceStatus[deviceId] = currentStatus;
                                 }
                             }
 
@@ -541,8 +646,13 @@ namespace Astra.Core.Devices.Management
                 // 停止监控
                 StopMonitoring();
 
-                // 清理所有设备的事件订阅并断开连接
-                var deviceIds = _devices.Keys.ToList();
+                // 清理所有设备的事件订阅并断开连接（按添加顺序）
+                List<string> deviceIds;
+                lock (_orderLockObject)
+                {
+                    deviceIds = _deviceOrder.ToList();
+                }
+
                 foreach (var deviceId in deviceIds)
                 {
                     if (_devices.TryGetValue(deviceId, out var device))
@@ -581,9 +691,13 @@ namespace Astra.Core.Devices.Management
                 // 清理所有事件订阅
                 ClearAllEventSubscriptions();
 
-                // 清空字典
+                // 清空字典和顺序列表
                 _devices.Clear();
                 _deviceStatus.Clear();
+                lock (_orderLockObject)
+                {
+                    _deviceOrder.Clear();
+                }
 
                 // 释放资源
                 _monitoringCts?.Dispose();

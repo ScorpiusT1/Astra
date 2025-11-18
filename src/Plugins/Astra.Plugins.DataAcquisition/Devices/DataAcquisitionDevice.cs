@@ -10,7 +10,7 @@ using System.Buffers.Binary;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
-    [DeviceConfigUI(typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
+   
     [DeviceDebugUI(typeof(DataAcquisitionDeviceDebugView), typeof(DataAcquisitionDeviceDebugViewModel))]
     public class DataAcquisitionDevice : DeviceBase<DataAcquisitionConfig>, IDataAcquisition
     {

@@ -1,5 +1,4 @@
-﻿using Astra.Core.Plugins.Configuration;
-using Astra.Core.Plugins.Abstractions;
+﻿using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Discovery;
 using Astra.Core.Plugins.Loading;
 using Astra.Core.Plugins.Models;
@@ -40,7 +39,7 @@ namespace Astra.Core.Plugins.Host
 	/// - 通过 <see cref="IHealthCheckService"/> 注册插件健康检查；
 	/// - 利用 <see cref="IErrorLogger"/> 与安全审计器记录信息与异常。
     /// </summary>
-    public class PluginHost : IPluginHost
+    public partial class PluginHost : IPluginHost
     {
         private readonly IPluginDiscovery _discovery;
         private readonly IServiceRegistry _services;
@@ -51,9 +50,10 @@ namespace Astra.Core.Plugins.Host
         private readonly IErrorLogger _logger;
         private readonly IHealthCheckService _healthCheckService;
         private readonly ISelfHealingService _selfHealingService;
-        private readonly Dictionary<string, LoadedPlugin> _loadedPlugins = new();
+        private readonly Dictionary<string, PluginLoaded> _loadedPlugins = new();
         private readonly Dictionary<string, PluginAssemblyLoadContext> _loadContexts = new();
         private readonly Dictionary<string, IDisposable> _pluginScopes = new();
+        private IServiceProvider _sharedServiceProvider; // ⭐ 全局共享的 ServiceProvider（非 readonly，支持后续更新）
 
         public IReadOnlyList<IPlugin> LoadedPlugins =>
             _loadedPlugins.Values.Select(p => p.Instance).ToList();
@@ -78,6 +78,28 @@ namespace Astra.Core.Plugins.Host
             _logger = logger ?? new ConsoleErrorLogger();
             _healthCheckService = healthCheckService ?? new HealthCheckService(_logger);
             _selfHealingService = selfHealingService ?? new SelfHealingService(_logger, _healthCheckService);
+            
+            // ⭐ 初始化全局共享的 ServiceProvider
+            // 如果 _services 是 ServiceCollectionAdapter，尝试获取其内部的 ServiceProvider
+            // 否则，创建一个 RegistryAdapterProvider 作为共享实例
+            _sharedServiceProvider = CreateSharedServiceProvider(services);
+        }
+        
+        /// <summary>
+        /// 创建全局共享的 ServiceProvider
+        /// ⭐ 确保所有插件使用同一个 ServiceProvider 实例，保证单例服务的一致性
+        /// </summary>
+        private IServiceProvider CreateSharedServiceProvider(IServiceRegistry services)
+        {
+            // 如果 services 是 ServiceCollectionAdapter，使用其 GetServiceProvider() 方法获取共享的 ServiceProvider
+            // 这样可以确保插件系统和主应用使用同一个 ServiceProvider 实例
+            if (services is Astra.Core.Plugins.Services.Adapters.ServiceCollectionAdapter adapter)
+            {
+                return adapter.GetServiceProvider();
+            }
+            
+            // 回退方案：创建 RegistryAdapterProvider 作为共享实例
+            return new RegistryAdapterProvider(services);
         }
 
         /// <summary>
@@ -268,15 +290,11 @@ namespace Astra.Core.Plugins.Host
 
 					// 填充标准 ServiceProvider 与 Configuration/Logger（尽力而为）
 					try { context.ConfigurationRoot = _services.Resolve<IConfiguration>(); } catch { context.ConfigurationRoot = null; }
-					try
-					{
-						// 为插件构造一个可解析的 IServiceProvider 适配层
-						context.ServiceProvider = new RegistryAdapterProvider(_services);
-					}
-					catch
-					{
-						context.ServiceProvider = null;
-					}
+					
+					// ⭐ 使用全局共享的 ServiceProvider，确保所有插件使用同一个实例
+					// 这样可以保证单例服务的一致性（如 ILoggerFactory、IOptions 等）
+					context.ServiceProvider = _sharedServiceProvider;
+
 					try
 					{
 						var loggerFactory = context.ServiceProvider?.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
@@ -323,7 +341,7 @@ namespace Astra.Core.Plugins.Host
                         throw new PluginStartException($"Plugin start failed: {ex.Message}", descriptor.Id, ex);
                     }
 
-                    _loadedPlugins[descriptor.Id] = new LoadedPlugin
+                    _loadedPlugins[descriptor.Id] = new PluginLoaded
                     {
                         Descriptor = descriptor,
                         Instance = plugin,
@@ -433,81 +451,27 @@ namespace Astra.Core.Plugins.Host
             return Task.FromResult(_services.Resolve<T>());
         }
 
-        private class LoadedPlugin
+        /// <summary>
+        /// 更新 ServiceCollectionAdapter 的外部 ServiceProvider
+        /// ⭐ 用于在主程序构建 ServiceProvider 后，让插件系统使用主程序的全局 ServiceProvider
+        /// </summary>
+        /// <param name="externalServiceProvider">主程序构建的 ServiceProvider</param>
+        public void UpdateExternalServiceProvider(IServiceProvider externalServiceProvider)
         {
-			/// <summary>
-			/// 插件的静态描述信息（来自清单解析）。
-			/// </summary>
-            public PluginDescriptor Descriptor { get; set; }
-			/// <summary>
-			/// 插件运行时实例。
-			/// </summary>
-            public IPlugin Instance { get; set; }
-			/// <summary>
-			/// 该插件对应的可回收加载上下文。
-			/// </summary>
-            public PluginAssemblyLoadContext LoadContext { get; set; }
-        }
+            if (externalServiceProvider == null)
+            {
+                throw new ArgumentNullException(nameof(externalServiceProvider));
+            }
 
-        private class PluginContext : IPluginContext
-        {
-			/// <summary>
-			/// 宿主服务注册表（兼容存量接口）。
-			/// </summary>
-            public IServiceRegistry Services { get; set; }
-			/// <summary>
-			/// 消息总线（插件间通信）。
-			/// </summary>
-            public IMessageBus MessageBus { get; set; }
-			/// <summary>
-			/// 简易配置存储（与 IConfiguration 并存）。
-			/// </summary>
-            public IConfigurationStore Configuration { get; set; }
-			/// <summary>
-			/// 标准 .NET 服务提供器（用于 ILogger/IOptions 等）。
-			/// </summary>
-			public IServiceProvider ServiceProvider { get; set; }
-			/// <summary>
-			/// 标准配置根（支持热重载）。
-			/// </summary>
-			public IConfiguration ConfigurationRoot { get; set; }
-			/// <summary>
-			/// 日志实例（按插件命名）。
-			/// </summary>
-			public ILogger Logger { get; set; }
-			/// <summary>
-			/// 事件总线别名（与 MessageBus 等价）。
-			/// </summary>
-			public IMessageBus EventBus { get; set; }
-			/// <summary>
-			/// 插件物理目录路径。
-			/// </summary>
-			public string PluginDirectory { get; set; }
-			/// <summary>
-			/// 宿主接口。
-			/// </summary>
-            public IPluginHost Host { get; set; }
-			/// <summary>
-			/// 权限网关（敏感操作统一校验入口）。
-			/// </summary>
-			public Security.IPermissionGateway PermissionGateway { get; set; }
+            // 如果 _services 是 ServiceCollectionAdapter，更新它的外部 ServiceProvider
+            if (_services is Astra.Core.Plugins.Services.Adapters.ServiceCollectionAdapter adapter)
+            {
+                adapter.SetExternalServiceProvider(externalServiceProvider);
+                
+                // ⭐ 重新获取 ServiceProvider 并更新 _sharedServiceProvider
+                // 这样可以确保 _sharedServiceProvider 指向新的 ServiceProvider 实例
+                _sharedServiceProvider = adapter.GetServiceProvider();
+            }
         }
-
-		private sealed class RegistryAdapterProvider : IServiceProvider
-		{
-			private readonly IServiceRegistry _registry;
-			/// <summary>
-			/// 使用 <see cref="IServiceRegistry"/> 作为后端实现的 <see cref="IServiceProvider"/> 适配器，
-			/// 便于插件按标准方式请求依赖。
-			/// </summary>
-			public RegistryAdapterProvider(IServiceRegistry registry) { _registry = registry; }
-			/// <summary>
-			/// 解析服务，若未注册则返回 null。
-			/// </summary>
-			public object GetService(Type serviceType)
-			{
-				try { return _registry.Resolve(serviceType); } catch { return null; }
-			}
-		}
     }
 }

@@ -93,24 +93,20 @@ namespace Astra.Bootstrap.Tasks
                     if (existingDescriptor.Lifetime == ServiceLifetime.Singleton)
                     {
                         context.Logger?.LogInfo("IDeviceManager 已注册为单例，插件系统将使用同一实例");
-                        System.Diagnostics.Debug.WriteLine("[PluginLoadTask] IDeviceManager 已注册为单例");
                     }
                     else
                     {
                         context.Logger?.LogWarning("IDeviceManager 注册方式可能不正确，建议使用单例注册");
-                        System.Diagnostics.Debug.WriteLine("[PluginLoadTask] 警告：IDeviceManager 注册方式可能不正确");
                     }
                 }
                 else
                 {
                     context.Logger?.LogWarning("IDeviceManager 未在服务集合中注册，插件可能无法访问设备管理器");
-                    System.Diagnostics.Debug.WriteLine("[PluginLoadTask] 警告：IDeviceManager 未注册");
                 }
             }
             catch (Exception ex)
             {
                 context.Logger?.LogWarning($"检查 IDeviceManager 注册时出错：{ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"[PluginLoadTask] 检查 IDeviceManager 注册时出错：{ex.Message}");
             }
 
             // 创建插件宿主
@@ -120,10 +116,6 @@ namespace Astra.Bootstrap.Tasks
             {
                 pluginHost = PluginHostFactory.CreateDefaultHost(services, hostConfig);
                 context.Logger?.LogInfo("插件宿主创建成功");
-                
-                // ⭐ 简化验证：移除反射操作（避免阻塞，验证逻辑已移到插件初始化时）
-                // 插件会在初始化时自动从主应用 ServiceProvider 获取 IDeviceManager
-                System.Diagnostics.Debug.WriteLine("[PluginLoadTask] 插件宿主创建成功，IDeviceManager 将在插件初始化时自动获取");
             }
             catch (Exception ex)
             {
@@ -168,56 +160,13 @@ namespace Astra.Bootstrap.Tasks
 
             ReportProgress(progress, 30, $"发现 {addinFiles.Count} 个插件...");
 
-            try
-            {
-                System.Diagnostics.Debug.WriteLine($"[PluginLoadTask] 开始发现并加载插件，目录: {_pluginDirectory}");
-                
-                // 使用插件宿主发现并加载插件
-                await pluginHost.DiscoverAndLoadPluginsAsync(_pluginDirectory);
-
-                // 获取已加载的插件列表
-                var loadedPlugins = pluginHost.LoadedPlugins;
-                var loadedCount = loadedPlugins.Count;
-
-                System.Diagnostics.Debug.WriteLine($"[PluginLoadTask] 插件加载完成，已加载 {loadedCount} 个插件");
-                
-                // 检查每个插件的状态
-                foreach (var plugin in loadedPlugins)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[PluginLoadTask] 插件: {plugin.Name} (ID: {plugin.Id}, Version: {plugin.Version})");
-                }
-
-                context.SetData("LoadedPlugins", loadedCount);
-                context.SetData("PluginList", loadedPlugins.Select(p => new
-                {
-                    Id = p.Id,
-                    Name = p.Name,
-                    Version = p.Version
-                }).ToList());
-
-                if (loadedCount > 0)
-                {
-                    var pluginNames = string.Join(", ", loadedPlugins.Select(p => p.Name));
-                    context.Logger?.LogInfo($"成功加载 {loadedCount} 个插件: {pluginNames}");
-                    ReportProgress(progress, 100, $"已加载 {loadedCount} 个插件");
-                    
-                    // ⭐ 注意：不在这里检查设备数量，因为 BuildServiceProvider() 会阻塞 UI
-                    // 设备数量检查已在插件内部完成，并在调试输出中显示
-                    System.Diagnostics.Debug.WriteLine($"[PluginLoadTask] 插件加载完成，设备注册情况请查看插件日志");
-                }
-                else
-                {
-                    context.Logger?.LogWarning("未成功加载任何插件");
-                    ReportProgress(progress, 100, "未成功加载插件");
-                }
-            }
-            catch (Exception ex)
-            {
-                context.Logger?.LogError($"加载插件时发生错误：{ex.Message}", ex);
-                ReportProgress(progress, 100, $"插件加载失败: {ex.Message}");
-                
-                // 非关键任务，不抛出异常，只记录错误
-            }
+            // ⭐ 延迟加载：不在这里加载插件，而是保存插件目录信息
+            // 插件将在所有服务构建完成后，在 ApplicationBootstrapper 中加载
+            // 这样可以确保插件系统使用主程序构建的全局 ServiceProvider
+            context.SetData("PluginDirectory", _pluginDirectory);
+            context.SetData("PluginCount", addinFiles.Count);
+            context.Logger?.LogInfo($"发现 {addinFiles.Count} 个插件，将在服务构建完成后加载");
+            ReportProgress(progress, 100, $"发现 {addinFiles.Count} 个插件（待加载）");
         }
     }
 }
