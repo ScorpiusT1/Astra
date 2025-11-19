@@ -27,6 +27,8 @@
 	<ItemGroup>
 		<!-- ⭐ 项目引用：不复制依赖项（主程序已包含这些库） -->
 	
+		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
+	
 		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>

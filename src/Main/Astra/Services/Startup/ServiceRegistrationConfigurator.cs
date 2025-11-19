@@ -1,6 +1,7 @@
 using Astra.Core.Access.Data;
 using Astra.Core.Access.Extensions;
 using Astra.Core.Access.Services;
+using Astra.Core.Configuration;
 using Astra.Core.Devices.Events;
 using Astra.Core.Devices.Management;
 using Astra.Core.Logs;
@@ -46,6 +47,7 @@ namespace Astra.Services.Startup
             RegisterViews(services);
             RegisterApplicationServices(services);
             RegisterDeviceServices(services);
+            RegisterDeviceConfigServices(services);
             RegisterPluginServices(services);
             RegisterRefactoredViewModels(services);
         }
@@ -208,6 +210,27 @@ namespace Astra.Services.Startup
             });
 
             Debug.WriteLine("✅ 设备管理服务注册完成");
+        }
+
+        /// <summary>
+        /// 注册设备配置服务
+        /// </summary>
+        private void RegisterDeviceConfigServices(IServiceCollection services)
+        {
+            // 注册配置管理器（单例，统一管理所有配置）
+            // 注意：配置是独立的，不依赖设备。设备是根据配置创建的，而不是从设备获取配置。
+            services.AddSingleton<ConfigurationManager>(provider =>
+            {
+                var configManager = new ConfigurationManager();
+                
+                // 注意：配置管理器不订阅设备管理器事件
+                // 配置和设备是分离的：先有配置，然后根据配置创建设备
+                // 设备注销时，配置仍然保留在 ConfigurationManager 中（可以用于重新创建设备）
+
+                return configManager;
+            });
+
+            Debug.WriteLine("✅ 配置管理器注册完成");
         }
 
         /// <summary>

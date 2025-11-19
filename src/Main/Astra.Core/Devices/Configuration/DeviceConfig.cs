@@ -1,5 +1,6 @@
 ﻿using Astra.Core.Foundation.Common;
 using Astra.Core.Devices.Interfaces;
+using Astra.Core.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,9 +9,9 @@ namespace Astra.Core.Devices.Configuration
 {
     /// <summary>
     /// 设备配置基类
-    /// 合并了设备信息和配置功能，实现 IDeviceInfo 接口
+    /// 合并了设备信息和配置功能，实现 IDeviceInfo 和 IConfig 接口
     /// </summary>
-    public abstract class DeviceConfig : IDeviceInfo
+    public abstract class DeviceConfig : IDeviceInfo, IConfig
     {
         #region IDeviceInfo 接口实现（设备基本信息）
 
@@ -105,6 +106,131 @@ namespace Astra.Core.Devices.Configuration
         protected virtual void OnPropertyChanged(PropertyChangedEventArgs e)
         {
             PropertyChanged?.Invoke(this, e);
+            
+            // 跳过 ModifiedAt 和 CreatedAt 的变更事件触发（避免循环）
+            if (e.PropertyName == nameof(ModifiedAt) || e.PropertyName == nameof(CreatedAt))
+                return;
+            
+            // 直接赋值 ModifiedAt 字段，避免触发变更事件导致无限递归
+            _modifiedAt = DateTime.Now;
+            
+            // 同时触发 IConfig 的配置变更事件
+            ConfigChanged?.Invoke(this, new ConfigChangedEventArgs
+            {
+                ConfigId = ConfigId,
+                ConfigType = ConfigType,
+                ChangedProperties = new List<string> { e.PropertyName },
+                OldConfig = Clone(),
+                NewConfig = this,
+                Timestamp = DateTime.Now,
+                ChangedBy = "System"
+            });
+        }
+
+        #endregion
+
+        #region IConfig 接口实现
+
+        /// <summary>
+        /// 配置ID（与设备ID一致）
+        /// </summary>
+        public string ConfigId
+        {
+            get => DeviceId;
+            set => DeviceId = value;
+        }
+
+        /// <summary>
+        /// 配置名称（与设备名称一致）
+        /// </summary>
+        public string ConfigName
+        {
+            get => DeviceName;
+            set => DeviceName = value;
+        }
+
+        /// <summary>
+        /// 配置类型（返回设备类型字符串）
+        /// </summary>
+        public string ConfigType => $"Device.{Type}";
+
+        /// <summary>
+        /// 配置版本号
+        /// </summary>
+        private int _version = 1;
+        public int Version
+        {
+            get => _version;
+            set => SetProperty(ref _version, value);
+        }
+
+        /// <summary>
+        /// 配置创建时间（直接赋值，不触发变更事件）
+        /// </summary>
+        private DateTime _createdAt = DateTime.Now;
+        public DateTime CreatedAt
+        {
+            get => _createdAt;
+            set => _createdAt = value;
+        }
+
+        /// <summary>
+        /// 配置最后修改时间（直接赋值，不触发变更事件）
+        /// </summary>
+        private DateTime _modifiedAt = DateTime.Now;
+        public DateTime ModifiedAt
+        {
+            get => _modifiedAt;
+            set => _modifiedAt = value;
+        }
+
+        /// <summary>
+        /// 配置变更事件（IConfig 接口）
+        /// </summary>
+        public event EventHandler<ConfigChangedEventArgs> ConfigChanged;
+
+        /// <summary>
+        /// 克隆配置（IConfig 接口）
+        /// </summary>
+        IConfig IConfig.Clone() => Clone();
+
+        /// <summary>
+        /// 从字典加载配置（IConfig 接口）
+        /// </summary>
+        public virtual void FromDictionary(Dictionary<string, object> dictionary)
+        {
+            if (dictionary == null)
+                return;
+
+            var properties = GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            
+            foreach (var prop in properties)
+            {
+                if (prop.CanWrite && dictionary.ContainsKey(prop.Name))
+                {
+                    try
+                    {
+                        var value = dictionary[prop.Name];
+                        if (value != null)
+                        {
+                            // 类型转换
+                            if (prop.PropertyType.IsAssignableFrom(value.GetType()))
+                            {
+                                prop.SetValue(this, value);
+                            }
+                            else if (value is IConvertible)
+                            {
+                                var convertedValue = Convert.ChangeType(value, prop.PropertyType);
+                                prop.SetValue(this, convertedValue);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // 忽略无法设置的属性
+                    }
+                }
+            }
         }
 
         #endregion
@@ -193,6 +319,18 @@ namespace Astra.Core.Devices.Configuration
             }
 
             return changedProperties;
+        }
+
+        /// <summary>
+        /// 获取变更的属性列表（IConfig 接口兼容方法）
+        /// </summary>
+        public List<string> GetChangedProperties(IConfig other)
+        {
+            if (other is DeviceConfig deviceConfig)
+            {
+                return GetChangedProperties(deviceConfig);
+            }
+            return new List<string>();
         }
 
         public virtual OperationResult<bool> Validate()

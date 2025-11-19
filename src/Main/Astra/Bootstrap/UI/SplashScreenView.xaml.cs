@@ -183,19 +183,30 @@ namespace Astra.Bootstrap.UI
             // ⭐ 使用 Invoke 而不是 InvokeAsync，确保更新及时执行并显示
             Dispatcher.Invoke(() =>
             {
-                // ⭐ 确保窗口已加载且有实际宽度，否则使用窗口宽度或默认值
-                var containerWidth = ActualWidth > 0 ? ActualWidth : Width;
+                // ⭐ 获取进度条容器的实际宽度（ProgressIndicator的父Border）
                 var progressContainer = ProgressIndicator.Parent as FrameworkElement;
-                var containerActualWidth = progressContainer?.ActualWidth ?? containerWidth;
                 
-                // ⭐ 计算进度条目标宽度（留出左右边距，共约 100 像素）
-                var availableWidth = Math.Max(0, containerActualWidth - 100);
-                var targetWidth = (percentage / 100.0) * availableWidth;
+                // ⭐ 确保容器已渲染，如果还没有实际宽度，先强制更新布局
+                if (progressContainer != null && progressContainer.ActualWidth <= 0)
+                {
+                    progressContainer.UpdateLayout();
+                }
+                
+                // ⭐ 使用进度条容器的实际宽度（如果还没有，使用窗口宽度作为后备）
+                var containerActualWidth = progressContainer?.ActualWidth ?? (ActualWidth > 0 ? ActualWidth : Width);
+                
+                // ⭐ 计算进度条目标宽度（直接使用容器宽度，因为容器已经处理了边距）
+                // 当进度为100%时，进度条应该完全填满容器
+                var targetWidth = (percentage / 100.0) * containerActualWidth;
+                
+                // ⭐ 确保目标宽度不超过容器宽度（防止溢出）
+                targetWidth = Math.Min(targetWidth, containerActualWidth);
+                targetWidth = Math.Max(0, targetWidth);
 
                 // ⭐ 更新进度条宽度（带动画）
                 var animation = new DoubleAnimation
                 {
-                    To = Math.Max(0, targetWidth),
+                    To = targetWidth,
                     Duration = TimeSpan.FromMilliseconds(300),
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
                 };

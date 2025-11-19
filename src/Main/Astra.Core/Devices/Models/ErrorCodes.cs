@@ -51,6 +51,8 @@
         public const int ConfigLoadFailed = 7005;
         public const int FileNotFound = 7006;
         public const int NotSupported = 7007;
+        public const int InvalidConfigData = 7008;
+        public const int ConfigNotFound = 7009;
 
         // 工作流相关 (8000-8999)
         public const int ExecutionFailed = 8001;

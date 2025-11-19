@@ -38,32 +38,53 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
+        private double _sampleRate = 51200.0;
+        private int _channelCount = 8;
+        private int _bufferSize = 8_192;
+        private bool _autoStart = true;
+
         /// <summary>
         /// 采样率（Hz）
         /// </summary>
         [HotUpdatable]
-        public int SampleRate { get; set; } = 51_200;
+        public double SampleRate
+        {
+            get => _sampleRate;
+            set => SetProperty(ref _sampleRate, value);
+        }
 
         /// <summary>
         /// 通道数量
         /// </summary>
         [HotUpdatable]
-        public int ChannelCount { get; set; } = 8;
+        public int ChannelCount
+        {
+            get => _channelCount;
+            set => SetProperty(ref _channelCount, value);
+        }
 
         /// <summary>
         /// 单帧缓冲区大小（采样点）
         /// </summary>
         [RequireRestart("缓冲区大小变更需要重新建立采集缓存")]
-        public int BufferSize { get; set; } = 8_192;
+        public int BufferSize
+        {
+            get => _bufferSize;
+            set => SetProperty(ref _bufferSize, value);
+        }
 
         /// <summary>
         /// 插件启动时是否自动开始采集
         /// </summary>
-        public bool AutoStart { get; set; } = true;
+        public bool AutoStart
+        {
+            get => _autoStart;
+            set => SetProperty(ref _autoStart, value);
+        }
 
         public override DeviceConfig Clone()
         {
-            return new DataAcquisitionConfig
+            var clone = new DataAcquisitionConfig
             {
                 DeviceName = DeviceName,
                 SerialNumber = SerialNumber,
@@ -73,8 +94,13 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 AutoStart = AutoStart,
                 IsEnabled = IsEnabled,
                 GroupId = GroupId,
-                SlotId = SlotId,                
+                SlotId = SlotId,
+                // IConfig 接口属性
+                Version = Version,
+                CreatedAt = CreatedAt,
+                ModifiedAt = ModifiedAt
             };
+            return clone;
         }
 
         public override string GenerateDeviceId()

@@ -144,8 +144,10 @@ namespace Astra.Bootstrap.Services
                 UpdateSplashScreen(95, "正在完成启动...", null);
                 await Task.Delay(100);
                 
+                // ⭐ 更新到100%，确保进度条完全填满
                 UpdateSplashScreen(100, "启动完成", null);
-                await Task.Delay(200);
+                // ⭐ 等待动画完成（进度条动画300ms + 额外缓冲时间）
+                await Task.Delay(350);
             }
             catch (Exception ex)
             {

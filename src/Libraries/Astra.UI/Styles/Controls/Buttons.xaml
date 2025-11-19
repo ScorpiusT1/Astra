@@ -140,6 +140,14 @@
     </Style>
 
 
+    <!-- ==================== Default 按钮样式（默认样式） ==================== -->
+    <Style x:Key="DefaultButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource SecondaryButtonStyle}">
+        <!-- 基于 SecondaryButtonStyle，保持默认样式 -->
+    </Style>
+
+
     <!-- ==================== Danger 按钮样式 ==================== -->
     <Style x:Key="DangerButtonStyle"
            TargetType="Button">
@@ -524,20 +532,22 @@
         <Setter Property="BorderThickness"
                 Value="0" />
         <Setter Property="Width"
-                Value="24" />
+                Value="20" />
         <Setter Property="Height"
-                Value="24" />
+                Value="20" />
         <Setter Property="FontSize"
-                Value="14" />
+                Value="12" />
         <Setter Property="FontWeight"
-                Value="Bold" />
+                Value="Normal" />
+        <Setter Property="Content"
+                Value="➕" />
         <Setter Property="Cursor"
                 Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border Background="{TemplateBinding Background}"
-                            CornerRadius="4">
+                            CornerRadius="3">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center" />
                     </Border>
@@ -548,6 +558,47 @@
                                     Value="{DynamicResource PrimaryBrush}" />
                             <Setter Property="Foreground"
                                     Value="{DynamicResource ReverseTextBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==================== 删除按钮 ==================== -->
+    <Style x:Key="DeleteButton"
+           TargetType="Button">
+        <Setter Property="Background"
+                Value="Transparent" />
+        <Setter Property="Foreground"
+                Value="{DynamicResource DangerBrush}" />
+        <Setter Property="BorderThickness"
+                Value="0" />
+        <Setter Property="Width"
+                Value="20" />
+        <Setter Property="Height"
+                Value="20" />
+        <Setter Property="FontSize"
+                Value="12" />
+        <Setter Property="FontWeight"
+                Value="Normal" />
+        <Setter Property="Content"
+                Value="🗑" />
+        <Setter Property="Cursor"
+                Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="3">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver"
+                                 Value="True">
+                            <Setter Property="Background"
+                                    Value="{DynamicResource LightDangerBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

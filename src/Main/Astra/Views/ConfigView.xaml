@@ -14,13 +14,8 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     </UserControl.Resources>
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
         <!-- 主内容区域 -->
-        <Grid Grid.Row="1">
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="320" />
                 <ColumnDefinition Width="*" />
@@ -35,15 +30,19 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
+                    <!-- 标题行 -->
                     <TextBlock Grid.Row="0"
                                Text="配置树"
-                               FontSize="14"
+                               FontSize="18"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource SecondaryTextBrush}"
-                               Margin="16,16,16,12" />
+                               Foreground="{StaticResource PrimaryTextBrush}"
+                               Margin="16,16,16,12"
+                               VerticalAlignment="Center" />
 
+                    <!-- 树状列表（可滚动） -->
                     <ScrollViewer Grid.Row="1"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
@@ -51,7 +50,8 @@
                                   ItemsSource="{Binding TreeNodes}"
                                   Background="Transparent"
                                   BorderThickness="0"
-                                  Padding="8">
+                                  Padding="8"
+                                  AllowDrop="True">
                             <TreeView.ItemContainerStyle>
                                 <Style TargetType="TreeViewItem"
                                        BasedOn="{StaticResource TreeNodeStyle}">
@@ -59,10 +59,14 @@
                                             Value="{Binding IsExpanded, Mode=TwoWay}" />
                                     <Setter Property="IsSelected"
                                             Value="{Binding IsSelected, Mode=TwoWay}" />
+                                    <Setter Property="AllowDrop"
+                                            Value="True" />
                                     <Setter Property="behaviors:TreeViewItemBehaviors.SelectedCommand"
                                             Value="{Binding DataContext.NodeSelectedCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" />
                                     <Setter Property="behaviors:TreeViewItemBehaviors.SelectedCommandParameter"
                                             Value="{Binding}" />
+                                    <Setter Property="behaviors:TreeViewItemBehaviors.DragDropCommand"
+                                            Value="{Binding DataContext.DragDropNodeCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" />
                                 </Style>
                             </TreeView.ItemContainerStyle>
 
@@ -73,6 +77,7 @@
                                     <Grid Margin="0,4">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Orientation="Horizontal"
@@ -86,17 +91,39 @@
                                                        VerticalAlignment="Center" />
                                         </StackPanel>
                                         <Button Grid.Column="1"
-                                                Content="+"
                                                 Style="{StaticResource AddButton}"
-                                                Margin="8,0,0,0"
+                                                Margin="8,0,4,0"
                                                 Visibility="{Binding ShowAddButton, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                 Command="{Binding DataContext.AddDeviceConfigCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
                                                 CommandParameter="{Binding}" />
+                                        <Button Grid.Column="2"
+                                                Style="{StaticResource DeleteButton}"
+                                                Margin="0,0,0,0"
+                                                Visibility="{Binding ShowDeleteButton, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Command="{Binding DataContext.DeleteNodeCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="删除" />
                                     </Grid>
                                 </HierarchicalDataTemplate>
                             </TreeView.Resources>
                         </TreeView>
                     </ScrollViewer>
+
+                    <!-- 保存按钮 -->
+                    <Border Grid.Row="2"
+                            Background="Transparent"
+                            Padding="16,12,16,16"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,1,0,0">
+                        <Button Content="💾 保存配置"
+                                Padding="16,8"
+                                MinWidth="120"
+                                Height="36"
+                                FontSize="13"
+                                Command="{Binding SaveConfigurationsCommand}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                HorizontalAlignment="Stretch" />
+                    </Border>
                 </Grid>
             </Border>
 

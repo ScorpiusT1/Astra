@@ -6,6 +6,20 @@
              xmlns:hc="https://handyorg.github.io/handycontrol"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="800">
+    <UserControl.Resources>
+        <Style TargetType="CheckBox"
+               BasedOn="{StaticResource ModernCheckBoxStyle}" />
+
+        <Style TargetType="TextBox"
+               BasedOn="{StaticResource DefaultModernTextBoxStyle}" />
+
+        <Style TargetType="TextBlock"
+               BasedOn="{StaticResource ModrenTextBlockStyle}" />
+
+        <Style TargetType="ComboBox"
+               BasedOn="{StaticResource ModernComboBoxStyle}" />
+
+    </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid Margin="20">
             <Grid.RowDefinitions>
@@ -33,7 +47,9 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="设备名称:" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="1" Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}" 
+                <TextBox Grid.Column="1"
+                         Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}"
+                       
                          hc:InfoElement.Placeholder="请输入设备名称"/>
             </Grid>
 
@@ -55,9 +71,17 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="采样率 (Hz):" VerticalAlignment="Center"/>
-                <hc:NumericUpDown Grid.Column="1" Value="{Binding SampleRate}" 
-                               Minimum="1" Maximum="1000000" 
-                               Increment="1000"/>
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding SampleRateOptions}"
+                          SelectedItem="{Binding SampleRate, UpdateSourceTrigger=PropertyChanged}"
+                          FontSize="14"
+                          hc:InfoElement.Placeholder="请选择采样率">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding StringFormat='{}{0:F3} Hz'}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
             </Grid>
 
             <!-- 通道数量 -->
@@ -67,9 +91,17 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="通道数量:" VerticalAlignment="Center"/>
-                <hc:NumericUpDown Grid.Column="1" Value="{Binding ChannelCount}" 
-                               Minimum="1" Maximum="128" 
-                               Increment="1"/>
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding ChannelCountOptions}"
+                          SelectedItem="{Binding ChannelCount, UpdateSourceTrigger=PropertyChanged}"
+                          FontSize="14"
+                          hc:InfoElement.Placeholder="请选择通道数量">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding StringFormat='{}{0} 通道'}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
             </Grid>
 
             <!-- 缓冲区大小 -->
@@ -79,19 +111,24 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="缓冲区大小:" VerticalAlignment="Center"/>
-                <hc:NumericUpDown Grid.Column="1" Value="{Binding BufferSize}" 
-                               Minimum="64" Maximum="1048576" 
-                               Increment="1024"/>
+                <TextBox Grid.Column="1"
+                         Text="{Binding BufferSize, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="14"
+                         hc:InfoElement.Placeholder="请输入缓冲区大小"/>
             </Grid>
 
             <!-- 自动启动 -->
-            <CheckBox Grid.Row="6" Content="插件启动时自动开始采集" 
-                      IsChecked="{Binding AutoStart}" 
+            <CheckBox Grid.Row="6" Content="插件启动时自动开始采集"
+                      FontSize="14"
+                      FontWeight="Medium"
+                      IsChecked="{Binding AutoStart}"                     
                       Margin="0,0,0,15"/>
 
             <!-- 启用状态 -->
-            <CheckBox Grid.Row="7" Content="启用设备" 
-                      IsChecked="{Binding IsEnabled}" 
+            <CheckBox Grid.Row="7" Content="启用设备"               
+                      IsChecked="{Binding IsEnabled}"
+                      FontSize="14"
+                      FontWeight="Medium"
                       Margin="0,0,0,15"/>
 
             <!-- 分组和槽位 -->

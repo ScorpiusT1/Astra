@@ -33,11 +33,12 @@ namespace Astra.Views
                 DataContext = App.ServiceProvider.GetService<ConfigViewModel>();
             }
 
-            // 设置配置内容区域
+            // 设置配置内容区域和树视图
             if (DataContext is ConfigViewModel viewModel)
             {
                 System.Diagnostics.Debug.WriteLine("[ConfigView] ViewModel 已设置，设置配置内容区域");
                 viewModel.SetConfigContentRegion(ConfigContentRegion);
+                viewModel.SetTreeView(ConfigTreeView);
                 
                 // View 加载时刷新配置树（确保获取到最新的设备列表）
                 // 延迟一点时间，确保插件已经加载完成

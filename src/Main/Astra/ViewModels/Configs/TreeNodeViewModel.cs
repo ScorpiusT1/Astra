@@ -23,6 +23,9 @@ namespace Astra.ViewModels
         private string _nodeId;
         private bool _showAddButton;
         private string _addDeviceType;
+        private bool _showDeleteButton;
+        private bool _isDragging;
+        private bool _canDrop;
 
         public string Header
         {
@@ -88,6 +91,24 @@ namespace Astra.ViewModels
         {
             get => _addDeviceType;
             set { _addDeviceType = value; OnPropertyChanged(); }
+        }
+
+        public bool ShowDeleteButton
+        {
+            get => _showDeleteButton;
+            set { _showDeleteButton = value; OnPropertyChanged(); }
+        }
+
+        public bool IsDragging
+        {
+            get => _isDragging;
+            set { _isDragging = value; OnPropertyChanged(); }
+        }
+
+        public bool CanDrop
+        {
+            get => _canDrop;
+            set { _canDrop = value; OnPropertyChanged(); }
         }
 
         public bool HasNavigation => !string.IsNullOrWhiteSpace(NavigationKey);

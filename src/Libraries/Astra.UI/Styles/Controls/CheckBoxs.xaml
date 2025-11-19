@@ -1,0 +1,276 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:hc="https://handyorg.github.io/handycontrol">
+
+    <!-- CheckBox 样式：现代化设计，带平滑动画效果 -->
+    <Style TargetType="CheckBox"
+           x:Key="ModernCheckBoxStyle">
+        <Setter Property="Foreground"
+                Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize"
+                Value="13" />
+        <Setter Property="IsThreeState"
+                Value="False" />
+        <Setter Property="HorizontalAlignment"
+                Value="Stretch" />
+        <Setter Property="VerticalAlignment"
+                Value="Center" />
+        <Setter Property="VerticalContentAlignment"
+                Value="Center" />
+        <Setter Property="Padding"
+                Value="6,0,0,0" />
+        <Setter Property="Focusable"
+                Value="False" />
+        <Setter Property="FocusVisualStyle"
+                Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid x:Name="templateRoot"
+                          Background="Transparent"
+                          SnapsToDevicePixels="True"
+                          Focusable="False"
+                          IsHitTestVisible="True">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- CheckBox 标记容器 -->
+                        <Grid x:Name="checkBoxContainer"
+                              Grid.Column="0"
+                              Width="20"
+                              Height="20"
+                              Background="Transparent"
+                              SnapsToDevicePixels="True"
+                              Focusable="False">
+                            <Grid.RenderTransform>
+                                <ScaleTransform />
+                            </Grid.RenderTransform>
+
+                            <!-- 背景边框（未选中状态） -->
+                            <Border x:Name="outerBorder"
+                                    Background="Transparent"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1.5"
+                                    CornerRadius="4"
+                                    Width="20"
+                                    Height="20"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    SnapsToDevicePixels="True"
+                                    Focusable="False">
+                                <Border.Effect>
+                                    <DropShadowEffect x:Name="borderShadow"
+                                                      Color="{DynamicResource ShadowColor}"
+                                                      Opacity="0"
+                                                      BlurRadius="4"
+                                                      ShadowDepth="0"
+                                                      Direction="270" />
+                                </Border.Effect>
+                            </Border>
+
+                            <!-- 填充背景（选中状态） -->
+                            <Border x:Name="innerBorder"
+                                    Background="{DynamicResource PrimaryBrush}"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="4"
+                                    Width="20"
+                                    Height="20"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Opacity="0"
+                                    SnapsToDevicePixels="True"
+                                    Focusable="False">
+                                <Border.Effect>
+                                    <DropShadowEffect x:Name="fillShadow"
+                                                      Color="{StaticResource PrimaryColor}"
+                                                      Opacity="0"
+                                                      BlurRadius="8"
+                                                      ShadowDepth="0"
+                                                      Direction="270" />
+                                </Border.Effect>
+                            </Border>
+
+                            <!-- 对勾标记 -->
+                            <Viewbox x:Name="checkMarkContainer"
+                                     Width="14"
+                                     Height="14"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center"
+                                     Opacity="0"
+                                     IsHitTestVisible="False">
+                                <Path x:Name="checkMark"
+                                      Data="M 2,7 L 6.5,11.5 L 14,4"
+                                      Stroke="{DynamicResource ReverseTextBrush}"
+                                      StrokeThickness="2.5"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Fill="Transparent"
+                                      RenderTransformOrigin="0.5,0.5"
+                                      IsHitTestVisible="False"
+                                      UseLayoutRounding="True"
+                                      SnapsToDevicePixels="True">
+                                    <Path.RenderTransform>
+                                        <ScaleTransform x:Name="checkMarkScale"
+                                                        ScaleX="1"
+                                                        ScaleY="1" />
+                                    </Path.RenderTransform>
+                                </Path>
+                            </Viewbox>
+                        </Grid>
+
+                        <!-- 文本内容 -->
+                        <ContentPresenter x:Name="contentPresenter"
+                                          Grid.Column="1"
+                                          Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          Margin="{TemplateBinding Padding}"
+                                          Focusable="False"
+                                          RecognizesAccessKey="True"
+                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <!-- 有内容时显示 ContentPresenter -->
+                        <Trigger Property="HasContent"
+                                 Value="True">
+                            <Setter TargetName="contentPresenter"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="HasContent"
+                                 Value="False">
+                            <Setter TargetName="contentPresenter"
+                                    Property="Visibility"
+                                    Value="Collapsed" />
+                        </Trigger>
+
+                        <!-- 未选中状态 -->
+                        <Trigger Property="IsChecked"
+                                 Value="False">
+                            <Setter TargetName="checkMarkContainer"
+                                    Property="Opacity"
+                                    Value="0" />
+                            <Setter TargetName="checkMarkContainer"
+                                    Property="Visibility"
+                                    Value="Collapsed" />
+                            <Setter TargetName="innerBorder"
+                                    Property="Opacity"
+                                    Value="0" />
+                            <Setter TargetName="innerBorder"
+                                    Property="Visibility"
+                                    Value="Collapsed" />
+                            <Setter TargetName="outerBorder"
+                                    Property="Opacity"
+                                    Value="1" />
+                            <Setter TargetName="outerBorder"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                            <Setter TargetName="outerBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource BorderBrush}" />
+                            <Setter TargetName="innerBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                        </Trigger>
+
+                        <!-- 选中状态 -->
+                        <Trigger Property="IsChecked"
+                                 Value="True">
+                            <Setter TargetName="checkMarkContainer"
+                                    Property="Opacity"
+                                    Value="1" />
+                            <Setter TargetName="checkMarkContainer"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                            <Setter TargetName="innerBorder"
+                                    Property="Opacity"
+                                    Value="1" />
+                            <Setter TargetName="innerBorder"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                            <Setter TargetName="outerBorder"
+                                    Property="Opacity"
+                                    Value="0" />
+                            <Setter TargetName="outerBorder"
+                                    Property="Visibility"
+                                    Value="Collapsed" />
+                            <Setter TargetName="outerBorder"
+                                    Property="BorderBrush"
+                                    Value="Transparent" />
+                            <Setter TargetName="innerBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                        </Trigger>
+
+                        <!-- 鼠标悬停状态（未选中） -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver"
+                                           Value="True" />
+                                <Condition Property="IsChecked"
+                                           Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="outerBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                        </MultiTrigger>
+
+                        <!-- 鼠标悬停状态（已选中） -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver"
+                                           Value="True" />
+                                <Condition Property="IsChecked"
+                                           Value="True" />
+                            </MultiTrigger.Conditions>
+                            <!-- 悬停时可以通过其他方式增强视觉效果，但不操作 fillShadow -->
+                        </MultiTrigger>
+
+                        <!-- 按下状态（已选中） -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsChecked"
+                                           Value="True" />
+                                <Condition Property="IsPressed"
+                                           Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter Property="Opacity"
+                                    Value="0.8" />
+                        </MultiTrigger>
+
+                        <!-- 按下状态（未选中） -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsChecked"
+                                           Value="False" />
+                                <Condition Property="IsPressed"
+                                           Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="outerBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                        </MultiTrigger>
+
+                        <!-- 禁用状态 -->
+                        <Trigger Property="IsEnabled"
+                                 Value="False">
+                            <Setter TargetName="checkBoxContainer"
+                                    Property="Opacity"
+                                    Value="0.5" />
+                            <Setter TargetName="contentPresenter"
+                                    Property="Opacity"
+                                    Value="0.5" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource ThirdlyTextBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

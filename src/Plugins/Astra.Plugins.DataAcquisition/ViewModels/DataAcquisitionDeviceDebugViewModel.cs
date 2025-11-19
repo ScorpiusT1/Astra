@@ -68,7 +68,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         public string DeviceName => _device?.DeviceName ?? "未知设备";
         public string DeviceId => _device?.DeviceId ?? string.Empty;
         public string SerialNumber => (_device?.CurrentConfig as DataAcquisitionConfig)?.SerialNumber ?? string.Empty;
-        public int SampleRate => (_device?.CurrentConfig as DataAcquisitionConfig)?.SampleRate ?? 0;
+        public double SampleRate => (_device?.CurrentConfig as DataAcquisitionConfig)?.SampleRate ?? 0.0;
         public int ChannelCount => (_device?.CurrentConfig as DataAcquisitionConfig)?.ChannelCount ?? 0;
         public int BufferSize => (_device?.CurrentConfig as DataAcquisitionConfig)?.BufferSize ?? 0;
 

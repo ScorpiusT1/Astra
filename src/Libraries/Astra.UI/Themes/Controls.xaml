@@ -12,6 +12,8 @@
         <ResourceDictionary Source="../Styles/Controls/ProgressBars.xaml" />
         <ResourceDictionary Source="../Styles/Controls/Cards.xaml" />
         <ResourceDictionary Source="../Styles/Controls/DataGrids.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/CheckBoxs.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/TreeStyles.xaml" />
 
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

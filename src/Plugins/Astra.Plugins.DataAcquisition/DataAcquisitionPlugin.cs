@@ -1,3 +1,4 @@
+using Astra.Core.Configuration;
 using Astra.Core.Devices.Management;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
@@ -19,6 +20,7 @@ namespace Astra.Plugins.DataAcquisition
     {
         private IPluginContext _context;
         private IDeviceManager? _deviceManager;
+        private ConfigurationManager? _configurationManager;
         private IMessageBus _messageBus;
         private ILogger? _logger;
         private readonly List<DataAcquisitionDevice> _devices = new();
@@ -34,15 +36,17 @@ namespace Astra.Plugins.DataAcquisition
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             
-            // ⭐ 从 _context.ServiceProvider 获取 IDeviceManager
-            // 这样可以确保插件系统和主应用使用同一个 IDeviceManager 实例
+            // ⭐ 从 _context.ServiceProvider 获取服务
+            // 这样可以确保插件系统和主应用使用同一个服务实例
             try
             {
                 _deviceManager = context.ServiceProvider?.GetService<IDeviceManager>();
+                _configurationManager = context.ServiceProvider?.GetService<ConfigurationManager>();
             }
             catch
             {
                 _deviceManager = null;
+                _configurationManager = null;
             }
             
             _messageBus = context.MessageBus;
@@ -59,7 +63,7 @@ namespace Astra.Plugins.DataAcquisition
 
             _logger?.Info($"[{Name}] 开始初始化插件", LogCategory.System);
 
-            // 从配置文件加载设备配置
+            // 从配置文件加载设备配置（配置会先注册到 ConfigurationManager，然后根据配置创建设备）
             await LoadDeviceConfigurationsAsync(cancellationToken).ConfigureAwait(false);
 
             _logger?.Info($"[{Name}] 插件初始化完成，已加载 {_devices.Count} 个设备", LogCategory.System);
@@ -257,29 +261,47 @@ namespace Astra.Plugins.DataAcquisition
                 _devices?.Clear();   
                 // 查找配置文件
                 var configFileName = "Astra.Plugins.DataAcquisition.config.json";
-                var configPath = Path.Combine(_context.PluginDirectory, configFileName);
+                
+                // 标准配置文件路径：Configs/Devices/{插件名}.config.json
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var configsDevicesDir = Path.Combine(baseDir, "Configs", "Devices");
+                var standardConfigPath = Path.Combine(configsDevicesDir, configFileName);
+                
+                // 实际加载的配置文件路径（可能从旧位置加载，但注册时使用标准路径）
+                var actualConfigPath = standardConfigPath;
 
-                // 如果插件目录中没有，尝试从 Configs/Configs 目录加载
-                if (!File.Exists(configPath))
+                // 优先从标准路径加载
+                if (!File.Exists(actualConfigPath))
                 {
-                    var binPath = Path.GetDirectoryName(_context.PluginDirectory);
-                    if (binPath != null)
+                    // 如果标准路径不存在，尝试从插件目录加载（向后兼容）
+                    var pluginConfigPath = Path.Combine(_context.PluginDirectory, configFileName);
+                    if (File.Exists(pluginConfigPath))
                     {
-                        var alternativePath = Path.Combine(binPath, "Configs", "Configs", configFileName);
-                        if (File.Exists(alternativePath))
+                        actualConfigPath = pluginConfigPath;
+                    }
+                    else
+                    {
+                        // 如果插件目录中也没有，尝试从 Configs/DeviceConfigs 目录加载（向后兼容）
+                        var binPath = Path.GetDirectoryName(_context.PluginDirectory);
+                        if (binPath != null)
                         {
-                            configPath = alternativePath;
+                            var alternativePath = Path.Combine(binPath, "Configs", "DeviceConfigs", configFileName);
+                            if (File.Exists(alternativePath))
+                            {
+                                actualConfigPath = alternativePath;
+                            }
                         }
                     }
                 }
 
-                if (!File.Exists(configPath))
+                if (!File.Exists(actualConfigPath))
                 {
                     _logger?.Warn($"[{Name}] 未找到配置文件 {configFileName}，将使用默认配置", LogCategory.System);
+                    // 文件不存在时，直接返回（没有配置需要加载和注册）
                     return;
                 }
 
-                var json = await File.ReadAllTextAsync(configPath, cancellationToken).ConfigureAwait(false);
+                var json = await File.ReadAllTextAsync(actualConfigPath, cancellationToken).ConfigureAwait(false);
                 
                 var configData = JsonSerializer.Deserialize<DeviceConfigData>(json, new JsonSerializerOptions
                 {
@@ -292,15 +314,34 @@ namespace Astra.Plugins.DataAcquisition
                     return;
                 }
 
-                // 创建设备实例
+                // 先注册配置到 ConfigurationManager，然后根据配置创建设备实例
+                // 注意：配置独立于设备，先有配置才能创建设备
                 foreach (var config in configData.Configs)
                 {
                     try
-                    {                       
+                    {
+                        // 1. 先将配置注册到 ConfigurationManager（配置独立于设备）
+                        if (_configurationManager != null)
+                        {
+                            // 传递标准配置文件路径（无论从哪个位置加载，都使用标准路径注册）
+                            // 这样确保同一类型配置使用相同的路径，后续保存时统一保存到标准位置
+                            var registerResult = _configurationManager.RegisterConfig(config, standardConfigPath);
+                            if (registerResult.Success)
+                            {
+                                _logger?.Info($"[{Name}] 配置已注册到 ConfigurationManager: {config.DeviceName} (ID: {config.ConfigId}), 路径: {standardConfigPath}", LogCategory.System);
+                            }
+                            else
+                            {
+                                _logger?.Warn($"[{Name}] 配置注册到 ConfigurationManager 失败: {config.DeviceName} - {registerResult.ErrorMessage}", LogCategory.System);
+                                // 即使注册失败，仍然尝试创建设备（向后兼容）
+                            }
+                        }
+
+                        // 2. 根据配置创建设备实例
                         var device = new DataAcquisitionDevice(config, _messageBus, _logger);
                         _devices?.Add(device);
 
-                        _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName}", LogCategory.Device);
+                        _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);
                     }
                     catch (Exception ex)
                     {

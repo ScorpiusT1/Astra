@@ -67,6 +67,70 @@
         </Setter>
     </Style>
 
+    <!-- ==================== TextBox 样式 ==================== -->
+    <Style x:Key="DefaultModernTextBoxStyle"
+           TargetType="TextBox">
+        <Setter Property="Padding"
+                Value="4,0" />
+        <Setter Property="FontSize"
+                Value="14" />
+        <Setter Property="MinHeight"
+                Value="{DynamicResource InputControlHeight}" />
+        <Setter Property="Height"
+                Value="{DynamicResource InputControlHeight}" />
+        <Setter Property="VerticalContentAlignment"
+                Value="Center" />
+        <Setter Property="Background"
+                Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground"
+                Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderBrush"
+                Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness"
+                Value="1.5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource DefaultCornerRadius}">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsFocused"
+                                 Value="True">
+                            <Setter TargetName="border"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                            <Setter TargetName="border"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                            <Setter TargetName="border"
+                                    Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect Color="{DynamicResource PrimaryColor}"
+                                                      Opacity="0.2"
+                                                      BlurRadius="12"
+                                                      ShadowDepth="0" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver"
+                                 Value="True">
+                            <Setter TargetName="border"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource SecondaryBorderBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ==================== PasswordBox 样式 ==================== -->
     <Style x:Key="ModernPasswordBoxStyle"
            TargetType="PasswordBox">
