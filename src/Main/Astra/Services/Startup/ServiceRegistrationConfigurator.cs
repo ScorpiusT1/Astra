@@ -4,7 +4,20 @@ using Astra.Core.Access.Services;
 using Astra.Core.Devices.Events;
 using Astra.Core.Devices.Management;
 using Astra.Core.Logs;
+using Astra.Core.Plugins.Abstractions;
+using Astra.Core.Plugins.Caching;
+using Astra.Core.Plugins.Configuration;
+using Astra.Core.Plugins.Concurrency;
+using Astra.Core.Plugins.Exceptions;
+using Astra.Core.Plugins.Health;
+using Astra.Core.Plugins.Host;
+using Astra.Core.Plugins.Manifest.Serializers;
+using Astra.Core.Plugins.Memory;
 using Astra.Core.Plugins.Messaging;
+using Astra.Core.Plugins.Performance;
+using Astra.Core.Plugins.Recovery;
+using Astra.Core.Plugins.Security;
+using Astra.Core.Plugins.Validation;
 using Astra.Models;
 using Astra.Services.Authorization;
 using Astra.Services.Dialogs;
@@ -15,6 +28,8 @@ using Microsoft.Extensions.DependencyInjection;
 using NavStack.Extensions;
 using System.Diagnostics;
 using System.IO;
+using Astra.Core.Plugins.Loading;
+using Astra.Core.Plugins.Discovery;
 
 namespace Astra.Services.Startup
 {
@@ -31,6 +46,7 @@ namespace Astra.Services.Startup
             RegisterViews(services);
             RegisterApplicationServices(services);
             RegisterDeviceServices(services);
+            RegisterPluginServices(services);
             RegisterRefactoredViewModels(services);
         }
 
@@ -108,11 +124,15 @@ namespace Astra.Services.Startup
         /// </summary>
         private void RegisterViews(IServiceCollection services)
         {
-            services.AddTransient<MainView>();
-            // ❗ 旧版 MainViewModel 已被重构，不再注册
-            // services.AddSingleton<MainViewModel>();
+            // ⭐ 主窗口应该是单例，整个应用程序只有一个实例
+            services.AddSingleton<MainView>();
+            
+            // 其他视图可以保持 Transient（每次导航时创建新实例）
             services.AddTransient<ConfigView>();
             services.AddTransient<DebugView>();
+            services.AddTransient<HomeView>();
+            services.AddTransient<SequenceView>();
+            services.AddTransient<PermissionView>();
            
             Debug.WriteLine("✅ 视图注册完成");
         }
@@ -188,6 +208,232 @@ namespace Astra.Services.Startup
             });
 
             Debug.WriteLine("✅ 设备管理服务注册完成");
+        }
+
+        /// <summary>
+        /// 注册插件服务
+        /// ⭐ 在服务注册阶段只注册插件需要的服务到 IServiceCollection，IPluginHost 在 ServiceProvider 构建后手动创建
+        /// </summary>
+        private void RegisterPluginServices(IServiceCollection services)
+        {
+            // ⭐ 不在注册阶段创建 IPluginHost，而是在 ServiceProvider 构建后手动创建
+            // 这样可以确保在 ServiceProvider 构建之前就有 IPluginHost 的注册描述符（虽然是空的）
+            // 实际创建会在 ApplicationBootstrapper 中，ServiceProvider 构建完成后进行
+            
+            // 先确保插件需要的服务都注册到 IServiceCollection 中
+            // 注意：这里不能传入 ServiceProvider（因为还未构建），只能注册服务描述符
+            EnsurePluginServicesRegisteredBeforeBuild(services);
+
+            Debug.WriteLine("✅ 插件服务注册完成（IPluginHost 将在 ServiceProvider 构建后创建）");
+        }
+
+        /// <summary>
+        /// 在 ServiceProvider 构建之前，确保所有插件需要的服务都注册到 IServiceCollection 中
+        /// ⭐ 注意：此时 ServiceProvider 还未构建，只能注册服务描述符，不能创建实例
+        /// </summary>
+        private void EnsurePluginServicesRegisteredBeforeBuild(IServiceCollection services)
+        {
+            // 检查服务是否已在 IServiceCollection 中注册
+            bool IsServiceRegistered<T>() => services.Any(s => s.ServiceType == typeof(T));
+
+            // 确保 IConfiguration 存在
+            if (!IsServiceRegistered<Microsoft.Extensions.Configuration.IConfiguration>())
+            {
+                var configurationRoot = ConfigurationProviderRegistration.BuildDefaultConfiguration();
+                services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(configurationRoot);
+            }
+
+            // 确保 IMessageBus 存在
+            if (!IsServiceRegistered<IMessageBus>())
+            {
+                services.AddSingleton<IMessageBus, MessageBus>();
+            }
+
+            // 确保 IPermissionManager 存在
+            if (!IsServiceRegistered<IPermissionManager>())
+            {
+                services.AddSingleton<IPermissionManager, PermissionManager>();
+            }
+
+            // 确保 IConfigurationStore 存在
+            if (!IsServiceRegistered<IConfigurationStore>())
+            {
+                services.AddSingleton<IConfigurationStore>(new ConfigurationStore());
+            }
+
+            // ⭐ 确保 IErrorLogger 存在（这是关键服务，其他服务依赖它）
+            if (!IsServiceRegistered<IErrorLogger>())
+            {
+                services.AddSingleton<IErrorLogger>(new FileErrorLogger("plugin-system.log"));
+            }
+
+            // ⭐ 确保 IExceptionHandler 存在（依赖 IErrorLogger）
+            if (!IsServiceRegistered<IExceptionHandler>())
+            {
+                services.AddSingleton<IExceptionHandler>(sp =>
+                {
+                    var logger = sp.GetService<IErrorLogger>() ?? new FileErrorLogger("plugin-system.log");
+                    return new ExceptionHandler(logger);
+                });
+            }
+
+            // ⭐ 确保 IHealthCheckService 存在（依赖 IErrorLogger）
+            if (!IsServiceRegistered<IHealthCheckService>())
+            {
+                services.AddSingleton<IHealthCheckService>(sp =>
+                {
+                    var logger = sp.GetService<IErrorLogger>() ?? new FileErrorLogger("plugin-system.log");
+                    return new HealthCheckService(logger);
+                });
+            }
+
+            // ⭐ 确保 ISelfHealingService 存在（依赖 IErrorLogger 和 IHealthCheckService）
+            if (!IsServiceRegistered<ISelfHealingService>())
+            {
+                services.AddSingleton<ISelfHealingService>(sp =>
+                {
+                    var logger = sp.GetService<IErrorLogger>() ?? new FileErrorLogger("plugin-system.log");
+                    var healthCheck = sp.GetService<IHealthCheckService>();
+                    if (healthCheck == null)
+                    {
+                        healthCheck = new HealthCheckService(logger);
+                    }
+                    return new SelfHealingService(logger, healthCheck);
+                });
+            }
+
+            // ⭐ 注册插件核心服务（IPluginValidator、IPluginDiscovery、IPluginLoader 等）
+            // 这些服务在 PluginHostFactory.CreateDefaultHost 中需要解析，必须提前注册到主应用的 IServiceCollection 中
+            
+            // 1. 注册 IPluginValidator（插件验证器）
+            if (!IsServiceRegistered<IPluginValidator>())
+            {
+                services.AddSingleton<IPluginValidator>(sp =>
+                {
+                    var validator = new PluginValidator();
+                    // 默认验证规则（PluginValidator 构造函数已经添加了这些规则，这里只是为了确保）
+                    // validator.AddRule(new AssemblyExistsRule());
+                    // validator.AddRule(new DependencyValidRule());
+                    // validator.AddRule(new VersionValidRule());
+                    return validator;
+                });
+            }
+
+            // 2. 注册 IManifestSerializer（清单序列化器） - 多个实现
+            if (!services.Any(s => s.ServiceType == typeof(IManifestSerializer)))
+            {
+                services.AddSingleton<IManifestSerializer>(sp => new XmlManifestSerializer());
+                services.AddSingleton<IManifestSerializer>(sp => new JsonManifestSerializer());
+                services.AddSingleton<IManifestSerializer>(sp => new YamlManifestSerializer());
+            }
+
+            // 3. 注册 IPluginDiscovery（插件发现服务）
+            if (!IsServiceRegistered<IPluginDiscovery>())
+            {
+                services.AddSingleton<IPluginDiscovery>(sp =>
+                {
+                    // 获取所有 IManifestSerializer 实现
+                    var serializers = sp.GetServices<IManifestSerializer>().ToList();
+                    var baseDiscovery = new FileSystemDiscovery(serializers);
+                    // 使用默认的并发数（8）
+                    var discovery = new ParallelPluginDiscovery(baseDiscovery, maxConcurrentDiscoveries: 8);
+                    return discovery;
+                });
+            }
+
+            // 4. 注册 IPerformanceMonitor（性能监控器）
+            if (!IsServiceRegistered<IPerformanceMonitor>())
+            {
+                services.AddSingleton<IPerformanceMonitor>(sp => new PerformanceMonitor());
+            }
+
+            // 5. 注册 IMemoryManager（内存管理器）
+            if (!IsServiceRegistered<IMemoryManager>())
+            {
+                services.AddSingleton<IMemoryManager>(sp => new MemoryManager());
+            }
+
+            // 6. 注册 IConcurrencyManager（并发管理器）
+            if (!IsServiceRegistered<IConcurrencyManager>())
+            {
+                services.AddSingleton<IConcurrencyManager>(sp =>
+                {
+                    var performanceMonitor = sp.GetService<IPerformanceMonitor>() ?? new PerformanceMonitor();
+                    return new ConcurrencyManager(performanceMonitor);
+                });
+            }
+
+            // 7. 注册 ICacheManager（缓存管理器）
+            if (!IsServiceRegistered<ICacheManager>())
+            {
+                services.AddSingleton<ICacheManager>(sp =>
+                {
+                    var performanceMonitor = sp.GetService<IPerformanceMonitor>() ?? new PerformanceMonitor();
+                    return new CacheManager(performanceMonitor);
+                });
+            }
+
+            // 8. 注册 IPluginLoader（插件加载器）
+            if (!IsServiceRegistered<IPluginLoader>())
+            {
+                services.AddSingleton<IPluginLoader>(sp =>
+                {
+                    var performanceMonitor = sp.GetService<IPerformanceMonitor>();
+                    var memoryManager = sp.GetService<IMemoryManager>();
+                    // 使用默认的并发加载数（4）
+                    var loader = new HighPerformancePluginLoader(
+                        performanceMonitor,
+                        memoryManager,
+                        maxConcurrentLoads: 4);
+                    return loader;
+                });
+            }
+
+            // ⭐ 注册 IPluginHost 服务（使用工厂方法，在第一次解析时创建）
+            // 工厂方法会接收主应用的 ServiceProvider，用它来创建 IPluginHost
+            // 这样可以确保 IPluginHost 在 ServiceProvider 构建之前就注册到 IServiceCollection 中
+            // 但实际创建延迟到第一次解析时，此时 ServiceProvider 已经构建完成，可以使用主应用的 ServiceProvider
+            services.AddSingleton<IPluginHost>(provider =>
+            {
+                // 创建插件宿主配置
+                var config = new HostConfiguration
+                {
+                    PluginDirectory = Path.Combine(
+                        System.AppDomain.CurrentDomain.BaseDirectory,
+                        "Plugins"),
+                    EnableHotReload = false,
+                    RequireSignature = false,
+                    Services = new ServiceConfiguration
+                    {
+                        EnableDefaultSerializers = true,
+                        EnableDefaultValidationRules = true
+                    },
+                    Performance = new PerformanceConfiguration
+                    {
+                        EnablePerformanceMonitoring = true,
+                        EnableMemoryManagement = true,
+                        EnableConcurrencyControl = true,
+                        EnableCaching = true,
+                        MaxConcurrentLoads = 4,
+                        MaxConcurrentDiscoveries = 8
+                    },
+                    Security = new SecurityConfiguration
+                    {
+                        RequireSignature = false,
+                        EnableSandbox = true,
+                        SandboxType = SandboxType.AppDomain
+                    }
+                };
+
+                // ⭐ 使用 PluginHostFactory 创建插件宿主
+                // ⭐ 传入主应用的 ServiceProvider（provider 参数就是主应用的 ServiceProvider）
+                // 这样可以确保插件系统和主应用使用同一个 ServiceProvider 实例，保证单例服务共享
+                var pluginHost = PluginHostFactory.CreateDefaultHost(services, config, provider);
+                
+                Debug.WriteLine("✅ IPluginHost 已通过工厂方法创建并注册到 ServiceProvider");
+                
+                return pluginHost;
+            });
         }
 
         /// <summary>

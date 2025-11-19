@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 using System.Windows.Navigation;
+using System.Windows.Threading;
 
 namespace Astra.Bootstrap.UI
 {
@@ -179,10 +180,19 @@ namespace Astra.Bootstrap.UI
         {
             if (_isCancelled) return;
 
-            Dispatcher.InvokeAsync(() =>
+            // ⭐ 使用 Invoke 而不是 InvokeAsync，确保更新及时执行并显示
+            Dispatcher.Invoke(() =>
             {
-                var targetWidth = (percentage / 100.0) * (ActualWidth - 100);
+                // ⭐ 确保窗口已加载且有实际宽度，否则使用窗口宽度或默认值
+                var containerWidth = ActualWidth > 0 ? ActualWidth : Width;
+                var progressContainer = ProgressIndicator.Parent as FrameworkElement;
+                var containerActualWidth = progressContainer?.ActualWidth ?? containerWidth;
+                
+                // ⭐ 计算进度条目标宽度（留出左右边距，共约 100 像素）
+                var availableWidth = Math.Max(0, containerActualWidth - 100);
+                var targetWidth = (percentage / 100.0) * availableWidth;
 
+                // ⭐ 更新进度条宽度（带动画）
                 var animation = new DoubleAnimation
                 {
                     To = Math.Max(0, targetWidth),
@@ -192,13 +202,16 @@ namespace Astra.Bootstrap.UI
 
                 ProgressIndicator.BeginAnimation(WidthProperty, animation);
 
+                // ⭐ 更新百分比文本（确保显示）
                 PercentageText.Text = $"{percentage:F0}%";
 
+                // ⭐ 更新状态消息
                 if (!string.IsNullOrEmpty(message))
                 {
                     StatusText.Text = message;
                 }
 
+                // ⭐ 更新详细信息
                 if (!string.IsNullOrEmpty(details))
                 {
                     DetailsText.Text = details;
@@ -207,7 +220,10 @@ namespace Astra.Bootstrap.UI
                 {
                     DetailsText.Text = string.Empty;
                 }
-            });
+
+                // ⭐ 强制刷新 UI（确保百分比文本立即显示）
+                UpdateLayout();
+            }, DispatcherPriority.Render);
         }
 
         public void ShowError(string errorMessage)

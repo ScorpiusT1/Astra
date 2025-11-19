@@ -1,15 +1,14 @@
-﻿using Astra.Bootstrap.Core;
-using Astra.Bootstrap.Tasks;
+﻿// ⭐ 已移除 using Astra.Bootstrap.Core;（不再需要 IBootstrapTask）
+using Astra.Bootstrap.Core;
 using Astra.Bootstrap.UI;
 using Astra.Core.Plugins.Abstractions;
-using Astra.Views;
+using Astra.Core.Plugins.Dependencies;
+using Astra.Core.Plugins.Discovery;
+using Astra.Core.Plugins.Models;
+using Astra.Core.Plugins.Validation;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -20,7 +19,7 @@ namespace Astra.Bootstrap.Services
     /// </summary>
     public class ApplicationBootstrapper
     {
-        private readonly List<IBootstrapTask> _tasks = new List<IBootstrapTask>();
+        // ⭐ 已移除任务系统，不再需要 _tasks 列表
         private readonly BootstrapContext _context = new BootstrapContext();
         private SplashScreenView _splashScreen;
         private CancellationTokenSource _cancellationTokenSource;
@@ -32,16 +31,7 @@ namespace Astra.Bootstrap.Services
 
         #region Configuration
 
-        public ApplicationBootstrapper AddTask(IBootstrapTask task)
-        {
-            _tasks.Add(task);
-            return this;
-        }
-
-        public ApplicationBootstrapper AddTask<T>() where T : IBootstrapTask, new()
-        {
-            return AddTask(new T());
-        }
+        // ⭐ 已移除 AddTask 方法（任务系统已移除）
 
         public ApplicationBootstrapper ConfigureServices(Action<IServiceCollection> configure)
         {
@@ -92,78 +82,54 @@ namespace Astra.Bootstrap.Services
                 // 1. 显示启动画面
                 ShowSplashScreen();
 
-                // 2. 按优先级排序任务
-                var sortedTasks = _tasks.OrderBy(t => t.Priority).ToList();
+                // ⭐ 等待启动画面完全加载后再继续（确保窗口渲染完成，进度条可以正确计算宽度）
+                UpdateSplashScreen(0, "正在启动...", null);
+                await Task.Delay(100);
 
-                // 3. 计算总权重
-                var totalWeight = sortedTasks.Sum(t => t.Weight);
-                var completedWeight = 0.0;
-
-                // 4. 执行所有任务
-                foreach (var task in sortedTasks)
-                {
-                    try
-                    {
-                        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
-
-                        await ExecuteTaskAsync(task, completedWeight, totalWeight);
-
-                        completedWeight += task.Weight;
-                        result.AddCompletedTask(task);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _context.Logger?.LogWarning($"启动已取消");
-                        result.IsCancelled = true;
-                        throw;
-                    }
-                    catch (BootstrapException ex)
-                    {
-                        _context.Logger?.LogError($"任务 '{task.Name}' 失败", ex);
-                        result.AddFailedTask(task, ex);
-
-                        if (task.IsCritical)
-                        {
-                            _context.Logger?.LogError($"关键任务失败，中止启动");
-                            result.IsSuccess = false;
-                            throw;
-                        }
-                        else
-                        {
-                            _context.Logger?.LogWarning($"非关键任务失败，继续启动");
-                        }
-                    }
-                }
-
-                // ⭐ 5. 构建服务提供者（在任务执行完成后）
+                // ⭐ 2. 构建服务提供者（不再需要执行任务）
+                // 进度分配：5% ~ 40%（服务注册和构建占 35%）
                 if (_context.Services != null)
                 {
-                    UpdateSplashScreen(95, "构建服务容器...", null);
+                    UpdateSplashScreen(5, "正在初始化服务...", null);
+                    await Task.Delay(50); // 短暂延迟，确保 UI 更新可见
+                    
+                    UpdateSplashScreen(15, "正在注册服务...", null);
+                    await Task.Delay(50);
                     
                     // 在构建服务提供者之前，将 BootstrapContext 注册到服务集合中
                     // 这样其他组件可以通过 DI 容器访问 BootstrapContext 和其中的数据（如 PluginHost）
                     _context.Services.AddSingleton(_context);
                     
+                    UpdateSplashScreen(30, "正在构建服务容器...", null);
+                    await Task.Delay(50);
+                   
                     _context.ServiceProvider = _context.Services.BuildServiceProvider();
                     
-                    // ⭐ 更新 PluginHost 的 ServiceCollectionAdapter，使其使用主程序构建的全局 ServiceProvider
-                    // 这样可以确保插件系统和主应用共享同一个 ServiceProvider 实例，保证单例服务的一致性
+                    UpdateSplashScreen(40, "服务构建完成", null);
+                    await Task.Delay(50);
+                  
+                    // ⭐ 获取 IPluginHost（通过工厂方法创建，会自动使用主应用的 ServiceProvider）
+                    // 工厂方法在第一次解析时执行，此时 ServiceProvider 已经构建完成
+                    // 工厂方法会传入主应用的 ServiceProvider 来创建 IPluginHost
                     try
                     {
-                        var pluginHost = _context.ServiceProvider.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
+                        var pluginHost = _context.ServiceProvider.GetService<IPluginHost>();
 
-                        if (pluginHost is IPluginHost host)
+                        if (pluginHost != null)
                         {
-                            host.UpdateExternalServiceProvider(_context.ServiceProvider);
-                            _context.Logger?.LogInfo("已更新 PluginHost 的 ServiceProvider，插件系统现在使用主程序的全局 ServiceProvider");
+                            _context.Logger?.LogInfo("插件系统已创建并使用主程序的全局 ServiceProvider，开始加载插件");
                             
                             // ⭐ 在所有服务构建完成后，加载插件
-                            await LoadPluginsAfterServiceProviderBuilt(host);
+                            await LoadPluginsAfterServiceProviderBuilt(pluginHost);
+                        }
+                        else
+                        {
+                            _context.Logger?.LogWarning("IPluginHost 为 null，跳过插件加载");
                         }
                     }
                     catch (Exception ex)
                     {
-                        _context.Logger?.LogWarning($"更新 PluginHost 的 ServiceProvider 失败：{ex.Message}");
+                        _context.Logger?.LogError($"获取 PluginHost 或加载插件失败：{ex.Message}", ex);
                         // 非关键错误，不影响启动流程
                     }
                 }
@@ -174,7 +140,10 @@ namespace Astra.Bootstrap.Services
 
                 _context.Logger?.LogInfo($"=== 应用程序启动完成，耗时：{stopwatch.ElapsedMilliseconds}ms ===");
 
-                // 6. 显示完成状态
+                // 6. 显示完成状态（90% ~ 100%，占 10%）
+                UpdateSplashScreen(95, "正在完成启动...", null);
+                await Task.Delay(100);
+                
                 UpdateSplashScreen(100, "启动完成", null);
                 await Task.Delay(200);
             }
@@ -191,7 +160,7 @@ namespace Astra.Bootstrap.Services
                 _splashScreen?.ShowError(ex.Message);
                 await Task.Delay(3000); // 让用户看到错误
 
-                await RollbackAsync(result.CompletedTasks.ToList());
+                // ⭐ 不再需要回滚任务（因为没有任务系统）
             }
             finally
             {
@@ -201,37 +170,7 @@ namespace Astra.Bootstrap.Services
             return result;
         }
 
-        private async Task ExecuteTaskAsync(IBootstrapTask task, double completedWeight, double totalWeight)
-        {
-            var progress = new Progress<BootstrapProgress>(p =>
-            {
-                var taskProgress = (p.Percentage / 100.0) * task.Weight;
-                var globalProgress = ((completedWeight + taskProgress) / totalWeight) * 95; // 留 5% 给后续步骤
-                UpdateSplashScreen(globalProgress, p.Message, p.Details);
-            });
-
-            await task.ExecuteAsync(_context, progress, _cancellationTokenSource.Token);
-        }
-
-        private async Task RollbackAsync(List<IBootstrapTask> completedTasks)
-        {
-            _context.Logger?.LogWarning("开始回滚操作");
-
-            foreach (var task in completedTasks.AsEnumerable().Reverse())
-            {
-                try
-                {
-                    _context.Logger?.LogInfo($"回滚任务：{task.Name}");
-                    await task.RollbackAsync(_context);
-                }
-                catch (Exception ex)
-                {
-                    _context.Logger?.LogError($"回滚任务 '{task.Name}' 失败", ex);
-                }
-            }
-
-            _context.Logger?.LogWarning("回滚操作完成");
-        }
+        // ⭐ 已移除任务执行和回滚方法（任务系统已移除）
 
         public void Cancel()
         {
@@ -271,10 +210,11 @@ namespace Astra.Bootstrap.Services
 
         private void UpdateSplashScreen(double progress, string message, string details)
         {
-            Application.Current.Dispatcher.InvokeAsync(() =>
+            // ⭐ 使用 Invoke 而不是 InvokeAsync，确保更新及时执行
+            Application.Current.Dispatcher.Invoke(() =>
             {
                 _splashScreen?.UpdateProgress(progress, message, details);
-            });
+            }, DispatcherPriority.Normal);
         }
 
         private void CloseSplashScreen()
@@ -303,38 +243,230 @@ namespace Astra.Bootstrap.Services
         /// <summary>
         /// 在所有服务构建完成后加载插件
         /// ⭐ 这样可以确保插件系统使用主程序构建的全局 ServiceProvider
+        /// 流程：注册服务 → 构建 ServiceProvider → 创建 IPluginHost → 加载插件
         /// </summary>
         private async Task LoadPluginsAfterServiceProviderBuilt(IPluginHost pluginHost)
         {
             try
             {
-                // 从 BootstrapContext 获取插件目录信息
+                // ⭐ 优先从 BootstrapContext 获取插件目录（如果之前有任务设置了）
                 var pluginDirectory = _context.GetData<string>("PluginDirectory");
+                
+                // 如果 BootstrapContext 中没有，使用默认插件目录
                 if (string.IsNullOrEmpty(pluginDirectory))
                 {
-                    _context.Logger?.LogInfo("未找到插件目录信息，跳过插件加载");
-                    return;
+                    pluginDirectory = Path.Combine(
+                        System.AppDomain.CurrentDomain.BaseDirectory,
+                        "Plugins");
+                    
+                    // 确保插件目录存在
+                    if (!Directory.Exists(pluginDirectory))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(pluginDirectory);
+                            _context.Logger?.LogInfo($"插件目录不存在，已创建: {pluginDirectory}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _context.Logger?.LogWarning($"创建插件目录失败: {ex.Message}，跳过插件加载");
+                            UpdateSplashScreen(90, "插件目录创建失败", null);
+                            return;
+                        }
+                    }
                 }
 
-                var pluginCount = _context.GetData<int>("PluginCount", 0);
-                if (pluginCount == 0)
+                // ⭐ 插件加载进度分配：40% ~ 90%（插件加载占 50%）
+                // 40%: 开始扫描插件
+                // 40-45%: 发现插件（5%）
+                // 45-65%: 验证插件（20%，根据插件数量分配）
+                // 65%: 分析依赖
+                // 70-90%: 加载插件（20%，根据插件数量分配）
+                // 90%: 插件加载完成
+                
+                UpdateSplashScreen(40, "正在扫描插件目录...", null);
+                await Task.Delay(50); // 短暂延迟，确保 UI 更新可见
+                
+                _context.Logger?.LogInfo($"开始扫描插件目录: {pluginDirectory}");
+
+                // ⭐ 手动分步执行插件发现和加载，以便报告详细进度
+                // 1. 从 ServiceProvider 获取插件发现服务
+                var pluginDiscovery = _context.ServiceProvider?.GetService<IPluginDiscovery>();
+                var pluginValidator = _context.ServiceProvider?.GetService<IPluginValidator>();
+                
+                if (pluginDiscovery == null)
                 {
-                    _context.Logger?.LogInfo("未发现插件，跳过加载");
-                    return;
+                    // 如果没有发现服务，回退到自动加载方式
+                    _context.Logger?.LogWarning("IPluginDiscovery 服务未找到，使用自动加载方式");
+                    UpdateSplashScreen(45, "正在发现并加载插件...", null);
+                    await pluginHost.DiscoverAndLoadPluginsAsync(pluginDirectory);
+                    UpdateSplashScreen(90, "插件加载完成", null);
                 }
-
-                UpdateSplashScreen(96, $"正在加载 {pluginCount} 个插件...", null);
-
-                _context.Logger?.LogInfo($"开始加载插件（共 {pluginCount} 个）...");
-
-                // 使用插件宿主发现并加载插件
-                await pluginHost.DiscoverAndLoadPluginsAsync(pluginDirectory);
+                else
+                {
+                    // 2. 发现插件（40% ~ 45%，占 5%）
+                    UpdateSplashScreen(42, "正在发现插件...", null);
+                    await Task.Delay(50);
+                    
+                    var descriptors = (await pluginDiscovery.DiscoverAsync(pluginDirectory)).ToList();
+                    var totalCount = descriptors.Count;
+                    
+                    UpdateSplashScreen(45, $"已发现 {totalCount} 个插件", null);
+                    await Task.Delay(50);
+                    
+                    _context.Logger?.LogInfo($"发现 {totalCount} 个插件");
+                    
+                    if (totalCount == 0)
+                    {
+                        UpdateSplashScreen(90, "未发现插件", null);
+                    }
+                    else
+                    {
+                        // 3. 验证插件（45% ~ 65%，占 20%，根据插件数量分配）
+                        UpdateSplashScreen(45, "正在验证插件...", null);
+                        await Task.Delay(50);
+                        
+                        var validDescriptors = new List<PluginDescriptor>();
+                        var validatedCount = 0;
+                        
+                        if (pluginValidator != null)
+                        {
+                            foreach (var descriptor in descriptors)
+                            {
+                                var validationResult = await pluginValidator.ValidateAsync(descriptor);
+                                validatedCount++;
+                                
+                                // 更新验证进度：45% ~ 65%
+                                var validateProgress = 45 + (validatedCount * 20.0 / totalCount);
+                                UpdateSplashScreen(validateProgress, $"正在验证插件 ({validatedCount}/{totalCount})...", $"插件: {descriptor.Name ?? descriptor.Id}");
+                                await Task.Delay(20); // 短暂延迟，确保 UI 更新可见
+                                
+                                if (validationResult.IsValid)
+                                {
+                                    validDescriptors.Add(descriptor);
+                                }
+                                else
+                                {
+                                    _context.Logger?.LogWarning($"插件验证失败: {descriptor.Id}");
+                                    foreach (var error in validationResult.Errors)
+                                    {
+                                        _context.Logger?.LogWarning($"  - {error}");
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // 如果没有验证器，直接使用所有发现的插件
+                            validDescriptors = descriptors;
+                        }
+                        
+                        var validCount = validDescriptors.Count;
+                        _context.Logger?.LogInfo($"验证完成，有效插件: {validCount}/{totalCount}");
+                        
+                        UpdateSplashScreen(65, $"验证完成，有效插件: {validCount}/{totalCount}", null);
+                        await Task.Delay(50);
+                        
+                        // 4. 构建依赖图并排序（65% ~ 70%，占 5%）
+                        UpdateSplashScreen(65, "正在分析插件依赖...", null);
+                        await Task.Delay(50);
+                        
+                        var graph = new DependencyGraph();
+                        foreach (var descriptor in validDescriptors)
+                        {
+                            graph.AddPlugin(descriptor);
+                        }
+                        
+                        foreach (var descriptor in validDescriptors)
+                        {
+                            foreach (var dep in descriptor.Dependencies)
+                            {
+                                // 只添加在有效插件列表中存在的依赖
+                                if (validDescriptors.Any(d => d.Id == dep.PluginId))
+                                {
+                                    graph.AddDependency(descriptor.Id, dep.PluginId);
+                                }
+                                else if (!dep.IsOptional)
+                                {
+                                    _context.Logger?.LogWarning($"插件 {descriptor.Id} 的必需依赖 {dep.PluginId} 未找到");
+                                }
+                            }
+                        }
+                        
+                        // 检查循环依赖
+                        if (graph.HasCycle())
+                        {
+                            _context.Logger?.LogError("检测到插件循环依赖");
+                            UpdateSplashScreen(90, "插件依赖错误：检测到循环依赖", null);
+                            throw new InvalidOperationException("插件依赖图中存在循环依赖");
+                        }
+                        
+                        // 拓扑排序，获取按依赖顺序排列的插件列表
+                        var sortedDescriptors = graph.TopologicalSort();
+                        var sortedCount = sortedDescriptors.Count;
+                        
+                        _context.Logger?.LogInfo($"依赖分析完成，将按顺序加载 {sortedCount} 个插件");
+                        
+                        UpdateSplashScreen(70, $"依赖分析完成，准备加载 {sortedCount} 个插件...", null);
+                        await Task.Delay(50);
+                        
+                        // 5. 按依赖顺序加载插件（70% ~ 90%，占 20%，根据插件数量分配）
+                        var loadedCount = 0;
+                        
+                        if (sortedCount > 0)
+                        {
+                            // 逐个加载插件，这样可以报告详细进度
+                            for (int i = 0; i < sortedDescriptors.Count; i++)
+                            {
+                                var descriptor = sortedDescriptors[i];
+                                var currentIndex = i + 1;
+                                
+                                // 计算加载进度：70% ~ 90%
+                                var loadProgress = 70 + (currentIndex * 20.0 / sortedCount);
+                                UpdateSplashScreen(loadProgress, $"正在加载插件 ({currentIndex}/{sortedCount})...", $"插件: {descriptor.Name ?? descriptor.Id}");
+                                await Task.Delay(30); // 短暂延迟，确保 UI 更新可见
+                                
+                                try
+                                {
+                                    // 尝试加载插件（使用路径）
+                                    if (!string.IsNullOrEmpty(descriptor.AssemblyPath) && File.Exists(descriptor.AssemblyPath))
+                                    {
+                                        await pluginHost.LoadPluginAsync(descriptor.AssemblyPath);
+                                        loadedCount++;
+                                        
+                                        _context.Logger?.LogInfo($"成功加载插件 ({currentIndex}/{sortedCount}): {descriptor.Name ?? descriptor.Id}");
+                                    }
+                                    else
+                                    {
+                                        _context.Logger?.LogWarning($"插件程序集路径无效或不存在: {descriptor.AssemblyPath}");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _context.Logger?.LogError($"加载插件失败 ({currentIndex}/{sortedCount}): {descriptor.Name ?? descriptor.Id}, 错误: {ex.Message}", ex);
+                                    // 继续加载下一个插件（即使某个插件失败，也要尝试加载其他插件）
+                                }
+                            }
+                            
+                            // 获取最终加载的插件列表（可能与尝试加载的数量不同，因为加载可能失败）
+                            loadedCount = pluginHost.LoadedPlugins.Count;
+                        }
+                        
+                        _context.Logger?.LogInfo($"插件加载完成，成功加载: {loadedCount}/{sortedCount}");
+                        
+                        UpdateSplashScreen(90, $"插件加载完成，已加载 {loadedCount}/{sortedCount} 个插件", null);
+                        await Task.Delay(50);
+                    }
+                }
 
                 // 获取已加载的插件列表
                 var loadedPlugins = pluginHost.LoadedPlugins;
-                var loadedCount = loadedPlugins.Count;
+                // ⭐ 使用插件宿主中实际加载的插件数量（避免变量名冲突）
+                var finalLoadedCount = loadedPlugins.Count;
 
-                _context.SetData("LoadedPlugins", loadedCount);
+                // 保存加载结果到 BootstrapContext（供其他代码使用）
+                _context.SetData("PluginDirectory", pluginDirectory);
+                _context.SetData("LoadedPlugins", finalLoadedCount);
                 _context.SetData("PluginList", loadedPlugins.Select(p => new
                 {
                     Id = p.Id,
@@ -342,22 +474,22 @@ namespace Astra.Bootstrap.Services
                     Version = p.Version
                 }).ToList());
 
-                if (loadedCount > 0)
+                if (finalLoadedCount > 0)
                 {
                     var pluginNames = string.Join(", ", loadedPlugins.Select(p => p.Name));
-                    _context.Logger?.LogInfo($"成功加载 {loadedCount} 个插件: {pluginNames}");
-                    UpdateSplashScreen(99, $"已加载 {loadedCount} 个插件", null);
+                    _context.Logger?.LogInfo($"成功加载 {finalLoadedCount} 个插件: {pluginNames}");
+                    // 进度已在上面更新到 90%
                 }
                 else
                 {
-                    _context.Logger?.LogWarning("未成功加载任何插件");
-                    UpdateSplashScreen(99, "未成功加载插件", null);
+                    _context.Logger?.LogInfo("未发现插件或未成功加载插件");
+                    // 进度已在上面更新到 90%
                 }
             }
             catch (Exception ex)
             {
                 _context.Logger?.LogError($"加载插件时发生错误：{ex.Message}", ex);
-                UpdateSplashScreen(99, $"插件加载失败: {ex.Message}", null);
+                UpdateSplashScreen(90, $"插件加载失败: {ex.Message}", null);
                 // 非关键错误，不影响启动流程
             }
         }

@@ -49,6 +49,7 @@ namespace NavStack.Services
                 };
 
                 var registration = _configuration.GetPageRegistration(pageKey);
+
                 if (registration == null)
                 {
                     throw new InvalidOperationException($"Page '{pageKey}' not registered");

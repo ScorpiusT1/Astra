@@ -72,64 +72,30 @@ namespace Astra.Core.Plugins.Host
 		/// 使用 Microsoft.Extensions.DependencyInjection 的 <see cref="IServiceCollection"/> 创建默认宿主。
 		/// 通过 <see cref="ServiceCollectionAdapter"/> 适配到本框架的 <see cref="IServiceRegistry"/>，
 		/// 并在未显式注册的情况下补齐必要的核心服务（Logging/Config/Discovery/Loading 等）。
+		/// 
+		/// ⭐ 重要：必须传入主应用的 ServiceProvider，确保插件系统和主应用使用同一个 ServiceProvider 实例。
+		/// 这样可以保证单例服务（如 IDeviceManager、ILogger 等）在插件和主应用中是同一个实例。
 		/// </summary>
 		/// <param name="services">服务集合</param>
 		/// <param name="config">宿主配置</param>
-		/// <param name="externalServiceProvider">可选的外部 ServiceProvider，如果提供，将确保单例服务共享</param>
-		public static IPluginHost CreateDefaultHost(IServiceCollection services, HostConfiguration config, IServiceProvider externalServiceProvider = null)
+		/// <param name="externalServiceProvider">主应用的 ServiceProvider（必需，不能为 null）</param>
+		/// <exception cref="ArgumentNullException">当 externalServiceProvider 为 null 时抛出</exception>
+		public static IPluginHost CreateDefaultHost(IServiceCollection services, HostConfiguration config, IServiceProvider externalServiceProvider)
 		{
-			// ⭐ 如果提供了外部 ServiceProvider，使用它创建适配器（确保单例共享）
-			// 否则，适配器会构建自己的 ServiceProvider
-			var registry = externalServiceProvider != null
-				? new ServiceCollectionAdapter(services, externalServiceProvider)
-				: new ServiceCollectionAdapter(services);
+			if (externalServiceProvider == null)
+			{
+				throw new ArgumentNullException(nameof(externalServiceProvider), "externalServiceProvider 不能为 null。插件系统必须使用主应用的 ServiceProvider，不能创建独立的 ServiceProvider。");
+			}
 
-			// 确保必要基础服务存在（若外部未注册，则补齐）
-			// 注意：在 IServiceCollection 路径下，IServiceScopeFactory 由微软 DI 提供，这里不再强行注册自定义实现
-			if (registry.TryResolve<Microsoft.Extensions.Configuration.IConfiguration>() == null)
-			{
-				var configurationRoot = ConfigurationProviderRegistration.BuildDefaultConfiguration();
-				registry.RegisterSingleton<Microsoft.Extensions.Configuration.IConfiguration>(configurationRoot);
-			}
-			if (registry.TryResolve<IMessageBus>() == null) registry.RegisterSingleton<IMessageBus, MessageBus>();
-			if (registry.TryResolve<IPermissionManager>() == null) registry.RegisterSingleton<IPermissionManager, PermissionManager>();
-			if (registry.TryResolve<IConfigurationStore>() == null) registry.RegisterSingleton<IConfigurationStore>(new ConfigurationStore());
-			if (registry.TryResolve<IErrorLogger>() == null) registry.RegisterSingleton<IErrorLogger>(new FileErrorLogger("plugin-system.log"));
-			if (registry.TryResolve<IExceptionHandler>() == null)
-			{
-				var eh = new ExceptionHandler(registry.Resolve<IErrorLogger>());
-				registry.RegisterSingleton<IExceptionHandler>(eh);
-			}
-			if (registry.TryResolve<IHealthCheckService>() == null)
-			{
-				var h = new HealthCheckService(registry.Resolve<IErrorLogger>());
-				registry.RegisterSingleton<IHealthCheckService>(h);
-			}
-			if (registry.TryResolve<ISelfHealingService>() == null)
-			{
-				var sh = new SelfHealingService(registry.Resolve<IErrorLogger>(), registry.Resolve<IHealthCheckService>());
-				registry.RegisterSingleton<ISelfHealingService>(sh);
-			}
-			if (registry.TryResolve<IPluginDiscovery>() == null)
-			{
-				registry.RegisterSingleton<IManifestSerializer>(new XmlManifestSerializer());
-				registry.RegisterSingleton<IManifestSerializer>(new JsonManifestSerializer());
-				registry.RegisterSingleton<IManifestSerializer>(new YamlManifestSerializer());
+			// ⭐ 在创建 ServiceCollectionAdapter 之前，先确保所有插件需要的服务都注册到 IServiceCollection 中
+			// 如果主应用的 ServiceProvider 中还没有这些服务，会注册到 IServiceCollection 中
+			// 这样 ServiceCollectionAdapter 在使用主应用的 ServiceProvider 时，也能找到这些服务
+			EnsurePluginServicesRegistered(services, config, externalServiceProvider);
 
-				var serializers = registry.ResolveAll<IManifestSerializer>();
-				var baseDiscovery = new FileSystemDiscovery(serializers);
-				var discovery = new ParallelPluginDiscovery(baseDiscovery, maxConcurrentDiscoveries: Math.Max(4, config.Performance.MaxConcurrentDiscoveries));
-				registry.RegisterSingleton<IPluginDiscovery>(discovery);
-			}
-			if (registry.TryResolve<IPluginLoader>() == null)
-			{
-				var loader = new HighPerformancePluginLoader(
-					registry.TryResolve<IPerformanceMonitor>(),
-					registry.TryResolve<IMemoryManager>(),
-					maxConcurrentLoads: Math.Max(2, config.Performance.MaxConcurrentLoads));
-				registry.RegisterSingleton<IPluginLoader>(loader);
-			}
-			
+			// ⭐ 必须传入主应用的 ServiceProvider，确保插件系统和主应用使用同一个 ServiceProvider 实例
+			// ServiceCollectionAdapter 不会创建自己的内部 ServiceProvider，直接使用主应用的 ServiceProvider
+			var registry = new ServiceCollectionAdapter(services, externalServiceProvider);
+
 			// 注册验证器（默认规则 + 自定义扩展）
 			if (registry.TryResolve<IPluginValidator>() == null)
 			{
@@ -150,6 +116,25 @@ namespace Astra.Core.Plugins.Host
 				}
 
 				registry.RegisterSingleton<IPluginValidator>(validator);
+			}
+			if (registry.TryResolve<IPluginDiscovery>() == null)
+			{
+				registry.RegisterSingleton<IManifestSerializer>(new XmlManifestSerializer());
+				registry.RegisterSingleton<IManifestSerializer>(new JsonManifestSerializer());
+				registry.RegisterSingleton<IManifestSerializer>(new YamlManifestSerializer());
+
+				var serializers = registry.ResolveAll<IManifestSerializer>();
+				var baseDiscovery = new FileSystemDiscovery(serializers);
+				var discovery = new ParallelPluginDiscovery(baseDiscovery, maxConcurrentDiscoveries: Math.Max(4, config.Performance.MaxConcurrentDiscoveries));
+				registry.RegisterSingleton<IPluginDiscovery>(discovery);
+			}
+			if (registry.TryResolve<IPluginLoader>() == null)
+			{
+				var loader = new HighPerformancePluginLoader(
+					registry.TryResolve<IPerformanceMonitor>(),
+					registry.TryResolve<IMemoryManager>(),
+					maxConcurrentLoads: Math.Max(2, config.Performance.MaxConcurrentLoads));
+				registry.RegisterSingleton<IPluginLoader>(loader);
 			}
 
 			var perf = CreatePerformanceServices(config.Performance);
@@ -301,6 +286,166 @@ namespace Astra.Core.Plugins.Host
             
             return CreateDefaultHost(config);
         }
+
+		/// <summary>
+		/// 确保所有插件需要的服务都注册到 IServiceCollection 中
+		/// ⭐ 在创建 ServiceCollectionAdapter 之前调用，确保插件系统在服务创建阶段就能正常工作
+		/// 
+		/// ⭐ 改进：优先从主应用的 ServiceProvider 中查找服务，如果存在则复用（确保单例共享），
+		/// 如果不存在则注册到 IServiceCollection 中。
+		/// </summary>
+		private static void EnsurePluginServicesRegistered(IServiceCollection services, HostConfiguration config, IServiceProvider externalServiceProvider)
+		{
+			// 检查服务是否已在 IServiceCollection 中注册
+			bool IsServiceRegistered<T>() => services.Any(s => s.ServiceType == typeof(T));
+
+			// 尝试从主应用的 ServiceProvider 中解析服务（如果存在则复用，确保单例共享）
+			T TryResolveFromExternal<T>() where T : class
+			{
+				if (externalServiceProvider != null)
+				{
+					try
+					{
+						return externalServiceProvider.GetService<T>();
+					}
+					catch
+					{
+						return null;
+					}
+				}
+				return null;
+			}
+
+			// 确保 IConfiguration 存在
+			if (!IsServiceRegistered<Microsoft.Extensions.Configuration.IConfiguration>())
+			{
+				var existing = TryResolveFromExternal<Microsoft.Extensions.Configuration.IConfiguration>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					var configurationRoot = ConfigurationProviderRegistration.BuildDefaultConfiguration();
+					services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(configurationRoot);
+				}
+			}
+
+			// 确保 IMessageBus 存在
+			if (!IsServiceRegistered<IMessageBus>())
+			{
+				var existing = TryResolveFromExternal<IMessageBus>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<IMessageBus, MessageBus>();
+				}
+			}
+
+			// 确保 IPermissionManager 存在
+			if (!IsServiceRegistered<IPermissionManager>())
+			{
+				var existing = TryResolveFromExternal<IPermissionManager>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<IPermissionManager, PermissionManager>();
+				}
+			}
+
+			// 确保 IConfigurationStore 存在
+			if (!IsServiceRegistered<IConfigurationStore>())
+			{
+				var existing = TryResolveFromExternal<IConfigurationStore>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<IConfigurationStore>(new ConfigurationStore());
+				}
+			}
+
+			// ⭐ 确保 IErrorLogger 存在（这是关键服务，其他服务依赖它）
+			if (!IsServiceRegistered<IErrorLogger>())
+			{
+				var existing = TryResolveFromExternal<IErrorLogger>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<IErrorLogger>(new FileErrorLogger("plugin-system.log"));
+				}
+			}
+
+			// ⭐ 确保 IExceptionHandler 存在（依赖 IErrorLogger）
+			if (!IsServiceRegistered<IExceptionHandler>())
+			{
+				var existing = TryResolveFromExternal<IExceptionHandler>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<IExceptionHandler>(sp =>
+					{
+						var logger = sp.GetService<IErrorLogger>() ?? new FileErrorLogger("plugin-system.log");
+						return new ExceptionHandler(logger);
+					});
+				}
+			}
+
+			// ⭐ 确保 IHealthCheckService 存在（依赖 IErrorLogger）
+			if (!IsServiceRegistered<IHealthCheckService>())
+			{
+				var existing = TryResolveFromExternal<IHealthCheckService>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<IHealthCheckService>(sp =>
+					{
+						var logger = sp.GetService<IErrorLogger>() ?? new FileErrorLogger("plugin-system.log");
+						return new HealthCheckService(logger);
+					});
+				}
+			}
+
+			// ⭐ 确保 ISelfHealingService 存在（依赖 IErrorLogger 和 IHealthCheckService）
+			if (!IsServiceRegistered<ISelfHealingService>())
+			{
+				var existing = TryResolveFromExternal<ISelfHealingService>();
+				if (existing != null)
+				{
+					services.AddSingleton(existing);
+				}
+				else
+				{
+					services.AddSingleton<ISelfHealingService>(sp =>
+					{
+						var logger = sp.GetService<IErrorLogger>() ?? new FileErrorLogger("plugin-system.log");
+						var healthCheck = sp.GetService<IHealthCheckService>();
+						if (healthCheck == null)
+						{
+							healthCheck = new HealthCheckService(logger);
+						}
+						return new SelfHealingService(logger, healthCheck);
+					});
+				}
+			}
+		}
 
         /// <summary>
         /// 构建带有核心服务注册的 <see cref="ServiceRegistry"/>。

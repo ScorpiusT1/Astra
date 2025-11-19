@@ -1,10 +1,4 @@
-﻿using Astra.Bootstrap.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Microsoft.Extensions.DependencyInjection;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -102,10 +96,6 @@ namespace Astra.Bootstrap.Services
                 TotalTime = source.TotalTime,
                 FatalException = source.FatalException
             };
-
-            // 复制任务列表
-            result.AddCompletedTasks(source.CompletedTasks);
-            result.AddFailedTasks(source.FailedTasks);
 
             return result;
         }

@@ -101,6 +101,7 @@ namespace Astra.Plugins.DataAcquisition
                     if (initResult)
                     {
                         var registerResult = _deviceManager.RegisterDevice(device);
+
                         if (registerResult.Success)
                         {
                             successCount++;
@@ -253,17 +254,18 @@ namespace Astra.Plugins.DataAcquisition
         {
             try
             {
+                _devices?.Clear();   
                 // 查找配置文件
                 var configFileName = "Astra.Plugins.DataAcquisition.config.json";
                 var configPath = Path.Combine(_context.PluginDirectory, configFileName);
 
-                // 如果插件目录中没有，尝试从 Configs/Devices 目录加载
+                // 如果插件目录中没有，尝试从 Configs/Configs 目录加载
                 if (!File.Exists(configPath))
                 {
                     var binPath = Path.GetDirectoryName(_context.PluginDirectory);
                     if (binPath != null)
                     {
-                        var alternativePath = Path.Combine(binPath, "Configs", "Devices", configFileName);
+                        var alternativePath = Path.Combine(binPath, "Configs", "Configs", configFileName);
                         if (File.Exists(alternativePath))
                         {
                             configPath = alternativePath;
@@ -284,30 +286,19 @@ namespace Astra.Plugins.DataAcquisition
                     PropertyNameCaseInsensitive = true
                 });
 
-                if (configData?.Devices == null || configData.Devices.Count == 0)
+                if (configData?.Configs == null || configData.Configs.Count == 0)
                 {
                     _logger?.Warn($"[{Name}] 配置文件中没有设备配置", LogCategory.System);
                     return;
                 }
 
                 // 创建设备实例
-                foreach (var deviceConfig in configData.Devices)
+                foreach (var config in configData.Configs)
                 {
                     try
-                    {
-                        var config = new DataAcquisitionConfig
-                        {
-                            DeviceName = deviceConfig.DeviceName ?? $"采集卡设备_{_devices.Count + 1}",
-                            SerialNumber = deviceConfig.SN ?? string.Empty,
-                            SampleRate = deviceConfig.SampleRate > 0 ? deviceConfig.SampleRate : 51200,
-                            ChannelCount = deviceConfig.ChannelCount > 0 ? deviceConfig.ChannelCount : 8,
-                            BufferSize = deviceConfig.BufferSize > 0 ? deviceConfig.BufferSize : 8192,
-                            AutoStart = deviceConfig.AutoStart,
-                            IsEnabled = true
-                        };
-
+                    {                       
                         var device = new DataAcquisitionDevice(config, _messageBus, _logger);
-                        _devices.Add(device);
+                        _devices?.Add(device);
 
                         _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName}", LogCategory.Device);
                     }
@@ -325,18 +316,7 @@ namespace Astra.Plugins.DataAcquisition
 
         private class DeviceConfigData
         {
-            public List<DeviceConfigItem> Devices { get; set; } = new();
+            public List<DataAcquisitionConfig> Configs { get; set; } = new();
         }
-
-        private class DeviceConfigItem
-        {
-            public string DeviceName { get; set; }
-            public string SN { get; set; }
-            public int SampleRate { get; set; }
-            public int ChannelCount { get; set; }
-            public int BufferSize { get; set; }
-            public bool AutoStart { get; set; } = true;
-        }
-
     }
 }

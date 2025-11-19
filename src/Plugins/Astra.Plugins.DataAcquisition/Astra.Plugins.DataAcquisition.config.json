@@ -1,20 +1,24 @@
 {
-  "Devices": [
+  "Configs": [
     {
       "DeviceName": "采集卡设备1",
-      "SN": "DLXX5P10",
+      "SerialNumber": "DLXX5P10",
       "SampleRate": 51200,
       "ChannelCount": 8,
       "BufferSize": 8192,
-      "AutoStart": true
+      "AutoStart": false,
+      "GroupId": "G1",
+      "SlotId": "S1"
     },
     {
       "DeviceName": "采集卡设备2",
-      "SN": "DLXX5P11",
+      "SerialNumber": "DLXX5P11",
       "SampleRate": 51200,
       "ChannelCount": 8,
       "BufferSize": 51200,
-      "AutoStart": false
+      "AutoStart": false,
+      "GroupId": "G1",
+      "SlotId": "S2"
     }
   ]
 }

@@ -29,8 +29,11 @@ namespace Astra.Core.Plugins.Services.Adapters
 
 		/// <summary>
 		/// 使用 IServiceCollection 创建适配器（延迟构建 ServiceProvider，只在需要时构建）
-		/// ⭐ 优化：不在构造函数中立即构建，避免不必要的重复构建
+		/// ⭐ 注意：此构造函数已废弃，因为插件系统必须使用主应用的 ServiceProvider，不能创建独立的 ServiceProvider。
+		/// 请使用 ServiceCollectionAdapter(IServiceCollection services, IServiceProvider externalServiceProvider) 构造函数。
 		/// </summary>
+		/// <param name="services">服务集合</param>
+		[Obsolete("此构造函数已废弃。插件系统必须使用主应用的 ServiceProvider，不能创建独立的 ServiceProvider。请使用 ServiceCollectionAdapter(IServiceCollection services, IServiceProvider externalServiceProvider) 构造函数。")]
 		public ServiceCollectionAdapter(IServiceCollection services)
 		{
 			_services = services ?? throw new ArgumentNullException(nameof(services));

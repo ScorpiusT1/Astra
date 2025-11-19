@@ -49,7 +49,7 @@ namespace Astra
         private readonly ThemeInitializationService _themeService;
         private readonly SingleInstanceService _singleInstanceService;
         private ApplicationStartupService _startupService;
-		private ILogger<App> _logger = NullLogger<App>.Instance;
+        private ILogger<App> _logger = NullLogger<App>.Instance;
 
         public App()
         {
@@ -80,185 +80,74 @@ namespace Astra
             _themeService.Initialize();
 
             // 异步启动应用程序
+            // ⭐ 启动流程：启动 SplashScreen → 注册服务 → 执行任务 → 构建 ServiceProvider → 加载插件 → 创建主窗口 → 显示主窗口
             Dispatcher.InvokeAsync(async () =>
             {
-                _startupService = new ApplicationStartupService(Dispatcher, Shutdown);
-                ServiceProvider = await _startupService.StartAsync();
-                
-                // ⭐ 创建主窗口（原 MainWindowCreationTask 的功能）
-                await CreateMainWindowAsync();
-
-				// 初始化日志
-				try
-				{
-					var resolvedLogger = ServiceProvider.GetService<ILogger<App>>();
-
-					if (resolvedLogger != null)
-					{
-						_logger = resolvedLogger;
-					}
-				}
-				catch { }
-
-				// 启动健康检查与遥测记录
-				try
-				{
-					var health = ServiceProvider.GetService<IHealthCheckService>() ?? new BasicHealthCheckService(ServiceProvider);
-					var telemetry = ServiceProvider.GetService<Astra.Services.Monitoring.ITelemetryService>();
-					var result = await health.CheckAsync();
-					telemetry?.TrackEvent("Startup.Health", new { result.IsHealthy, result.Message });
-
-					if (!result.IsHealthy)
-					{
-						ToastHelper.ShowError($"启动健康检查失败: {result.Message}");
-					}
-				}
-				catch (Exception hx)
-				{
-					_logger.LogError(hx, "[App] 启动健康检查失败");
-				}
-
-				// ⭐ 迁移插件注册的设备到主应用的 DeviceManager
-				try
-				{
-					//await MigratePluginDevicesToMainDeviceManagerAsync();
-				}
-				catch (Exception ex)
-				{
-					_logger.LogError(ex, "[App] 迁移插件设备失败");
-				}
-
-                // 启动完成后注册主窗口关闭事件
-                if (MainWindow != null)
+                try
                 {
-                    MainWindow.Closing += OnMainWindowClosing;
+                    _startupService = new ApplicationStartupService(Dispatcher, Shutdown);
+                    ServiceProvider = await _startupService.StartAsync();
+
+                    // 初始化日志（如果之前未初始化）
+                    if (_logger is NullLogger<App> || _logger == null)
+                    {
+                        try
+                        {
+                            var resolvedLogger = ServiceProvider?.GetService<ILogger<App>>();
+                            if (resolvedLogger != null)
+                            {
+                                _logger = resolvedLogger;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // 日志初始化失败不影响启动，使用默认日志
+                            System.Diagnostics.Debug.WriteLine($"[App] 日志初始化失败: {ex.Message}");
+                        }
+                    }
+
+                    // 启动健康检查与遥测记录
+                    if (ServiceProvider != null)
+                    {
+                        try
+                        {
+                            var health = ServiceProvider.GetService<IHealthCheckService>() 
+                                ?? new BasicHealthCheckService(ServiceProvider);
+                            var telemetry = ServiceProvider.GetService<ITelemetryService>();
+                            var result = await health.CheckAsync();
+                            telemetry?.TrackEvent("Startup.Health", new { result.IsHealthy, result.Message });
+
+                            if (!result.IsHealthy)
+                            {
+                                ToastHelper.ShowError($"启动健康检查失败: {result.Message}");
+                            }
+                        }
+                        catch (Exception hx)
+                        {
+                            _logger.LogError(hx, "[App] 启动健康检查失败");
+                        }
+                    }
+
+                    // 启动完成后注册主窗口关闭事件
+                    // ⭐ 主窗口已在 ApplicationStartupService 中创建，直接使用 Application.Current.MainWindow
+                    if (Application.Current.MainWindow != null)
+                    {
+                        Application.Current.MainWindow.Closing += OnMainWindowClosing;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[App] 启动过程中发生错误");
+                    ModernMessageBox.Show(
+                        "启动失败",
+                        $"应用程序启动时发生错误：\n\n{ex.Message}",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    Shutdown(-1);
                 }
             });
         }
 
-        /// <summary>
-        /// 检查并迁移插件注册的设备到主应用的 DeviceManager（如果需要）
-        /// 
-        /// ⚠️ 为什么可能需要迁移？
-        /// 1. 插件加载时，App.ServiceProvider 还没有设置（插件加载是在启动任务中进行的）
-        /// 2. 插件在 OnEnableAsync 时会尝试从 App.ServiceProvider 获取 DeviceManager
-        /// 3. 如果 App.ServiceProvider 此时为 null，插件会使用 PluginContext 的 DeviceManager
-        /// 4. 这会导致插件系统和主应用使用不同的 DeviceManager 实例
-        /// 
-        /// ✅ 架构改进（已完成）：
-        /// - ServiceCollectionAdapter 现在支持接受已构建的 IServiceProvider（如果可用）
-        /// - PluginHostFactory.CreateDefaultHost 现在可以接受可选的 externalServiceProvider 参数
-        /// - 插件在 OnEnableAsync 时会尝试从 App.ServiceProvider 获取 DeviceManager
-        /// 
-        /// 💡 此方法作为后备方案：
-        /// - 如果插件已经成功使用主应用的 DeviceManager，则不需要迁移
-        /// - 如果插件使用了 PluginContext 的 DeviceManager，则需要迁移设备
-        /// </summary>
-        private async Task MigratePluginDevicesToMainDeviceManagerAsync()
-        {
-            try
-            {
-                // 获取主应用的 DeviceManager
-                var mainDeviceManager = ServiceProvider?.GetService<Astra.Core.Devices.Management.IDeviceManager>();
-                if (mainDeviceManager == null)
-                {
-                    return;
-                }
-                
-                var mainDeviceCount = mainDeviceManager.GetDeviceCount();
-                
-                // 如果主应用已经有设备，说明插件已经成功使用主应用的 DeviceManager，不需要迁移
-                if (mainDeviceCount > 0)
-                {
-                    return;
-                }
-                
-                // 获取插件宿主
-                var pluginHost = ServiceProvider?.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
-                if (pluginHost == null)
-                {
-                    return;
-                }
-                
-                // 遍历所有已加载的插件，检查是否有设备需要迁移
-                int totalDevicesToMigrate = 0;
-                foreach (var plugin in pluginHost.LoadedPlugins)
-                {
-                    try
-                    {
-                        // 尝试通过反射获取插件内部的设备列表
-                        var pluginType = plugin.GetType();
-                        var devicesField = pluginType.GetField("_devices", 
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        
-                        if (devicesField != null)
-                        {
-                            var devices = devicesField.GetValue(plugin) as System.Collections.Generic.IEnumerable<Astra.Core.Devices.Interfaces.IDevice>;
-                            if (devices != null)
-                            {
-                                foreach (var device in devices)
-                                {
-                                    if (device != null && !mainDeviceManager.DeviceExists(device.DeviceId))
-                                    {
-                                        totalDevicesToMigrate++;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        // 静默处理检查插件时的错误
-                    }
-                }
-                
-                // 如果没有设备需要迁移，直接返回
-                if (totalDevicesToMigrate == 0)
-                {
-                    return;
-                }
-                
-                // 执行迁移
-                int migratedCount = 0;
-                foreach (var plugin in pluginHost.LoadedPlugins)
-                {
-                    try
-                    {
-                        var pluginType = plugin.GetType();
-                        var devicesField = pluginType.GetField("_devices", 
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        
-                        if (devicesField != null)
-                        {
-                            var devices = devicesField.GetValue(plugin) as System.Collections.Generic.IEnumerable<Astra.Core.Devices.Interfaces.IDevice>;
-                            if (devices != null)
-                            {
-                                foreach (var device in devices)
-                                {
-                                    if (device != null && !mainDeviceManager.DeviceExists(device.DeviceId))
-                                    {
-                                        var result = mainDeviceManager.RegisterDevice(device);
-                                        if (result.Success)
-                                        {
-                                            migratedCount++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        // 静默处理迁移插件设备时的错误
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "[App] 检查/迁移插件设备时发生异常");
-                // 不抛出异常，避免影响应用启动
-            }
-        }
 
         protected override void OnExit(ExitEventArgs e)
         {
@@ -280,12 +169,16 @@ namespace Astra
                 }
 
                 // 释放 ServiceProvider
-                if (ServiceProvider is IDisposable disposable)
+                if (ServiceProvider is IAsyncDisposable disposable)
                 {
                     try
                     {
-                        disposable.Dispose();
-                        _logger.LogDebug("ServiceProvider 已释放");
+
+                        Task.Run(async () =>
+                        {
+                            await disposable.DisposeAsync().ConfigureAwait(false);
+
+                        }).Wait(TimeSpan.FromSeconds(3)); // 等待最多3秒，然后继续退出
                     }
                     catch (Exception ex)
                     {
@@ -295,17 +188,6 @@ namespace Astra
                     {
                         ServiceProvider = null;
                     }
-                }
-
-                // 释放单实例服务资源
-                try
-                {
-                    _singleInstanceService?.Dispose();
-                    _logger.LogDebug("单实例服务已释放");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "释放单实例服务时出错");
                 }
 
                 _logger.LogInformation("应用程序退出完成");
@@ -419,7 +301,7 @@ namespace Astra
                 // 这样可以确保即使有后台任务，程序也能完全退出
                 Task.Run(async () =>
                 {
-                    await Task.Delay(500); 
+                    await Task.Delay(500);
 
                     if (!Environment.HasShutdownStarted)
                     {
@@ -541,7 +423,7 @@ namespace Astra
                         var stopTask = healthService.StopAsync();
                         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(1));
                         var completedTask = await Task.WhenAny(stopTask, timeoutTask).ConfigureAwait(false);
-                        
+
                         if (completedTask == timeoutTask)
                         {
                             _logger.LogWarning("停止健康检查服务超时，继续关闭");
@@ -566,7 +448,7 @@ namespace Astra
                     {
                         var plugins = pluginHost.LoadedPlugins.ToList();
                         _logger.LogInformation("快速卸载 {Count} 个插件", plugins.Count);
-                        
+
                         // 尝试同步卸载插件，但设置超时
                         var unloadTasks = new List<Task>();
                         foreach (var plugin in plugins)
@@ -590,7 +472,7 @@ namespace Astra
                                 var allUnloadTask = Task.WhenAll(unloadTasks);
                                 var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2));
                                 var completedTask = await Task.WhenAny(allUnloadTask, timeoutTask).ConfigureAwait(false);
-                                
+
                                 if (completedTask == timeoutTask)
                                 {
                                     _logger.LogWarning("插件卸载超时，继续关闭应用程序");
@@ -623,71 +505,6 @@ namespace Astra
 
         private bool _isCleaningUp = false;
 
-        /// <summary>
-        /// 创建主窗口（原 MainWindowCreationTask 的功能）
-        /// </summary>
-        private async Task CreateMainWindowAsync()
-        {
-            try
-            {
-                if (ServiceProvider == null)
-                {
-                    return;
-                }
-
-                // 在 UI 线程创建窗口
-                MainView mainWindow = null;
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    try
-                    {
-                        mainWindow = ServiceProvider.GetRequiredService<MainView>();
-
-                        // ⭐ 验证 DataContext 是否正确设置
-                        if (mainWindow != null)
-                        {
-                            var dataContext = mainWindow.DataContext;
-
-                            // 如果 DataContext 为 null，尝试手动设置
-                            if (dataContext == null)
-                            {
-                                try
-                                {
-                                    var viewModel = ServiceProvider.GetService<MainViewViewModel>();
-                                    if (viewModel != null)
-                                    {
-                                        mainWindow.DataContext = viewModel;
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger?.LogError(ex, "[App] 手动设置 DataContext 失败");
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError(ex, "[App] 创建主窗口时出错");
-                        throw;
-                    }
-                });
-
-                if (mainWindow == null)
-                {
-                    throw new InvalidOperationException("无法创建主窗口 MainView");
-                }
-
-                // ⭐ 注意：不要在这里设置 Application.Current.MainWindow
-                // 因为窗口还没有显示，如果此时设置，其他代码尝试设置 Owner 时会报错
-                // Application.Current.MainWindow 会在 ShowMainWindow 中设置（在 Show() 之后）
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "[App] 创建主窗口失败");
-                throw;
-            }
-        }
     }
 
 }
