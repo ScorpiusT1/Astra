@@ -507,7 +507,7 @@
                                 <DataGridTextColumn Header="用户名"
                                                     Binding="{Binding Username}"
                                                     Width="2*"
-                                                    IsReadOnly="True"
+                                                    IsReadOnly="False"
                                                     MinWidth="140">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
@@ -567,6 +567,7 @@
                                 </DataGridTemplateColumn>
 
                                 <DataGridTextColumn Header="创建时间"
+                                                    IsReadOnly="True"
                                                     Binding="{Binding CreateTime, StringFormat='yyyy-MM-dd HH:mm'}"
                                                     Width="1.8*"
                                                     MinWidth="140">
@@ -583,6 +584,7 @@
                                 </DataGridTextColumn>
 
                                 <DataGridTextColumn Header="最后修改"
+                                                    IsReadOnly="True"
                                                     Binding="{Binding LastModifyTime, StringFormat='yyyy-MM-dd HH:mm'}"
                                                     Width="1.8*"
                                                     MinWidth="140">

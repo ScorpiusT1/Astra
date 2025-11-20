@@ -139,6 +139,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             if (_device != null)
             {
                 CurrentState = _device.GetState();
+                
                 StatusMessage = CurrentState switch
                 {
                     AcquisitionState.Idle => "空闲",

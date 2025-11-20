@@ -34,6 +34,8 @@
     <Color x:Key="SecondaryTextColor">#757575</Color>
     <Color x:Key="ThirdlyTextColor">#9E9E9E</Color>
     <Color x:Key="ReverseTextColor">#FFFFFF</Color>
+    <Color x:Key="TextIconColor">White</Color>
+
 
     <!-- 边框色 -->
     <Color x:Key="BorderColor">#E0E0E0</Color>
@@ -65,8 +67,8 @@
     <Color x:Key="ShadowColor">#000000</Color>
 
     <Color x:Key="DarkMaskColor">#20000000</Color>
-    
 
+    <Color x:Key="DarkOpacityColor">#40000000</Color>
 
 
 

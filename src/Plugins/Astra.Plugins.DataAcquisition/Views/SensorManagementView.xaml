@@ -1,0 +1,356 @@
+<UserControl x:Class="Astra.Plugins.DataAcquisition.Views.SensorManagementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
+             xmlns:configs="clr-namespace:Astra.Plugins.DataAcquisition.Configs"
+             xmlns:converters="clr-namespace:Astra.UI.Converters;assembly=Astra.UI"
+             xmlns:commons="clr-namespace:Astra.Plugins.DataAcquisition.Commons"
+             mc:Ignorable="d"
+             d:DesignHeight="600"
+             d:DesignWidth="1000"
+             d:DataContext="{d:DesignInstance Type=viewmodels:SensorManagementViewModel}">
+    <UserControl.Resources>
+        <Style TargetType="TextBox"
+               BasedOn="{StaticResource DefaultModernTextBoxStyle}" />
+        <Style TargetType="ComboBox"
+               BasedOn="{StaticResource ModernComboBoxStyle}" />
+        <Style TargetType="Button"
+               BasedOn="{StaticResource PrimaryButtonStyle}" />
+        <Style TargetType="DatePicker"
+               BasedOn="{StaticResource ModernDatePickerStyle}" />
+        <Style TargetType="Calendar"
+               BasedOn="{StaticResource ModernCalendarStyle}" />
+        <Style TargetType="CalendarButton"
+               BasedOn="{StaticResource ModernCalendarButtonStyle}" />
+        <Style TargetType="hc:DatePicker"
+               BasedOn="{StaticResource ModernHandyDatePickerStyle}" />
+        <converters:IsNotNullConverter x:Key="IsNotNullConverter" />
+        <commons:SensorTypeToStringConverter x:Key="SensorTypeToStringConverter" />
+    </UserControl.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题 -->
+        <Grid Grid.Row="0"
+              Margin="0,0,0,20">
+            <TextBlock Text="传感器配置"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- 主内容区域：传感器详情 -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Text="传感器详情"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Margin="0,0,0,20" />
+
+                <!-- 传感器名称 -->
+                <Grid Grid.Row="1"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="传感器名称:"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.SensorName, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="请输入传感器名称" />
+                </Grid>
+
+                <!-- 传感器类型 -->
+                <Grid Grid.Row="2"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="传感器类型:"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding SensorTypeOptions}"
+                              SelectedItem="{Binding SelectedSensor.SensorType, UpdateSourceTrigger=PropertyChanged}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource SensorTypeToStringConverter}}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <!-- 制造商 -->
+                <Grid Grid.Row="3"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="制造商:"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.Manufacturer, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="请输入制造商" />
+                </Grid>
+
+                <!-- 型号 -->
+                <Grid Grid.Row="4"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="型号:"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.Model, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="请输入型号" />
+                </Grid>
+
+                <!-- 序列号 -->
+                <Grid Grid.Row="5"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="序列号:"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.SerialNumber, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="请输入序列号" />
+                </Grid>
+
+                <!-- 灵敏度 -->
+                <Grid Grid.Row="6"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="灵敏度:"
+                               VerticalAlignment="Center" />
+                    <Grid Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="120" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding SelectedSensor.Sensitivity, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox Grid.Column="2"
+                                  x:Name="SensitivityUnitComboBox"
+                                  ItemsSource="{Binding SensitivityUnitOptions}"
+                                  SelectedItem="{Binding SelectedSensor.SensitivityUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  Text="{Binding SelectedSensor.SensitivityUnit,Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            
+                                  hc:InfoElement.Placeholder="单位" />
+                    </Grid>
+                </Grid>
+
+                <!-- 物理单位 -->
+                <Grid Grid.Row="7"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="物理单位:"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              x:Name="PhysicalUnitComboBox"
+                              ItemsSource="{Binding PhysicalUnitOptions}"
+                              SelectedItem="{Binding SelectedSensor.PhysicalUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             
+                              Text="{Binding SelectedSensor.PhysicalUnit,Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              hc:InfoElement.Placeholder="请选择物理单位" />
+                </Grid>
+
+                <!-- 测量范围 -->
+                <Grid Grid.Row="8"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="测量范围:"
+                               VerticalAlignment="Center" />
+                    <Grid Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding SelectedSensor.MeasurementRangeMin, UpdateSourceTrigger=PropertyChanged}"
+                                 hc:InfoElement.Placeholder="最小值" />
+                        <TextBlock Grid.Column="1"
+                                   Text="~"
+                                   Margin="8,0"
+                                   VerticalAlignment="Center" />
+                        <TextBox Grid.Column="2"
+                                 Text="{Binding SelectedSensor.MeasurementRangeMax, UpdateSourceTrigger=PropertyChanged}"
+                                 hc:InfoElement.Placeholder="最大值" />
+                    </Grid>
+                </Grid>
+
+                <!-- 频率范围 -->
+                <Grid Grid.Row="9"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="频率范围 (Hz):"
+                               VerticalAlignment="Center" />
+                    <Grid Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding SelectedSensor.FrequencyRangeMin, UpdateSourceTrigger=PropertyChanged}"
+                                 hc:InfoElement.Placeholder="最小值" />
+                        <TextBlock Grid.Column="1"
+                                   Text="~"
+                                   Margin="8,0"
+                                   VerticalAlignment="Center" />
+                        <TextBox Grid.Column="2"
+                                 Text="{Binding SelectedSensor.FrequencyRangeMax, UpdateSourceTrigger=PropertyChanged}"
+                                 hc:InfoElement.Placeholder="最大值" />
+                    </Grid>
+                </Grid>
+
+                <!-- 校准因子 -->
+                <Grid Grid.Row="10"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="校准因子:"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.CalibrationFactor, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+
+                <!-- 校准日期 -->
+                <Grid Grid.Row="11"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="校准日期:"
+                               VerticalAlignment="Center" />
+                    <hc:DatePicker x:Name="CalibrationDatePicker"
+                                   Style="{StaticResource ModernHandyDatePickerStyle}"
+                                   Grid.Column="1"
+                                   SelectedDate="{Binding SelectedSensor.CalibrationDate, UpdateSourceTrigger=PropertyChanged}"
+                                   VerticalAlignment="Center"
+                                   hc:InfoElement.Placeholder="请选择日期">
+                        <hc:DatePicker.Resources>
+                            <!-- CalendarButton 样式 - 确保年份和月份选择器可见 -->
+                            <Style TargetType="CalendarButton"
+                                   BasedOn="{StaticResource ModernCalendarButtonStyle}" />
+                        </hc:DatePicker.Resources>
+                    </hc:DatePicker>
+                </Grid>
+
+                <!-- 下次校准日期 -->
+                <Grid Grid.Row="12"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="下次校准日期:"
+                               VerticalAlignment="Center" />
+                    <hc:DatePicker x:Name="NextCalibrationDatePicker"
+                                   Grid.Column="1"
+                                   Style="{StaticResource ModernHandyDatePickerStyle}"
+                                   SelectedDate="{Binding SelectedSensor.NextCalibrationDate, UpdateSourceTrigger=PropertyChanged}"
+                                   VerticalAlignment="Center"
+                                   hc:InfoElement.Placeholder="请选择日期">
+                        <hc:DatePicker.Resources>
+                            <!-- CalendarButton 样式 - 确保年份和月份选择器可见 -->
+                            <Style TargetType="CalendarButton"
+                                   BasedOn="{StaticResource ModernCalendarButtonStyle}" />
+                        </hc:DatePicker.Resources>
+                    </hc:DatePicker>
+                </Grid>
+
+                <!-- 备注 -->
+                <Grid Grid.Row="13"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="备注:"
+                               VerticalAlignment="Top"
+                               Margin="0,8,0,0" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.Notes, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             MinHeight="60"
+                             hc:InfoElement.Placeholder="请输入备注信息" />
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+
+        <!-- 底部提示 -->
+        <TextBlock Grid.Row="2"
+                   Text="提示：在此管理系统中使用的所有传感器配置。传感器配置可以分配给数据采集设备的通道。"
+                   FontSize="12"
+                   Foreground="{StaticResource SecondaryTextBrush}"
+                   Margin="0,10,0,0"
+                   TextWrapping="Wrap" />
+    </Grid>
+</UserControl>
+

@@ -202,13 +202,49 @@ namespace Astra.ViewModels
             _isRefreshingTree = true;
             try
             {
-                // 保存当前展开状态（按设备类型）
+                // 保存当前展开状态和选中状态
+                var expandedNodeIds = new HashSet<string>();
                 var expandedDeviceTypes = new HashSet<Astra.Core.Devices.DeviceType>();
+                string selectedNodeId = null;
+                bool isSensorManagementExpanded = false;
+
                 foreach (var node in TreeNodes)
                 {
-                    if (node.Tag is Astra.Core.Devices.DeviceType deviceType && node.IsExpanded)
+                    // 保存传感器管理节点的展开状态
+                    if (node.Tag is SensorManagementNodeInfo)
+                    {
+                        isSensorManagementExpanded = node.IsExpanded;
+                        // 保存传感器管理节点下所有子节点的展开状态
+                        foreach (var childNode in node.Children)
+                        {
+                            if (childNode.IsExpanded && !string.IsNullOrEmpty(childNode.NodeId))
+                            {
+                                expandedNodeIds.Add(childNode.NodeId);
+                            }
+                            // 保存当前选中的节点ID
+                            if (ReferenceEquals(SelectedNode, childNode) && !string.IsNullOrEmpty(childNode.NodeId))
+                            {
+                                selectedNodeId = childNode.NodeId;
+                            }
+                        }
+                    }
+                    // 保存设备类型节点的展开状态
+                    else if (node.Tag is Astra.Core.Devices.DeviceType deviceType && node.IsExpanded)
                     {
                         expandedDeviceTypes.Add(deviceType);
+                        // 保存设备类型节点下所有子节点的展开状态
+                        foreach (var childNode in node.Children)
+                        {
+                            if (childNode.IsExpanded && !string.IsNullOrEmpty(childNode.NodeId))
+                            {
+                                expandedNodeIds.Add(childNode.NodeId);
+                            }
+                            // 保存当前选中的节点ID
+                            if (ReferenceEquals(SelectedNode, childNode) && !string.IsNullOrEmpty(childNode.NodeId))
+                            {
+                                selectedNodeId = childNode.NodeId;
+                            }
+                        }
                     }
                 }
 
@@ -218,13 +254,55 @@ namespace Astra.ViewModels
                 // 按设备类型分组构建树（配置来源：ConfigurationManager）
                 BuildConfigTree();
 
-                // 恢复展开状态
+                // 恢复展开状态和选中状态
+                TreeNodeViewModel nodeToSelect = null;
                 foreach (var node in TreeNodes)
                 {
-                    if (node.Tag is Astra.Core.Devices.DeviceType deviceType && expandedDeviceTypes.Contains(deviceType))
+                    // 恢复传感器管理节点的展开状态
+                    if (node.Tag is SensorManagementNodeInfo)
                     {
-                        node.IsExpanded = true;
+                        node.IsExpanded = isSensorManagementExpanded;
+                        // 恢复传感器管理节点下所有子节点的展开状态
+                        foreach (var childNode in node.Children)
+                        {
+                            if (!string.IsNullOrEmpty(childNode.NodeId) && expandedNodeIds.Contains(childNode.NodeId))
+                            {
+                                childNode.IsExpanded = true;
+                            }
+                            // 恢复选中状态
+                            if (!string.IsNullOrEmpty(childNode.NodeId) && childNode.NodeId == selectedNodeId)
+                            {
+                                nodeToSelect = childNode;
+                            }
+                        }
                     }
+                    // 恢复设备类型节点的展开状态
+                    else if (node.Tag is Astra.Core.Devices.DeviceType deviceType)
+                    {
+                        if (expandedDeviceTypes.Contains(deviceType))
+                        {
+                            node.IsExpanded = true;
+                        }
+                        // 恢复设备类型节点下所有子节点的展开状态
+                        foreach (var childNode in node.Children)
+                        {
+                            if (!string.IsNullOrEmpty(childNode.NodeId) && expandedNodeIds.Contains(childNode.NodeId))
+                            {
+                                childNode.IsExpanded = true;
+                            }
+                            // 恢复选中状态
+                            if (!string.IsNullOrEmpty(childNode.NodeId) && childNode.NodeId == selectedNodeId)
+                            {
+                                nodeToSelect = childNode;
+                            }
+                        }
+                    }
+                }
+
+                // 恢复选中状态
+                if (nodeToSelect != null)
+                {
+                    SelectedNode = nodeToSelect;
                 }
             }
             finally
@@ -390,7 +468,43 @@ namespace Astra.ViewModels
                 }
             }
 
-            // 3. 构建树节点
+            // 3. 添加传感器管理节点（作为第一个根节点）
+            var sensorManagementNode = new TreeNodeViewModel
+            {
+                Header = "传感器设备",
+                Icon = "📡",
+                IsExpanded = false,
+                ShowAddButton = true,
+                ShowDeleteButton = false,
+                Tag = SensorManagementNodeInfo.Instance
+            };
+            
+            // 加载所有传感器并添加为子节点
+            var sensors = LoadAllSensors();
+            foreach (var sensor in sensors)
+            {
+                // 使用反射获取传感器属性
+                var sensorType = sensor.GetType();
+                var sensorNameProperty = sensorType.GetProperty("SensorName");
+                var sensorIdProperty = sensorType.GetProperty("SensorId");
+                
+                var sensorName = sensorNameProperty?.GetValue(sensor)?.ToString();
+                var sensorId = sensorIdProperty?.GetValue(sensor)?.ToString();
+                
+                var sensorNode = new TreeNodeViewModel
+                {
+                    Header = sensorName ?? sensorId ?? "未知传感器",
+                    Icon = "📡",
+                    Tag = new SensorInstanceInfo { SensorConfig = sensor },
+                    NodeId = sensorId ?? Guid.NewGuid().ToString(),
+                    ShowDeleteButton = true
+                };
+                sensorManagementNode.Children.Add(sensorNode);
+            }
+            
+            TreeNodes.Add(sensorManagementNode);
+
+            // 4. 构建设备类型节点
             foreach (var kvp in deviceTypeGroups.OrderBy(g => g.Key))
             {
                 var deviceType = kvp.Key;
@@ -670,8 +784,18 @@ namespace Astra.ViewModels
 
             SelectedNode = node;
 
+            // 如果选择的是传感器管理根节点，不改变配置区域内容，保持当前页面
+            if (node.Tag is SensorManagementNodeInfo)
+            {
+                return;
+            }
+            // 如果选择的是传感器实例节点，加载单个传感器配置界面
+            else if (node.Tag is SensorInstanceInfo sensorInstance)
+            {
+                LoadSensorConfigView(sensorInstance.SensorConfig);
+            }
             // 如果选择的是设备实例节点，加载设备配置界面
-            if (node.Tag is DeviceInstanceInfo deviceInstance)
+            else if (node.Tag is DeviceInstanceInfo deviceInstance)
             {
                 if (deviceInstance.ConfigInfo != null && deviceInstance.Config != null)
                 {
@@ -753,6 +877,383 @@ namespace Astra.ViewModels
         }
 
         /// <summary>
+        /// 保存所有传感器配置
+        /// </summary>
+        private void SaveAllSensors()
+        {
+            try
+            {
+                var configPath = GetSensorConfigFilePath();
+                var configDir = Path.GetDirectoryName(configPath);
+                if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
+                {
+                    Directory.CreateDirectory(configDir);
+                }
+
+                // 从树节点中收集所有传感器
+                var allSensors = new List<object>();
+                foreach (var rootNode in TreeNodes)
+                {
+                    if (rootNode.Tag is SensorManagementNodeInfo)
+                    {
+                        // 遍历传感器管理节点的所有子节点
+                        foreach (var childNode in rootNode.Children)
+                        {
+                            if (childNode.Tag is SensorInstanceInfo sensorInstance && sensorInstance.SensorConfig != null)
+                            {
+                                allSensors.Add(sensorInstance.SensorConfig);
+                            }
+                        }
+                        break; // 找到传感器管理节点后退出
+                    }
+                }
+
+                if (allSensors.Count == 0)
+                {
+                    // 如果没有传感器，创建一个空文件或删除现有文件
+                    if (File.Exists(configPath))
+                    {
+                        File.Delete(configPath);
+                    }
+                    return;
+                }
+
+                // 查找 SensorConfig 类型
+                var sensorConfigType = allSensors.First().GetType();
+                var sensorListType = typeof(List<>).MakeGenericType(sensorConfigType);
+                var sensorDataWrapperType = typeof(SensorConfigDataWrapper<>).MakeGenericType(sensorConfigType);
+
+                // 创建传感器列表
+                var sensorList = Activator.CreateInstance(sensorListType) as System.Collections.IList;
+                if (sensorList == null)
+                {
+                    sensorList = (System.Collections.IList)Activator.CreateInstance(sensorListType);
+                }
+
+                foreach (var sensor in allSensors)
+                {
+                    sensorList.Add(sensor);
+                }
+
+                // 创建包装对象
+                var sensorDataToSave = Activator.CreateInstance(sensorDataWrapperType);
+                var sensorsProperty = sensorDataWrapperType.GetProperty("Sensors");
+                sensorsProperty?.SetValue(sensorDataToSave, sensorList);
+
+                // 序列化并保存
+                var jsonOptions = new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(sensorDataToSave, sensorDataWrapperType, jsonOptions);
+                File.WriteAllText(configPath, json, System.Text.Encoding.UTF8);
+
+                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 已保存 {allSensors.Count} 个传感器配置到 {configPath}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 保存所有传感器配置失败: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 加载所有传感器
+        /// </summary>
+        private List<object> LoadAllSensors()
+        {
+            var sensors = new List<object>();
+            
+            try
+            {
+                var configPath = GetSensorConfigFilePath();
+                if (File.Exists(configPath))
+                {
+                    var json = File.ReadAllText(configPath);
+                    
+                    // 查找 SensorConfig 类型
+                    var sensorConfigType = AppDomain.CurrentDomain.GetAssemblies()
+                        .SelectMany(a =>
+                        {
+                            try
+                            {
+                                return a.GetTypes();
+                            }
+                            catch
+                            {
+                                return Enumerable.Empty<Type>();
+                            }
+                        })
+                        .FirstOrDefault(t => t.Name == "SensorConfig");
+
+                    if (sensorConfigType != null)
+                    {
+                        // 使用泛型反序列化
+                        var sensorListType = typeof(List<>).MakeGenericType(sensorConfigType);
+                        var sensorDataWrapperType = typeof(SensorConfigDataWrapper<>).MakeGenericType(sensorConfigType);
+                        
+                        var jsonOptions = new System.Text.Json.JsonSerializerOptions 
+                        { 
+                            PropertyNameCaseInsensitive = true,
+                            ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                            AllowTrailingCommas = true
+                        };
+                        
+                        var sensorData = System.Text.Json.JsonSerializer.Deserialize(json, sensorDataWrapperType, jsonOptions);
+                        
+                        if (sensorData != null)
+                        {
+                            var sensorsProperty = sensorDataWrapperType.GetProperty("Sensors");
+                            var sensorList = sensorsProperty?.GetValue(sensorData) as System.Collections.IEnumerable;
+                            if (sensorList != null)
+                            {
+                                foreach (var sensor in sensorList)
+                                {
+                                    sensors.Add(sensor);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"加载传感器配置失败: {ex.Message}");
+            }
+            
+            return sensors;
+        }
+
+        /// <summary>
+        /// 获取传感器配置文件路径
+        /// </summary>
+        private string GetSensorConfigFilePath()
+        {
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var configsDir = Path.Combine(baseDir, "Configs");
+            return Path.Combine(configsDir, "SensorConfig.json");
+        }
+
+        /// <summary>
+        /// 传感器配置数据包装类（用于 JSON 序列化）
+        /// </summary>
+        private class SensorConfigData
+        {
+            public List<object> Sensors { get; set; } = new List<object>();
+        }
+
+        /// <summary>
+        /// 传感器配置数据包装类（泛型版本，用于 JSON 序列化）
+        /// </summary>
+        private class SensorConfigDataWrapper<T>
+        {
+            public List<T> Sensors { get; set; } = new List<T>();
+        }
+
+        /// <summary>
+        /// 加载传感器配置界面（单个传感器）
+        /// </summary>
+        private void LoadSensorConfigView(object sensorConfig)
+        {
+            if (_configContentRegion == null || sensorConfig == null)
+                return;
+
+            try
+            {
+                // 查找传感器配置 View 类型
+                var viewType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a =>
+                    {
+                        try
+                        {
+                            return a.GetTypes();
+                        }
+                        catch
+                        {
+                            return Enumerable.Empty<Type>();
+                        }
+                    })
+                    .FirstOrDefault(t => t.Name == "SensorManagementView" && 
+                                       typeof(UserControl).IsAssignableFrom(t));
+
+                if (viewType != null)
+                {
+                    var view = Activator.CreateInstance(viewType) as UserControl;
+                    if (view != null)
+                    {
+                        // 创建 ViewModel 并传入传感器配置
+                        var viewModelType = AppDomain.CurrentDomain.GetAssemblies()
+                            .SelectMany(a =>
+                            {
+                                try
+                                {
+                                    return a.GetTypes();
+                                }
+                                catch
+                                {
+                                    return Enumerable.Empty<Type>();
+                                }
+                            })
+                            .FirstOrDefault(t => t.Name == "SensorManagementViewModel");
+
+                        if (viewModelType != null)
+                        {
+                            // 使用无参构造函数创建 ViewModel
+                            object viewModel = null;
+                            try
+                            {
+                                viewModel = Activator.CreateInstance(viewModelType);
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"创建 SensorManagementViewModel 失败: {ex.Message}");
+                                _configContentRegion.Content = new TextBlock
+                                {
+                                    Text = $"无法创建传感器管理视图模型: {ex.Message}",
+                                    Margin = new Thickness(20)
+                                };
+                                return;
+                            }
+                            
+                            if (viewModel != null)
+                            {
+                                // 如果 ViewModel 有 SelectedSensor 属性，设置它
+                                var selectedSensorProperty = viewModelType.GetProperty("SelectedSensor");
+                                if (selectedSensorProperty != null)
+                                {
+                                    var propertyType = selectedSensorProperty.PropertyType;
+                                    // 检查类型是否兼容（支持 SensorConfig 或其基类）
+                                    if (propertyType.IsAssignableFrom(sensorConfig.GetType()) || 
+                                        sensorConfig.GetType().IsSubclassOf(propertyType) ||
+                                        propertyType.IsInstanceOfType(sensorConfig))
+                                    {
+                                        selectedSensorProperty.SetValue(viewModel, sensorConfig);
+                                    }
+                                }
+                                
+                                view.DataContext = viewModel;
+                            }
+                        }
+
+                        _configContentRegion.Content = view;
+                    }
+                }
+                else
+                {
+                    _configContentRegion.Content = new TextBlock
+                    {
+                        Text = "无法加载传感器配置界面：未找到 SensorManagementView 类型",
+                        Margin = new Thickness(20)
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"加载传感器配置界面时发生错误: {ex.Message}");
+                _configContentRegion.Content = new TextBlock
+                {
+                    Text = $"无法加载传感器配置界面: {ex.Message}",
+                    Margin = new Thickness(20)
+                };
+            }
+        }
+
+        /// <summary>
+        /// 加载传感器管理界面
+        /// </summary>
+        private void LoadSensorManagementView()
+        {
+            if (_configContentRegion == null)
+                return;
+
+            try
+            {
+                // 查找传感器管理 View 类型
+                var viewType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a =>
+                    {
+                        try
+                        {
+                            return a.GetTypes();
+                        }
+                        catch
+                        {
+                            return Enumerable.Empty<Type>();
+                        }
+                    })
+                    .FirstOrDefault(t => t.Name == "SensorManagementView" && 
+                                       typeof(UserControl).IsAssignableFrom(t));
+
+                if (viewType != null)
+                {
+                    var view = Activator.CreateInstance(viewType) as UserControl;
+                    if (view != null)
+                    {
+                        // 创建 ViewModel
+                        var viewModelType = AppDomain.CurrentDomain.GetAssemblies()
+                            .SelectMany(a =>
+                            {
+                                try
+                                {
+                                    return a.GetTypes();
+                                }
+                                catch
+                                {
+                                    return Enumerable.Empty<Type>();
+                                }
+                            })
+                            .FirstOrDefault(t => t.Name == "SensorManagementViewModel");
+
+                        if (viewModelType != null)
+                        {
+                            object viewModel = null;
+                            try
+                            {
+                                viewModel = Activator.CreateInstance(viewModelType);
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"创建 SensorManagementViewModel 失败: {ex.Message}");
+                                _configContentRegion.Content = new TextBlock
+                                {
+                                    Text = $"无法创建传感器管理视图模型: {ex.Message}",
+                                    Margin = new Thickness(20)
+                                };
+                                return;
+                            }
+                            
+                            if (viewModel != null)
+                            {
+                                view.DataContext = viewModel;
+                            }
+                        }
+
+                        _configContentRegion.Content = view;
+                    }
+                }
+                else
+                {
+                    _configContentRegion.Content = new TextBlock
+                    {
+                        Text = "无法加载传感器管理界面：未找到 SensorManagementView 类型",
+                        Margin = new Thickness(20)
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"加载传感器管理界面时发生错误: {ex.Message}");
+                _configContentRegion.Content = new TextBlock
+                {
+                    Text = $"无法加载传感器管理界面: {ex.Message}",
+                    Margin = new Thickness(20)
+                };
+            }
+        }
+
+        /// <summary>
         /// 创建默认配置界面
         /// </summary>
         private UserControl CreateDefaultConfigView(DeviceConfigInfo configInfo)
@@ -805,6 +1306,13 @@ namespace Astra.ViewModels
         {
             if (node == null || node.Tag == null)
                 return;
+
+            // 如果节点是传感器管理节点，添加新传感器
+            if (node.Tag is SensorManagementNodeInfo)
+            {
+                AddSensor(node);
+                return;
+            }
 
             // 如果节点是设备类型节点，显示添加配置的对话框
             if (node.Tag is Astra.Core.Devices.DeviceType deviceType)
@@ -1079,6 +1587,286 @@ namespace Astra.ViewModels
         }
 
         /// <summary>
+        /// 添加传感器
+        /// </summary>
+        private void AddSensor(TreeNodeViewModel parentNode)
+        {
+            try
+            {
+                // 查找 SensorConfig 类型
+                var sensorConfigType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a =>
+                    {
+                        try
+                        {
+                            return a.GetTypes();
+                        }
+                        catch
+                        {
+                            return Enumerable.Empty<Type>();
+                        }
+                    })
+                    .FirstOrDefault(t => t.Name == "SensorConfig");
+
+                if (sensorConfigType == null)
+                {
+                    MessageBoxHelper.ShowError("无法找到 SensorConfig 类型", "错误");
+                    return;
+                }
+
+                // 创建新的传感器配置实例
+                var newSensor = Activator.CreateInstance(sensorConfigType);
+                if (newSensor == null)
+                {
+                    MessageBoxHelper.ShowError("无法创建传感器配置实例", "错误");
+                    return;
+                }
+
+                // 设置默认值
+                var sensorNameProperty = sensorConfigType.GetProperty("SensorName");
+                var sensorIdProperty = sensorConfigType.GetProperty("SensorId");
+                
+                if (sensorNameProperty != null)
+                {
+                    sensorNameProperty.SetValue(newSensor, "新传感器");
+                }
+
+                // 保存传感器到文件
+                SaveSensorToFile(newSensor);
+
+                // 创建传感器节点
+                var sensorNode = new TreeNodeViewModel
+                {
+                    Header = sensorNameProperty?.GetValue(newSensor)?.ToString() ?? "新传感器",
+                    Icon = "📡",
+                    Tag = new SensorInstanceInfo { SensorConfig = newSensor },
+                    NodeId = sensorIdProperty?.GetValue(newSensor)?.ToString() ?? Guid.NewGuid().ToString(),
+                    ShowDeleteButton = true
+                };
+
+                parentNode.Children.Add(sensorNode);
+                SelectedNode = sensorNode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"添加传感器时发生错误: {ex.Message}");
+                MessageBoxHelper.ShowError($"无法添加传感器: {ex.Message}", "错误");
+            }
+        }
+
+        /// <summary>
+        /// 删除传感器
+        /// </summary>
+        private void DeleteSensor(TreeNodeViewModel node, SensorInstanceInfo sensorInstance)
+        {
+            try
+            {
+                // 从树中移除节点
+                TreeNodeViewModel parent = null;
+                int index = -1;
+
+                foreach (var rootNode in TreeNodes)
+                {
+                    if (FindNodeAndParent(rootNode, node, ref parent, ref index))
+                    {
+                        break;
+                    }
+                }
+
+                // 如果删除的是当前选中的节点，需要在删除前确定下一个选中的节点
+                bool isSelectedNode = ReferenceEquals(SelectedNode, node);
+                TreeNodeViewModel nextSelectedNode = null;
+
+                if (isSelectedNode && parent != null && index >= 0)
+                {
+                    var children = parent.Children;
+                    if (index > 0)
+                    {
+                        nextSelectedNode = children[index - 1];
+                    }
+                    else if (index < children.Count - 1)
+                    {
+                        nextSelectedNode = children[index + 1];
+                    }
+                }
+
+                // 执行删除操作
+                if (parent != null && index >= 0)
+                {
+                    parent.Children.RemoveAt(index);
+                }
+
+                // 从文件中删除传感器
+                RemoveSensorFromFile(sensorInstance.SensorConfig);
+
+                // 如果删除的是当前选中的节点，选择下一个节点
+                if (isSelectedNode)
+                {
+                    if (nextSelectedNode != null)
+                    {
+                        SelectedNode = nextSelectedNode;
+                        NodeSelected(nextSelectedNode);
+                    }
+                    else
+                    {
+                        SelectedNode = null;
+                        if (_configContentRegion != null)
+                        {
+                            _configContentRegion.Content = null;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"删除传感器时发生错误: {ex.Message}");
+                MessageBoxHelper.ShowError($"无法删除传感器: {ex.Message}", "错误");
+            }
+        }
+
+        /// <summary>
+        /// 从文件中删除传感器
+        /// </summary>
+        private void RemoveSensorFromFile(object sensorToDelete)
+        {
+            try
+            {
+                var configPath = GetSensorConfigFilePath();
+                if (!File.Exists(configPath))
+                    return;
+
+                var sensorType = sensorToDelete.GetType();
+                var sensorListType = typeof(List<>).MakeGenericType(sensorType);
+                var sensorDataWrapperType = typeof(SensorConfigDataWrapper<>).MakeGenericType(sensorType);
+
+                // 加载现有传感器
+                var json = File.ReadAllText(configPath);
+                var jsonOptions = new System.Text.Json.JsonSerializerOptions 
+                { 
+                    PropertyNameCaseInsensitive = true,
+                    ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                };
+                var sensorData = System.Text.Json.JsonSerializer.Deserialize(json, sensorDataWrapperType, jsonOptions);
+                
+                if (sensorData == null)
+                    return;
+
+                var sensorsProperty = sensorDataWrapperType.GetProperty("Sensors");
+                var sensors = sensorsProperty?.GetValue(sensorData) as System.Collections.IList;
+                if (sensors == null)
+                    return;
+
+                // 获取要删除的传感器ID
+                var sensorIdProperty = sensorToDelete.GetType().GetProperty("SensorId");
+                var sensorIdToDelete = sensorIdProperty?.GetValue(sensorToDelete)?.ToString();
+
+                if (string.IsNullOrEmpty(sensorIdToDelete))
+                    return;
+
+                // 移除传感器
+                for (int i = sensors.Count - 1; i >= 0; i--)
+                {
+                    var sensor = sensors[i];
+                    var idProperty = sensor.GetType().GetProperty("SensorId");
+                    var id = idProperty?.GetValue(sensor)?.ToString();
+                    if (id == sensorIdToDelete)
+                    {
+                        sensors.RemoveAt(i);
+                        break;
+                    }
+                }
+
+                // 保存
+                var serializeOptions = new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+                var updatedJson = System.Text.Json.JsonSerializer.Serialize(sensorData, sensorDataWrapperType, serializeOptions);
+                File.WriteAllText(configPath, updatedJson, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"从文件删除传感器失败: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 保存传感器到文件
+        /// </summary>
+        private void SaveSensorToFile(object sensor)
+        {
+            try
+            {
+                var configPath = GetSensorConfigFilePath();
+                var configDir = Path.GetDirectoryName(configPath);
+                if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
+                {
+                    Directory.CreateDirectory(configDir);
+                }
+
+                var sensorType = sensor.GetType();
+                var sensorListType = typeof(List<>).MakeGenericType(sensorType);
+                var sensorDataWrapperType = typeof(SensorConfigDataWrapper<>).MakeGenericType(sensorType);
+
+                // 加载现有传感器
+                var sensors = Activator.CreateInstance(sensorListType) as System.Collections.IList;
+                if (sensors == null)
+                {
+                    sensors = (System.Collections.IList)Activator.CreateInstance(sensorListType);
+                }
+
+                if (File.Exists(configPath))
+                {
+                    var existingJson = File.ReadAllText(configPath);
+                    var jsonOptions = new System.Text.Json.JsonSerializerOptions 
+                    { 
+                        PropertyNameCaseInsensitive = true,
+                        ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                        AllowTrailingCommas = true
+                    };
+                    var sensorData = System.Text.Json.JsonSerializer.Deserialize(existingJson, sensorDataWrapperType, jsonOptions);
+                    
+                    if (sensorData != null)
+                    {
+                        var sensorsProperty = sensorDataWrapperType.GetProperty("Sensors");
+                        var existingSensors = sensorsProperty?.GetValue(sensorData) as System.Collections.IEnumerable;
+                        if (existingSensors != null)
+                        {
+                            foreach (var existingSensor in existingSensors)
+                            {
+                                sensors.Add(existingSensor);
+                            }
+                        }
+                    }
+                }
+
+                // 添加新传感器
+                sensors.Add(sensor);
+
+                // 保存
+                var sensorDataToSave = Activator.CreateInstance(sensorDataWrapperType);
+                var sensorsPropertyToSet = sensorDataWrapperType.GetProperty("Sensors");
+                sensorsPropertyToSet?.SetValue(sensorDataToSave, sensors);
+
+                var serializeOptions = new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(sensorDataToSave, sensorDataWrapperType, serializeOptions);
+                File.WriteAllText(configPath, json, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"保存传感器到文件失败: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 删除节点命令
         /// </summary>
         [RelayCommand]
@@ -1092,6 +1880,13 @@ namespace Astra.ViewModels
                 // 确认删除
                 if (!MessageBoxHelper.Confirm($"确定要删除 \"{node.Header}\" 吗？", "确认删除"))
                     return;
+
+                // 如果删除的是传感器节点
+                if (node.Tag is SensorInstanceInfo sensorInstance)
+                {
+                    DeleteSensor(node, sensorInstance);
+                    return;
+                }
 
                 // 注意：删除节点时只操作 TreeNodes 对象和 ConfigurationManager，不注销设备
                 // 只有在点击保存配置时，才需要从设备管理器注销设备
@@ -1370,7 +2165,21 @@ namespace Astra.ViewModels
                     System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 保存配置文件失败: {ex.Message}");
                 }
 
-                // 4. 显示保存结果
+                // 4. 保存传感器配置
+                try
+                {
+                    SaveAllSensors();
+                    successCount++;
+                    System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 传感器配置已保存");
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    errors.Add($"保存传感器配置失败: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 保存传感器配置失败: {ex.Message}");
+                }
+
+                // 5. 显示保存结果
                 if (errorCount == 0)
                 {
                     ToastHelper.ShowSuccess($"配置保存成功，成功处理 {successCount} 项", "保存成功");
@@ -1736,6 +2545,22 @@ namespace Astra.ViewModels
             public Astra.Core.Devices.Interfaces.IDevice Device { get; set; }
             public DeviceConfig Config { get; set; }
             public DeviceConfigInfo ConfigInfo { get; set; }
+        }
+
+        /// <summary>
+        /// 传感器管理节点标识
+        /// </summary>
+        private class SensorManagementNodeInfo
+        {
+            public static SensorManagementNodeInfo Instance { get; } = new SensorManagementNodeInfo();
+        }
+
+        /// <summary>
+        /// 传感器实例信息
+        /// </summary>
+        private class SensorInstanceInfo
+        {
+            public object SensorConfig { get; set; }
         }
     }
 }

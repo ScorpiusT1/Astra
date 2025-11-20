@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Astra.Plugins.DataAcquisition.ViewModels;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,6 +24,20 @@ namespace Astra.Plugins.DataAcquisition.Views
         public DataAcquisitionDeviceConfigView()
         {
             InitializeComponent();
+
+            this.Loaded -= DataAcquisitionDeviceConfigView_Loaded;
+            this.Loaded += DataAcquisitionDeviceConfigView_Loaded;
+        }
+
+        private void DataAcquisitionDeviceConfigView_Loaded(object sender, RoutedEventArgs e)
+        {
+            if(this.DataContext is not DataAcquisitionDeviceConfigViewModel vm)
+            {
+                return;
+            }
+
+            baseConfig.DataContext = new DataAcquisitionBaseConfigViewModel(vm.Config);
+            channelConfig.DataContext = new DataAcquisitionChannelConfigViewModel(vm.Config);
         }
     }
 }

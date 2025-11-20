@@ -9,11 +9,13 @@
                 <!-- 样式资源 -->
                 <!-- 引用控件库的样式（使用 Pack URI） -->
                 <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/IconGeometries.xaml" />
-                <!--<ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/SkinDefault.xaml" />-->
-                <ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/Theme.xaml" />
                
+                <!--<ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/SkinDefault.xaml" />-->
                 <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/Light/Colors.xaml" />
 
+                <ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/Theme.xaml" />
+               
+              
                 <!--<ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Styles/Windows/WindowStyle.xaml" />-->
                 <ResourceDictionary Source="pack://application:,,,/Astra.UI;component/Themes/Generic.xaml" />
 
