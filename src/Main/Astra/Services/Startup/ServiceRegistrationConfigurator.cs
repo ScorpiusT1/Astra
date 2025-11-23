@@ -468,7 +468,7 @@ namespace Astra.Services.Startup
             services.AddTransient<ViewModels.UserMenuViewModel>();
             services.AddTransient<ViewModels.MainViewModel>();
             services.AddSingleton<ViewModels.MainViewViewModel>();
-            services.AddTransient<ViewModels.ConfigViewModel>();
+            services.AddTransient<ViewModels.ConfigViewModelValidation>();
             services.AddTransient<ViewModels.DebugViewModel>();
 
             Debug.WriteLine("✅ 重构后的 ViewModels 注册完成");

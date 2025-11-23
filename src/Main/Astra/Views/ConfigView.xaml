@@ -5,8 +5,9 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
+             xmlns:models="clr-namespace:Astra.Models"
              xmlns:behaviors="clr-namespace:Astra.Behaviors"
-             d:DataContext="{d:DesignInstance Type=viewmodels:ConfigViewModel}"
+             d:DataContext="{d:DesignInstance Type=viewmodels:ConfigViewModelValidation}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
@@ -72,7 +73,7 @@
 
                             <TreeView.Resources>
                                 <!-- 第一层：设备配置/传感器配置 -->
-                                <HierarchicalDataTemplate DataType="{x:Type viewmodels:TreeNodeViewModel}"
+                                <HierarchicalDataTemplate DataType="{x:Type models:TreeNode}"
                                                           ItemsSource="{Binding Children}">
                                     <Grid Margin="0,4">
                                         <Grid.ColumnDefinitions>
@@ -94,7 +95,7 @@
                                                 Style="{StaticResource AddButton}"
                                                 Margin="8,0,4,0"
                                                 Visibility="{Binding ShowAddButton, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                Command="{Binding DataContext.AddDeviceConfigCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                                Command="{Binding DataContext.AddNodeCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
                                                 CommandParameter="{Binding}" />
                                         <Button Grid.Column="2"
                                                 Style="{StaticResource DeleteButton}"
@@ -136,7 +137,7 @@
                     CornerRadius="8">
                 <ContentControl x:Name="ConfigContentRegion"
                                 Margin="0"
-                                Loaded="ConfigContentRegion_Loaded" />
+                                 />
             </Border>
         </Grid>
     </Grid>

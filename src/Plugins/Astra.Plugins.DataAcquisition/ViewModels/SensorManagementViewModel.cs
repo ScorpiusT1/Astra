@@ -1,3 +1,4 @@
+using Astra.Core.Configuration;
 using Astra.Plugins.DataAcquisition.Configs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
@@ -41,8 +42,9 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             "V/N"
         };
 
-        public SensorManagementViewModel()
+        public SensorManagementViewModel(IConfig config)
         {
+            _selectedSensor = config as SensorConfig;
         }
 
     }

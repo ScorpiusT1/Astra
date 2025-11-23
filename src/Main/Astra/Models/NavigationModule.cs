@@ -29,7 +29,7 @@ namespace Astra.Models
             configuration.RegisterPage<HomeView, HomeViewModel>(NavigationKeys.Home);
             configuration.RegisterPage<SequenceView, SequenceViewModel>(NavigationKeys.Sequence);
             configuration.RegisterPage<PermissionView, PermissionViewModel>(NavigationKeys.Permission); // ⭐ 使用重构后的 ViewModel
-            configuration.RegisterPage<ConfigView, ConfigViewModel>(NavigationKeys.Config);
+            configuration.RegisterPage<ConfigView, ConfigViewModelValidation>(NavigationKeys.Config);
             configuration.RegisterPage<DebugView, DebugViewModel>(NavigationKeys.Debug);
 
             System.Diagnostics.Debug.WriteLine($"[{ModuleName}] 注册类型完成");

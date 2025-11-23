@@ -1,3 +1,4 @@
+using Astra.Core.Configuration;
 using Astra.Core.Devices.Configuration;
 using Astra.Plugins.DataAcquisition.Devices;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -178,9 +179,9 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
         public string DeviceId => _config?.DeviceId ?? string.Empty;
 
-        public DataAcquisitionDeviceConfigViewModel(DataAcquisitionConfig config)
+        public DataAcquisitionDeviceConfigViewModel(IConfig config)
         {
-            Config = config;
+            Config = config as DataAcquisitionConfig;
         }
 
         private void OnConfigChanged()

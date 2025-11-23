@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Astra.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -137,7 +138,7 @@ namespace Astra.Behaviors
             }
 
             // 只允许子节点拖拽（不允许根节点拖拽）
-            if (item.DataContext is ViewModels.TreeNodeViewModel node)
+            if (item.DataContext is TreeNode node)
             {
                 // 检查是否是根节点（通过检查是否有父节点来判断）
                 // 这里我们通过检查是否在根集合中来判断
@@ -180,16 +181,16 @@ namespace Astra.Behaviors
                 _isDragStarted = true;
 
                 // 设置拖拽状态
-                if (_draggedItem.DataContext is ViewModels.TreeNodeViewModel node)
+                if (_draggedItem.DataContext is TreeNode node)
                 {
                     node.IsDragging = true;
                 }
 
-                var dragData = new DataObject("TreeNodeViewModel", _draggedItem.DataContext);
+                var dragData = new DataObject("TreeNode", _draggedItem.DataContext);
                 var result = DragDrop.DoDragDrop(_draggedItem, dragData, DragDropEffects.Move);
                 
                 // 清除拖拽状态
-                if (_draggedItem.DataContext is ViewModels.TreeNodeViewModel node2)
+                if (_draggedItem.DataContext is TreeNode node2)
                 {
                     node2.IsDragging = false;
                 }
@@ -214,14 +215,15 @@ namespace Astra.Behaviors
                 return;
             }
 
-            if (!e.Data.GetDataPresent("TreeNodeViewModel"))
+            if (!e.Data.GetDataPresent("TreeNode"))
             {
                 e.Effects = DragDropEffects.None;
                 e.Handled = true;
                 return;
             }
 
-            var draggedData = e.Data.GetData("TreeNodeViewModel");
+            var draggedData = e.Data.GetData("TreeNode");
+
             if (draggedData == item.DataContext)
             {
                 e.Effects = DragDropEffects.None;
@@ -230,7 +232,7 @@ namespace Astra.Behaviors
             }
 
             // 设置可放置状态
-            if (item.DataContext is ViewModels.TreeNodeViewModel targetNode)
+            if (item.DataContext is TreeNode targetNode)
             {
                 targetNode.CanDrop = true;
             }
@@ -247,7 +249,7 @@ namespace Astra.Behaviors
             }
 
             // 清除可放置状态
-            if (item.DataContext is ViewModels.TreeNodeViewModel node)
+            if (item.DataContext is TreeNode node)
             {
                 node.CanDrop = false;
             }
@@ -260,19 +262,19 @@ namespace Astra.Behaviors
                 return;
             }
 
-            if (!e.Data.GetDataPresent("TreeNodeViewModel"))
+            if (!e.Data.GetDataPresent("TreeNode"))
             {
                 return;
             }
 
-            var draggedData = e.Data.GetData("TreeNodeViewModel");
+            var draggedData = e.Data.GetData("TreeNode");
             if (draggedData == item.DataContext)
             {
                 return;
             }
 
             // 清除可放置状态
-            if (item.DataContext is ViewModels.TreeNodeViewModel targetNode)
+            if (item.DataContext is TreeNode targetNode)
             {
                 targetNode.CanDrop = false;
             }

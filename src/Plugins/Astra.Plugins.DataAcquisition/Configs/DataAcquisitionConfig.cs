@@ -1,16 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using Astra.Core.Devices;
+﻿using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
 using Astra.Core.Devices.Common;
 using Astra.Core.Devices.Configuration;
 using Astra.Core.Foundation.Common;
 using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
+using Astra.UI.Abstractions.Attributes;
+using System;
+using System.Collections.Generic;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
     [DeviceConfigUI(typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
+    [TreeNodeConfig("采集卡", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
     public class DataAcquisitionConfig : DeviceConfig
     {
         private string _serialNumber = string.Empty;

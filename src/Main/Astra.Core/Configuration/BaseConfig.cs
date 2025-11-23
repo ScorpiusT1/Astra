@@ -154,16 +154,6 @@ namespace Astra.Core.Configuration
                 errors.Add("配置ID不能为空");
             }
 
-            if (string.IsNullOrWhiteSpace(ConfigName))
-            {
-                errors.Add("配置名称不能为空");
-            }
-
-            if (Version < 1)
-            {
-                errors.Add("配置版本号必须大于等于1");
-            }
-
             if (errors.Count > 0)
             {
                 var errorMessage = $"配置验证失败，发现 {errors.Count} 个问题：" + Environment.NewLine + string.Join(Environment.NewLine + "  - ", errors);

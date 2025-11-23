@@ -13,6 +13,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Astra.Plugins.DataAcquisition.Abstractions;
+using HandyControl.Tools;
+using Astra.Plugins.DataAcquisition.Configs;
 
 namespace Astra.Plugins.DataAcquisition
 {
@@ -35,7 +37,7 @@ namespace Astra.Plugins.DataAcquisition
         public async Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            
+
             // ⭐ 从 _context.ServiceProvider 获取服务
             // 这样可以确保插件系统和主应用使用同一个服务实例
             try
@@ -48,9 +50,9 @@ namespace Astra.Plugins.DataAcquisition
                 _deviceManager = null;
                 _configurationManager = null;
             }
-            
+
             _messageBus = context.MessageBus;
-            
+
             // 尝试从服务注册表获取 Astra.Core.Logs.ILogger，如果获取不到则使用 null
             try
             {
@@ -65,7 +67,7 @@ namespace Astra.Plugins.DataAcquisition
 
             // 从配置文件加载设备配置（配置会先注册到 ConfigurationManager，然后根据配置创建设备）
             await LoadDeviceConfigurationsAsync(cancellationToken).ConfigureAwait(false);
-
+            await LoadSensorConfig(cancellationToken).ConfigureAwait(false);
             _logger?.Info($"[{Name}] 插件初始化完成，已加载 {_devices.Count} 个设备", LogCategory.System);
         }
 
@@ -83,19 +85,19 @@ namespace Astra.Plugins.DataAcquisition
                     _deviceManager = null;
                 }
             }
-            
+
             if (_deviceManager == null)
             {
                 _logger?.Error($"[{Name}] DeviceManager 为 null，无法注册设备", null, LogCategory.System);
                 return;
             }
-            
+
             _logger?.Info($"[{Name}] 启用插件，共有 {_devices.Count} 个设备需要注册", LogCategory.System);
 
             // 初始化并注册所有设备
             int successCount = 0;
             int failCount = 0;
-            
+
             foreach (var device in _devices)
             {
                 try
@@ -110,7 +112,7 @@ namespace Astra.Plugins.DataAcquisition
                         {
                             successCount++;
                             _logger?.Info($"[{Name}] 设备 {device.DeviceName} 注册成功", LogCategory.Device);
-                            
+
                             // 如果配置了自动启动，则开始采集
                             if (device.CurrentConfig is DataAcquisitionConfig config && config.AutoStart)
                             {
@@ -196,8 +198,8 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 var duration = DateTime.UtcNow - startTime;
-                var healthStatus = totalCount == 0 
-                    ? HealthStatus.Degraded 
+                var healthStatus = totalCount == 0
+                    ? HealthStatus.Degraded
                     : (healthyCount == totalCount ? HealthStatus.Healthy : HealthStatus.Degraded);
 
                 return new HealthCheckResult
@@ -254,59 +256,62 @@ namespace Astra.Plugins.DataAcquisition
             _disposed = true;
         }
 
+        private async Task LoadSensorConfig(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var configFileName = "SensorConfig.json";
+                string fileName = Path.Combine(Core.Configuration.ConfigHelper.BaseConfigDirectory, configFileName);
+                var sensorCollection = await Core.Configuration.ConfigHelper.LoadAsync<ConfigCollection<SensorConfig>>(fileName, cancellationToken).ConfigureAwait(false);
+
+                if (sensorCollection == null || sensorCollection.Configs.Count() == 0)
+                {
+                    _logger?.Warn($"[{Name}] 传感器配置文件中没有配置", LogCategory.System);
+                    return;
+                }
+
+                foreach (var sensorConfig in sensorCollection.Configs)
+                {
+                    try
+                    {
+                        // 注册传感器配置到 ConfigurationManager
+                        if (_configurationManager != null)
+                        {
+                            var registerResult = _configurationManager.RegisterConfig(sensorConfig, fileName);
+
+                            if (registerResult.Success)
+                            {
+                                _logger?.Info($"[{Name}] 传感器配置已注册到 ConfigurationManager: {sensorConfig.SensorName} (ID: {sensorConfig.ConfigId})", LogCategory.System);
+                            }
+                            else
+                            {
+                                _logger?.Warn($"[{Name}] 传感器配置注册到 ConfigurationManager 失败: {sensorConfig.SensorName} - {registerResult.ErrorMessage}", LogCategory.System);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.Error($"[{Name}] 加载传感器配置失败: {ex.Message}", ex, LogCategory.Device);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"[{Name}] 加载传感器配置时发生异常: {ex.Message}", ex, LogCategory.System);
+            }
+        }
+
         private async Task LoadDeviceConfigurationsAsync(CancellationToken cancellationToken)
         {
             try
             {
-                _devices?.Clear();   
+                _devices?.Clear();
                 // 查找配置文件
                 var configFileName = "Astra.Plugins.DataAcquisition.config.json";
-                
-                // 标准配置文件路径：Configs/Devices/{插件名}.config.json
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var configsDevicesDir = Path.Combine(baseDir, "Configs", "Devices");
-                var standardConfigPath = Path.Combine(configsDevicesDir, configFileName);
-                
-                // 实际加载的配置文件路径（可能从旧位置加载，但注册时使用标准路径）
-                var actualConfigPath = standardConfigPath;
 
-                // 优先从标准路径加载
-                if (!File.Exists(actualConfigPath))
-                {
-                    // 如果标准路径不存在，尝试从插件目录加载（向后兼容）
-                    var pluginConfigPath = Path.Combine(_context.PluginDirectory, configFileName);
-                    if (File.Exists(pluginConfigPath))
-                    {
-                        actualConfigPath = pluginConfigPath;
-                    }
-                    else
-                    {
-                        // 如果插件目录中也没有，尝试从 Configs/DeviceConfigs 目录加载（向后兼容）
-                        var binPath = Path.GetDirectoryName(_context.PluginDirectory);
-                        if (binPath != null)
-                        {
-                            var alternativePath = Path.Combine(binPath, "Configs", "DeviceConfigs", configFileName);
-                            if (File.Exists(alternativePath))
-                            {
-                                actualConfigPath = alternativePath;
-                            }
-                        }
-                    }
-                }
+                string fileName = Path.Combine(Core.Configuration.ConfigHelper.DeviceConfigDirectory, configFileName);
 
-                if (!File.Exists(actualConfigPath))
-                {
-                    _logger?.Warn($"[{Name}] 未找到配置文件 {configFileName}，将使用默认配置", LogCategory.System);
-                    // 文件不存在时，直接返回（没有配置需要加载和注册）
-                    return;
-                }
-
-                var json = await File.ReadAllTextAsync(actualConfigPath, cancellationToken).ConfigureAwait(false);
-                
-                var configData = JsonSerializer.Deserialize<DeviceConfigData>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var configData = await Core.Configuration.ConfigHelper.LoadAsync<ConfigCollection<DataAcquisitionConfig>>(fileName, cancellationToken).ConfigureAwait(false);
 
                 if (configData?.Configs == null || configData.Configs.Count == 0)
                 {
@@ -325,10 +330,12 @@ namespace Astra.Plugins.DataAcquisition
                         {
                             // 传递标准配置文件路径（无论从哪个位置加载，都使用标准路径注册）
                             // 这样确保同一类型配置使用相同的路径，后续保存时统一保存到标准位置
-                            var registerResult = _configurationManager.RegisterConfig(config, standardConfigPath);
+                            var registerResult = _configurationManager.RegisterConfig(config, fileName);
+
+
                             if (registerResult.Success)
                             {
-                                _logger?.Info($"[{Name}] 配置已注册到 ConfigurationManager: {config.DeviceName} (ID: {config.ConfigId}), 路径: {standardConfigPath}", LogCategory.System);
+                                _logger?.Info($"[{Name}] 配置已注册到 ConfigurationManager: {config.DeviceName} (ID: {config.ConfigId}), 路径: {fileName}", LogCategory.System);
                             }
                             else
                             {
@@ -355,9 +362,9 @@ namespace Astra.Plugins.DataAcquisition
             }
         }
 
-        private class DeviceConfigData
+        private class ConfigCollection<T> where T : IConfig
         {
-            public List<DataAcquisitionConfig> Configs { get; set; } = new();
+            public List<T> Configs { get; set; } = new();
         }
     }
 }

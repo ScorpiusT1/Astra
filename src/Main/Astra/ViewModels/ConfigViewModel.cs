@@ -61,7 +61,7 @@ namespace Astra.ViewModels
             if (value != null)
             {
                 value.IsSelected = true;
-                
+
                 // 加载对应的配置界面
                 NodeSelected(value);
             }
@@ -124,7 +124,7 @@ namespace Astra.ViewModels
             }
 
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-            {              
+            {
                 InitializeConfigTree();
             });
         }
@@ -153,7 +153,7 @@ namespace Astra.ViewModels
                 _isRefreshingTree = true;
                 try
                 {
-                InitializeConfigTree();
+                    InitializeConfigTree();
                 }
                 finally
                 {
@@ -339,25 +339,25 @@ namespace Astra.ViewModels
                 assembliesToScan.AddRange(AppDomain.CurrentDomain.GetAssemblies().Distinct());
 
                 foreach (var assembly in assembliesToScan.Distinct())
-        {
-            try
-            {
-                var types = assembly.GetTypes()
-                    .Where(t => !t.IsAbstract &&
-                                !t.IsInterface &&
-                                typeof(DeviceConfig).IsAssignableFrom(t) &&
-                                t != typeof(DeviceConfig));
-
-                foreach (var type in types)
                 {
+                    try
+                    {
+                        var types = assembly.GetTypes()
+                            .Where(t => !t.IsAbstract &&
+                                        !t.IsInterface &&
+                                        typeof(DeviceConfig).IsAssignableFrom(t) &&
+                                        t != typeof(DeviceConfig));
+
+                        foreach (var type in types)
+                        {
                             // 检查是否已经处理过
-                    if (_deviceConfigTypes.ContainsKey(type))
+                            if (_deviceConfigTypes.ContainsKey(type))
                             {
                                 if (_deviceConfigTypes[type].DeviceType == deviceType)
                                 {
                                     result.Add(_deviceConfigTypes[type]);
                                 }
-                        continue;
+                                continue;
                             }
 
                             // 获取设备类型
@@ -377,27 +377,27 @@ namespace Astra.ViewModels
                             // 只返回匹配的设备类型
                             if (configDeviceType == deviceType)
                             {
-                    // 获取 DeviceConfigUIAttribute 特性
-                    var uiAttribute = type.GetCustomAttribute<DeviceConfigUIAttribute>();
+                                // 获取 DeviceConfigUIAttribute 特性
+                                var uiAttribute = type.GetCustomAttribute<DeviceConfigUIAttribute>();
 
-                    var configInfo = new DeviceConfigInfo
-                    {
-                        ConfigType = type,
-                        ViewType = uiAttribute?.ViewType,
-                        ViewModelType = uiAttribute?.ViewModelType,
+                                var configInfo = new DeviceConfigInfo
+                                {
+                                    ConfigType = type,
+                                    ViewType = uiAttribute?.ViewType,
+                                    ViewModelType = uiAttribute?.ViewModelType,
                                     DeviceType = configDeviceType
-                    };
+                                };
 
-                    _deviceConfigTypes[type] = configInfo;
+                                _deviceConfigTypes[type] = configInfo;
                                 result.Add(configInfo);
                             }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"扫描程序集 {assembly.FullName} 时发生错误: {ex.Message}");
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"扫描程序集 {assembly.FullName} 时发生错误: {ex.Message}");
-            }
-        }
             }
             catch (Exception ex)
             {
@@ -431,158 +431,17 @@ namespace Astra.ViewModels
         /// </summary>
         private void BuildConfigTree()
         {
-            System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 开始构建配置树...");
+            var configs = _configurationManager.GetAllConfigs();
 
-            // 1. 从 ConfigurationManager 获取所有设备配置（配置独立于设备）
-            var deviceConfigs = GetAllDeviceConfigs();
-            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 配置数量: {deviceConfigs.Count}");
-
-            // 2. 按设备类型分组（只基于配置）
-            var deviceTypeGroups = new Dictionary<Astra.Core.Devices.DeviceType, List<DeviceConfig>>();
-
-            // 2.1 添加所有配置（配置是独立的，不依赖设备实例是否存在）
-            foreach (var deviceConfig in deviceConfigs)
+            if (configs == null)
             {
-                var deviceType = deviceConfig.Type;
-                if (!deviceTypeGroups.ContainsKey(deviceType))
-                {
-                    deviceTypeGroups[deviceType] = new List<DeviceConfig>();
-                }
-                deviceTypeGroups[deviceType].Add(deviceConfig);
-                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 添加配置到树: {deviceConfig.DeviceName} (Type: {deviceType})");
+                return;
             }
 
-            // 2.2 处理没有配置的设备类型（显示配置类型节点，用于添加新配置）
-            // 从已存在的配置中推断所有设备类型
-            var existingDeviceTypes = deviceConfigs.Select(c => c.Type).Distinct().ToHashSet();
-            
-            // 获取所有可能的设备类型（从枚举）
-            var allDeviceTypes = Enum.GetValues(typeof(Astra.Core.Devices.DeviceType))
-                .Cast<Astra.Core.Devices.DeviceType>();
-
-            foreach (var deviceType in allDeviceTypes)
+            foreach (var config in configs)
             {
-                if (!deviceTypeGroups.ContainsKey(deviceType))
-                {
-                    deviceTypeGroups[deviceType] = new List<DeviceConfig>();
-                }
-            }
-
-            // 3. 添加传感器管理节点（作为第一个根节点）
-            var sensorManagementNode = new TreeNodeViewModel
-            {
-                Header = "传感器设备",
-                Icon = "📡",
-                IsExpanded = false,
-                ShowAddButton = true,
-                ShowDeleteButton = false,
-                Tag = SensorManagementNodeInfo.Instance
-            };
-            
-            // 加载所有传感器并添加为子节点
-            var sensors = LoadAllSensors();
-            foreach (var sensor in sensors)
-            {
-                // 使用反射获取传感器属性
-                var sensorType = sensor.GetType();
-                var sensorNameProperty = sensorType.GetProperty("SensorName");
-                var sensorIdProperty = sensorType.GetProperty("SensorId");
                 
-                var sensorName = sensorNameProperty?.GetValue(sensor)?.ToString();
-                var sensorId = sensorIdProperty?.GetValue(sensor)?.ToString();
-                
-                var sensorNode = new TreeNodeViewModel
-                {
-                    Header = sensorName ?? sensorId ?? "未知传感器",
-                    Icon = "📡",
-                    Tag = new SensorInstanceInfo { SensorConfig = sensor },
-                    NodeId = sensorId ?? Guid.NewGuid().ToString(),
-                    ShowDeleteButton = true
-                };
-                sensorManagementNode.Children.Add(sensorNode);
             }
-            
-            TreeNodes.Add(sensorManagementNode);
-
-            // 4. 构建设备类型节点
-            foreach (var kvp in deviceTypeGroups.OrderBy(g => g.Key))
-            {
-                var deviceType = kvp.Key;
-                var items = kvp.Value;
-
-                if (items.Count == 0)
-                    continue;
-
-                var deviceTypeNode = new TreeNodeViewModel
-                {
-                    Header = GetDeviceTypeDisplayName(deviceType),
-                    Icon = GetDeviceTypeIcon(deviceType),
-                    IsExpanded = false,
-                    ShowAddButton = true,
-                    AddDeviceType = deviceType.ToString(),
-                    Tag = deviceType
-                };
-
-                // 为每个配置创建子节点（配置独立于设备）
-                // 按创建时间排序，确保顺序稳定（与保存时的顺序一致）
-                var sortedItems = items.OrderBy(c => c.CreatedAt).ThenBy(c => c.DeviceName).ToList();
-                foreach (var deviceConfig in sortedItems)
-                {
-                    var configInfo = GetConfigInfoForDevice(deviceConfig);
-
-                    // 检查配置对应的设备是否存在（仅用于显示状态，配置来源仍然是 ConfigurationManager）
-                    IDevice device = null;
-                    if (_deviceManager != null)
-                    {
-                        var deviceResult = _deviceManager.GetDevice(deviceConfig.DeviceId);
-                        if (deviceResult.Success && deviceResult.Data != null)
-                        {
-                            device = deviceResult.Data;
-                        }
-                    }
-
-                    var itemNode = new TreeNodeViewModel
-                    {
-                        Header = deviceConfig.DeviceName ?? deviceConfig.DeviceId ?? "未知配置",
-                        Icon = GetDeviceTypeIcon(deviceConfig.Type),
-                            Tag = new DeviceInstanceInfo
-                            {
-                            Device = device, // 设备可能为 null（配置存在但设备还未创建）
-                            Config = deviceConfig, // 配置来源：ConfigurationManager
-                                ConfigInfo = configInfo
-                            },
-                        NodeId = Guid.NewGuid().ToString(),
-                        ShowDeleteButton = true // 子节点可以删除
-                    };
-
-                    deviceTypeNode.Children.Add(itemNode);
-                }
-
-                // 如果没有配置，添加配置类型节点（用于添加新配置）
-                if (items.Count == 0)
-                {
-                    // 按需获取该设备类型的配置类型（仅在需要时扫描）
-                    var configTypesForThisDeviceType = GetConfigTypesForDeviceType(deviceType);
-
-                    foreach (var configInfo in configTypesForThisDeviceType)
-                    {
-                        var itemNode = new TreeNodeViewModel
-                        {
-                            Header = GetConfigTypeDisplayName(configInfo.ConfigType),
-                            Icon = "📋",
-                            Tag = configInfo,
-                            NodeId = Guid.NewGuid().ToString(),
-                            ShowDeleteButton = false, // 配置类型节点不能删除
-                        };
-                        deviceTypeNode.Children.Add(itemNode);
-                    }
-                }
-
-                TreeNodes.Add(deviceTypeNode);
-                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 添加设备类型节点: {deviceTypeNode.Header}，包含 {deviceTypeNode.Children.Count} 个子节点");
-            }
-
-            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 配置树构建完成，共 {TreeNodes.Count} 个设备类型节点");
         }
 
         /// <summary>
@@ -633,7 +492,7 @@ namespace Astra.ViewModels
                         .OrderBy(c => c.CreatedAt)
                         .ThenBy(c => c.DeviceName)
                         .ToList();
-                    
+
                     deviceConfigs.AddRange(allConfigs);
                 }
 
@@ -671,7 +530,7 @@ namespace Astra.ViewModels
             {
                 // 从 ConfigurationManager 获取所有设备配置（配置是独立的，不依赖设备实例）
                 var allConfigs = _configurationManager.GetAllConfigs();
-                
+
                 foreach (var config in allConfigs)
                 {
                     // 只处理设备配置
@@ -965,14 +824,14 @@ namespace Astra.ViewModels
         private List<object> LoadAllSensors()
         {
             var sensors = new List<object>();
-            
+
             try
             {
                 var configPath = GetSensorConfigFilePath();
                 if (File.Exists(configPath))
                 {
                     var json = File.ReadAllText(configPath);
-                    
+
                     // 查找 SensorConfig 类型
                     var sensorConfigType = AppDomain.CurrentDomain.GetAssemblies()
                         .SelectMany(a =>
@@ -993,16 +852,16 @@ namespace Astra.ViewModels
                         // 使用泛型反序列化
                         var sensorListType = typeof(List<>).MakeGenericType(sensorConfigType);
                         var sensorDataWrapperType = typeof(SensorConfigDataWrapper<>).MakeGenericType(sensorConfigType);
-                        
-                        var jsonOptions = new System.Text.Json.JsonSerializerOptions 
-                        { 
+
+                        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+                        {
                             PropertyNameCaseInsensitive = true,
                             ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
                             AllowTrailingCommas = true
                         };
-                        
+
                         var sensorData = System.Text.Json.JsonSerializer.Deserialize(json, sensorDataWrapperType, jsonOptions);
-                        
+
                         if (sensorData != null)
                         {
                             var sensorsProperty = sensorDataWrapperType.GetProperty("Sensors");
@@ -1022,7 +881,7 @@ namespace Astra.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"加载传感器配置失败: {ex.Message}");
             }
-            
+
             return sensors;
         }
 
@@ -1075,7 +934,7 @@ namespace Astra.ViewModels
                             return Enumerable.Empty<Type>();
                         }
                     })
-                    .FirstOrDefault(t => t.Name == "SensorManagementView" && 
+                    .FirstOrDefault(t => t.Name == "SensorManagementView" &&
                                        typeof(UserControl).IsAssignableFrom(t));
 
                 if (viewType != null)
@@ -1116,7 +975,7 @@ namespace Astra.ViewModels
                                 };
                                 return;
                             }
-                            
+
                             if (viewModel != null)
                             {
                                 // 如果 ViewModel 有 SelectedSensor 属性，设置它
@@ -1125,14 +984,14 @@ namespace Astra.ViewModels
                                 {
                                     var propertyType = selectedSensorProperty.PropertyType;
                                     // 检查类型是否兼容（支持 SensorConfig 或其基类）
-                                    if (propertyType.IsAssignableFrom(sensorConfig.GetType()) || 
+                                    if (propertyType.IsAssignableFrom(sensorConfig.GetType()) ||
                                         sensorConfig.GetType().IsSubclassOf(propertyType) ||
                                         propertyType.IsInstanceOfType(sensorConfig))
                                     {
                                         selectedSensorProperty.SetValue(viewModel, sensorConfig);
                                     }
                                 }
-                                
+
                                 view.DataContext = viewModel;
                             }
                         }
@@ -1183,7 +1042,7 @@ namespace Astra.ViewModels
                             return Enumerable.Empty<Type>();
                         }
                     })
-                    .FirstOrDefault(t => t.Name == "SensorManagementView" && 
+                    .FirstOrDefault(t => t.Name == "SensorManagementView" &&
                                        typeof(UserControl).IsAssignableFrom(t));
 
                 if (viewType != null)
@@ -1223,7 +1082,7 @@ namespace Astra.ViewModels
                                 };
                                 return;
                             }
-                            
+
                             if (viewModel != null)
                             {
                                 view.DataContext = viewModel;
@@ -1440,10 +1299,10 @@ namespace Astra.ViewModels
 
                 // 执行移动操作
                 var parentChildren = sourceParent.Children;
-                
+
                 // 先保存源节点
                 var nodeToMove = parentChildren[sourceIndex];
-                
+
                 // 移除源节点
                 parentChildren.RemoveAt(sourceIndex);
 
@@ -1625,7 +1484,7 @@ namespace Astra.ViewModels
                 // 设置默认值
                 var sensorNameProperty = sensorConfigType.GetProperty("SensorName");
                 var sensorIdProperty = sensorConfigType.GetProperty("SensorId");
-                
+
                 if (sensorNameProperty != null)
                 {
                     sensorNameProperty.SetValue(newSensor, "新传感器");
@@ -1741,14 +1600,14 @@ namespace Astra.ViewModels
 
                 // 加载现有传感器
                 var json = File.ReadAllText(configPath);
-                var jsonOptions = new System.Text.Json.JsonSerializerOptions 
-                { 
+                var jsonOptions = new System.Text.Json.JsonSerializerOptions
+                {
                     PropertyNameCaseInsensitive = true,
                     ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
                     AllowTrailingCommas = true
                 };
                 var sensorData = System.Text.Json.JsonSerializer.Deserialize(json, sensorDataWrapperType, jsonOptions);
-                
+
                 if (sensorData == null)
                     return;
 
@@ -1821,14 +1680,14 @@ namespace Astra.ViewModels
                 if (File.Exists(configPath))
                 {
                     var existingJson = File.ReadAllText(configPath);
-                    var jsonOptions = new System.Text.Json.JsonSerializerOptions 
-                    { 
+                    var jsonOptions = new System.Text.Json.JsonSerializerOptions
+                    {
                         PropertyNameCaseInsensitive = true,
                         ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip,
                         AllowTrailingCommas = true
                     };
                     var sensorData = System.Text.Json.JsonSerializer.Deserialize(existingJson, sensorDataWrapperType, jsonOptions);
-                    
+
                     if (sensorData != null)
                     {
                         var sensorsProperty = sensorDataWrapperType.GetProperty("Sensors");
@@ -1925,7 +1784,7 @@ namespace Astra.ViewModels
                 {
                     // 在删除前，尝试选择相邻节点
                     var children = parent.Children;
-                    
+
                     // 优先选择上一个节点（向上移动）
                     if (index > 0)
                     {
@@ -1991,10 +1850,10 @@ namespace Astra.ViewModels
                     {
                         // 选择相邻节点
                         SelectedNode = nextSelectedNode;
-                        
+
                         // 触发节点选择命令，加载对应的配置界面
                         NodeSelected(nextSelectedNode);
-                       
+
                     }
                     else
                     {
@@ -2033,30 +1892,30 @@ namespace Astra.ViewModels
                 var errorCount = 0;
                 var errors = new List<string>();
 
-            // 1. 处理待删除的设备（从设备管理器注销）
-            foreach (var deviceId in _pendingDeviceUnregisters.ToList())
-            {
-                if (_deviceManager != null)
+                // 1. 处理待删除的设备（从设备管理器注销）
+                foreach (var deviceId in _pendingDeviceUnregisters.ToList())
                 {
-                    var result = _deviceManager.UnregisterDevice(deviceId);
-                    if (result.Success)
+                    if (_deviceManager != null)
                     {
-                        successCount++;
-                        System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备 {deviceId} 已从设备管理器注销");
-                    }
-                    else
-                    {
-                        errorCount++;
-                        errors.Add($"注销设备 {deviceId} 失败: {result.ErrorMessage}");
-                        System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 注销设备 {deviceId} 失败: {result.ErrorMessage}");
+                        var result = _deviceManager.UnregisterDevice(deviceId);
+                        if (result.Success)
+                        {
+                            successCount++;
+                            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备 {deviceId} 已从设备管理器注销");
+                        }
+                        else
+                        {
+                            errorCount++;
+                            errors.Add($"注销设备 {deviceId} 失败: {result.ErrorMessage}");
+                            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 注销设备 {deviceId} 失败: {result.ErrorMessage}");
+                        }
                     }
                 }
-            }
 
-            // 清空待删除列表
-            _pendingDeviceUnregisters.Clear();
+                // 清空待删除列表
+                _pendingDeviceUnregisters.Clear();
 
-            // 2. 将 ConfigurationManager 中的配置应用到已注册的设备（如果设备存在）
+                // 2. 将 ConfigurationManager 中的配置应用到已注册的设备（如果设备存在）
                 // 按照树节点的顺序获取配置（保持子节点顺序）
                 var allDeviceConfigs = GetDeviceConfigsInTreeOrder();
 
@@ -2074,12 +1933,12 @@ namespace Astra.ViewModels
                         {
                             // 尝试应用配置到设备
                             var device = deviceResult.Data;
-                            
+
                             // 使用反射查找 IConfigurable<TConfig> 接口
                             var configurableInterface = device.GetType().GetInterfaces()
                                 .FirstOrDefault(i => i.IsGenericType &&
                                                      i.GetGenericTypeDefinition() == typeof(IConfigurable<>));
-                            
+
                             if (configurableInterface != null)
                             {
                                 try
@@ -2226,26 +2085,26 @@ namespace Astra.ViewModels
                 {
                     // 优先从 ConfigurationManager 获取配置文件路径
                     string configFilePath = null;
-                    
+
                     // 尝试从第一个配置获取已注册的路径
                     var firstConfig = configs.First();
                     if (_configurationManager != null)
                     {
                         // 先尝试根据配置类型获取路径
                         configFilePath = _configurationManager.GetConfigFilePathByType(firstConfig.ConfigType);
-                        
+
                         // 如果根据类型没找到，尝试根据 ConfigId 获取（同一类型配置应该使用同一个文件）
                         if (string.IsNullOrEmpty(configFilePath))
                         {
                             configFilePath = _configurationManager.GetConfigFilePath(firstConfig.ConfigId);
                         }
                     }
-                    
+
                     // 如果没有找到已注册的路径，使用查找逻辑
                     if (string.IsNullOrEmpty(configFilePath))
                     {
                         configFilePath = GetConfigFilePath(deviceType, configs.First().GetType());
-                        
+
                         // 如果找到了路径，将路径注册到 ConfigurationManager（方便下次使用）
                         if (!string.IsNullOrEmpty(configFilePath) && _configurationManager != null)
                         {
@@ -2256,7 +2115,7 @@ namespace Astra.ViewModels
                             }
                         }
                     }
-                    
+
                     if (string.IsNullOrEmpty(configFilePath))
                     {
                         System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法确定设备类型 {deviceType} 的配置文件路径，跳过保存");
@@ -2272,30 +2131,30 @@ namespace Astra.ViewModels
 
                     // 获取具体的配置类型
                     var concreteConfigType = configs.First().GetType();
-                    
+
                     // 使用反射创建泛型类型 DeviceConfigData<TConfig>
                     var configDataGenericType = typeof(DeviceConfigData<>).MakeGenericType(concreteConfigType);
                     var configData = Activator.CreateInstance(configDataGenericType);
                     var configsProperty = configDataGenericType.GetProperty("Configs");
-                    
+
                     // 创建具体类型的列表，并将配置转换为具体类型
                     var concreteListType = typeof(List<>).MakeGenericType(concreteConfigType);
                     var concreteList = Activator.CreateInstance(concreteListType);
                     var addMethod = concreteListType.GetMethod("Add");
-                    
+
                     foreach (var config in configs)
                     {
                         // 将 DeviceConfig 转换为具体类型并添加到列表
                         addMethod?.Invoke(concreteList, new[] { config });
                     }
-                    
+
                     // 设置配置列表属性
                     configsProperty?.SetValue(configData, concreteList);
 
                     // 序列化为 JSON 并保存
                     var jsonOptions = new JsonSerializerOptions
                     {
-                        WriteIndented = true,                    
+                        WriteIndented = true,
                         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // 不转义中文字符，直接显示中文
                     };
                     var json = JsonSerializer.Serialize(configData, configDataGenericType, jsonOptions);
@@ -2366,7 +2225,7 @@ namespace Astra.ViewModels
                 // 根据配置类型找到对应的设备类
                 var configType = config.GetType();
                 var deviceType = FindDeviceTypeForConfig(configType);
-                
+
                 if (deviceType == null)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法找到配置类型 {configType.Name} 对应的设备类");
@@ -2382,7 +2241,7 @@ namespace Astra.ViewModels
 
                 // 尝试不同的构造函数签名
                 var constructors = deviceType.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-                
+
                 foreach (var ctor in constructors)
                 {
                     var parameters = ctor.GetParameters();
@@ -2400,7 +2259,7 @@ namespace Astra.ViewModels
                         device = (IDevice)Activator.CreateInstance(deviceType, config);
                         break;
                     }
-                    else if (parameters.Length == 2 && 
+                    else if (parameters.Length == 2 &&
                              parameters[0].ParameterType.IsAssignableFrom(configType) &&
                              parameters[1].ParameterType == typeof(IMessageBus))
                     {
@@ -2443,7 +2302,7 @@ namespace Astra.ViewModels
             if (configName.EndsWith("Config"))
             {
                 var deviceName = configName.Substring(0, configName.Length - 6) + "Device";
-                
+
                 // 在配置类型的程序集中查找设备类
                 var assembly = configType.Assembly;
                 var deviceType = assembly.GetType($"{configType.Namespace}.{deviceName}");
@@ -2455,9 +2314,9 @@ namespace Astra.ViewModels
 
                 // 如果在同一命名空间找不到，尝试在整个程序集中查找
                 deviceType = assembly.GetTypes()
-                    .FirstOrDefault(t => !t.IsAbstract && 
-                                        !t.IsInterface && 
-                                        t.Name == deviceName && 
+                    .FirstOrDefault(t => !t.IsAbstract &&
+                                        !t.IsInterface &&
+                                        t.Name == deviceName &&
                                         typeof(IDevice).IsAssignableFrom(t));
 
                 if (deviceType != null)

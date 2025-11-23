@@ -1,4 +1,9 @@
-﻿using System;
+﻿using Astra.Core.Configuration;
+using Astra.Plugins.DataAcquisition.Commons;
+using Astra.Plugins.DataAcquisition.ViewModels;
+using Astra.Plugins.DataAcquisition.Views;
+using Astra.UI.Abstractions.Attributes;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -8,7 +13,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using Astra.Plugins.DataAcquisition.Commons;
 
 namespace Astra.Plugins.DataAcquisition.Configs
 {
@@ -17,7 +21,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
     /// <summary>
     /// 传感器配置（支持INotifyPropertyChanged）
     /// </summary>
-    public class SensorConfig : INotifyPropertyChanged, ICloneable
+    [TreeNodeConfig("传感器", "📡", typeof(SensorManagementView), typeof(SensorManagementViewModel))]
+    public class SensorConfig :BaseConfig, INotifyPropertyChanged, ICloneable
     {
         private string _sensorId;
         private string _sensorName;
@@ -40,6 +45,11 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private string _notes;
 
         public event PropertyChangedEventHandler PropertyChanged;
+
+        public override string ConfigType
+        {
+            get => "SensorConfig"; 
+        }
 
         #region 属性
 
@@ -170,6 +180,7 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         public SensorConfig()
         {
+            ConfigId = Guid.NewGuid().ToString();
             _sensorId = Guid.NewGuid().ToString();
             _sensorName = "";
             _sensorType = SensorType.None;
@@ -203,13 +214,19 @@ namespace Astra.Plugins.DataAcquisition.Configs
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
-        public object Clone()
+        public override string ToString() => DisplayText;
+
+        public override IConfig Clone()
         {
-            return this.MemberwiseClone();
+            return this.MemberwiseClone() as IConfig;
         }
 
-        public override string ToString() => DisplayText;
+        object ICloneable.Clone()
+        {
+            return Clone() as ICloneable;
+        }
+    }
     }
 
     #endregion
-}
+
