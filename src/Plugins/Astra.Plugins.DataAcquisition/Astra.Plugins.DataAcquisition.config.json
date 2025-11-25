@@ -1,6 +1,7 @@
 {
   "Configs": [
     {
+      "ConfigName": "采集卡设备1",
       "DeviceName": "采集卡设备1",
       "SerialNumber": "DLXX5P10",
       "SampleRate": 51200,
@@ -11,6 +12,7 @@
       "SlotId": "S1"
     },
     {
+      "ConfigName": "采集卡设备2",
       "DeviceName": "采集卡设备2",
       "SerialNumber": "DLXX5P11",
       "SampleRate": 51200,

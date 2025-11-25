@@ -33,7 +33,7 @@ namespace Astra.Core.Logs.Formatting
             if (entry.NodeInfo != null)
             {
                 sb.AppendLine();
-                sb.Append($"  Node: Id={entry.NodeInfo.NodeId}, Type={entry.NodeInfo.NodeType}, Action={entry.NodeInfo.Action}");
+                sb.Append($"  Node: ConfigId={entry.NodeInfo.NodeId}, Type={entry.NodeInfo.NodeType}, Action={entry.NodeInfo.Action}");
 
                 if (entry.NodeInfo.Duration.HasValue)
                 {

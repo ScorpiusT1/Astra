@@ -87,11 +87,11 @@ namespace Astra.Core.Devices.Base
         public virtual OperationResult ApplyConfig(TConfig newConfig)
         {
             if (newConfig == null)
-                return OperationResult.Fail("配置不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("配置不能为空", ErrorCodes.InvalidData);
 
             var validateResult = ValidateConfig(newConfig);
             if (!validateResult.Success)
-                return OperationResult.Fail($"配置验证失败: {validateResult.ErrorMessage}", ErrorCodes.InvalidConfig);
+                return OperationResult.Failure($"配置验证失败: {validateResult.ErrorMessage}", ErrorCodes.InvalidConfig);
 
             lock (_configLock)
             {
@@ -113,7 +113,7 @@ namespace Astra.Core.Devices.Base
 
                 if (restartRequired.Any() && IsOnline)
                 {
-                    return OperationResult.Fail(
+                    return OperationResult.Failure(
                         $"设备在线时无法更新需要重启的配置项: {string.Join(", ", restartRequired)}",
                         ErrorCodes.ConfigRequireRestart);
                 }
@@ -145,7 +145,7 @@ namespace Astra.Core.Devices.Base
 
         public virtual OperationResult<bool> ValidateConfig(TConfig config)
         {
-            return config?.Validate() ?? OperationResult<bool>.Fail("配置不能为空", ErrorCodes.InvalidData);
+            return config?.Validate() ?? OperationResult<bool>.Failure("配置不能为空", ErrorCodes.InvalidData);
         }
 
         public virtual List<string> GetHotUpdateableProperties()

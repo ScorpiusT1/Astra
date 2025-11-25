@@ -22,7 +22,7 @@ namespace Astra.Plugins.DataAcquisition.Configs
     /// 传感器配置（支持INotifyPropertyChanged）
     /// </summary>
     [TreeNodeConfig("传感器", "📡", typeof(SensorManagementView), typeof(SensorManagementViewModel))]
-    public class SensorConfig :BaseConfig, INotifyPropertyChanged, ICloneable
+    public class SensorConfig : ConfigBase, INotifyPropertyChanged, ICloneable
     {
         private string _sensorId;
         private string _sensorName;
@@ -45,11 +45,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private string _notes;
 
         public event PropertyChangedEventHandler PropertyChanged;
-
-        public override string ConfigType
-        {
-            get => "SensorConfig"; 
-        }
 
         #region 属性
 
@@ -178,9 +173,10 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         #endregion
 
-        public SensorConfig()
+        public SensorConfig() : base(Guid.NewGuid().ToString())
         {
-            ConfigId = Guid.NewGuid().ToString();
+
+            ConfigType = typeof(SensorConfig);
             _sensorId = Guid.NewGuid().ToString();
             _sensorName = "";
             _sensorType = SensorType.None;
@@ -226,7 +222,7 @@ namespace Astra.Plugins.DataAcquisition.Configs
             return Clone() as ICloneable;
         }
     }
-    }
+}
 
-    #endregion
+#endregion
 

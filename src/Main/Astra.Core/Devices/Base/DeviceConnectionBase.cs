@@ -148,7 +148,7 @@ namespace Astra.Core.Devices.Base
                     {
                         DoDisconnect();
                         Status = DeviceStatus.Disconnected;
-                        return OperationResult.Fail("设备连接成功但无响应", ErrorCodes.DeviceNoResponse);
+                        return OperationResult.Failure("设备连接成功但无响应", ErrorCodes.DeviceNoResponse);
                     }
                 }
                 else
@@ -203,7 +203,7 @@ namespace Astra.Core.Devices.Base
                     {
                         await DoDisconnectAsync(cancellationToken);
                         Status = DeviceStatus.Disconnected;
-                        return OperationResult.Fail("设备连接成功但无响应", ErrorCodes.DeviceNoResponse);
+                        return OperationResult.Failure("设备连接成功但无响应", ErrorCodes.DeviceNoResponse);
                     }
                 }
                 else
@@ -221,7 +221,7 @@ namespace Astra.Core.Devices.Base
             catch (OperationCanceledException)
             {
                 Status = DeviceStatus.Disconnected;
-                return OperationResult.Fail("连接操作已取消");
+                return OperationResult.Failure("连接操作已取消");
             }
             catch (Exception ex)
             {
@@ -311,7 +311,7 @@ namespace Astra.Core.Devices.Base
             catch (OperationCanceledException)
             {
                 Status = DeviceStatus.Disconnected;
-                return OperationResult.Fail("断开操作已取消");
+                return OperationResult.Failure("断开操作已取消");
             }
             catch (Exception ex)
             {
@@ -418,10 +418,10 @@ namespace Astra.Core.Devices.Base
             lock (_heartbeatLock)
             {
                 if (_isHeartbeatRunning)
-                    return OperationResult.Fail("心跳已在运行", ErrorCodes.HeartbeatAlreadyRunning);
+                    return OperationResult.Failure("心跳已在运行", ErrorCodes.HeartbeatAlreadyRunning);
 
                 if (!IsOnline)
-                    return OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
+                    return OperationResult.Failure("设备未在线", ErrorCodes.DeviceNotOnline);
 
                 _isHeartbeatRunning = true;
                 _heartbeatFailCount = 0;
@@ -489,7 +489,7 @@ namespace Astra.Core.Devices.Base
             lock (_heartbeatLock)
             {
                 if (!_isHeartbeatRunning)
-                    return OperationResult.Fail("心跳未运行", ErrorCodes.HeartbeatNotRunning);
+                    return OperationResult.Failure("心跳未运行", ErrorCodes.HeartbeatNotRunning);
 
                 _isHeartbeatRunning = false;
                 _heartbeatCts?.Cancel();

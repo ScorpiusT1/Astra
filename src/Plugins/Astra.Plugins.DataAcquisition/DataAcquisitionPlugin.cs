@@ -1,10 +1,14 @@
 using Astra.Core.Configuration;
 using Astra.Core.Devices.Management;
+using Astra.Core.Logs;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
 using Astra.Core.Plugins.Messaging;
-using Astra.Core.Logs;
+using Astra.Plugins.DataAcquisition.Abstractions;
+using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
+using Astra.Plugins.DataAcquisition.Providers;
+using HandyControl.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using System.IO;
@@ -12,9 +16,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Astra.Plugins.DataAcquisition.Abstractions;
-using HandyControl.Tools;
-using Astra.Plugins.DataAcquisition.Configs;
+
 
 namespace Astra.Plugins.DataAcquisition
 {
@@ -22,7 +24,8 @@ namespace Astra.Plugins.DataAcquisition
     {
         private IPluginContext _context;
         private IDeviceManager? _deviceManager;
-        private ConfigurationManager? _configurationManager;
+       
+        private IConfigurationManager? _configuManager;
         private IMessageBus _messageBus;
         private ILogger? _logger;
         private readonly List<DataAcquisitionDevice> _devices = new();
@@ -43,12 +46,14 @@ namespace Astra.Plugins.DataAcquisition
             try
             {
                 _deviceManager = context.ServiceProvider?.GetService<IDeviceManager>();
-                _configurationManager = context.ServiceProvider?.GetService<ConfigurationManager>();
+                
+                _configuManager = context.ServiceProvider?.GetService<IConfigurationManager>();
+
             }
             catch
             {
                 _deviceManager = null;
-                _configurationManager = null;
+                _configuManager = null;
             }
 
             _messageBus = context.MessageBus;
@@ -260,40 +265,12 @@ namespace Astra.Plugins.DataAcquisition
         {
             try
             {
-                var configFileName = "SensorConfig.json";
-                string fileName = Path.Combine(Core.Configuration.ConfigHelper.BaseConfigDirectory, configFileName);
-                var sensorCollection = await Core.Configuration.ConfigHelper.LoadAsync<ConfigCollection<SensorConfig>>(fileName, cancellationToken).ConfigureAwait(false);
+                string path = Path.Combine(Core.Configuration.ConfigPathString.BaseConfigDirectory, "Sensors");
 
-                if (sensorCollection == null || sensorCollection.Configs.Count() == 0)
-                {
-                    _logger?.Warn($"[{Name}] 传感器配置文件中没有配置", LogCategory.System);
-                    return;
-                }
-
-                foreach (var sensorConfig in sensorCollection.Configs)
-                {
-                    try
-                    {
-                        // 注册传感器配置到 ConfigurationManager
-                        if (_configurationManager != null)
-                        {
-                            var registerResult = _configurationManager.RegisterConfig(sensorConfig, fileName);
-
-                            if (registerResult.Success)
-                            {
-                                _logger?.Info($"[{Name}] 传感器配置已注册到 ConfigurationManager: {sensorConfig.SensorName} (ID: {sensorConfig.ConfigId})", LogCategory.System);
-                            }
-                            else
-                            {
-                                _logger?.Warn($"[{Name}] 传感器配置注册到 ConfigurationManager 失败: {sensorConfig.SensorName} - {registerResult.ErrorMessage}", LogCategory.System);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.Error($"[{Name}] 加载传感器配置失败: {ex.Message}", ex, LogCategory.Device);
-                    }
-                }
+                SensorConfigProvider provider = new SensorConfigProvider(path);
+                _configuManager?.RegisterProvider(provider);
+                var result = await _configuManager?.GetAllConfigsAsync();
+                var bb = result.Data.ToArray();
             }
             catch (Exception ex)
             {
@@ -306,48 +283,25 @@ namespace Astra.Plugins.DataAcquisition
             try
             {
                 _devices?.Clear();
-                // 查找配置文件
-                var configFileName = "Astra.Plugins.DataAcquisition.config.json";
 
-                string fileName = Path.Combine(Core.Configuration.ConfigHelper.DeviceConfigDirectory, configFileName);
+                string path = Path.Combine(Core.Configuration.ConfigPathString.BaseConfigDirectory, "Devices");
 
-                var configData = await Core.Configuration.ConfigHelper.LoadAsync<ConfigCollection<DataAcquisitionConfig>>(fileName, cancellationToken).ConfigureAwait(false);
+                DataAcquisitionConfigProvider provider = new DataAcquisitionConfigProvider(path);
+                _configuManager?.RegisterProvider(provider);
+                var result = await _configuManager?.GetAllConfigsAsync<DataAcquisitionConfig>();
 
-                if (configData?.Configs == null || configData.Configs.Count == 0)
+                if (result == null || result.Data == null || result.Data.Count() == 0)
                 {
                     _logger?.Warn($"[{Name}] 配置文件中没有设备配置", LogCategory.System);
                     return;
                 }
 
-                // 先注册配置到 ConfigurationManager，然后根据配置创建设备实例
-                // 注意：配置独立于设备，先有配置才能创建设备
-                foreach (var config in configData.Configs)
+                foreach (var config in result.Data)
                 {
                     try
                     {
-                        // 1. 先将配置注册到 ConfigurationManager（配置独立于设备）
-                        if (_configurationManager != null)
-                        {
-                            // 传递标准配置文件路径（无论从哪个位置加载，都使用标准路径注册）
-                            // 这样确保同一类型配置使用相同的路径，后续保存时统一保存到标准位置
-                            var registerResult = _configurationManager.RegisterConfig(config, fileName);
-
-
-                            if (registerResult.Success)
-                            {
-                                _logger?.Info($"[{Name}] 配置已注册到 ConfigurationManager: {config.DeviceName} (ID: {config.ConfigId}), 路径: {fileName}", LogCategory.System);
-                            }
-                            else
-                            {
-                                _logger?.Warn($"[{Name}] 配置注册到 ConfigurationManager 失败: {config.DeviceName} - {registerResult.ErrorMessage}", LogCategory.System);
-                                // 即使注册失败，仍然尝试创建设备（向后兼容）
-                            }
-                        }
-
-                        // 2. 根据配置创建设备实例
                         var device = new DataAcquisitionDevice(config, _messageBus, _logger);
                         _devices?.Add(device);
-
                         _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);
                     }
                     catch (Exception ex)
@@ -355,16 +309,61 @@ namespace Astra.Plugins.DataAcquisition
                         _logger?.Error($"[{Name}] 加载设备配置失败: {ex.Message}", ex, LogCategory.Device);
                     }
                 }
+
+                //// 查找配置文件
+                //var configFileName = "Astra.Plugins.DataAcquisition.config.json";
+
+                //string fileName = Path.Combine(Core.Configuration.ConfigPathString.DeviceConfigDirectory, configFileName);
+
+                //var configData = await Core.Configuration.ConfigPathString.LoadAsync<ConfigCollection<DataAcquisitionConfig>>(fileName, cancellationToken).ConfigureAwait(false);
+
+                //if (configData?.Configs == null || configData.Configs.Count == 0)
+                //{
+                //    _logger?.Warn($"[{ConfigName}] 配置文件中没有设备配置", LogCategory.System);
+                //    return;
+                //}
+
+                //// 先注册配置到 ConfigurationManager，然后根据配置创建设备实例
+                //// 注意：配置独立于设备，先有配置才能创建设备
+                //foreach (var config in configData.Configs)
+                //{
+                //    try
+                //    {
+                //        // 1. 先将配置注册到 ConfigurationManager（配置独立于设备）
+                //        if (_configurationManager != null)
+                //        {
+                //            // 传递标准配置文件路径（无论从哪个位置加载，都使用标准路径注册）
+                //            // 这样确保同一类型配置使用相同的路径，后续保存时统一保存到标准位置
+                //            var registerResult = _configurationManager.RegisterConfig(config, fileName);
+
+
+                //            if (registerResult.Success)
+                //            {
+                //                _logger?.Info($"[{ConfigName}] 配置已注册到 ConfigurationManager: {config.DeviceName} (ID: {config.ConfigId}), 路径: {fileName}", LogCategory.System);
+                //            }
+                //            else
+                //            {
+                //                _logger?.Warn($"[{ConfigName}] 配置注册到 ConfigurationManager 失败: {config.DeviceName} - {registerResult.ErrorMessage}", LogCategory.System);
+                //                // 即使注册失败，仍然尝试创建设备（向后兼容）
+                //            }
+                //        }
+
+                //        // 2. 根据配置创建设备实例
+                //        var device = new DataAcquisitionDevice(config, _messageBus, _logger);
+                //        _devices?.Add(device);
+
+                //        _logger?.Info($"[{ConfigName}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);
+                //    }
+                //    catch (Exception ex)
+                //    {
+                //        _logger?.Error($"[{ConfigName}] 加载设备配置失败: {ex.Message}", ex, LogCategory.Device);
+                //    }
+                //}
             }
             catch (Exception ex)
             {
                 _logger?.Error($"[{Name}] 加载设备配置时发生异常: {ex.Message}", ex, LogCategory.System);
             }
-        }
-
-        private class ConfigCollection<T> where T : IConfig
-        {
-            public List<T> Configs { get; set; } = new();
         }
     }
 }

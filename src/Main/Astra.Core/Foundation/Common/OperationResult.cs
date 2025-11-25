@@ -71,7 +71,7 @@ namespace Astra.Core.Foundation.Common
             };
         }
 
-        public static OperationResult Fail(string errorMessage, int errorCode = -1)
+        public static OperationResult Failure(string errorMessage, int errorCode = -1)
         {
             return new OperationResult
             {
@@ -143,7 +143,7 @@ namespace Astra.Core.Foundation.Common
             };
         }
 
-        public new static OperationResult<T> Fail(string errorMessage, int errorCode = -1)
+        public new static OperationResult<T> Failure(string errorMessage, int errorCode = -1)
         {
             return new OperationResult<T>
             {

@@ -282,7 +282,7 @@ namespace Astra.Services.Startup
             var routes = new[]
             {
                 (Astra.Utilities.NavigationKeys.Home, typeof(Astra.Views.HomeView), typeof(Astra.ViewModels.HomeViewModel)),
-                (Astra.Utilities.NavigationKeys.Config, typeof(Astra.Views.ConfigView), typeof(Astra.ViewModels.ConfigViewModelValidation)),
+                (Astra.Utilities.NavigationKeys.Config, typeof(Astra.Views.ConfigView), typeof(Astra.ViewModels.ConfigViewModel)),
                 (Astra.Utilities.NavigationKeys.Debug, typeof(Astra.Views.DebugView), typeof(Astra.ViewModels.DebugViewModel)),
                 (Astra.Utilities.NavigationKeys.Sequence, typeof(Astra.Views.SequenceView), typeof(Astra.ViewModels.SequenceViewModel)),
                 (Astra.Utilities.NavigationKeys.Permission, typeof(Astra.Views.PermissionView), typeof(Astra.ViewModels.PermissionViewModel)),

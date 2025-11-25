@@ -17,12 +17,12 @@ namespace Astra.Services.Monitoring
 
 		public void TrackEvent(string name, object properties = null)
 		{
-			_logger.LogInformation("Event: {Name} | Properties: {@Props}", name, properties);
+			_logger.LogInformation("Event: {ConfigName} | Properties: {@Props}", name, properties);
 		}
 
 		public void TrackMetric(string name, double value, object properties = null)
 		{
-			_logger.LogInformation("Metric: {Name}={Value} | Properties: {@Props}", name, value, properties);
+			_logger.LogInformation("Metric: {ConfigName}={Value} | Properties: {@Props}", name, value, properties);
 		}
 
 		public async Task<T> TrackDurationAsync<T>(string name, Func<Task<T>> work, object properties = null)

@@ -28,7 +28,7 @@ namespace Astra.Core.Devices.Extensions
             if (!validateResult.Success || !validateResult.Data)
             {
                 device.Disconnect();
-                return OperationResult.Fail("设备连接成功但验证失败", ErrorCodes.DeviceNoResponse);
+                return OperationResult.Failure("设备连接成功但验证失败", ErrorCodes.DeviceNoResponse);
             }
 
             return OperationResult.Succeed("设备连接并验证成功");
@@ -47,7 +47,7 @@ namespace Astra.Core.Devices.Extensions
             if (!validateResult.Success || !validateResult.Data)
             {
                 await device.DisconnectAsync(cancellationToken);
-                return OperationResult.Fail("设备连接成功但验证失败", ErrorCodes.DeviceNoResponse);
+                return OperationResult.Failure("设备连接成功但验证失败", ErrorCodes.DeviceNoResponse);
             }
 
             return OperationResult.Succeed("设备连接并验证成功");
@@ -106,7 +106,7 @@ namespace Astra.Core.Devices.Extensions
         {
             var sendResult = device.Send(message);
             if (!sendResult.Success)
-                return OperationResult<DeviceMessage>.Fail(sendResult.ErrorMessage, sendResult.ErrorCode);
+                return OperationResult<DeviceMessage>.Failure(sendResult.ErrorMessage, sendResult.ErrorCode);
 
             // 等待响应
             var startTime = DateTime.Now;
@@ -121,7 +121,7 @@ namespace Astra.Core.Devices.Extensions
                 Thread.Sleep(10);
             }
 
-            return OperationResult<DeviceMessage>.Fail("接收超时", ErrorCodes.ReceiveTimeout);
+            return OperationResult<DeviceMessage>.Failure("接收超时", ErrorCodes.ReceiveTimeout);
         }
 
         /// <summary>
@@ -149,7 +149,7 @@ namespace Astra.Core.Devices.Extensions
                 return OperationResult<byte[]>.Succeed(result.Data.Data);
             }
 
-            return OperationResult<byte[]>.Fail(result.ErrorMessage, result.ErrorCode);
+            return OperationResult<byte[]>.Failure(result.ErrorMessage, result.ErrorCode);
         }
 
         /// <summary>
@@ -324,7 +324,7 @@ namespace Astra.Core.Devices.Extensions
                 }
             }
 
-            return OperationResult.Fail($"连接失败，已重试 {maxRetries} 次", ErrorCodes.ConnectFailed);
+            return OperationResult.Failure($"连接失败，已重试 {maxRetries} 次", ErrorCodes.ConnectFailed);
         }
 
         /// <summary>
@@ -345,7 +345,7 @@ namespace Astra.Core.Devices.Extensions
                 }
             }
 
-            return OperationResult.Fail($"发送失败，已重试 {maxRetries} 次", ErrorCodes.SendFailed);
+            return OperationResult.Failure($"发送失败，已重试 {maxRetries} 次", ErrorCodes.SendFailed);
         }
 
         /// <summary>
@@ -372,7 +372,7 @@ namespace Astra.Core.Devices.Extensions
                 }
                 catch (OperationCanceledException)
                 {
-                    return OperationResult.Fail("操作已取消");
+                    return OperationResult.Failure("操作已取消");
                 }
                 catch (Exception ex)
                 {
@@ -385,7 +385,7 @@ namespace Astra.Core.Devices.Extensions
                 }
             }
 
-            return OperationResult.Fail($"操作失败，已重试 {maxRetries} 次");
+            return OperationResult.Failure($"操作失败，已重试 {maxRetries} 次");
         }
 
         #endregion

@@ -7,7 +7,7 @@
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
              xmlns:models="clr-namespace:Astra.Models"
              xmlns:behaviors="clr-namespace:Astra.Behaviors"
-             d:DataContext="{d:DesignInstance Type=viewmodels:ConfigViewModelValidation}"
+             d:DataContext="{d:DesignInstance Type=viewmodels:ConfigViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 

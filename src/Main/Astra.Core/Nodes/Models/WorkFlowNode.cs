@@ -199,10 +199,10 @@ namespace Astra.Core.Nodes.Models
                 ReferenceHandler = ReferenceHandler.Preserve
             });
 
-            // 2) 重新生成工作流自身 Id
+            // 2) 重新生成工作流自身 ConfigId
             cloned.Id = Guid.NewGuid().ToString();
 
-            // 3) 重新分配所有子节点的 Id，并建立旧->新 映射
+            // 3) 重新分配所有子节点的 ConfigId，并建立旧->新 映射
             var nodeIdMap = new Dictionary<string, string>();
             foreach (var n in cloned.Nodes)
             {
@@ -211,7 +211,7 @@ namespace Astra.Core.Nodes.Models
                 nodeIdMap[oldId] = n.Id;
             }
 
-            // 4) 修补连接：重生连接 Id，并用映射修复 SourceNodeId/TargetNodeId
+            // 4) 修补连接：重生连接 ConfigId，并用映射修复 SourceNodeId/TargetNodeId
             for (int i = 0; i < cloned.Connections.Count; i++)
             {
                 var c = cloned.Connections[i];

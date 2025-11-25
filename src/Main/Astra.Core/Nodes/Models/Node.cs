@@ -112,7 +112,7 @@ namespace Astra.Core.Nodes.Models
         /// 1) 按运行时具体类型进行 JSON 序列化并反序列化，保留多态；
         /// 2) 使用 ReferenceHandler.Preserve 以处理循环引用；
         /// 3) 遵循 [JsonIgnore]，运行时属性不会被复制；
-        /// 4) 反序列化后重新生成 Id；
+        /// 4) 反序列化后重新生成 ConfigId；
         /// 5) 调用 AfterClone(cloned) 供子类执行 ID 重新分配与关系修补（如需）。
         /// </summary>
         public virtual Node Clone()

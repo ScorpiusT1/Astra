@@ -140,7 +140,7 @@ namespace Astra.Core.Plugins.Management
 
             var sb = new StringBuilder();
             sb.AppendLine($"\n========== Plugin Dump: {pluginId} ==========");
-            sb.AppendLine($"Name: {plugin.Name}");
+            sb.AppendLine($"ConfigName: {plugin.Name}");
             sb.AppendLine($"Version: {plugin.Version}");
             sb.AppendLine($"Phase: {state?.Phase}");
             sb.AppendLine($"Last Transition: {state?.LastTransition}");

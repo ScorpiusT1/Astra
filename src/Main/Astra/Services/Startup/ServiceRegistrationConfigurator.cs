@@ -216,21 +216,35 @@ namespace Astra.Services.Startup
         /// 注册设备配置服务
         /// </summary>
         private void RegisterDeviceConfigServices(IServiceCollection services)
-        {
-            // 注册配置管理器（单例，统一管理所有配置）
-            // 注意：配置是独立的，不依赖设备。设备是根据配置创建的，而不是从设备获取配置。
-            services.AddSingleton<ConfigurationManager>(provider =>
+        {         
+            // ==================== 重构后的配置管理器 ====================
+            
+            // 1. 注册配置缓存服务（单一职责原则）
+            services.AddSingleton<IConfigurationCacheService>(provider =>
             {
-                var configManager = new ConfigurationManager();
-                
-                // 注意：配置管理器不订阅设备管理器事件
-                // 配置和设备是分离的：先有配置，然后根据配置创建设备
-                // 设备注销时，配置仍然保留在 ConfigurationManager 中（可以用于重新创建设备）
-
-                return configManager;
+                return new ConfigurationCacheService(enabled: true);
             });
 
-            Debug.WriteLine("✅ 配置管理器注册完成");
+            // 2. 注册配置事件服务（单一职责原则）
+            services.AddSingleton<IConfigurationEventService, ConfigurationEventService>();
+
+            // 3. 注册配置导入导出服务（单一职责原则）
+            services.AddSingleton<IConfigurationImportExportService>(provider =>
+            {
+                // 尝试获取 ILogger，如果不存在则传入 null
+                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigurationImportExportService>>();
+                return new ConfigurationImportExportService(logger);
+            });
+
+            // 4. 注册配置事务服务（单一职责原则）
+            services.AddSingleton<IConfigurationTransactionService, ConfigurationTransactionService>();
+
+            // 5. 注册重构后的配置管理器（依赖倒置原则）
+            // ⭐ 通过构造函数注入所有依赖的服务
+            services.AddSingleton<IConfigurationManager, ConfigurationManagerRefactored>();
+            
+
+            Debug.WriteLine("✅ 配置管理器注册完成（包括重构后的 ConfigurationManagerRefactored）");
         }
 
         /// <summary>
@@ -468,7 +482,7 @@ namespace Astra.Services.Startup
             services.AddTransient<ViewModels.UserMenuViewModel>();
             services.AddTransient<ViewModels.MainViewModel>();
             services.AddSingleton<ViewModels.MainViewViewModel>();
-            services.AddTransient<ViewModels.ConfigViewModelValidation>();
+            services.AddTransient<ViewModels.ConfigViewModel>();
             services.AddTransient<ViewModels.DebugViewModel>();
 
             Debug.WriteLine("✅ 重构后的 ViewModels 注册完成");

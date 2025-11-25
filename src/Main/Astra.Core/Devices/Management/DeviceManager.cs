@@ -55,13 +55,13 @@ namespace Astra.Core.Devices.Management
         public OperationResult RegisterDevice(IDevice device)
         {
             if (device == null)
-                return OperationResult.Fail("设备对象不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("设备对象不能为空", ErrorCodes.InvalidData);
 
             if (string.IsNullOrWhiteSpace(device.DeviceId))
-                return OperationResult.Fail("设备ID不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("设备ID不能为空", ErrorCodes.InvalidData);
 
             if (_devices.ContainsKey(device.DeviceId))
-                return OperationResult.Fail($"设备 {device.DeviceId} 已存在", ErrorCodes.InvalidData);
+                return OperationResult.Failure($"设备 {device.DeviceId} 已存在", ErrorCodes.InvalidData);
 
             if (_devices.TryAdd(device.DeviceId, device))
             {
@@ -92,22 +92,22 @@ namespace Astra.Core.Devices.Management
                 return OperationResult.Succeed($"设备 {device.DeviceId} 注册成功");
             }
 
-            return OperationResult.Fail($"设备 {device.DeviceId} 注册失败");
+            return OperationResult.Failure($"设备 {device.DeviceId} 注册失败");
         }
 
         public OperationResult UnregisterDevice(string deviceId)
         {
             if (string.IsNullOrWhiteSpace(deviceId))
-                return OperationResult.Fail("设备ID不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("设备ID不能为空", ErrorCodes.InvalidData);
 
             if (!_devices.TryGetValue(deviceId, out var existingDevice))
-                return OperationResult.Fail($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
+                return OperationResult.Failure($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
 
             if (_usageService.HasConsumers(deviceId, out var consumers) && consumers.Count > 0)
             {
                 _ = _eventPublisher.PublishDeviceRemovalBlockedAsync(existingDevice, consumers, "DeviceInUse");
                 var detail = string.Join(", ", consumers.Select(c => string.IsNullOrWhiteSpace(c.ConsumerName) ? c.ConsumerId : c.ConsumerName));
-                return OperationResult.Fail($"设备 {deviceId} 正被以下使用者引用: {detail}", ErrorCodes.DeviceInUse);
+                return OperationResult.Failure($"设备 {deviceId} 正被以下使用者引用: {detail}", ErrorCodes.DeviceInUse);
             }
 
             if (_devices.TryRemove(deviceId, out var device))
@@ -144,13 +144,13 @@ namespace Astra.Core.Devices.Management
                 return OperationResult.Succeed($"设备 {deviceId} 注销成功");
             }
 
-            return OperationResult.Fail($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
+            return OperationResult.Failure($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
         }
 
         public OperationResult<int> RegisterDevices(IEnumerable<IDevice> devices)
         {
             if (devices == null)
-                return OperationResult<int>.Fail("设备列表不能为空", ErrorCodes.InvalidData);
+                return OperationResult<int>.Failure("设备列表不能为空", ErrorCodes.InvalidData);
 
             int successCount = 0;
             foreach (var device in devices)
@@ -194,7 +194,7 @@ namespace Astra.Core.Devices.Management
                 return OperationResult<IDevice>.Succeed(device);
             }
 
-            return OperationResult<IDevice>.Fail($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
+            return OperationResult<IDevice>.Failure($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
         }
 
         public OperationResult<List<IDevice>> GetAllDevices()
@@ -389,12 +389,12 @@ namespace Astra.Core.Devices.Management
                     }
                     else
                     {
-                        results[deviceId] = OperationResult.Fail("设备不支持数据传输", ErrorCodes.NotSupported);
+                        results[deviceId] = OperationResult.Failure("设备不支持数据传输", ErrorCodes.NotSupported);
                     }
                 }
                 else
                 {
-                    results[deviceId] = OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
+                    results[deviceId] = OperationResult.Failure("设备未在线", ErrorCodes.DeviceNotOnline);
                 }
             }
 
@@ -430,12 +430,12 @@ namespace Astra.Core.Devices.Management
                     }
                     else
                     {
-                        results[deviceId] = OperationResult.Fail("设备不支持数据传输", ErrorCodes.NotSupported);
+                        results[deviceId] = OperationResult.Failure("设备不支持数据传输", ErrorCodes.NotSupported);
                     }
                 }
                 else
                 {
-                    results[deviceId] = OperationResult.Fail("设备未在线", ErrorCodes.DeviceNotOnline);
+                    results[deviceId] = OperationResult.Failure("设备未在线", ErrorCodes.DeviceNotOnline);
                 }
             }
 
@@ -498,7 +498,7 @@ namespace Astra.Core.Devices.Management
             lock (_lockObject)
             {
                 if (_isMonitoring)
-                    return OperationResult.Fail("监控已在运行中");
+                    return OperationResult.Failure("监控已在运行中");
 
                 _isMonitoring = true;
                 _monitoringCts = new CancellationTokenSource();
@@ -553,7 +553,7 @@ namespace Astra.Core.Devices.Management
             lock (_lockObject)
             {
                 if (!_isMonitoring)
-                    return OperationResult.Fail("监控未在运行");
+                    return OperationResult.Failure("监控未在运行");
 
                 _isMonitoring = false;
                 _monitoringCts?.Cancel();

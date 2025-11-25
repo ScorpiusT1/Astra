@@ -1,19 +1,25 @@
-using Astra.Core.Foundation.Common;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Astra.Core.Configuration
 {
     /// <summary>
-    /// 配置接口
-    /// 所有配置类都必须实现此接口
+    /// 配置基础接口 - 符合接口隔离原则（ISP）
+    /// 只包含最基本的配置属性，避免接口臃肿
     /// </summary>
     public interface IConfig
     {
         /// <summary>
-        /// 配置ID（唯一标识）
+        /// 配置唯一标识符（只读，确保不可变性）
         /// </summary>
-        string ConfigId { get; set; }
+        string ConfigId { get; }
+
+        /// <summary>
+        /// 配置类型
+        /// </summary>
+        Type ConfigType { get; }
 
         /// <summary>
         /// 配置名称
@@ -21,69 +27,48 @@ namespace Astra.Core.Configuration
         string ConfigName { get; set; }
 
         /// <summary>
-        /// 配置类型（用于区分不同类型的配置）
+        /// 创建时间（只读）
         /// </summary>
-        string ConfigType { get; }
+        DateTime CreatedAt { get; }
 
         /// <summary>
-        /// 配置是否启用
+        /// 最后更新时间
         /// </summary>
-        bool IsEnabled { get; set; }
+        DateTime? UpdatedAt { get; set; }
 
         /// <summary>
-        /// 配置版本号
+        /// 配置版本号（用于版本管理和冲突检测）
         /// </summary>
         int Version { get; set; }
+    }
 
+    /// <summary>
+    /// 可克隆配置接口 - 接口隔离原则，仅需要克隆功能的配置实现此接口
+    /// </summary>
+    public interface IClonableConfig : IConfig
+    {
         /// <summary>
-        /// 配置创建时间
-        /// </summary>
-        DateTime CreatedAt { get; set; }
-
-        /// <summary>
-        /// 配置最后修改时间
-        /// </summary>
-        DateTime ModifiedAt { get; set; }
-
-        /// <summary>
-        /// 配置变更事件
-        /// </summary>
-        event EventHandler<ConfigChangedEventArgs> ConfigChanged;
-
-        /// <summary>
-        /// 验证配置
-        /// </summary>
-        OperationResult<bool> Validate();
-
-        /// <summary>
-        /// 克隆配置
+        /// 克隆配置（生成新的ConfigId）
         /// </summary>
         IConfig Clone();
 
         /// <summary>
-        /// 转换为字典
+        /// 克隆配置并指定新的ConfigId
         /// </summary>
-        Dictionary<string, object> ToDictionary();
+        /// <param name="newConfigId">新配置的ID</param>
+        /// <returns>克隆的配置实例</returns>
+        IConfig CloneWithId(string newConfigId);
+    }
 
+    /// <summary>
+    /// 可观察配置接口 - 接口隔离原则，仅需要事件通知的配置实现此接口
+    /// </summary>
+    public interface IObservableConfig : IConfig
+    {
         /// <summary>
-        /// 从字典加载配置
+        /// 配置变更事件
         /// </summary>
-        void FromDictionary(Dictionary<string, object> dictionary);
-
-        /// <summary>
-        /// 获取需要重启的属性列表
-        /// </summary>
-        List<string> GetRestartRequiredProperties();
-
-        /// <summary>
-        /// 获取支持热更新的属性列表
-        /// </summary>
-        List<string> GetHotUpdateableProperties();
-
-        /// <summary>
-        /// 获取变更的属性列表（与另一个配置比较）
-        /// </summary>
-        List<string> GetChangedProperties(IConfig other);
+        event EventHandler<ConfigChangedEventArgs> ConfigChanged;
     }
 
     /// <summary>
@@ -91,40 +76,9 @@ namespace Astra.Core.Configuration
     /// </summary>
     public class ConfigChangedEventArgs : EventArgs
     {
-        /// <summary>
-        /// 配置ID
-        /// </summary>
-        public string ConfigId { get; set; }
-
-        /// <summary>
-        /// 配置类型
-        /// </summary>
-        public string ConfigType { get; set; }
-
-        /// <summary>
-        /// 变更的属性列表
-        /// </summary>
-        public List<string> ChangedProperties { get; set; }
-
-        /// <summary>
-        /// 旧配置
-        /// </summary>
-        public IConfig OldConfig { get; set; }
-
-        /// <summary>
-        /// 新配置
-        /// </summary>
-        public IConfig NewConfig { get; set; }
-
-        /// <summary>
-        /// 变更时间
-        /// </summary>
-        public DateTime Timestamp { get; set; }
-
-        /// <summary>
-        /// 变更原因
-        /// </summary>
-        public string ChangedBy { get; set; }
+        public string PropertyName { get; set; }
+        public object OldValue { get; set; }
+        public object NewValue { get; set; }
+        public DateTime ChangedAt { get; set; } = DateTime.Now;
     }
 }
-

@@ -463,7 +463,7 @@ namespace Astra.Core.Logs
                 sb.AppendLine("=".PadRight(80, '='));
                 sb.AppendLine($"LogStream Workflow Log");
                 sb.AppendLine($"Workflow ID: {_config.WorkflowId ?? "N/A"}");
-                sb.AppendLine($"Logger Name: {_config.Name}");
+                sb.AppendLine($"Logger ConfigName: {_config.Name}");
                 sb.AppendLine($"Start Time: {_createdTime:yyyy-MM-dd HH:mm:ss.fff}");
                 sb.AppendLine($"Log Level: {_config.Level}");
                 sb.AppendLine($"Log File: {_config.FilePath}");

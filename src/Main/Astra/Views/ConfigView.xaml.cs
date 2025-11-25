@@ -20,7 +20,7 @@ namespace Astra.Views
 
         private void ConfigView_Loaded(object sender, System.Windows.RoutedEventArgs e)
         {
-            if(DataContext is ConfigViewModelValidation viewModel)
+            if(DataContext is ConfigViewModel viewModel)
             {
                 viewModel.ContentControlChanged -= ViewModel_ContentControlChanged;
                 viewModel.ContentControlChanged += ViewModel_ContentControlChanged;

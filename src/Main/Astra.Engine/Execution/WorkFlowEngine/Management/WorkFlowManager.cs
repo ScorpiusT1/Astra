@@ -71,10 +71,10 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult RegisterWorkFlow(WorkFlowNode workflow)
         {
             if (workflow == null)
-                return OperationResult.Fail("工作流不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("工作流不能为空", ErrorCodes.InvalidData);
 
             if (string.IsNullOrWhiteSpace(workflow.Id))
-                return OperationResult.Fail("工作流ID不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("工作流ID不能为空", ErrorCodes.InvalidData);
 
             return RegisterWorkFlow(workflow.Id, workflow);
         }
@@ -85,13 +85,13 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult RegisterWorkFlow(string key, WorkFlowNode workflow)
         {
             if (string.IsNullOrWhiteSpace(key))
-                return OperationResult.Fail("工作流键不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("工作流键不能为空", ErrorCodes.InvalidData);
 
             if (workflow == null)
-                return OperationResult.Fail("工作流不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("工作流不能为空", ErrorCodes.InvalidData);
 
             if (_workflows.ContainsKey(key))
-                return OperationResult.Fail($"工作流 '{key}' 已存在", ErrorCodes.InvalidData);
+                return OperationResult.Failure($"工作流 '{key}' 已存在", ErrorCodes.InvalidData);
 
             if (_workflows.TryAdd(key, workflow))
             {
@@ -109,7 +109,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 return OperationResult.Succeed($"工作流 '{key}' 注册成功");
             }
 
-            return OperationResult.Fail($"工作流 '{key}' 注册失败", ErrorCodes.InvalidData);
+            return OperationResult.Failure($"工作流 '{key}' 注册失败", ErrorCodes.InvalidData);
         }
 
         /// <summary>
@@ -118,7 +118,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult<int> RegisterWorkFlows(IEnumerable<WorkFlowNode> workflows)
         {
             if (workflows == null)
-                return OperationResult<int>.Fail("工作流列表不能为空", ErrorCodes.InvalidData);
+                return OperationResult<int>.Failure("工作流列表不能为空", ErrorCodes.InvalidData);
 
             int successCount = 0;
             var errors = new List<string>();
@@ -153,7 +153,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult UnregisterWorkFlow(string key)
         {
             if (string.IsNullOrWhiteSpace(key))
-                return OperationResult.Fail("工作流键不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("工作流键不能为空", ErrorCodes.InvalidData);
 
             if (_workflows.TryRemove(key, out var workflow))
             {
@@ -177,7 +177,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 return OperationResult.Succeed($"工作流 '{key}' 注销成功");
             }
 
-            return OperationResult.Fail($"工作流 '{key}' 不存在", ErrorCodes.DeviceNotFound);
+            return OperationResult.Failure($"工作流 '{key}' 不存在", ErrorCodes.DeviceNotFound);
         }
 
         /// <summary>
@@ -211,7 +211,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult<WorkFlowNode> GetWorkFlow(string key)
         {
             if (string.IsNullOrWhiteSpace(key))
-                return OperationResult<WorkFlowNode>.Fail("工作流键不能为空", ErrorCodes.InvalidData);
+                return OperationResult<WorkFlowNode>.Failure("工作流键不能为空", ErrorCodes.InvalidData);
 
             if (_workflows.TryGetValue(key, out var workflow))
             {
@@ -225,7 +225,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 return OperationResult<WorkFlowNode>.Succeed(found);
             }
 
-            return OperationResult<WorkFlowNode>.Fail($"工作流 '{key}' 不存在", ErrorCodes.NotFound);
+            return OperationResult<WorkFlowNode>.Failure($"工作流 '{key}' 不存在", ErrorCodes.NotFound);
         }
 
         /// <summary>
@@ -242,7 +242,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult<List<WorkFlowNode>> FindWorkFlowsByName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
-                return OperationResult<List<WorkFlowNode>>.Fail("工作流名称不能为空", ErrorCodes.InvalidData);
+                return OperationResult<List<WorkFlowNode>>.Failure("工作流名称不能为空", ErrorCodes.InvalidData);
 
             var workflows = _workflows.Values
                 .Where(w => w.Name != null && w.Name.Contains(name, StringComparison.OrdinalIgnoreCase))
@@ -295,16 +295,16 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(key))
-                return OperationResult<ExecutionResult>.Fail("工作流键不能为空", ErrorCodes.InvalidData);
+                return OperationResult<ExecutionResult>.Failure("工作流键不能为空", ErrorCodes.InvalidData);
 
             if (engine == null)
-                return OperationResult<ExecutionResult>.Fail("工作流引擎不能为空", ErrorCodes.InvalidData);
+                return OperationResult<ExecutionResult>.Failure("工作流引擎不能为空", ErrorCodes.InvalidData);
 
             // 获取工作流
             var workflowResult = GetWorkFlow(key);
             if (!workflowResult.Success)
             {
-                return OperationResult<ExecutionResult>.Fail(workflowResult.Message, workflowResult.ErrorCode);
+                return OperationResult<ExecutionResult>.Failure(workflowResult.Message, workflowResult.ErrorCode);
             }
 
             var workflow = workflowResult.Data;
@@ -385,7 +385,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     Duration = executionInfo.Duration ?? TimeSpan.Zero
                 });
 
-                return OperationResult<ExecutionResult>.Fail($"工作流执行失败: {ex.Message}", ErrorCodes.ExecutionFailed);
+                return OperationResult<ExecutionResult>.Failure($"工作流执行失败: {ex.Message}", ErrorCodes.ExecutionFailed);
             }
             finally
             {
@@ -403,7 +403,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult CancelWorkFlowExecution(string executionId)
         {
             if (string.IsNullOrWhiteSpace(executionId))
-                return OperationResult.Fail("执行ID不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("执行ID不能为空", ErrorCodes.InvalidData);
 
             if (_runningExecutions.TryGetValue(executionId, out var executionInfo))
             {
@@ -413,7 +413,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 return OperationResult.Succeed($"执行 '{executionId}' 已标记为取消");
             }
 
-            return OperationResult.Fail($"执行 '{executionId}' 不存在或已完成", ErrorCodes.NotFound);
+            return OperationResult.Failure($"执行 '{executionId}' 不存在或已完成", ErrorCodes.NotFound);
         }
 
         /// <summary>
@@ -490,7 +490,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     return OperationResult<WorkFlowExecutionStatistics>.Succeed(stats);
                 }
 
-                return OperationResult<WorkFlowExecutionStatistics>.Fail($"工作流 '{key}' 不存在", ErrorCodes.NotFound);
+                return OperationResult<WorkFlowExecutionStatistics>.Failure($"工作流 '{key}' 不存在", ErrorCodes.NotFound);
             }
         }
 
@@ -515,7 +515,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     return OperationResult.Succeed($"工作流 '{key}' 的执行历史已清除");
                 }
 
-                return OperationResult.Fail($"工作流 '{key}' 不存在", ErrorCodes.DeviceNotFound);
+                return OperationResult.Failure($"工作流 '{key}' 不存在", ErrorCodes.DeviceNotFound);
             }
         }
 

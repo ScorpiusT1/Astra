@@ -57,7 +57,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             {
                 if (!_deviceExists)
                 {
-                    return OperationResult.Fail($"采集卡 {_config.DeviceName} 不存在或未就绪", ErrorCodes.DeviceNotFound);
+                    return OperationResult.Failure($"采集卡 {_config.DeviceName} 不存在或未就绪", ErrorCodes.DeviceNotFound);
                 }
 
                 if (_connected)

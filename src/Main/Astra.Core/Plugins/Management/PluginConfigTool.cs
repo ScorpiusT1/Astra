@@ -84,7 +84,7 @@ namespace Astra.Core.Plugins.Management
             foreach (var plugin in _plugins)
             {
                 Console.WriteLine($"\n[{plugin.Id}]");
-                Console.WriteLine($"  Name: {plugin.Name}");
+                Console.WriteLine($"  ConfigName: {plugin.Name}");
                 Console.WriteLine($"  Version: {plugin.Version}");
                 Console.WriteLine($"  Author: {plugin.Author}");
                 Console.WriteLine($"  State: {plugin.State}");

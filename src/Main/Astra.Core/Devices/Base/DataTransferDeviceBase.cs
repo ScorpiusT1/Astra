@@ -112,7 +112,7 @@ namespace Astra.Core.Devices.Base
         public virtual OperationResult<int> BatchSend(IEnumerable<DeviceMessage> messages)
         {
             if (messages == null)
-                return OperationResult<int>.Fail("消息列表不能为空", ErrorCodes.InvalidData);
+                return OperationResult<int>.Failure("消息列表不能为空", ErrorCodes.InvalidData);
 
             int successCount = 0;
             foreach (var message in messages)
@@ -130,7 +130,7 @@ namespace Astra.Core.Devices.Base
         public virtual OperationResult<IEnumerable<DeviceMessage>> BatchReceive(int count)
         {
             if (count <= 0)
-                return OperationResult<IEnumerable<DeviceMessage>>.Fail("接收数量必须大于0", ErrorCodes.InvalidData);
+                return OperationResult<IEnumerable<DeviceMessage>>.Failure("接收数量必须大于0", ErrorCodes.InvalidData);
 
             var messages = new List<DeviceMessage>();
             for (int i = 0; i < count; i++)
@@ -150,7 +150,7 @@ namespace Astra.Core.Devices.Base
         public virtual OperationResult<IEnumerable<DeviceMessage>> BatchReceive(IEnumerable<string> channelIds)
         {
             if (channelIds == null)
-                return OperationResult<IEnumerable<DeviceMessage>>.Fail("通道ID列表不能为空", ErrorCodes.InvalidData);
+                return OperationResult<IEnumerable<DeviceMessage>>.Failure("通道ID列表不能为空", ErrorCodes.InvalidData);
 
             var messages = new List<DeviceMessage>();
             foreach (var channelId in channelIds)

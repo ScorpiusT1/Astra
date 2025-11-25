@@ -28,10 +28,10 @@ namespace Astra.Core.Devices.Configuration
         public OperationResult RegisterConfigurable(string deviceId, IConfigurable<TConfig> configurable)
         {
             if (string.IsNullOrWhiteSpace(deviceId))
-                return OperationResult.Fail("设备ID不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("设备ID不能为空", ErrorCodes.InvalidData);
 
             if (configurable == null)
-                return OperationResult.Fail("可配置对象不能为空", ErrorCodes.InvalidData);
+                return OperationResult.Failure("可配置对象不能为空", ErrorCodes.InvalidData);
 
             if (_configurables.TryAdd(deviceId, configurable))
             {
@@ -46,7 +46,7 @@ namespace Astra.Core.Devices.Configuration
                 return OperationResult.Succeed($"设备 {deviceId} 注册成功");
             }
 
-            return OperationResult.Fail($"设备 {deviceId} 已存在", ErrorCodes.InvalidData);
+            return OperationResult.Failure($"设备 {deviceId} 已存在", ErrorCodes.InvalidData);
         }
 
         public OperationResult UnregisterConfigurable(string deviceId)
@@ -58,7 +58,7 @@ namespace Astra.Core.Devices.Configuration
                 return OperationResult.Succeed($"设备 {deviceId} 注销成功");
             }
 
-            return OperationResult.Fail($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
+            return OperationResult.Failure($"设备 {deviceId} 不存在", ErrorCodes.DeviceNotFound);
         }
 
         #endregion
@@ -68,11 +68,11 @@ namespace Astra.Core.Devices.Configuration
         public OperationResult UpdateConfig(string deviceId, TConfig newConfig, string changedBy = null)
         {
             if (!_configurables.TryGetValue(deviceId, out var configurable))
-                return OperationResult.Fail($"设备 {deviceId} 未注册", ErrorCodes.DeviceNotFound);
+                return OperationResult.Failure($"设备 {deviceId} 未注册", ErrorCodes.DeviceNotFound);
 
             var validateResult = newConfig.Validate();
             if (!validateResult.Success)
-                return OperationResult.Fail($"配置验证失败: {validateResult.ErrorMessage}", ErrorCodes.InvalidConfig);
+                return OperationResult.Failure($"配置验证失败: {validateResult.ErrorMessage}", ErrorCodes.InvalidConfig);
 
             var oldConfig = configurable.CurrentConfig;
             var changedProps = oldConfig.GetChangedProperties(newConfig);
@@ -87,7 +87,7 @@ namespace Astra.Core.Devices.Configuration
             if (restartRequired.Any())
             {
                 var restartProps = string.Join(", ", restartRequired);
-                return OperationResult.Fail(
+                return OperationResult.Failure(
                     $"以下配置项需要重启设备: {restartProps}。请使用 UpdateConfigWithRestart 方法。",
                     ErrorCodes.ConfigRequireRestart)
                     .WithData("RestartRequired", true)
@@ -105,41 +105,41 @@ namespace Astra.Core.Devices.Configuration
         public OperationResult UpdateConfigWithRestart(string deviceId, TConfig newConfig, string changedBy = null)
         {
             if (!_configurables.TryGetValue(deviceId, out var configurable))
-                return OperationResult.Fail($"设备 {deviceId} 未注册", ErrorCodes.DeviceNotFound);
+                return OperationResult.Failure($"设备 {deviceId} 未注册", ErrorCodes.DeviceNotFound);
 
             if (configurable is IDevice device)
             {
                 var disconnectResult = device.Disconnect();
                 if (!disconnectResult.Success)
-                    return OperationResult.Fail($"断开设备失败: {disconnectResult.ErrorMessage}", ErrorCodes.DisconnectFailed);
+                    return OperationResult.Failure($"断开设备失败: {disconnectResult.ErrorMessage}", ErrorCodes.DisconnectFailed);
 
                 var applyResult = configurable.ApplyConfig(newConfig);
                 if (!applyResult.Success)
                 {
                     device.Connect();
-                    return OperationResult.Fail($"应用配置失败: {applyResult.ErrorMessage}", ErrorCodes.ConfigApplyFailed);
+                    return OperationResult.Failure($"应用配置失败: {applyResult.ErrorMessage}", ErrorCodes.ConfigApplyFailed);
                 }
 
                 var connectResult = device.Connect();
                 if (!connectResult.Success)
-                    return OperationResult.Fail($"重启设备失败: {connectResult.ErrorMessage}", ErrorCodes.ConnectFailed);
+                    return OperationResult.Failure($"重启设备失败: {connectResult.ErrorMessage}", ErrorCodes.ConnectFailed);
 
                 return OperationResult.Succeed("配置更新成功，设备已重启");
             }
 
-            return OperationResult.Fail("设备不支持重启", ErrorCodes.NotSupported);
+            return OperationResult.Failure("设备不支持重启", ErrorCodes.NotSupported);
         }
 
         public OperationResult UpdateProperty(string deviceId, string propertyName, object value, string changedBy = null)
         {
             if (!_configurables.TryGetValue(deviceId, out var configurable))
-                return OperationResult.Fail($"设备 {deviceId} 未注册", ErrorCodes.DeviceNotFound);
+                return OperationResult.Failure($"设备 {deviceId} 未注册", ErrorCodes.DeviceNotFound);
 
             var newConfig = (TConfig)configurable.CurrentConfig.Clone();
 
             var prop = newConfig.GetType().GetProperty(propertyName);
             if (prop == null)
-                return OperationResult.Fail($"属性 {propertyName} 不存在", ErrorCodes.InvalidData);
+                return OperationResult.Failure($"属性 {propertyName} 不存在", ErrorCodes.InvalidData);
 
             try
             {
@@ -163,7 +163,7 @@ namespace Astra.Core.Devices.Configuration
                 return OperationResult<TConfig>.Succeed((TConfig)config.Clone());
             }
 
-            return OperationResult<TConfig>.Fail($"设备 {deviceId} 配置不存在", ErrorCodes.DeviceNotFound);
+            return OperationResult<TConfig>.Failure($"设备 {deviceId} 配置不存在", ErrorCodes.DeviceNotFound);
         }
 
         public OperationResult<Dictionary<string, TConfig>> GetAllConfigs()
@@ -238,13 +238,13 @@ namespace Astra.Core.Devices.Configuration
             try
             {
                 if (!System.IO.File.Exists(filePath))
-                    return OperationResult.Fail($"配置文件不存在: {filePath}", ErrorCodes.FileNotFound);
+                    return OperationResult.Failure($"配置文件不存在: {filePath}", ErrorCodes.FileNotFound);
 
                 var json = System.IO.File.ReadAllText(filePath);
                 var configs = _serializer.Deserialize<ConcurrentDictionary<string, TConfig>>(json);
 
                 if (configs == null)
-                    return OperationResult.Fail("配置文件格式错误", ErrorCodes.InvalidConfig);
+                    return OperationResult.Failure("配置文件格式错误", ErrorCodes.InvalidConfig);
 
                 int successCount = 0;
                 foreach (var kvp in configs)

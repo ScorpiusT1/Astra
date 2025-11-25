@@ -220,7 +220,7 @@ namespace Astra.Core.Plugins.Extensions
         }
 
         /// <summary>
-        /// 按接口约定自动注册（I{Name} -> {Name}）
+        /// 按接口约定自动注册（I{ConfigName} -> {ConfigName}）
         /// </summary>
         public static IServiceRegistry AddServicesByConvention(
             this IServiceRegistry services,

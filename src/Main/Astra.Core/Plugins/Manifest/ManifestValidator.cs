@@ -21,7 +21,7 @@ namespace Astra.Core.Plugins.Manifest
                 errors.Add("Addin ID is required");
 
             if (string.IsNullOrWhiteSpace(manifest.Addin.Name))
-                errors.Add("Addin Name is required");
+                errors.Add("Addin ConfigName is required");
 
             if (string.IsNullOrWhiteSpace(manifest.Addin.Version))
                 errors.Add("Addin Version is required");

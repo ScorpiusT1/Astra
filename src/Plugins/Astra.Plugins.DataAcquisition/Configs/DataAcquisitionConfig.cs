@@ -17,9 +17,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
     {
         private string _serialNumber = string.Empty;
 
-        public DataAcquisitionConfig()
+        public DataAcquisitionConfig() : base()
         {
+            ConfigType = typeof(DataAcquisitionConfig);
+            ConfigId = Guid.NewGuid().ToString();
             InitializeDeviceInfo(DeviceType.DataAcquisition);
+           
         }
 
         /// <summary>
@@ -98,9 +101,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 GroupId = GroupId,
                 SlotId = SlotId,
                 // IConfig 接口属性
-                Version = Version,
-                CreatedAt = CreatedAt,
-                ModifiedAt = ModifiedAt
+                Version = Version,              
+                ModifiedAt = ModifiedAt,
+                ConfigName = ConfigName
             };
             return clone;
         }
@@ -137,7 +140,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
             if (errors.Count > 0)
             {
-                return OperationResult<bool>.Fail(string.Join(Environment.NewLine, errors));
+                return OperationResult<bool>.Failure(string.Join(Environment.NewLine, errors));
             }
 
             return OperationResult<bool>.Succeed(true, "采集卡配置验证通过");

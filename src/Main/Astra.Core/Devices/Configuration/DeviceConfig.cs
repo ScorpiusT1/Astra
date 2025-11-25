@@ -11,7 +11,7 @@ namespace Astra.Core.Devices.Configuration
     /// 设备配置基类
     /// 合并了设备信息和配置功能，实现 IDeviceInfo 和 IConfig 接口
     /// </summary>
-    public abstract class DeviceConfig : IDeviceInfo, IConfig
+    public abstract class DeviceConfig : ConfigBase, IDeviceInfo
     {
         #region IDeviceInfo 接口实现（设备基本信息）
 
@@ -19,7 +19,7 @@ namespace Astra.Core.Devices.Configuration
         private DeviceType _type;
 
         /// <summary>
-        /// 设备ID（只读，由 GenerateDeviceId() 生成）
+        /// 设备ID（由 GenerateDeviceId() 生成）
         /// </summary>
         public string DeviceId
         {
@@ -44,7 +44,7 @@ namespace Astra.Core.Devices.Configuration
         private bool _isEnabled = true;
         private string _groupId = "G0";
         private string _slotId = "S0";
-       
+
         [HotUpdatable]
         public string DeviceName
         {
@@ -106,73 +106,20 @@ namespace Astra.Core.Devices.Configuration
         protected virtual void OnPropertyChanged(PropertyChangedEventArgs e)
         {
             PropertyChanged?.Invoke(this, e);
-            
+
             // 跳过 ModifiedAt 和 CreatedAt 的变更事件触发（避免循环）
             if (e.PropertyName == nameof(ModifiedAt) || e.PropertyName == nameof(CreatedAt))
                 return;
-            
+
             // 直接赋值 ModifiedAt 字段，避免触发变更事件导致无限递归
             _modifiedAt = DateTime.Now;
-            
-            // 同时触发 IConfig 的配置变更事件
-            ConfigChanged?.Invoke(this, new ConfigChangedEventArgs
-            {
-                ConfigId = ConfigId,
-                ConfigType = ConfigType,
-                ChangedProperties = new List<string> { e.PropertyName },
-                OldConfig = Clone(),
-                NewConfig = this,
-                Timestamp = DateTime.Now,
-                ChangedBy = "System"
-            });
+
         }
 
         #endregion
 
         #region IConfig 接口实现
 
-        /// <summary>
-        /// 配置ID（与设备ID一致）
-        /// </summary>
-        public string ConfigId
-        {
-            get => DeviceId;
-            set => DeviceId = value;
-        }
-
-        /// <summary>
-        /// 配置名称（与设备名称一致）
-        /// </summary>
-        public string ConfigName
-        {
-            get => DeviceName;
-            set => DeviceName = value;
-        }
-
-        /// <summary>
-        /// 配置类型（返回设备类型字符串）
-        /// </summary>
-        public string ConfigType => $"Device.{Type}";
-
-        /// <summary>
-        /// 配置版本号
-        /// </summary>
-        private int _version = 1;
-        public int Version
-        {
-            get => _version;
-            set => SetProperty(ref _version, value);
-        }
-
-        /// <summary>
-        /// 配置创建时间（直接赋值，不触发变更事件）
-        /// </summary>
-        private DateTime _createdAt = DateTime.Now;
-        public DateTime CreatedAt
-        {
-            get => _createdAt;
-            set => _createdAt = value;
-        }
 
         /// <summary>
         /// 配置最后修改时间（直接赋值，不触发变更事件）
@@ -185,16 +132,6 @@ namespace Astra.Core.Devices.Configuration
         }
 
         /// <summary>
-        /// 配置变更事件（IConfig 接口）
-        /// </summary>
-        public event EventHandler<ConfigChangedEventArgs> ConfigChanged;
-
-        /// <summary>
-        /// 克隆配置（IConfig 接口）
-        /// </summary>
-        IConfig IConfig.Clone() => Clone();
-
-        /// <summary>
         /// 从字典加载配置（IConfig 接口）
         /// </summary>
         public virtual void FromDictionary(Dictionary<string, object> dictionary)
@@ -203,7 +140,7 @@ namespace Astra.Core.Devices.Configuration
                 return;
 
             var properties = GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            
+
             foreach (var prop in properties)
             {
                 if (prop.CanWrite && dictionary.ContainsKey(prop.Name))
@@ -275,7 +212,7 @@ namespace Astra.Core.Devices.Configuration
         {
             Type = type;
             DeviceId = GenerateDeviceId();
-            
+
             if (string.IsNullOrWhiteSpace(DeviceId))
             {
                 throw new InvalidOperationException("GenerateDeviceId() 必须返回非空的设备ID");
@@ -350,7 +287,7 @@ namespace Astra.Core.Devices.Configuration
             if (errors.Count > 0)
             {
                 var errorMessage = $"配置验证失败，发现 {errors.Count} 个问题：" + Environment.NewLine + string.Join(Environment.NewLine + "  - ", errors);
-                return OperationResult<bool>.Fail(errorMessage, ErrorCodes.InvalidConfig);
+                return OperationResult<bool>.Failure(errorMessage, ErrorCodes.InvalidConfig);
             }
 
             return OperationResult<bool>.Succeed(true, "配置验证通过");

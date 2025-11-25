@@ -244,7 +244,7 @@ namespace Astra.Core.Logs
 
             if (errors.Count > 0)
             {
-                return OperationResult<bool>.Fail(
+                return OperationResult<bool>.Failure(
                     $"配置验证失败，发现 {errors.Count} 个问题：" + Environment.NewLine + string.Join(Environment.NewLine + "  - ", errors),
                     LogErrorCodes.InvalidConfig);
             }

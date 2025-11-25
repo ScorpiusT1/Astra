@@ -1,0 +1,479 @@
+﻿using Astra.Core.Foundation.Common;
+using System.Collections.Concurrent;
+using System.Text.Json;
+
+namespace Astra.Core.Configuration
+{
+    /// <summary>
+    /// 智能JSON文件配置提供者 - 严格版本，强制实现 IConfig
+    /// </summary>
+    public abstract class JsonConfigProvider<T> : IConfigProvider<T>
+        where T : class, IConfig  // ← 严格约束：必须实现 IConfig
+    {
+        protected readonly string ConfigDirectory;
+        protected readonly JsonSerializerOptions JsonOptions;
+        protected readonly ConfigProviderOptions<T> Options;
+
+        // 配置索引：ConfigId → 元数据
+        private readonly ConcurrentDictionary<string, ConfigMetadata> _configIndex
+            = new ConcurrentDictionary<string, ConfigMetadata>();
+
+        // 文件格式缓存：FileName → StorageFormat
+        private readonly ConcurrentDictionary<string, ConfigStorageFormat> _fileFormatCache
+            = new ConcurrentDictionary<string, ConfigStorageFormat>();
+
+        private bool _indexBuilt = false;
+        private readonly SemaphoreSlim _indexLock = new SemaphoreSlim(1, 1);
+
+        protected JsonConfigProvider(
+            string configDirectory,
+            ConfigProviderOptions<T>? options = null)
+        {
+            ConfigDirectory = configDirectory;
+            Options = options ?? new ConfigProviderOptions<T>();
+
+            JsonOptions = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNameCaseInsensitive = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            if (!Directory.Exists(ConfigDirectory))
+            {
+                Directory.CreateDirectory(ConfigDirectory);
+            }
+        }
+
+        protected virtual string GetFilePath(string fileName)
+        {
+            return Path.Combine(ConfigDirectory, $"{fileName}.json");
+        }
+
+        /// <summary>
+        /// 获取配置的唯一标识符（直接使用 ConfigId）
+        /// </summary>
+        protected string GetConfigIdentifier(T config)
+        {
+            return config.ConfigId;  // ← 简化：直接使用 ConfigId，编译时保证存在
+        }
+
+        /// <summary>
+        /// 检测文件格式
+        /// </summary>
+        private async Task<ConfigStorageFormat> DetectFileFormatAsync(string filePath)
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(filePath);
+                var trimmed = json.TrimStart();
+
+                if (trimmed.StartsWith("["))
+                {
+                    return ConfigStorageFormat.Array;
+                }
+                else if (trimmed.StartsWith("{"))
+                {
+                    // 需要进一步判断是 SingleObject 还是 Container
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+
+                    // 检查是否有 Configs 属性（或自定义的容器属性名）
+                    if (root.TryGetProperty(Options.ContainerPropertyName, out var configsProp)
+                        && configsProp.ValueKind == JsonValueKind.Array)
+                    {
+                        return ConfigStorageFormat.Container;
+                    }
+
+                    return ConfigStorageFormat.SingleObject;
+                }
+
+                return ConfigStorageFormat.Auto;
+            }
+            catch
+            {
+                return ConfigStorageFormat.Auto;
+            }
+        }
+
+        /// <summary>
+        /// 从文件加载配置列表
+        /// </summary>
+        private async Task<List<T>?> LoadConfigsFromFileAsync(string filePath, ConfigStorageFormat format)
+        {
+            var json = await File.ReadAllTextAsync(filePath);
+
+            return format switch
+            {
+                ConfigStorageFormat.SingleObject =>
+                    new List<T> { JsonSerializer.Deserialize<T>(json, JsonOptions)! },
+
+                ConfigStorageFormat.Array =>
+                    JsonSerializer.Deserialize<List<T>>(json, JsonOptions),
+
+                ConfigStorageFormat.Container =>
+                    LoadFromContainer(json),
+
+                _ => null
+            };
+        }
+
+        /// <summary>
+        /// 从容器格式加载配置
+        /// </summary>
+        private List<T>? LoadFromContainer(string json)
+        {
+            try
+            {
+                // 使用动态方式解析容器
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty(Options.ContainerPropertyName, out var configsProp))
+                {
+                    var configsJson = configsProp.GetRawText();
+                    return JsonSerializer.Deserialize<List<T>>(configsJson, JsonOptions);
+                }
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 保存配置列表到文件
+        /// </summary>
+        private async Task SaveConfigsToFileAsync(
+            string filePath,
+            List<T> configs,
+            ConfigStorageFormat format)
+        {
+            string json;
+
+            switch (format)
+            {
+                case ConfigStorageFormat.SingleObject:
+                    if (configs.Count != 1)
+                    {
+                        throw new InvalidOperationException("SingleObject 格式只能保存一个配置");
+                    }
+                    json = JsonSerializer.Serialize(configs[0], JsonOptions);
+                    break;
+
+                case ConfigStorageFormat.Array:
+                    json = JsonSerializer.Serialize(configs, JsonOptions);
+                    break;
+
+                case ConfigStorageFormat.Container:
+                    json = SaveToContainer(configs);
+                    break;
+
+                default:
+                    throw new NotSupportedException($"不支持的存储格式: {format}");
+            }
+
+            await File.WriteAllTextAsync(filePath, json);
+        }
+
+        /// <summary>
+        /// 保存到容器格式
+        /// </summary>
+        private string SaveToContainer(List<T> configs)
+        {
+            // 如果指定了容器类型，使用该类型
+            if (Options.ContainerType != null)
+            {
+                var container = Activator.CreateInstance(Options.ContainerType);
+                var configsProp = Options.ContainerType.GetProperty(Options.ContainerPropertyName);
+                configsProp?.SetValue(container, configs);
+
+                // 尝试设置 LastModified
+                var lastModifiedProp = Options.ContainerType.GetProperty("LastModified");
+                if (lastModifiedProp != null && lastModifiedProp.PropertyType == typeof(DateTime))
+                {
+                    lastModifiedProp.SetValue(container, DateTime.Now);
+                }
+
+                return JsonSerializer.Serialize(container, JsonOptions);
+            }
+
+            // 否则使用默认容器
+            var defaultContainer = new ConfigContainer<T>
+            {
+                Configs = configs,
+                LastModified = DateTime.Now
+            };
+            return JsonSerializer.Serialize(defaultContainer, JsonOptions);
+        }
+
+        /// <summary>
+        /// 构建配置索引
+        /// </summary>
+        private async Task BuildIndexAsync()
+        {
+            _configIndex.Clear();
+            _fileFormatCache.Clear();
+
+            var files = Directory.GetFiles(ConfigDirectory, "*.json");
+
+            foreach (var filePath in files)
+            {
+                var fileName = Path.GetFileNameWithoutExtension(filePath);
+                var format = await DetectFileFormatAsync(filePath);
+
+                _fileFormatCache[fileName] = format;
+
+                var configs = await LoadConfigsFromFileAsync(filePath, format);
+                if (configs == null) continue;
+
+                foreach (var config in configs)
+                {
+                    var configId = config.ConfigId;  // ← 直接使用 ConfigId
+
+                    _configIndex[configId] = new ConfigMetadata
+                    {
+                        ConfigId = configId,
+                        FileName = fileName,
+                        StorageMode = format switch
+                        {
+                            ConfigStorageFormat.SingleObject => ConfigStorageMode.SingleFile,
+                            _ => ConfigStorageMode.Collection
+                        }
+                    };
+                }
+            }
+        }
+
+        private async Task EnsureIndexBuiltAsync()
+        {
+            if (_indexBuilt) return;
+
+            await _indexLock.WaitAsync();
+            try
+            {
+                if (_indexBuilt) return;
+                await BuildIndexAsync();
+                _indexBuilt = true;
+            }
+            finally
+            {
+                _indexLock.Release();
+            }
+        }
+
+        // ==================== 公共接口实现 ====================
+
+        public virtual async Task<OperationResult<T>> LoadAsync(string configId)
+        {
+            try
+            {
+                await EnsureIndexBuiltAsync();
+
+                if (!_configIndex.TryGetValue(configId, out var metadata))
+                {
+                    return OperationResult<T>.Failure($"未找到配置: {configId}");
+                }
+
+                var filePath = GetFilePath(metadata.FileName);
+                var format = _fileFormatCache[metadata.FileName];
+                var configs = await LoadConfigsFromFileAsync(filePath, format);
+
+                var config = configs?.FirstOrDefault(c => c.ConfigId == configId);  // ← 直接使用 ConfigId
+                if (config == null)
+                {
+                    return OperationResult<T>.Failure($"未找到配置: {configId}");
+                }
+
+                return OperationResult<T>.Succeed(config);
+            }
+            catch (Exception ex)
+            {
+                return OperationResult<T>.Failure($"加载配置失败: {ex.Message}");
+            }
+        }
+
+        public virtual async Task<OperationResult> SaveAsync(T config)
+        {
+            try
+            {
+                await EnsureIndexBuiltAsync();
+
+                var configId = config.ConfigId;  // ← 直接使用 ConfigId
+
+                if (_configIndex.TryGetValue(configId, out var metadata))
+                {
+                    // 更新现有配置
+                    return await UpdateConfigInFileAsync(metadata.FileName, config);
+                }
+                else
+                {
+                    // 新建配置
+                    var fileName = Options.DefaultCollectionFileName;
+                    var format = Options.NewConfigFormat;
+
+                    var result = await AddConfigToFileAsync(fileName, config, format);
+                    if (result.Success)
+                    {
+                        // 更新索引
+                        _configIndex[configId] = new ConfigMetadata
+                        {
+                            ConfigId = configId,
+                            FileName = fileName,
+                            StorageMode = format == ConfigStorageFormat.SingleObject
+                                ? ConfigStorageMode.SingleFile
+                                : ConfigStorageMode.Collection
+                        };
+                    }
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                return OperationResult.Failure($"保存配置失败: {ex.Message}");
+            }
+        }
+
+        private async Task<OperationResult> UpdateConfigInFileAsync(string fileName, T config)
+        {
+            var filePath = GetFilePath(fileName);
+            var format = _fileFormatCache[fileName];
+            var configs = await LoadConfigsFromFileAsync(filePath, format) ?? new List<T>();
+
+            var configId = config.ConfigId;  // ← 直接使用 ConfigId
+            var index = configs.FindIndex(c => c.ConfigId == configId);  // ← 直接使用 ConfigId
+
+            if (index >= 0)
+            {
+                configs[index] = config;
+            }
+            else
+            {
+                configs.Add(config);
+            }
+
+            await SaveConfigsToFileAsync(filePath, configs, format);
+            return OperationResult.Succeed();
+        }
+
+        private async Task<OperationResult> AddConfigToFileAsync(
+            string fileName,
+            T config,
+            ConfigStorageFormat format)
+        {
+            var filePath = GetFilePath(fileName);
+            List<T> configs;
+
+            if (File.Exists(filePath))
+            {
+                var existingFormat = _fileFormatCache.GetValueOrDefault(fileName, format);
+                configs = await LoadConfigsFromFileAsync(filePath, existingFormat) ?? new List<T>();
+                format = existingFormat; // 使用现有格式
+            }
+            else
+            {
+                configs = new List<T>();
+                _fileFormatCache[fileName] = format;
+            }
+
+            configs.Add(config);
+            await SaveConfigsToFileAsync(filePath, configs, format);
+            return OperationResult.Succeed();
+        }
+
+        public virtual async Task<OperationResult> DeleteAsync(string configId)
+        {
+            try
+            {
+                await EnsureIndexBuiltAsync();
+
+                if (!_configIndex.TryGetValue(configId, out var metadata))
+                {
+                    return OperationResult.Failure($"未找到配置: {configId}");
+                }
+
+                var filePath = GetFilePath(metadata.FileName);
+                var format = _fileFormatCache[metadata.FileName];
+                var configs = await LoadConfigsFromFileAsync(filePath, format) ?? new List<T>();
+
+                var removed = configs.RemoveAll(c => c.ConfigId == configId);  // ← 直接使用 ConfigId
+                if (removed == 0)
+                {
+                    return OperationResult.Failure($"未找到配置: {configId}");
+                }
+
+                if (configs.Count == 0 && format == ConfigStorageFormat.SingleObject)
+                {
+                    // 如果是单文件模式且已无配置，删除文件
+                    File.Delete(filePath);
+                    _fileFormatCache.TryRemove(metadata.FileName, out _);
+                }
+                else
+                {
+                    await SaveConfigsToFileAsync(filePath, configs, format);
+                }
+
+                _configIndex.TryRemove(configId, out _);
+                return OperationResult.Succeed();
+            }
+            catch (Exception ex)
+            {
+                return OperationResult.Failure($"删除配置失败: {ex.Message}");
+            }
+        }
+
+        public virtual async Task<bool> ExistsAsync(string configId)
+        {
+            await EnsureIndexBuiltAsync();
+            return _configIndex.ContainsKey(configId);
+        }
+
+        public virtual async Task<OperationResult<IEnumerable<T>>> GetAllAsync()
+        {
+            try
+            {
+                await EnsureIndexBuiltAsync();
+
+                var allConfigs = new List<T>();
+                var processedFiles = new HashSet<string>();
+
+                foreach (var metadata in _configIndex.Values)
+                {
+                    if (!processedFiles.Add(metadata.FileName))
+                        continue;
+
+                    var filePath = GetFilePath(metadata.FileName);
+                    var format = _fileFormatCache[metadata.FileName];
+                    var configs = await LoadConfigsFromFileAsync(filePath, format);
+
+                    if (configs != null)
+                    {
+                        allConfigs.AddRange(configs);
+                    }
+                }
+
+                return OperationResult<IEnumerable<T>>.Succeed(allConfigs);
+            }
+            catch (Exception ex)
+            {
+                return OperationResult<IEnumerable<T>>.Failure($"获取所有配置失败: {ex.Message}");
+            }
+        }
+
+        public virtual async Task RebuildIndexAsync()
+        {
+            await _indexLock.WaitAsync();
+            try
+            {
+                _indexBuilt = false;
+                await EnsureIndexBuiltAsync();
+            }
+            finally
+            {
+                _indexLock.Release();
+            }
+        }
+    }
+}

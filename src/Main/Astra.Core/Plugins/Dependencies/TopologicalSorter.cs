@@ -102,7 +102,7 @@ namespace Astra.Core.Plugins.Dependencies
                 var node = queue.Dequeue();
 
                 // 添加到结果（这里简化处理，实际应返回完整的 PluginDescriptor）
-                // result.Add(plugins.First(p => p.Id == node));
+                // result.Add(plugins.First(p => p.ConfigId == node));
 
                 foreach (var neighbor in graph[node])
                 {
