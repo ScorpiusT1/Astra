@@ -173,10 +173,12 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         #endregion
 
-        public SensorConfig() : base(Guid.NewGuid().ToString())
+        public SensorConfig()
         {
+            // 注意：不在这里设置 ConfigId，让 JSON 反序列化器或基类处理
+            // 如果反序列化时 JSON 中没有 ConfigId，会在反序列化完成后由其他机制设置
+            // 这样确保反序列化时 ConfigId 不会被覆盖
 
-            ConfigType = typeof(SensorConfig);
             _sensorId = Guid.NewGuid().ToString();
             _sensorName = "";
             _sensorType = SensorType.None;
@@ -194,6 +196,15 @@ namespace Astra.Plugins.DataAcquisition.Configs
             _status = "Normal";
             _notes = "";
             _calibrationCertificate = "";
+        }
+
+        /// <summary>
+        /// 用于动态创建对象
+        /// </summary>
+        /// <param name="configId"></param>
+        public SensorConfig(string configId) : this()
+        {
+            this.ConfigId = configId;
         }
 
         protected void SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)

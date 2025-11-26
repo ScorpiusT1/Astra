@@ -61,12 +61,12 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
         public string DeviceName
         {
-            get => _config?.DeviceName ?? string.Empty;
+            get => _config?.ConfigName ?? string.Empty;
             set
             {
-                if (_config != null && _config.DeviceName != value)
+                if (_config != null && _config.ConfigName != value)
                 {
-                    _config.DeviceName = value;
+                    _config.ConfigName = value;
                     OnPropertyChanged();
                 }
             }

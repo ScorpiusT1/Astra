@@ -10,7 +10,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
 {
     internal class DataAcquisitionConfigProvider : JsonConfigProvider<DataAcquisitionConfig>
     {
-        public DataAcquisitionConfigProvider(string configDirectory, ConfigProviderOptions<DataAcquisitionConfig>? options = null) : base(configDirectory, options)
+        public DataAcquisitionConfigProvider(string configDirectory, ConfigProviderOptions<DataAcquisitionConfig>? options) : base(configDirectory, options)
         {
         }
     }

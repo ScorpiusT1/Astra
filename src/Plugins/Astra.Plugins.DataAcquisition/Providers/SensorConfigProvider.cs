@@ -10,7 +10,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
 {
     internal class SensorConfigProvider : JsonConfigProvider<SensorConfig>
     {
-        public SensorConfigProvider(string configDirectory, ConfigProviderOptions<SensorConfig>? options = null) : base(configDirectory, options)
+        public SensorConfigProvider(string configDirectory, ConfigProviderOptions<SensorConfig>? options) : base(configDirectory, options)
         {
 
         }

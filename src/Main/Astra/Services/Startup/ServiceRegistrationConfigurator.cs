@@ -241,10 +241,10 @@ namespace Astra.Services.Startup
 
             // 5. 注册重构后的配置管理器（依赖倒置原则）
             // ⭐ 通过构造函数注入所有依赖的服务
-            services.AddSingleton<IConfigurationManager, ConfigurationManagerRefactored>();
+            services.AddSingleton<IConfigurationManager, ConfigurationManager>();
             
 
-            Debug.WriteLine("✅ 配置管理器注册完成（包括重构后的 ConfigurationManagerRefactored）");
+            Debug.WriteLine("✅ 配置管理器注册完成（包括重构后的 ConfigurationManager）");
         }
 
         /// <summary>

@@ -27,9 +27,19 @@ namespace Astra.Core.Configuration
         void Set<T>(T config) where T : class, IConfig;
 
         /// <summary>
+        /// 设置配置缓存（非泛型版本）
+        /// </summary>
+        void Set(IConfig config);
+
+        /// <summary>
         /// 移除缓存的配置
         /// </summary>
         bool Remove<T>(string configId) where T : class, IConfig;
+
+        /// <summary>
+        /// 移除缓存的配置（非泛型版本）
+        /// </summary>
+        bool Remove(IConfig config);
 
         /// <summary>
         /// 清除所有缓存
@@ -131,11 +141,35 @@ namespace Astra.Core.Configuration
             _cache[key] = config;
         }
 
+        /// <summary>
+        /// 设置配置缓存（非泛型版本）
+        /// </summary>
+        public void Set(IConfig config)
+        {
+            if (!_enabled || config == null) return;
+
+            var configType = config.GetType();
+            var key = $"{configType.FullName}:{config.ConfigId}";
+            _cache[key] = config;
+        }
+
         public bool Remove<T>(string configId) where T : class, IConfig
         {
             if (!_enabled) return false;
 
             var key = GetCacheKey<T>(configId);
+            return _cache.TryRemove(key, out _);
+        }
+
+        /// <summary>
+        /// 移除缓存的配置（非泛型版本）
+        /// </summary>
+        public bool Remove(IConfig config)
+        {
+            if (!_enabled || config == null) return false;
+
+            var configType = config.GetType();
+            var key = $"{configType.FullName}:{config.ConfigId}";
             return _cache.TryRemove(key, out _);
         }
 

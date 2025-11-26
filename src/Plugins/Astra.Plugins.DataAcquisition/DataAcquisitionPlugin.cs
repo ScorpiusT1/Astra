@@ -24,7 +24,7 @@ namespace Astra.Plugins.DataAcquisition
     {
         private IPluginContext _context;
         private IDeviceManager? _deviceManager;
-       
+
         private IConfigurationManager? _configuManager;
         private IMessageBus _messageBus;
         private ILogger? _logger;
@@ -46,7 +46,7 @@ namespace Astra.Plugins.DataAcquisition
             try
             {
                 _deviceManager = context.ServiceProvider?.GetService<IDeviceManager>();
-                
+
                 _configuManager = context.ServiceProvider?.GetService<IConfigurationManager>();
 
             }
@@ -267,7 +267,12 @@ namespace Astra.Plugins.DataAcquisition
             {
                 string path = Path.Combine(Core.Configuration.ConfigPathString.BaseConfigDirectory, "Sensors");
 
-                SensorConfigProvider provider = new SensorConfigProvider(path);
+                ConfigProviderOptions<SensorConfig> options = new ConfigProviderOptions<SensorConfig>
+                {                  
+                    DefaultCollectionFileName = "SensorConfig.json",
+                };
+
+                SensorConfigProvider provider = new SensorConfigProvider(path, options);
                 _configuManager?.RegisterProvider(provider);
                 var result = await _configuManager?.GetAllConfigsAsync();
                 var bb = result.Data.ToArray();
@@ -286,7 +291,12 @@ namespace Astra.Plugins.DataAcquisition
 
                 string path = Path.Combine(Core.Configuration.ConfigPathString.BaseConfigDirectory, "Devices");
 
-                DataAcquisitionConfigProvider provider = new DataAcquisitionConfigProvider(path);
+                ConfigProviderOptions<DataAcquisitionConfig> options = new ConfigProviderOptions<DataAcquisitionConfig>
+                {                   
+                    DefaultCollectionFileName = "Astra.Plugins.DataAcquisition.config.json",
+                };
+
+                DataAcquisitionConfigProvider provider = new DataAcquisitionConfigProvider(path, options);
                 _configuManager?.RegisterProvider(provider);
                 var result = await _configuManager?.GetAllConfigsAsync<DataAcquisitionConfig>();
 

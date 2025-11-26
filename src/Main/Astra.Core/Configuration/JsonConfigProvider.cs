@@ -1,5 +1,6 @@
 ﻿using Astra.Core.Foundation.Common;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.Json;
 
 namespace Astra.Core.Configuration
@@ -27,7 +28,7 @@ namespace Astra.Core.Configuration
 
         protected JsonConfigProvider(
             string configDirectory,
-            ConfigProviderOptions<T>? options = null)
+            ConfigProviderOptions<T>? options)
         {
             ConfigDirectory = configDirectory;
             Options = options ?? new ConfigProviderOptions<T>();
@@ -36,7 +37,11 @@ namespace Astra.Core.Configuration
             {
                 WriteIndented = true,
                 PropertyNameCaseInsensitive = true,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                // ✅ 修复空值错误：Never = 不忽略null值，确保数据完整性
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                IncludeFields = true, // ✅ 支持字段序列化
+                // System.Text.Json 可以访问 protected setter（因为反序列化发生在同一类型或派生类型中）
             };
 
             if (!Directory.Exists(ConfigDirectory))
@@ -47,6 +52,11 @@ namespace Astra.Core.Configuration
 
         protected virtual string GetFilePath(string fileName)
         {
+            if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.Combine(ConfigDirectory, fileName);
+            }
+
             return Path.Combine(ConfigDirectory, $"{fileName}.json");
         }
 
@@ -102,20 +112,56 @@ namespace Astra.Core.Configuration
         private async Task<List<T>?> LoadConfigsFromFileAsync(string filePath, ConfigStorageFormat format)
         {
             var json = await File.ReadAllTextAsync(filePath);
+            List<T>? configs = null;
 
-            return format switch
+            switch (format)
             {
-                ConfigStorageFormat.SingleObject =>
-                    new List<T> { JsonSerializer.Deserialize<T>(json, JsonOptions)! },
+                case ConfigStorageFormat.SingleObject:
+                    configs = new List<T> { JsonSerializer.Deserialize<T>(json, JsonOptions)! };
+                    break;
 
-                ConfigStorageFormat.Array =>
-                    JsonSerializer.Deserialize<List<T>>(json, JsonOptions),
+                case ConfigStorageFormat.Array:
+                    configs = JsonSerializer.Deserialize<List<T>>(json, JsonOptions);
+                    break;
 
-                ConfigStorageFormat.Container =>
-                    LoadFromContainer(json),
+                case ConfigStorageFormat.Container:
+                    configs = LoadFromContainer(json);
+                    break;
 
-                _ => null
-            };
+                default:
+                    return null;
+            }
+
+            // System.Text.Json 应该能够通过 internal setter 设置 ConfigId
+            // 但如果 ConfigId 仍然为空（JSON 中没有或反序列化失败），则生成新的
+            // 注意：这不应该覆盖 JSON 中的 ConfigId，因为 SetConfigId 只在 ConfigId 为空时才设置
+            if (configs != null)
+            {
+                foreach (var config in configs)
+                {
+                    if (config is ConfigBase configBase && string.IsNullOrWhiteSpace(configBase.ConfigId))
+                    {
+                        // 仅在 ConfigId 为空时生成新的（用于向后兼容或创建新配置）
+                        configBase.SetConfigId(System.Guid.NewGuid().ToString());
+                    }
+                }
+            }
+
+            return configs;
+        }
+
+        /// <summary>
+        /// 确保配置有 ConfigId
+        /// 如果 ConfigId 为空，则生成新的（用于创建新配置的场景）
+        /// 注意：JSON 反序列化时，如果 JSON 中包含 configId，System.Text.Json 会通过 internal setter 设置
+        /// </summary>
+        private void EnsureConfigId(T config)
+        {
+            if (config is ConfigBase configBase && string.IsNullOrWhiteSpace(configBase.ConfigId))
+            {
+                // 仅在 ConfigId 为空时生成新的（说明是新创建的配置，不是从 JSON 反序列化的）
+                configBase.SetConfigId(System.Guid.NewGuid().ToString());
+            }
         }
 
         /// <summary>
@@ -217,27 +263,73 @@ namespace Astra.Core.Configuration
             _configIndex.Clear();
             _fileFormatCache.Clear();
 
-            var files = Directory.GetFiles(ConfigDirectory, "*.json");
-
-            foreach (var filePath in files)
+            // 如果启用自动扫描，则遍历目录下所有 json 文件
+            if (Options.AutoSearchAllFiles)
             {
-                var fileName = Path.GetFileNameWithoutExtension(filePath);
-                var format = await DetectFileFormatAsync(filePath);
+                var files = Directory.GetFiles(ConfigDirectory, "*.json");
 
-                _fileFormatCache[fileName] = format;
+                foreach (var filePath in files)
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(filePath);
+                    var format = await DetectFileFormatAsync(filePath);
 
-                var configs = await LoadConfigsFromFileAsync(filePath, format);
-                if (configs == null) continue;
+                    _fileFormatCache[fileName] = format;
+
+                    var configs = await LoadConfigsFromFileAsync(filePath, format);
+                    if (configs == null) continue;
+
+                    foreach (var config in configs)
+                    {
+                        var configId = config.ConfigId;  // ← 直接使用 ConfigId
+
+                        _configIndex[configId] = new ConfigMetadata
+                        {
+                            ConfigId = configId,
+                            FileName = fileName,
+                            StorageMode = format switch
+                            {
+                                ConfigStorageFormat.SingleObject => ConfigStorageMode.SingleFile,
+                                _ => ConfigStorageMode.Collection
+                            }
+                        };
+                    }
+                }
+            }
+            else
+            {
+                // 否则只使用 Options.DefaultCollectionFileName 指定的单个文件
+                var fileName = Options.DefaultCollectionFileName;
+                var filePath = GetFilePath(fileName);
+
+                if (!File.Exists(filePath))
+                {
+                    // 文件不存在时，仅注册默认格式，索引保持为空，后续保存时会创建
+                    var defaultFormat = Options.DefaultFormat == ConfigStorageFormat.Auto
+                        ? Options.NewConfigFormat
+                        : Options.DefaultFormat;
+
+                    _fileFormatCache[fileName] = defaultFormat;
+                    return;
+                }
+
+                var formatToUse = Options.DefaultFormat == ConfigStorageFormat.Auto
+                    ? await DetectFileFormatAsync(filePath)
+                    : Options.DefaultFormat;
+
+                _fileFormatCache[fileName] = formatToUse;
+
+                var configs = await LoadConfigsFromFileAsync(filePath, formatToUse);
+                if (configs == null) return;
 
                 foreach (var config in configs)
                 {
-                    var configId = config.ConfigId;  // ← 直接使用 ConfigId
+                    var configId = config.ConfigId;
 
                     _configIndex[configId] = new ConfigMetadata
                     {
                         ConfigId = configId,
                         FileName = fileName,
-                        StorageMode = format switch
+                        StorageMode = formatToUse switch
                         {
                             ConfigStorageFormat.SingleObject => ConfigStorageMode.SingleFile,
                             _ => ConfigStorageMode.Collection
@@ -302,6 +394,11 @@ namespace Astra.Core.Configuration
                 await EnsureIndexBuiltAsync();
 
                 var configId = config.ConfigId;  // ← 直接使用 ConfigId
+
+                if (string.IsNullOrEmpty(configId))
+                {
+                    return OperationResult.Failure($"配置ID不能为空");
+                }
 
                 if (_configIndex.TryGetValue(configId, out var metadata))
                 {
@@ -368,17 +465,30 @@ namespace Astra.Core.Configuration
 
             if (File.Exists(filePath))
             {
+                // 读取现有文件内容
                 var existingFormat = _fileFormatCache.GetValueOrDefault(fileName, format);
                 configs = await LoadConfigsFromFileAsync(filePath, existingFormat) ?? new List<T>();
                 format = existingFormat; // 使用现有格式
+
+                // 只在“不存在该配置”时追加；如果已存在同一 ConfigId，则视为更新
+                var configId = config.ConfigId;
+                var index = configs.FindIndex(c => c.ConfigId == configId);
+                if (index >= 0)
+                {
+                    configs[index] = config; // 更新已有配置
+                }
+                else
+                {
+                    configs.Add(config);     // 追加新配置
+                }
             }
             else
             {
-                configs = new List<T>();
+                // 文件不存在时，新建列表并记录格式
+                configs = new List<T> { config };
                 _fileFormatCache[fileName] = format;
             }
 
-            configs.Add(config);
             await SaveConfigsToFileAsync(filePath, configs, format);
             return OperationResult.Succeed();
         }
@@ -460,6 +570,35 @@ namespace Astra.Core.Configuration
             {
                 return OperationResult<IEnumerable<T>>.Failure($"获取所有配置失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 实现基接口方法，将泛型结果转换为 IConfig 集合
+        /// </summary>
+        public virtual async Task<OperationResult<IEnumerable<IConfig>>> GetAllConfigsAsync()
+        {
+            var result = await GetAllAsync();
+            if (!result.Success)
+            {
+                return OperationResult<IEnumerable<IConfig>>.Failure(result.Message);
+            }
+
+            // 将 IEnumerable<T> 转换为 IEnumerable<IConfig>
+            var configs = result.Data.Cast<IConfig>().ToList();
+            return OperationResult<IEnumerable<IConfig>>.Succeed(configs);
+        }
+
+        /// <summary>
+        /// 保存配置（非泛型版本）
+        /// </summary>
+        public virtual async Task<OperationResult> SaveConfigAsync(IConfig config)
+        {
+            if (config is T typedConfig)
+            {
+                return await SaveAsync(typedConfig);
+            }
+
+            return OperationResult.Failure($"配置类型不匹配：需要 {typeof(T).Name}，但提供的是 {config.GetType().Name}");
         }
 
         public virtual async Task RebuildIndexAsync()

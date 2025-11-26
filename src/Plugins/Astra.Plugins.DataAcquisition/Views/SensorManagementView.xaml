@@ -86,7 +86,7 @@
                                Text="传感器名称:"
                                VerticalAlignment="Center" />
                     <TextBox Grid.Column="1"
-                             Text="{Binding SelectedSensor.SensorName, UpdateSourceTrigger=PropertyChanged}"
+                             Text="{Binding SelectedSensor.ConfigName, UpdateSourceTrigger=PropertyChanged}"
                              hc:InfoElement.Placeholder="请输入传感器名称" />
                 </Grid>
 

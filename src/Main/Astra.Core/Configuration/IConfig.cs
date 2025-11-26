@@ -17,11 +17,6 @@ namespace Astra.Core.Configuration
         string ConfigId { get; }
 
         /// <summary>
-        /// 配置类型
-        /// </summary>
-        Type ConfigType { get; }
-
-        /// <summary>
         /// 配置名称
         /// </summary>
         string ConfigName { get; set; }

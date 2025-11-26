@@ -16,18 +16,17 @@ namespace Astra.Core.Configuration
         private int _version;
 
         /// <summary>
-        /// 配置唯一标识符（只读，通过构造函数初始化）
+        /// 配置唯一标识符（支持JSON序列化/反序列化）
+        /// 注意：System.Text.Json 默认不支持 protected setter，需要通过其他机制设置
         /// </summary>
-        [JsonIgnore]
+     
         public string ConfigId
         {
             get => _configId;
-            protected set => _configId = value; // 仅允许私有设置
+            // 使用 internal setter 以支持 JSON 反序列化（在同一程序集内可访问）
+            // 外部访问通过 SetConfigId 方法，确保只在 ConfigId 为空时设置
+            set => _configId = value;
         }
-
-    
-        public Type ConfigType { get; protected set; }
-
 
         /// <summary>
         /// 配置名称
@@ -92,12 +91,14 @@ namespace Astra.Core.Configuration
 
         /// <summary>
         /// 无参构造函数（用于JSON反序列化）
+        /// 注意：不在这里初始化 ConfigId，让 JSON 反序列化器设置
+        /// 如果 JSON 中没有 ConfigId，需要在反序列化后通过其他方式设置
         /// </summary>
         [JsonConstructor]
         protected ConfigBase()
         {
-            // JSON反序列化时使用
-
+            // JSON反序列化时使用，不初始化 ConfigId
+            // JSON 反序列化器会通过 protected setter 设置 ConfigId
         }
 
         /// <summary>
@@ -146,7 +147,7 @@ namespace Astra.Core.Configuration
             if (cloned != null)
             {
                 // 重置元数据
-                cloned._configId = $"{ConfigId}_copy_{Guid.NewGuid():N}";
+                cloned._configId = Guid.NewGuid().ToString();
                 cloned.CreatedAt = DateTime.Now;
                 cloned._updatedAt = null;
                 cloned._version = 1;
@@ -192,11 +193,12 @@ namespace Astra.Core.Configuration
 
         /// <summary>
         /// 设置ConfigId（仅供内部使用，用于反序列化后设置ID）
+        /// 仅在 ConfigId 为空时才设置，确保反序列化时不被覆盖
         /// </summary>
         /// <param name="configId">配置ID</param>
         public void SetConfigId(string configId)
         {
-            if (string.IsNullOrWhiteSpace(_configId))
+            if (string.IsNullOrWhiteSpace(_configId) && !string.IsNullOrWhiteSpace(configId))
             {
                 _configId = configId;
             }

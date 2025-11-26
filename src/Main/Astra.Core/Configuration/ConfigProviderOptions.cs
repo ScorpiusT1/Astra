@@ -28,7 +28,7 @@
         /// <summary>
         /// 是否自动搜索所有文件
         /// </summary>
-        public bool AutoSearchAllFiles { get; set; } = true;
+        public bool AutoSearchAllFiles { get; set; } = false;
 
         /// <summary>
         /// 新建配置时的默认格式

@@ -22,6 +22,7 @@ using System.Windows.Controls;
 using Astra.Models;
 using Astra.UI.Abstractions.Attributes;
 using Astra.Utilities;
+using System.Threading.Tasks;
 
 namespace Astra.ViewModels
 {
@@ -29,7 +30,7 @@ namespace Astra.ViewModels
     {
         private readonly IServiceProvider _serviceProvider;
         private string _defaultIcon = "📁";
-      
+
         private readonly IDeviceManager _deviceManager;
         private readonly IPluginHost _pluginHost;
 
@@ -74,11 +75,11 @@ namespace Astra.ViewModels
         {
             // 从服务提供者获取依赖
             _serviceProvider = App.ServiceProvider;
-           
+
             _deviceManager = _serviceProvider?.GetService<IDeviceManager>();
 
             _configManager = _serviceProvider?.GetService<IConfigurationManager>();
-        
+
             // 从服务提供者获取 PluginHost（已由 PluginLoadTask 注册为单例）
             _pluginHost = _serviceProvider?.GetService<IPluginHost>();
 
@@ -101,12 +102,12 @@ namespace Astra.ViewModels
         // 防止配置树刷新时的递归调用标志
         private bool _isRefreshingTree = false;
 
-     
+
 
         /// <summary>
         /// 初始化配置树
         /// </summary>
-        private void InitializeConfigTree()
+        private async Task InitializeConfigTree()
         {
             // 如果正在刷新，跳过（避免递归）
             if (_isRefreshingTree)
@@ -122,7 +123,7 @@ namespace Astra.ViewModels
             try
             {
                 // 按设备类型分组构建树（配置来源：ConfigurationManager）
-                BuildConfigTree();
+                await BuildConfigTree();
 
                 ExpandAllNodes();
 
@@ -149,6 +150,7 @@ namespace Astra.ViewModels
                 return;
             }
 
+            TreeNodes?.Clear();
 
             // 使用字典跟踪所有根节点，避免重复处理
             Dictionary<string, TreeNode> rootNodes = new Dictionary<string, TreeNode>();
@@ -266,7 +268,7 @@ namespace Astra.ViewModels
             }
         }
 
-      
+
         /// <summary>
         /// 节点选择命令
         /// </summary>
@@ -486,45 +488,6 @@ namespace Astra.ViewModels
         }
 
 
-        /// <summary>
-        /// 在 TreeView 中查找对应的 TreeViewItem
-        /// </summary>
-        private System.Windows.Controls.TreeViewItem FindTreeViewItem(System.Windows.Controls.ItemsControl parent, TreeNodeViewModel target)
-        {
-            if (parent == null || target == null)
-                return null;
-
-            // 确保容器已生成
-            parent.UpdateLayout();
-
-            foreach (var item in parent.Items)
-            {
-                var container = parent.ItemContainerGenerator.ContainerFromItem(item) as System.Windows.Controls.TreeViewItem;
-                if (container != null)
-                {
-                    if (ReferenceEquals(item, target))
-                    {
-                        return container;
-                    }
-
-                    // 如果容器有子节点，需要确保子容器已生成
-                    if (container.HasItems)
-                    {
-                        container.UpdateLayout();
-                    }
-
-                    // 递归查找子节点
-                    var found = FindTreeViewItem(container, target);
-                    if (found != null)
-                    {
-                        return found;
-                    }
-                }
-            }
-
-            return null;
-        }
-
         private TreeNode? CreateNode(TreeNode node)
         {
             if (node == null || node.ConfigType == null)
@@ -548,7 +511,7 @@ namespace Astra.ViewModels
                 ShowAddButton = false,
                 ShowDeleteButton = true,
                 ConfigType = node.ConfigType,
-                Config = Activator.CreateInstance(node.ConfigType!) as IConfig,
+                Config = Activator.CreateInstance(node.ConfigType!, Guid.NewGuid().ToString()) as IConfig,
                 Order = attr.Order,
                 Parent = node,
             };
@@ -576,7 +539,7 @@ namespace Astra.ViewModels
         /// 删除节点命令
         /// </summary>
         [RelayCommand]
-        private void DeleteNode(TreeNode node)
+        private async Task DeleteNode(TreeNode node)
         {
             if (node == null)
                 return;
@@ -587,7 +550,27 @@ namespace Astra.ViewModels
                 if (!MessageBoxHelper.Confirm($"确定要删除 \"{node.Header}\" 吗？", "确认删除"))
                     return;
 
-                // 从树中移除节点
+                // 先删除对应的配置（仅对叶子配置节点生效）
+                if (_configManager != null && node.Config is IConfig cfg)
+                {
+                    try
+                    {
+                        var deleteResult = await _configManager.DeleteConfigAsync(cfg);
+                        if (deleteResult == null || !deleteResult.Success)
+                        {
+                            MessageBoxHelper.ShowError($"删除配置失败: {deleteResult?.Message ?? "未知错误"}", "错误");
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"删除配置时发生错误: {ex.Message}");
+                        MessageBoxHelper.ShowError($"删除配置失败: {ex.Message}", "错误");
+                        return;
+                    }
+                }
+
+                // 从树中移除节点（仅内存中的树结构）
                 TreeNode? parent = null;
                 int index = -1;
 
@@ -681,16 +664,33 @@ namespace Astra.ViewModels
         /// 保存配置命令
         /// </summary>
         [RelayCommand]
-        private void SaveConfigurations()
+        private async Task SaveConfigurations()
         {
             try
             {
-                //if (_configurationManager == null)
-                //{
-                //    MessageBoxHelper.ShowError("配置管理器未初始化", "错误");
-                //    return;
-                //}
+                if (_configManager == null)
+                {
+                    ToastHelper.ShowError("配置管理器未初始化", "错误");
+                    return;
+                }
 
+                if (SelectedNode == null || SelectedNode.Config == null)
+                {
+                    ToastHelper.ShowError("未选择有效的配置节点", "错误");
+                    return;
+                }
+
+                // 通过 IConfigurationManager 的非泛型入口更新当前配置
+                OperationResult rlt = await _configManager.UpdateConfigAsync(SelectedNode.Config);
+
+                if (rlt == null || !rlt.Success)
+                {
+                    ToastHelper.ShowError("保存配置失败", "错误");
+                    return;
+                }
+
+                SelectedNode.Header = SelectedNode.Config.ConfigName;
+                ToastHelper.ShowSuccess("保存配置成功");
                 //var successCount = 0;
                 //var errorCount = 0;
                 //var errors = new List<string>();

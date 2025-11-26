@@ -26,6 +26,11 @@ namespace Astra.Core.Configuration
         void Publish<T>(T config, ConfigChangeType changeType) where T : class, IConfig;
 
         /// <summary>
+        /// 发布配置变更事件（非泛型版本）
+        /// </summary>
+        void Publish(IConfig config, ConfigChangeType changeType);
+
+        /// <summary>
         /// 清除所有订阅
         /// </summary>
         void ClearSubscriptions();
@@ -109,6 +114,39 @@ namespace Astra.Core.Configuration
                 {
                     // 捕获订阅者回调中的异常，避免影响其他订阅者
                     // 这里应该记录日志，但为了避免依赖日志系统，暂时使用Console
+                    Console.Error.WriteLine($"配置事件通知失败: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 发布配置变更事件（非泛型版本）
+        /// </summary>
+        public void Publish(IConfig config, ConfigChangeType changeType)
+        {
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+
+            var type = config.GetType();
+            if (!_subscribers.TryGetValue(type, out var subscribers))
+                return;
+
+            // 复制订阅者列表
+            List<Delegate> subscribersCopy;
+            lock (subscribers)
+            {
+                subscribersCopy = new List<Delegate>(subscribers);
+            }
+
+            // 通知所有订阅者
+            foreach (var subscriber in subscribersCopy)
+            {
+                try
+                {
+                    subscriber.DynamicInvoke(config, changeType);
+                }
+                catch (Exception ex)
+                {
                     Console.Error.WriteLine($"配置事件通知失败: {ex.Message}");
                 }
             }

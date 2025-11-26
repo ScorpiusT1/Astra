@@ -97,12 +97,22 @@ namespace Astra.Core.Configuration
         /// </summary>
         Task<OperationResult> UpdateConfigAsync<T>(T config) where T : class, IConfig;
 
+        /// <summary>
+        /// 更新配置（非泛型入口，供UI等只持有 IConfig 时调用）
+        /// </summary>
+        Task<OperationResult> UpdateConfigAsync(IConfig config);
+
         // ========== 删除配置 ==========
 
         /// <summary>
         /// 删除配置
         /// </summary>
         Task<OperationResult> DeleteConfigAsync<T>(string configId) where T : class, IConfig;
+
+        /// <summary>
+        /// 删除配置（非泛型入口，供只持有 IConfig 实例的调用方使用）
+        /// </summary>
+        Task<OperationResult> DeleteConfigAsync(IConfig config);
 
         /// <summary>
         /// 批量删除配置
