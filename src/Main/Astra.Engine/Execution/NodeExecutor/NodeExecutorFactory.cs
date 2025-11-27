@@ -43,12 +43,7 @@ namespace Astra.Engine.Execution.NodeExecutor
         /// <returns>配置好的标准执行器</returns>
         public static INodeExecutor CreateStandardExecutor()
         {
-            return new DefaultNodeExecutor()
-                .Use(new ValidationMiddleware())        // 验证
-                .Use(new ConditionalMiddleware())       // 条件判断
-                .Use(new LoggingMiddleware())          // 日志
-                .Use(new PerformanceMiddleware(500))   // 性能监控
-                .AddInterceptor(new AuditInterceptor()); // 审计
+            return ExecutorBuilder.CreateStandard().Build();
         }
 
         /// <summary>
@@ -58,11 +53,12 @@ namespace Astra.Engine.Execution.NodeExecutor
         /// <returns>配置了重试功能的执行器</returns>
         public static INodeExecutor CreateRetryableExecutor(int maxRetries = 3)
         {
-            return new DefaultNodeExecutor()
-                .Use(new ValidationMiddleware())
-                .Use(new LoggingMiddleware())
-                .Use(new RetryMiddleware(maxRetries, 1000))
-                .Use(new PerformanceMiddleware());
+            return new ExecutorBuilder()
+                .WithValidation()
+                .WithLogging()
+                .WithRetry(maxRetries)
+                .WithPerformanceMonitoring()
+                .Build();
         }
 
         /// <summary>
@@ -72,20 +68,35 @@ namespace Astra.Engine.Execution.NodeExecutor
         /// <returns>配置了缓存功能的执行器</returns>
         public static INodeExecutor CreateCachedExecutor(int cacheSeconds = 60)
         {
-            return new DefaultNodeExecutor()
-                .Use(new ValidationMiddleware())
-                .Use(new CacheMiddleware(cacheSeconds))
-                .Use(new LoggingMiddleware())
-                .Use(new PerformanceMiddleware());
+            return new ExecutorBuilder()
+                .WithValidation()
+                .WithCache(cacheSeconds)
+                .WithLogging()
+                .WithPerformanceMonitoring()
+                .Build();
         }
 
         /// <summary>
-        /// 创建自定义执行器
+        /// 创建自定义执行器（使用 ExecutorBuilder）
         /// </summary>
         /// <param name="configure">配置委托</param>
         /// <returns>自定义配置的执行器</returns>
-        public static INodeExecutor CreateCustomExecutor(
-            Action<INodeExecutor> configure)
+        public static INodeExecutor CreateExecutor(Action<ExecutorBuilder> configure)
+        {
+            if (configure == null) throw new ArgumentNullException(nameof(configure));
+            
+            var builder = new ExecutorBuilder();
+            configure(builder);
+            return builder.Build();
+        }
+
+        /// <summary>
+        /// 创建自定义执行器（旧版API，保留以兼容）
+        /// </summary>
+        /// <param name="configure">配置委托</param>
+        /// <returns>自定义配置的执行器</returns>
+        [Obsolete("请使用 CreateExecutor(Action<ExecutorBuilder> configure) 代替")]
+        public static INodeExecutor CreateCustomExecutor(Action<INodeExecutor> configure)
         {
             var executor = new DefaultNodeExecutor();
             configure(executor);

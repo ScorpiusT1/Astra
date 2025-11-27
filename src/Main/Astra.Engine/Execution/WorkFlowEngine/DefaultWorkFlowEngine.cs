@@ -95,30 +95,9 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 var strategy = _strategyFactory.CreateStrategy(detectedStrategy.Type);
 
                 // 4. 创建流程级 Logger 并注入到 ServiceProvider
-                var createdWorkflowLogger = false;
-                ILogger workflowLogger = null;
-
-                try
-                {
-                    var existing = context?.ServiceProvider?.GetService(typeof(Logger)) as Logger;
-                    if (existing == null)
-                    {
-                        workflowLogger = Logger.CreateForWorkflow(workflow.Id, workflow.Name);
-                        createdWorkflowLogger = true;
-                    }
-                    else
-                    {
-                        workflowLogger = existing;
-                    }
-                }
-                catch
-                {
-                    workflowLogger = Logger.CreateForWorkflow(workflow.Id, workflow.Name);
-                    createdWorkflowLogger = true;
-                }
-
+                await using var loggerScope = WorkFlowLoggerScope.Create(context, workflow);
                 var sp = new ScopedServiceProvider(context?.ServiceProvider);
-                sp.AddService(typeof(Logger), workflowLogger);
+                sp.AddService(typeof(Logger), loggerScope.Logger);
 
                 // 5. 创建执行上下文
                 var executionContext = new WorkFlowExecutionContext
@@ -147,12 +126,6 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 result.EndTime = DateTime.Now;
                 Statistics.TotalDuration = result.Duration;
                 Statistics.ExecutionStrategy = detectedStrategy.Type.ToString();
-
-                // 8. 若为本流程创建了 Logger，则在流程结束时关闭
-                if (createdWorkflowLogger && workflowLogger != null)
-                {
-                    await workflowLogger.ShutdownAsync();
-                }
 
                 return result;
             }
@@ -207,11 +180,13 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// </summary>
         private void LogStrategy(DetectedExecutionStrategy strategy)
         {
-            Console.WriteLine("=".PadRight(60, '='));
-            Console.WriteLine($"检测到执行策略: {strategy.Type}");
-            Console.WriteLine($"描述: {strategy.Description}");
-            Console.WriteLine($"原因: {strategy.Reason}");
-            Console.WriteLine("=".PadRight(60, '='));
+            // 使用结构化日志而非控制台输出
+            var logger = Logger.Create("WorkFlowEngine", Core.Logs.LogLevel.Info);
+            logger?.LogInfo("=".PadRight(60, '='));
+            logger?.LogInfo($"检测到执行策略: {strategy.Type}");
+            logger?.LogInfo($"描述: {strategy.Description}");
+            logger?.LogInfo($"原因: {strategy.Reason}");
+            logger?.LogInfo("=".PadRight(60, '='));
         }
 
         /// <summary>

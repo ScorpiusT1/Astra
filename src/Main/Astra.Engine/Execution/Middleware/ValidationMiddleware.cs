@@ -23,7 +23,10 @@ namespace Astra.Engine.Execution.Middleware
             var validation = node.Validate();
             if (!validation.IsValid)
             {
-                return ExecutionResult.Failed($"节点验证失败: {string.Join(", ", validation.Errors)}");
+                return ExecutionResult.ValidationFailed(
+                    "节点验证失败",
+                    validation.Errors.ToArray()
+                );
             }
 
             // 验证通过，继续执行
