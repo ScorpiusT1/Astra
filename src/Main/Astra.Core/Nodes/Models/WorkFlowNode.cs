@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Geometry;
+﻿﻿﻿using Astra.Core.Nodes.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -17,9 +17,13 @@ namespace Astra.Core.Nodes.Models
 
     /// <summary>
     /// 工作流节点 - 纯数据结构，不包含执行逻辑
+    /// 符合单一职责原则：专门负责工作流的数据组织和管理
+    /// 符合开闭原则：通过Configuration支持扩展
     /// </summary>
     public class WorkFlowNode : Node
     {
+        private static readonly object _relationshipLock = new object();
+
         /// <summary>
         /// 构造函数
         /// </summary>
@@ -58,6 +62,7 @@ namespace Astra.Core.Nodes.Models
 
         /// <summary>
         /// 添加节点
+        /// 符合单一职责原则：专门负责节点的添加和验证
         /// </summary>
         /// <param name="node">要添加的节点</param>
         /// <exception cref="ArgumentNullException">节点为null时抛出</exception>
@@ -71,7 +76,7 @@ namespace Astra.Core.Nodes.Models
         }
 
         /// <summary>
-        /// 移除节点
+        /// 移除节点（同时移除相关连接）
         /// </summary>
         /// <param name="nodeId">节点ID</param>
         /// <returns>如果成功移除返回true，否则返回false</returns>
@@ -85,6 +90,7 @@ namespace Astra.Core.Nodes.Models
 
         /// <summary>
         /// 添加连接
+        /// 符合单一职责原则：专门负责连接的添加和验证
         /// </summary>
         /// <param name="connection">要添加的连接</param>
         /// <exception cref="ArgumentNullException">连接为null时抛出</exception>
@@ -140,17 +146,155 @@ namespace Astra.Core.Nodes.Models
             return Connections.Where(c => c.SourceNodeId == nodeId).ToList();
         }
 
-        // ===== 执行入口（通过扩展方法提供，在 Astra.Engine 中实现） =====
-        // 注意：ExecuteCoreAsync 需要在子类中实现，但执行逻辑已移至 Astra.Engine
-        // 使用方式：
-        // using Astra.Engine.Execution.WorkFlowEngine;
-        // await workflow.ExecuteAsync(context, cancellationToken);
+        // ===== 关系重建（符合单一职责原则） =====
+
+        /// <summary>
+        /// 重建运行时关系（反序列化/克隆后调用）
+        /// 符合单一职责原则：专门负责重建对象间的引用关系
+        /// 线程安全：使用锁保护并发操作
+        /// </summary>
+        public void RebuildRelationships()
+        {
+            lock (_relationshipLock)
+            {
+                var nodeMap = Nodes.ToDictionary(n => n.Id);
+                var portMap = new Dictionary<string, Port>();
+
+                // 重建节点和端口的关系
+                foreach (var node in Nodes)
+                {
+                    if (node.InputPorts != null)
+                    {
+                        foreach (var port in node.InputPorts)
+                        {
+                            port.ParentNode = node;
+                            port.NodeId = node.Id;
+                           
+                            port.Connections = new List<Connection>();
+                            portMap[port.Id] = port;
+                        }
+                    }
+
+                    if (node.OutputPorts != null)
+                    {
+                        foreach (var port in node.OutputPorts)
+                        {
+                            port.ParentNode = node;
+                            port.NodeId = node.Id;
+                           
+                            port.Connections = new List<Connection>();
+                            portMap[port.Id] = port;
+                        }
+                    }
+                }
+
+                // 重建连接的关系
+                foreach (var connection in Connections)
+                {
+                    if (nodeMap.TryGetValue(connection.SourceNodeId, out var sourceNode))
+                    {
+                        connection.SourceNode = sourceNode;
+                    }
+
+                    if (nodeMap.TryGetValue(connection.TargetNodeId, out var targetNode))
+                    {
+                        connection.TargetNode = targetNode;
+                    }
+
+                    if (portMap.TryGetValue(connection.SourcePortId, out var sourcePort))
+                    {
+                        connection.SourcePort = sourcePort;
+                        sourcePort.Connections.Add(connection);
+                    }
+
+                    if (portMap.TryGetValue(connection.TargetPortId, out var targetPort))
+                    {
+                        connection.TargetPort = targetPort;
+                        targetPort.Connections.Add(connection);
+                    }
+                }
+            }
+        }
+
+        // ===== 验证（符合开闭原则：重写基类方法扩展验证逻辑） =====
+
+        /// <summary>
+        /// 验证工作流及其所有子节点和连接
+        /// 符合单一职责原则：专门负责验证逻辑
+        /// 符合开闭原则：扩展基类验证而不修改基类
+        /// </summary>
+        public override ValidationResult Validate()
+        {
+            var errors = new List<string>();
+
+            // 验证基类规则
+            var baseValidation = base.Validate();
+            if (!baseValidation.IsValid)
+                errors.AddRange(baseValidation.Errors);
+
+            // 验证子节点
+            if (Nodes == null || Nodes.Count == 0)
+                errors.Add("工作流至少需要一个节点");
+
+            var nodeIds = new HashSet<string>();
+            foreach (var node in Nodes ?? new List<Node>())
+            {
+                if (string.IsNullOrWhiteSpace(node.Id))
+                {
+                    errors.Add("存在ID为空的节点");
+                    continue;
+                }
+
+                if (nodeIds.Contains(node.Id))
+                    errors.Add($"存在重复的节点ID: {node.Id}");
+                else
+                    nodeIds.Add(node.Id);
+
+                var nodeValidation = node.Validate();
+                if (!nodeValidation.IsValid)
+                    errors.Add($"节点 '{node.Name}' 验证失败: {string.Join(", ", nodeValidation.Errors)}");
+            }
+
+            // 验证连接
+            var connectionIds = new HashSet<string>();
+            foreach (var connection in Connections ?? new List<Connection>())
+            {
+                if (connectionIds.Contains(connection.Id))
+                    errors.Add($"存在重复的连接ID: {connection.Id}");
+                else
+                    connectionIds.Add(connection.Id);
+
+                var connValidation = connection.Validate();
+                if (!connValidation.IsValid)
+                    errors.Add($"连接 {connection.Id} 验证失败: {string.Join(", ", connValidation.Errors)}");
+
+                if (!nodeIds.Contains(connection.SourceNodeId))
+                    errors.Add($"连接的源节点不存在: {connection.SourceNodeId}");
+
+                if (!nodeIds.Contains(connection.TargetNodeId))
+                    errors.Add($"连接的目标节点不存在: {connection.TargetNodeId}");
+            }
+
+            // 验证配置
+            if (Configuration != null)
+            {
+                if (Configuration.MaxParallelism <= 0)
+                    errors.Add("最大并行度必须大于0");
+
+                if (Configuration.TimeoutSeconds < 0)
+                    errors.Add("超时时间不能为负数");
+            }
+
+            return errors.Any()
+                ? ValidationResult.Failure(errors.ToArray())
+                : ValidationResult.Success();
+        }
+        
+        // ===== 执行入口 =====
         
         /// <summary>
         /// 执行工作流的核心逻辑
-        /// 当 WorkFlowNode 作为普通节点被执行时，此方法会被调用
-        /// 它委托给工作流引擎来执行工作流
-        /// 注意：此方法通过反射调用工作流引擎，以避免 Core 直接依赖 Engine
+        /// 符合依赖倒置原则：通过反射避免Core层依赖Engine层
         /// </summary>
         protected override async Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
@@ -184,6 +328,7 @@ namespace Astra.Core.Nodes.Models
 
         /// <summary>
         /// 克隆工作流节点
+        /// 符合开闭原则：重写基类方法，定制克隆逻辑
         /// </summary>
         public override Node Clone()
         {
@@ -199,10 +344,10 @@ namespace Astra.Core.Nodes.Models
                 ReferenceHandler = ReferenceHandler.Preserve
             });
 
-            // 2) 重新生成工作流自身 ConfigId
+            // 2) 重新生成工作流自身ID
             cloned.Id = Guid.NewGuid().ToString();
 
-            // 3) 重新分配所有子节点的 ConfigId，并建立旧->新 映射
+            // 3) 重新分配所有子节点的ID，并建立旧->新 映射
             var nodeIdMap = new Dictionary<string, string>();
             foreach (var n in cloned.Nodes)
             {
@@ -211,7 +356,7 @@ namespace Astra.Core.Nodes.Models
                 nodeIdMap[oldId] = n.Id;
             }
 
-            // 4) 修补连接：重生连接 ConfigId，并用映射修复 SourceNodeId/TargetNodeId
+            // 4) 修补连接：重生ID，并用映射修复 SourceNodeId/TargetNodeId
             for (int i = 0; i < cloned.Connections.Count; i++)
             {
                 var c = cloned.Connections[i];
@@ -220,7 +365,10 @@ namespace Astra.Core.Nodes.Models
                 if (nodeIdMap.TryGetValue(c.TargetNodeId, out var newDst)) c.TargetNodeId = newDst;
             }
 
-            // 5) 调用统一后处理钩子
+            // 5) 重建运行时关系
+            cloned.RebuildRelationships();
+
+            // 6) 调用统一后处理钩子
             AfterClone(cloned);
             return cloned;
         }
@@ -228,6 +376,8 @@ namespace Astra.Core.Nodes.Models
 
     /// <summary>
     /// 工作流配置
+    /// 符合单一职责原则：专门负责工作流执行配置
+    /// 符合开闭原则：通过属性扩展而不修改现有代码
     /// </summary>
     public class WorkFlowConfiguration
     {
@@ -279,7 +429,8 @@ namespace Astra.Core.Nodes.Models
 
     /// <summary>
     /// 工作流执行引擎接口
-    /// 定义工作流执行的抽象接口，具体实现位于 Astra.Engine.Execution.WorkFlowEngine
+    /// 符合单一职责：专门负责工作流执行
+    /// 符合依赖倒置：高层模块依赖抽象
     /// </summary>
     public interface IWorkFlowEngine
     {

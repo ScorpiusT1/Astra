@@ -14,6 +14,7 @@
         <ResourceDictionary Source="../Styles/Controls/DataGrids.xaml" />
         <ResourceDictionary Source="../Styles/Controls/CheckBoxs.xaml" />
         <ResourceDictionary Source="../Styles/Controls/TreeStyles.xaml" />
-
+        <ResourceDictionary Source="../Styles/Controls/PortStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/NodeStyle.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

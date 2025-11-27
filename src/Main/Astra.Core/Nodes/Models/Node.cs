@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Geometry;
+﻿﻿using Astra.Core.Nodes.Geometry;
 using System.Diagnostics;
 using Astra.Core.Logs;
 using System.Text.Json.Serialization;
@@ -21,12 +21,13 @@ namespace Astra.Core.Nodes.Models
 
     /// <summary>
     /// 节点基类 - 纯数据结构，不包含执行逻辑
+    /// 设计原则：
+    /// 1. 单一职责：仅负责节点数据的定义和基本验证
+    /// 2. 开闭原则：通过抽象方法 ExecuteCoreAsync 支持扩展
+    /// 3. 里氏替换：子类可以安全替换基类
     /// </summary>
     public abstract class Node
     {
-        // JSON 克隆选项：
-        // - Preserve：保留引用，避免循环引用导致栈溢出，并尽量恢复共享引用关系
-        // - 默认遵循 [JsonIgnore]
         private static readonly JsonSerializerOptions jsonCloneOptions = new JsonSerializerOptions
         {
             ReferenceHandler = ReferenceHandler.Preserve,
@@ -39,22 +40,44 @@ namespace Astra.Core.Nodes.Models
             Id = Guid.NewGuid().ToString();
             Parameters = new Dictionary<string, object>();
             IsEnabled = true;
+            InputPorts = new List<Port>();
+            OutputPorts = new List<Port>();
         }
 
         // ===== 基本属性 =====
+        
+        [JsonPropertyOrder(1)]
         public string Id { get; set; }
+        
+        [JsonPropertyOrder(2)]
         public string NodeType { get; set; }
+        
+        [JsonPropertyOrder(3)]
         public string Name { get; set; }
+        
+        [JsonPropertyOrder(4)]
         public string Description { get; set; }
+        
+        [JsonPropertyOrder(5)]
         public string Icon { get; set; }
+        
+        [JsonPropertyOrder(6)]
         public string Color { get; set; }
 
         // ===== 状态属性 =====
+        
+        [JsonPropertyOrder(7)]
         public bool IsEnabled { get; set; }
+        
+        [JsonPropertyOrder(8)]
         public bool IsReadonly { get; set; }
+        
+        [JsonPropertyOrder(9)]
         public bool IsLocked { get; set; }
 
         // ===== 参数和结果 =====
+        
+        [JsonPropertyOrder(10)]
         public Dictionary<string, object> Parameters { get; set; }
 
         [JsonIgnore]
@@ -63,9 +86,82 @@ namespace Astra.Core.Nodes.Models
         [JsonIgnore]
         public NodeExecutionState ExecutionState { get; set; }
 
+        // ===== 端口集合 =====
+        
+        [JsonPropertyOrder(11)]
+        public List<Port> InputPorts { get; set; }
+        
+        [JsonPropertyOrder(12)]
+        public List<Port> OutputPorts { get; set; }
+
         // ===== 布局属性 =====
+        
+        [JsonPropertyOrder(13)]
         public Point2D Position { get; set; }
+        
+        [JsonPropertyOrder(14)]
         public Size2D Size { get; set; }
+
+        // ===== 端口管理方法（符合单一职责原则） =====
+
+        /// <summary>
+        /// 添加输入端口
+        /// </summary>
+        public virtual void AddInputPort(Port port)
+        {
+            if (port == null) throw new ArgumentNullException(nameof(port));
+            
+            port.NodeId = this.Id;
+            port.ParentNode = this;
+           
+            if (!InputPorts.Any(p => p.Id == port.Id))
+            {
+                InputPorts.Add(port);
+            }
+        }
+
+        /// <summary>
+        /// 添加输出端口
+        /// </summary>
+        public virtual void AddOutputPort(Port port)
+        {
+            if (port == null) throw new ArgumentNullException(nameof(port));
+            
+            port.NodeId = this.Id;
+            port.ParentNode = this;
+            
+            if (!OutputPorts.Any(p => p.Id == port.Id))
+            {
+                OutputPorts.Add(port);
+            }
+        }
+
+        /// <summary>
+        /// 移除端口
+        /// </summary>
+        public virtual bool RemovePort(string portId)
+        {
+            var removed = InputPorts.RemoveAll(p => p.Id == portId);
+            removed += OutputPorts.RemoveAll(p => p.Id == portId);
+            return removed > 0;
+        }
+
+        /// <summary>
+        /// 获取端口
+        /// </summary>
+        public virtual Port GetPort(string portId)
+        {
+            return InputPorts.FirstOrDefault(p => p.Id == portId) 
+                   ?? OutputPorts.FirstOrDefault(p => p.Id == portId);
+        }
+
+        /// <summary>
+        /// 获取所有端口
+        /// </summary>
+        public virtual IEnumerable<Port> GetAllPorts()
+        {
+            return InputPorts.Concat(OutputPorts);
+        }
 
         // ===== 核心方法：定义节点的业务逻辑（不包含执行基础设施） =====
 
@@ -93,13 +189,30 @@ namespace Astra.Core.Nodes.Models
 
         /// <summary>
         /// 验证节点配置
+        /// 符合开闭原则：子类可以重写扩展验证逻辑
         /// </summary>
         public virtual ValidationResult Validate()
         {
             var errors = new List<string>();
 
+            if (string.IsNullOrWhiteSpace(Id))
+                errors.Add("节点ID不能为空");
+
             if (string.IsNullOrWhiteSpace(Name))
                 errors.Add("节点名称不能为空");
+
+            if (string.IsNullOrWhiteSpace(NodeType))
+                errors.Add("节点类型不能为空");
+
+            // 验证端口
+            foreach (var port in GetAllPorts())
+            {
+                if (string.IsNullOrWhiteSpace(port.Name))
+                    errors.Add($"端口名称不能为空");
+                
+                if (port.NodeId != this.Id)
+                    errors.Add($"端口 {port.Name} 的所属节点ID不匹配");
+            }
 
             return errors.Any()
                 ? ValidationResult.Failure(errors.ToArray())
@@ -108,24 +221,46 @@ namespace Astra.Core.Nodes.Models
 
         /// <summary>
         /// 克隆节点（默认实现：基于 System.Text.Json 的序列化/反序列化深拷贝）
-        /// 实现原则：
-        /// 1) 按运行时具体类型进行 JSON 序列化并反序列化，保留多态；
-        /// 2) 使用 ReferenceHandler.Preserve 以处理循环引用；
-        /// 3) 遵循 [JsonIgnore]，运行时属性不会被复制；
-        /// 4) 反序列化后重新生成 ConfigId；
-        /// 5) 调用 AfterClone(cloned) 供子类执行 ID 重新分配与关系修补（如需）。
+        /// 符合开闭原则：提供默认实现，子类可重写定制
         /// </summary>
         public virtual Node Clone()
         {
             var json = JsonSerializer.Serialize(this, GetType(), jsonCloneOptions);
             var cloned = (Node)JsonSerializer.Deserialize(json, GetType(), jsonCloneOptions);
             cloned.Id = Guid.NewGuid().ToString();
+            
+            RebuildPortRelationships(cloned);
+            
             AfterClone(cloned);
             return cloned;
         }
 
         /// <summary>
+        /// 重建端口关系（克隆后的后处理）
+        /// 符合单一职责原则：专门负责关系重建
+        /// </summary>
+        protected virtual void RebuildPortRelationships(Node cloned)
+        {
+            foreach (var port in cloned.InputPorts ?? new List<Port>())
+            {
+                port.Id = Guid.NewGuid().ToString();
+                port.NodeId = cloned.Id;
+                port.ParentNode = cloned;
+                port.Connections?.Clear();
+            }
+            
+            foreach (var port in cloned.OutputPorts ?? new List<Port>())
+            {
+                port.Id = Guid.NewGuid().ToString();
+                port.NodeId = cloned.Id;
+                port.ParentNode = cloned;
+                port.Connections?.Clear();
+            }
+        }
+
+        /// <summary>
         /// 克隆后钩子：子类可覆盖以执行深拷贝或修正引用
+        /// 符合开闭原则：提供扩展点
         /// </summary>
         protected virtual void AfterClone(Node cloned)
         {
@@ -147,51 +282,27 @@ namespace Astra.Core.Nodes.Models
 
     /// <summary>
     /// 节点执行器接口
-    /// 定义节点执行的抽象接口，具体实现位于 Astra.Engine.Execution.NodeExecutor
+    /// 符合单一职责：仅负责节点执行
+    /// 符合依赖倒置：高层模块依赖抽象而非具体实现
     /// </summary>
     public interface INodeExecutor
     {
-        /// <summary>
-        /// 执行节点
-        /// </summary>
-        /// <param name="node">要执行的节点</param>
-        /// <param name="context">节点执行上下文</param>
-        /// <param name="cancellationToken">取消令牌</param>
-        /// <returns>执行结果</returns>
         Task<ExecutionResult> ExecuteAsync(
             Node node,
             NodeContext context,
             CancellationToken cancellationToken);
 
-        /// <summary>
-        /// 添加中间件
-        /// </summary>
-        /// <param name="middleware">中间件实例</param>
-        /// <returns>当前执行器实例，支持链式调用</returns>
         INodeExecutor Use(INodeMiddleware middleware);
 
-        /// <summary>
-        /// 添加拦截器
-        /// </summary>
-        /// <param name="interceptor">拦截器实例</param>
-        /// <returns>当前执行器实例，支持链式调用</returns>
         INodeExecutor AddInterceptor(INodeInterceptor interceptor);
     }
 
     /// <summary>
     /// 节点中间件接口
-    /// 定义中间件的抽象接口，具体实现位于 Astra.Engine.Execution.Middleware
+    /// 符合单一职责：每个中间件处理一个横切关注点
     /// </summary>
     public interface INodeMiddleware
     {
-        /// <summary>
-        /// 执行中间件逻辑
-        /// </summary>
-        /// <param name="node">要执行的节点</param>
-        /// <param name="context">节点执行上下文</param>
-        /// <param name="cancellationToken">取消令牌</param>
-        /// <param name="next">下一个中间件或核心执行逻辑</param>
-        /// <returns>执行结果</returns>
         Task<ExecutionResult> InvokeAsync(
             Node node,
             NodeContext context,
@@ -201,32 +312,14 @@ namespace Astra.Core.Nodes.Models
 
     /// <summary>
     /// 节点拦截器接口
-    /// 定义拦截器的抽象接口，具体实现位于 Astra.Engine.Execution.Interceptors
+    /// 符合接口隔离原则：客户端只依赖需要的方法
     /// </summary>
     public interface INodeInterceptor
     {
-        /// <summary>
-        /// 节点执行前调用
-        /// </summary>
-        /// <param name="node">要执行的节点</param>
-        /// <param name="context">节点执行上下文</param>
-        /// <param name="cancellationToken">取消令牌</param>
         Task OnBeforeExecuteAsync(Node node, NodeContext context, CancellationToken cancellationToken);
 
-        /// <summary>
-        /// 节点执行后调用
-        /// </summary>
-        /// <param name="node">已执行的节点</param>
-        /// <param name="result">执行结果</param>
-        /// <param name="cancellationToken">取消令牌</param>
         Task OnAfterExecuteAsync(Node node, ExecutionResult result, CancellationToken cancellationToken);
 
-        /// <summary>
-        /// 节点执行异常时调用
-        /// </summary>
-        /// <param name="node">执行异常的节点</param>
-        /// <param name="exception">异常对象</param>
-        /// <param name="cancellationToken">取消令牌</param>
         Task OnExceptionAsync(Node node, Exception exception, CancellationToken cancellationToken);
     }
 
