@@ -16,5 +16,6 @@
         <ResourceDictionary Source="../Styles/Controls/TreeStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/PortStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/NodeStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/InfiniteCanvasStyle.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:controls="clr-namespace:Astra.UI.Controls;assembly=Astra.UI"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
@@ -9,42 +10,14 @@
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- 标题区域 -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource CardBrush}"
-                CornerRadius="12"
-                Padding="24"
-                Margin="0,0,0,24">
-            <StackPanel>
-                <TextBlock Text="序列编辑"
-                           FontSize="24"
-                           FontWeight="Bold"
-                           Foreground="{DynamicResource PrimaryTextBrush}"
-                           Margin="0,0,0,8" />
-                <TextBlock Text="配置和管理测试序列，支持复杂的测试流程编排"
-                           FontSize="14"
-                           Foreground="{DynamicResource SecondaryTextBrush}" />
-            </StackPanel>
-        </Border>
-
-        <!-- 内容区域 -->
-        <Border Grid.Row="1"
-                Background="{DynamicResource CardBrush}"
-                CornerRadius="12"
-                Padding="24">
-            <StackPanel>
-                <TextBlock Text="序列配置功能开发中..."
-                           FontSize="18"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
-            </StackPanel>
-        </Border>
+    <Grid>
+        <controls:InfiniteCanvas x:Name="Canvas"
+                                 Background="{DynamicResource RegionBrush}"
+                                 Scale="1.0"
+                                 ShowMinimap="True"
+                                 MinimapWidth="240"
+                                 MinimapHeight="180">
+            <!-- 节点模板 -->
+        </controls:InfiniteCanvas>
     </Grid>
 </UserControl>

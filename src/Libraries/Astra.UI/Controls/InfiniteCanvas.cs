@@ -19,12 +19,20 @@ namespace Astra.UI.Controls
     [TemplatePart(Name = PART_GridLayer, Type = typeof(Canvas))]
     [TemplatePart(Name = PART_AlignmentLayer, Type = typeof(Canvas))]
     [TemplatePart(Name = PART_MinimapContainer, Type = typeof(Border))]
+    [TemplatePart(Name = PART_MinimapCanvas, Type = typeof(Canvas))]
+    [TemplatePart(Name = PART_ViewportIndicator, Type = typeof(Rectangle))]
+    [TemplatePart(Name = PART_MinimapCollapseButton, Type = typeof(Button))]
+    [TemplatePart(Name = PART_MinimapExpandButton, Type = typeof(Button))]
     public class InfiniteCanvas : Control
     {
         private const string PART_ContentCanvas = "PART_ContentCanvas";
         private const string PART_GridLayer = "PART_GridLayer";
         private const string PART_AlignmentLayer = "PART_AlignmentLayer";
         private const string PART_MinimapContainer = "PART_MinimapContainer";
+        private const string PART_MinimapCanvas = "PART_MinimapCanvas";
+        private const string PART_ViewportIndicator = "PART_ViewportIndicator";
+        private const string PART_MinimapCollapseButton = "PART_MinimapCollapseButton";
+        private const string PART_MinimapExpandButton = "PART_MinimapExpandButton";
 
         static InfiniteCanvas()
         {
@@ -214,11 +222,21 @@ namespace Astra.UI.Controls
             set => SetValue(MinimapHeightProperty, value);
         }
 
+        public static readonly DependencyProperty IsMinimapCollapsedProperty =
+            DependencyProperty.Register(nameof(IsMinimapCollapsed), typeof(bool), typeof(InfiniteCanvas),
+                new PropertyMetadata(false, OnMinimapCollapsedChanged));
+
+        public bool IsMinimapCollapsed
+        {
+            get => (bool)GetValue(IsMinimapCollapsedProperty);
+            set => SetValue(IsMinimapCollapsedProperty, value);
+        }
+
         // ============ 数据源 ============
 
         public static readonly DependencyProperty ItemsSourceProperty =
             DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(InfiniteCanvas),
-                new PropertyMetadata(null));
+                new PropertyMetadata(null, OnItemsSourceChanged));
 
         public IEnumerable ItemsSource
         {
@@ -295,6 +313,12 @@ namespace Astra.UI.Controls
         private ScaleTransform _scaleTransform;
         private TranslateTransform _translateTransform;
         private ViewportState _state = new();
+        private Border _minimapContainer;
+        private Canvas _minimapCanvas;
+        private Rectangle _viewportIndicator;
+        private Button _minimapCollapseButton;
+        private Button _minimapExpandButton;
+        private bool _isNavigatingMinimap;
 
         #endregion
 
@@ -307,6 +331,11 @@ namespace Astra.UI.Controls
             _contentCanvas = GetTemplateChild(PART_ContentCanvas) as Canvas;
             _gridLayer = GetTemplateChild(PART_GridLayer) as Canvas;
             _alignmentLayer = GetTemplateChild(PART_AlignmentLayer) as Canvas;
+            _minimapContainer = GetTemplateChild(PART_MinimapContainer) as Border;
+            _minimapCanvas = GetTemplateChild(PART_MinimapCanvas) as Canvas;
+            _viewportIndicator = GetTemplateChild(PART_ViewportIndicator) as Rectangle;
+            _minimapCollapseButton = GetTemplateChild(PART_MinimapCollapseButton) as Button;
+            _minimapExpandButton = GetTemplateChild(PART_MinimapExpandButton) as Button;
 
             if (_contentCanvas != null)
             {
@@ -314,7 +343,15 @@ namespace Astra.UI.Controls
                 InitializeEventHandlers();
             }
 
+            if (_minimapCanvas != null && _viewportIndicator != null)
+            {
+                InitializeMinimap();
+            }
+
+            InitializeMinimapButtons();
+
             UpdateGrid();
+            UpdateMinimap();
         }
 
         private void InitializeTransforms()
@@ -328,6 +365,35 @@ namespace Astra.UI.Controls
 
             _contentCanvas.RenderTransform = transformGroup;
             _contentCanvas.RenderTransformOrigin = new Point(0, 0);
+        }
+
+        private void InitializeMinimap()
+        {
+            if (_minimapCanvas == null || _viewportIndicator == null) return;
+
+            // 为缩略图画布添加鼠标事件处理
+            _minimapCanvas.MouseLeftButtonDown += OnMinimapMouseDown;
+            _minimapCanvas.MouseLeftButtonUp += OnMinimapMouseUp;
+            _minimapCanvas.MouseMove += OnMinimapMouseMove;
+            _minimapCanvas.MouseLeave += OnMinimapMouseLeave;
+            
+            // 监听布局更新，确保视口指示器正确显示
+            _minimapCanvas.LayoutUpdated += (s, e) => UpdateViewportIndicator();
+        }
+
+        private void InitializeMinimapButtons()
+        {
+            // 折叠按钮
+            if (_minimapCollapseButton != null)
+            {
+                _minimapCollapseButton.Click += (s, e) => IsMinimapCollapsed = true;
+            }
+
+            // 展开按钮
+            if (_minimapExpandButton != null)
+            {
+                _minimapExpandButton.Click += (s, e) => IsMinimapCollapsed = false;
+            }
         }
 
         #endregion
@@ -493,6 +559,278 @@ namespace Astra.UI.Controls
 
         #endregion
 
+        #region 缩略图功能
+
+        /// <summary>
+        /// 更新缩略图 - 显示画布上所有内容的缩小版
+        /// </summary>
+        private void UpdateMinimap()
+        {
+            if (_minimapCanvas == null || !ShowMinimap || _contentCanvas == null || IsMinimapCollapsed) return;
+
+            _minimapCanvas.Children.Clear();
+
+            // 计算画布内容的边界
+            var contentBounds = GetContentBounds();
+            if (contentBounds.IsEmpty)
+            {
+                UpdateViewportIndicator();
+                return;
+            }
+
+            // 计算缩放比例以适应缩略图
+            var minimapWidth = MinimapWidth - 24; // 减去边距
+            var minimapHeight = MinimapHeight - 32 - 8; // 减去标题栏和边距
+            var scaleX = minimapWidth / Math.Max(contentBounds.Width, 1);
+            var scaleY = minimapHeight / Math.Max(contentBounds.Height, 1);
+            var minimapScale = Math.Min(scaleX, scaleY);
+
+            // 绘制缩略图内容
+            if (ItemsSource != null)
+            {
+                var contentBrush = TryFindResource("PrimaryBrush") as Brush ?? Brushes.Blue;
+                foreach (var item in ItemsSource)
+                {
+                    if (item is FrameworkElement element)
+                    {
+                        var x = Canvas.GetLeft(element);
+                        var y = Canvas.GetTop(element);
+                        if (double.IsNaN(x)) x = 0;
+                        if (double.IsNaN(y)) y = 0;
+
+                        var minimapRect = new Rectangle
+                        {
+                            Width = Math.Max(element.ActualWidth * minimapScale, 2),
+                            Height = Math.Max(element.ActualHeight * minimapScale, 2),
+                            Fill = contentBrush,
+                            Opacity = 0.6
+                        };
+
+                        Canvas.SetLeft(minimapRect, (x - contentBounds.Left) * minimapScale);
+                        Canvas.SetTop(minimapRect, (y - contentBounds.Top) * minimapScale);
+
+                        _minimapCanvas.Children.Add(minimapRect);
+                    }
+                    else if (item is DependencyObject depObj)
+                    {
+                        // 尝试从绑定中获取位置
+                        var xProp = depObj.GetType().GetProperty("X");
+                        var yProp = depObj.GetType().GetProperty("Y");
+                        if (xProp != null && yProp != null)
+                        {
+                            var x = Convert.ToDouble(xProp.GetValue(depObj) ?? 0);
+                            var y = Convert.ToDouble(yProp.GetValue(depObj) ?? 0);
+
+                            var minimapRect = new Rectangle
+                            {
+                                Width = 4,
+                                Height = 4,
+                                Fill = contentBrush,
+                                Opacity = 0.6
+                            };
+
+                            Canvas.SetLeft(minimapRect, (x - contentBounds.Left) * minimapScale);
+                            Canvas.SetTop(minimapRect, (y - contentBounds.Top) * minimapScale);
+
+                            _minimapCanvas.Children.Add(minimapRect);
+                        }
+                    }
+                }
+            }
+
+            // 存储缩放信息用于导航
+            _minimapScale = minimapScale;
+            _minimapContentBounds = contentBounds;
+
+            // 延迟更新视口指示器，确保布局完成
+            Dispatcher.BeginInvoke(new Action(() => UpdateViewportIndicator()), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// 更新视口指示器 - 高亮显示当前可见区域
+        /// </summary>
+        private void UpdateViewportIndicator()
+        {
+            if (_viewportIndicator == null || _minimapCanvas == null || !ShowMinimap || IsMinimapCollapsed) 
+            {
+                if (_viewportIndicator != null)
+                    _viewportIndicator.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var contentBounds = _minimapContentBounds;
+            if (contentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                _viewportIndicator.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // 确保画布已布局
+            if (_minimapCanvas.ActualWidth <= 0 || _minimapCanvas.ActualHeight <= 0)
+            {
+                // 延迟更新，等待布局完成
+                Dispatcher.BeginInvoke(new Action(() => UpdateViewportIndicator()), System.Windows.Threading.DispatcherPriority.Loaded);
+                return;
+            }
+
+            _viewportIndicator.Visibility = Visibility.Visible;
+
+            // 计算当前视口在画布坐标系中的位置和大小
+            var viewportLeft = -PanX / Scale;
+            var viewportTop = -PanY / Scale;
+            var viewportWidth = ActualWidth / Scale;
+            var viewportHeight = ActualHeight / Scale;
+
+            // 转换为缩略图坐标系
+            var minimapLeft = (viewportLeft - contentBounds.Left) * _minimapScale;
+            var minimapTop = (viewportTop - contentBounds.Top) * _minimapScale;
+            var minimapWidth = viewportWidth * _minimapScale;
+            var minimapHeight = viewportHeight * _minimapScale;
+
+            // 确保指示器在缩略图范围内
+            var canvasWidth = _minimapCanvas.ActualWidth;
+            var canvasHeight = _minimapCanvas.ActualHeight;
+            
+            minimapLeft = Math.Max(0, Math.Min(minimapLeft, canvasWidth));
+            minimapTop = Math.Max(0, Math.Min(minimapTop, canvasHeight));
+            minimapWidth = Math.Max(2, Math.Min(minimapWidth, canvasWidth - minimapLeft));
+            minimapHeight = Math.Max(2, Math.Min(minimapHeight, canvasHeight - minimapTop));
+
+            Canvas.SetLeft(_viewportIndicator, minimapLeft);
+            Canvas.SetTop(_viewportIndicator, minimapTop);
+            _viewportIndicator.Width = minimapWidth;
+            _viewportIndicator.Height = minimapHeight;
+        }
+
+        /// <summary>
+        /// 获取画布内容的边界
+        /// </summary>
+        private Rect GetContentBounds()
+        {
+            if (_contentCanvas == null || ItemsSource == null) return Rect.Empty;
+
+            var minX = double.MaxValue;
+            var minY = double.MaxValue;
+            var maxX = double.MinValue;
+            var maxY = double.MinValue;
+            bool hasContent = false;
+
+            foreach (var item in ItemsSource)
+            {
+                double x = 0, y = 0, width = 0, height = 0;
+
+                if (item is FrameworkElement element)
+                {
+                    x = Canvas.GetLeft(element);
+                    y = Canvas.GetTop(element);
+                    if (double.IsNaN(x)) x = 0;
+                    if (double.IsNaN(y)) y = 0;
+                    width = element.ActualWidth;
+                    height = element.ActualHeight;
+                }
+                else if (item is DependencyObject depObj)
+                {
+                    var xProp = depObj.GetType().GetProperty("X");
+                    var yProp = depObj.GetType().GetProperty("Y");
+                    var wProp = depObj.GetType().GetProperty("Width");
+                    var hProp = depObj.GetType().GetProperty("Height");
+
+                    if (xProp != null) x = Convert.ToDouble(xProp.GetValue(depObj) ?? 0);
+                    if (yProp != null) y = Convert.ToDouble(yProp.GetValue(depObj) ?? 0);
+                    if (wProp != null) width = Convert.ToDouble(wProp.GetValue(depObj) ?? 0);
+                    if (hProp != null) height = Convert.ToDouble(hProp.GetValue(depObj) ?? 0);
+                }
+
+                if (width > 0 && height > 0)
+                {
+                    minX = Math.Min(minX, x);
+                    minY = Math.Min(minY, y);
+                    maxX = Math.Max(maxX, x + width);
+                    maxY = Math.Max(maxY, y + height);
+                    hasContent = true;
+                }
+            }
+
+            if (!hasContent) return Rect.Empty;
+
+            // 添加一些边距
+            var margin = 50;
+            return new Rect(
+                minX - margin,
+                minY - margin,
+                maxX - minX + 2 * margin,
+                maxY - minY + 2 * margin
+            );
+        }
+
+        /// <summary>
+        /// 从缩略图坐标转换为画布坐标并导航
+        /// </summary>
+        private void NavigateToMinimapPoint(Point minimapPoint)
+        {
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0) return;
+
+            // 将缩略图坐标转换为画布坐标
+            var canvasX = minimapPoint.X / _minimapScale + _minimapContentBounds.Left;
+            var canvasY = minimapPoint.Y / _minimapScale + _minimapContentBounds.Top;
+
+            // 计算新的Pan值，使该点位于视口中心
+            var newPanX = -canvasX * Scale + ActualWidth / 2;
+            var newPanY = -canvasY * Scale + ActualHeight / 2;
+
+            PanX = newPanX;
+            PanY = newPanY;
+        }
+
+        private double _minimapScale = 1.0;
+        private Rect _minimapContentBounds = Rect.Empty;
+
+        #endregion
+
+        #region 缩略图事件处理
+
+        private void OnMinimapMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!ShowMinimap || _minimapCanvas == null) return;
+
+            var point = e.GetPosition(_minimapCanvas);
+            NavigateToMinimapPoint(point);
+            _isNavigatingMinimap = true;
+            _minimapCanvas.CaptureMouse();
+            e.Handled = true;
+        }
+
+        private void OnMinimapMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!ShowMinimap || _minimapCanvas == null || !_isNavigatingMinimap) return;
+
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                var point = e.GetPosition(_minimapCanvas);
+                NavigateToMinimapPoint(point);
+            }
+        }
+
+        private void OnMinimapMouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_minimapCanvas != null && _isNavigatingMinimap)
+            {
+                _isNavigatingMinimap = false;
+                _minimapCanvas.ReleaseMouseCapture();
+            }
+        }
+
+        private void OnMinimapMouseLeave(object sender, MouseEventArgs e)
+        {
+            if (_minimapCanvas != null && _isNavigatingMinimap)
+            {
+                _isNavigatingMinimap = false;
+                _minimapCanvas.ReleaseMouseCapture();
+            }
+        }
+
+        #endregion
+
         #region 事件处理
 
         private void InitializeEventHandlers()
@@ -564,6 +902,7 @@ namespace Astra.UI.Controls
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
             UpdateGrid();
+            UpdateViewportIndicator();
         }
 
         #endregion
@@ -579,6 +918,7 @@ namespace Astra.UI.Controls
                 canvas._scaleTransform.ScaleY = (double)e.NewValue;
             }
             canvas.UpdateGrid();
+            canvas.UpdateViewportIndicator();
             canvas.RaiseViewTransformChanged();
         }
 
@@ -593,12 +933,30 @@ namespace Astra.UI.Controls
                     canvas._translateTransform.Y = (double)e.NewValue;
             }
             canvas.UpdateGrid();
+            canvas.UpdateViewportIndicator();
             canvas.RaiseViewTransformChanged();
         }
 
         private static void OnGridSettingsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             ((InfiniteCanvas)d).UpdateGrid();
+        }
+
+        private static void OnItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            // 当内容变化时更新缩略图
+            canvas.UpdateMinimap();
+        }
+
+        private static void OnMinimapCollapsedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            // 当展开时更新缩略图
+            if (!canvas.IsMinimapCollapsed)
+            {
+                canvas.UpdateMinimap();
+            }
         }
 
         private void RaiseViewTransformChanged()
