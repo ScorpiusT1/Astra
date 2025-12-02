@@ -8,6 +8,7 @@
         <ResourceDictionary Source="../Styles/Controls/CommonStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/InputStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/Buttons.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/ToolboxStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/Badges.xaml" />
         <ResourceDictionary Source="../Styles/Controls/ProgressBars.xaml" />
         <ResourceDictionary Source="../Styles/Controls/Cards.xaml" />
@@ -16,6 +17,9 @@
         <ResourceDictionary Source="../Styles/Controls/TreeStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/PortStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/NodeStyle.xaml" />
+      
+        <ResourceDictionary Source="../Styles/Controls/NodeToolBoxStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/InfiniteCanvasStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/FlowEditorStyle.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

@@ -6,18 +6,15 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
+            
              d:DataContext="{d:DesignInstance Type=viewmodels:SequenceViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
     <Grid>
-        <controls:InfiniteCanvas x:Name="Canvas"
-                                 Background="{DynamicResource RegionBrush}"
-                                 Scale="1.0"
-                                 ShowMinimap="True"
-                                 MinimapWidth="240"
-                                 MinimapHeight="180">
-            <!-- 节点模板 -->
-        </controls:InfiniteCanvas>
+        <controls:FlowEditor x:Name="FlowEditor"
+                            ToolBoxItemsSource="{Binding ToolBoxItemsSource}"
+                            CanvasItemsSource="{Binding CanvasItemsSource}"
+                            ToolBoxWidth="90" />
     </Grid>
 </UserControl>

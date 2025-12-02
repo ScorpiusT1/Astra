@@ -352,6 +352,13 @@ namespace Astra.UI.Controls
 
             UpdateGrid();
             UpdateMinimap();
+            
+            // 确保指示器在初始化后更新
+            if (_viewportIndicator != null && ShowMinimap && !IsMinimapCollapsed)
+            {
+                // 延迟更新，等待布局完成
+                Dispatcher.BeginInvoke(new Action(() => UpdateViewportIndicator()), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
         }
 
         private void InitializeTransforms()
@@ -572,6 +579,7 @@ namespace Astra.UI.Controls
 
             // 计算画布内容的边界
             var contentBounds = GetContentBounds();
+
             if (contentBounds.IsEmpty)
             {
                 UpdateViewportIndicator();
@@ -642,8 +650,8 @@ namespace Astra.UI.Controls
             _minimapScale = minimapScale;
             _minimapContentBounds = contentBounds;
 
-            // 延迟更新视口指示器，确保布局完成
-            Dispatcher.BeginInvoke(new Action(() => UpdateViewportIndicator()), System.Windows.Threading.DispatcherPriority.Loaded);
+            // 立即更新视口指示器
+            UpdateViewportIndicator();
         }
 
         /// <summary>
@@ -658,48 +666,92 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            var contentBounds = _minimapContentBounds;
-            if (contentBounds.IsEmpty || _minimapScale <= 0)
-            {
-                _viewportIndicator.Visibility = Visibility.Collapsed;
-                return;
-            }
-
             // 确保画布已布局
-            if (_minimapCanvas.ActualWidth <= 0 || _minimapCanvas.ActualHeight <= 0)
+            var canvasWidth = _minimapCanvas.ActualWidth;
+            var canvasHeight = _minimapCanvas.ActualHeight;
+            
+            if (canvasWidth <= 0 || canvasHeight <= 0 || ActualWidth <= 0 || ActualHeight <= 0)
             {
                 // 延迟更新，等待布局完成
                 Dispatcher.BeginInvoke(new Action(() => UpdateViewportIndicator()), System.Windows.Threading.DispatcherPriority.Loaded);
                 return;
             }
 
-            _viewportIndicator.Visibility = Visibility.Visible;
+            // 如果还没有内容边界，尝试获取
+            if (_minimapContentBounds.IsEmpty)
+            {
+                var bounds = GetContentBounds();
+                if (!bounds.IsEmpty)
+                {
+                    _minimapContentBounds = bounds;
+                    // 计算缩放比例
+                    var availableWidth = canvasWidth;
+                    var availableHeight = canvasHeight;
+                    var scaleX = availableWidth / Math.Max(bounds.Width, 1);
+                    var scaleY = availableHeight / Math.Max(bounds.Height, 1);
+                    _minimapScale = Math.Min(scaleX, scaleY);
+                }
+                else
+                {
+                    // 没有内容时，使用默认边界和缩放
+                    // 使用主画布的实际尺寸作为参考
+                    var mainWidth = Math.Max(ActualWidth, 2000); // 至少2000像素
+                    var mainHeight = Math.Max(ActualHeight, 2000);
+                    _minimapContentBounds = new Rect(-mainWidth / 2, -mainHeight / 2, mainWidth, mainHeight);
+                    
+                    // 计算缩放比例，使整个内容区域能显示在缩略图中
+                    var availableWidth = canvasWidth;
+                    var availableHeight = canvasHeight;
+                    var scaleX = availableWidth / mainWidth;
+                    var scaleY = availableHeight / mainHeight;
+                    _minimapScale = Math.Min(scaleX, scaleY);
+                }
+            }
+
+            if (_minimapScale <= 0 || double.IsNaN(_minimapScale) || double.IsInfinity(_minimapScale))
+            {
+                _viewportIndicator.Visibility = Visibility.Collapsed;
+                return;
+            }
 
             // 计算当前视口在画布坐标系中的位置和大小
+            // 视口在画布坐标系中的位置 = (屏幕坐标 - 平移) / 缩放
             var viewportLeft = -PanX / Scale;
             var viewportTop = -PanY / Scale;
             var viewportWidth = ActualWidth / Scale;
             var viewportHeight = ActualHeight / Scale;
 
             // 转换为缩略图坐标系
+            var contentBounds = _minimapContentBounds;
             var minimapLeft = (viewportLeft - contentBounds.Left) * _minimapScale;
             var minimapTop = (viewportTop - contentBounds.Top) * _minimapScale;
             var minimapWidth = viewportWidth * _minimapScale;
             var minimapHeight = viewportHeight * _minimapScale;
 
             // 确保指示器在缩略图范围内
-            var canvasWidth = _minimapCanvas.ActualWidth;
-            var canvasHeight = _minimapCanvas.ActualHeight;
-            
+            // 限制在画布范围内
             minimapLeft = Math.Max(0, Math.Min(minimapLeft, canvasWidth));
             minimapTop = Math.Max(0, Math.Min(minimapTop, canvasHeight));
-            minimapWidth = Math.Max(2, Math.Min(minimapWidth, canvasWidth - minimapLeft));
-            minimapHeight = Math.Max(2, Math.Min(minimapHeight, canvasHeight - minimapTop));
+            minimapWidth = Math.Max(8, Math.Min(minimapWidth, canvasWidth - minimapLeft));
+            minimapHeight = Math.Max(8, Math.Min(minimapHeight, canvasHeight - minimapTop));
 
+            // 确保值有效
+            if (double.IsNaN(minimapLeft) || double.IsNaN(minimapTop) || 
+                double.IsNaN(minimapWidth) || double.IsNaN(minimapHeight) ||
+                minimapWidth <= 0 || minimapHeight <= 0)
+            {
+                _viewportIndicator.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // 设置指示器位置和大小
             Canvas.SetLeft(_viewportIndicator, minimapLeft);
             Canvas.SetTop(_viewportIndicator, minimapTop);
             _viewportIndicator.Width = minimapWidth;
             _viewportIndicator.Height = minimapHeight;
+            
+            // 确保指示器可见（最后设置，确保所有属性都已设置）
+            _viewportIndicator.Visibility = Visibility.Visible;
         }
 
         /// <summary>

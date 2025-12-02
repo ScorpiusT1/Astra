@@ -2,12 +2,12 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:local="clr-namespace:Astra.UI.Controls"
                     xmlns:converters="clr-namespace:Astra.UI.Converters">
-    
-   
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
 
-        <!-- InfiniteCanvas 默认样式 -->
+
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
+
+    <!-- InfiniteCanvas 默认样式 -->
     <Style TargetType="{x:Type local:InfiniteCanvas}">
         <!-- ✅ 使用 DynamicResource 动态绑定颜色 -->
         <Setter Property="Background"
@@ -65,7 +65,7 @@
                               Margin="12"
                               Panel.ZIndex="10"
                               Visibility="{TemplateBinding ShowMinimap, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            
+
                             <!-- 展开状态的完整缩略图 -->
                             <Border x:Name="PART_MinimapContainer"
                                     Width="{TemplateBinding MinimapWidth}"
@@ -98,7 +98,7 @@
                                                        FontSize="12"
                                                        VerticalAlignment="Center"
                                                        Margin="8,0" />
-                                            
+
                                             <!-- 折叠按钮（最小化图标） -->
                                             <Button x:Name="PART_MinimapCollapseButton"
                                                     HorizontalAlignment="Right"
@@ -111,7 +111,7 @@
                                                     Cursor="Hand"
                                                     ToolTip="折叠缩略图">
                                                 <Button.Content>
-                                                    <Path Data="M5 12h14" 
+                                                    <Path Data="M5 12h14"
                                                           Stroke="{DynamicResource PrimaryTextBrush}"
                                                           StrokeThickness="1.5"
                                                           Stretch="Uniform"
@@ -127,14 +127,17 @@
                                     <!-- 画布缩略图 -->
                                     <Canvas x:Name="PART_MinimapCanvas"
                                             Background="{DynamicResource BackgroundBrush}">
-                                        <!-- 视口指示器 -->
+                                        <!-- 视口指示器 - 显示当前可见区域 -->
                                         <Rectangle x:Name="PART_ViewportIndicator"
                                                    Stroke="{DynamicResource PrimaryBrush}"
                                                    StrokeThickness="2"
-                                                   Fill="{DynamicResource LightPrimaryBrush}"
+                                                   Fill="{DynamicResource PrimaryBrush}"
                                                    Opacity="0.3"
-                                                   RadiusX="2"
-                                                   RadiusY="2" />
+                                                   Panel.ZIndex="100"
+                                                   IsHitTestVisible="False"
+                                                   Visibility="Visible"
+                                                   Width="20"
+                                                   Height="20" />
                                     </Canvas>
                                 </DockPanel>
                             </Border>
@@ -149,7 +152,7 @@
                                     Cursor="Hand"
                                     ToolTip="展开缩略图"
                                     Visibility="{Binding IsMinimapCollapsed, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                
+
                                 <Button.Content>
                                     <Border Width="28"
                                             Height="28"
@@ -163,8 +166,8 @@
                                                               ShadowDepth="1"
                                                               Opacity="0.15" />
                                         </Border.Effect>
-                                        
-                                        <Path Data="M4 4h16v16H4V4z" 
+
+                                        <Path Data="M4 4h16v16H4V4z"
                                               Stroke="{DynamicResource PrimaryBrush}"
                                               StrokeThickness="1.5"
                                               Stretch="Uniform"

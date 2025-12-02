@@ -1,0 +1,51 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:Astra.UI.Controls">
+
+
+    <!-- FlowEditor 默认样式 -->
+    <Style TargetType="{x:Type local:FlowEditor}">
+        <Setter Property="Background"
+                Value="{DynamicResource BrushBackground}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:FlowEditor}">
+                    <Grid Background="{TemplateBinding Background}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 工具箱区域 -->
+                        <local:NodeToolBox x:Name="PART_NodeToolBox"
+                                              Width="{TemplateBinding ToolBoxWidth}"
+                                              ItemsSource="{TemplateBinding ToolBoxItemsSource}" />
+
+                        <!-- 分割线 - 明显的视觉分隔 -->
+                        <Border Grid.Column="1"
+                                Width="2"
+                               
+                                Background="{DynamicResource BorderBrush}"
+                                Opacity="0.6">
+                            <Border.Effect>
+                                <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                                                  Opacity="0.15"
+                                                  BlurRadius="4"
+                                                  ShadowDepth="2"
+                                                  Direction="90" />
+                            </Border.Effect>
+                        </Border>
+
+                        <!-- 画布区域 -->
+                        <local:InfiniteCanvas x:Name="PART_InfiniteCanvas"
+                                                 Grid.Column="2"
+                                                 Background="{TemplateBinding Background}"
+                                                 ItemsSource="{TemplateBinding CanvasItemsSource}"
+                                                 AllowDrop="True" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

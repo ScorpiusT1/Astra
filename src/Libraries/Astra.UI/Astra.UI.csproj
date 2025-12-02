@@ -12,6 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FontAwesome.Sharp" Version="6.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
   </ItemGroup>
 

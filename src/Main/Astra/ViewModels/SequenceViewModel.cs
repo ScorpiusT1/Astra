@@ -1,9 +1,13 @@
 using Astra.Models;
+using Astra.UI.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using NavStack.Core;
 using NavStack.Services;
 using System;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Windows;
+using System.Windows.Media;
 
 namespace Astra.ViewModels
 {
@@ -17,6 +21,18 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private bool _isNavigating = false;
 
+        /// <summary>
+        /// 工具箱数据源 - 工具类别集合
+        /// </summary>
+        [ObservableProperty]
+        private ObservableCollection<ToolCategory> _toolBoxItemsSource;
+
+        /// <summary>
+        /// 画布数据源 - 节点集合
+        /// </summary>
+        [ObservableProperty]
+        private ObservableCollection<CanvasNode> _canvasItemsSource;
+
         public SequenceViewModel(IFrameNavigationService navigationService)
         {
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
@@ -24,7 +40,100 @@ namespace Astra.ViewModels
             // 订阅导航事件
             SubscribeToNavigationEvents();
 
-           
+            // 初始化数据源
+            InitializeDataSources();
+        }
+
+        /// <summary>
+        /// 初始化数据源
+        /// </summary>
+        private void InitializeDataSources()
+        {
+            // 初始化工具箱数据源
+            ToolBoxItemsSource = new ObservableCollection<ToolCategory>();
+            
+            // 初始化画布数据源
+            CanvasItemsSource = new ObservableCollection<CanvasNode>();
+
+            // 创建示例工具类别
+            CreateSampleToolCategories();
+        }
+
+        /// <summary>
+        /// 创建示例工具类别
+        /// </summary>
+        private void CreateSampleToolCategories()
+        {
+            Debug.WriteLine("[SequenceViewModel] 开始创建示例工具类别");
+
+            // 基础节点类别
+            var basicCategory = new ToolCategory
+            {
+                Name = "基础节点",
+                IconCode = FlowEditorIcons.BasicCategory,
+                Description = "基础流程节点",
+                CategoryColor = Application.Current?.FindResource("PrimaryBrush") as Brush,
+                CategoryLightColor = Application.Current?.FindResource("LightPrimaryBrush") as Brush
+            };
+            basicCategory.Tools.Add(new ToolItem { Name = "开始", IconCode = FlowEditorIcons.Start, Description = "流程开始节点" });
+            basicCategory.Tools.Add(new ToolItem { Name = "结束", IconCode = FlowEditorIcons.End, Description = "流程结束节点" });
+            basicCategory.Tools.Add(new ToolItem { Name = "等待", IconCode = FlowEditorIcons.Wait, Description = "等待节点" });
+            ToolBoxItemsSource.Add(basicCategory);
+            Debug.WriteLine($"[SequenceViewModel] 添加基础节点类别: {basicCategory.Name}, 工具数量: {basicCategory.Tools.Count}");
+
+            // 逻辑节点类别
+            var logicCategory = new ToolCategory
+            {
+                Name = "逻辑节点",
+                IconCode = FlowEditorIcons.LogicCategory,
+                Description = "逻辑控制节点",
+                CategoryColor = Application.Current?.FindResource("InfoBrush") as Brush,
+                CategoryLightColor = Application.Current?.FindResource("LightInfoBrush") as Brush
+            };
+
+            logicCategory.Tools.Add(new ToolItem { Name = "条件判断", IconCode = FlowEditorIcons.Condition, Description = "条件判断节点" });
+            logicCategory.Tools.Add(new ToolItem { Name = "循环", IconCode = FlowEditorIcons.Loop, Description = "循环节点" });
+            logicCategory.Tools.Add(new ToolItem { Name = "并行", IconCode = FlowEditorIcons.Parallel, Description = "并行执行节点" });
+            ToolBoxItemsSource.Add(logicCategory);
+            Debug.WriteLine($"[SequenceViewModel] 添加逻辑节点类别: {logicCategory.Name}, 工具数量: {logicCategory.Tools.Count}");
+
+            // 设备节点类别
+            var deviceCategory = new ToolCategory
+            {
+                Name = "设备节点",
+                IconCode = FlowEditorIcons.DeviceCategory,
+                Description = "设备操作节点",
+                CategoryColor = Application.Current?.FindResource("SuccessBrush") as Brush,
+                CategoryLightColor = Application.Current?.FindResource("LightSuccessBrush") as Brush
+            };
+            deviceCategory.Tools.Add(new ToolItem { Name = "PLC控制", IconCode = FlowEditorIcons.PLC, Description = "PLC控制节点" });
+            deviceCategory.Tools.Add(new ToolItem { Name = "扫码枪", IconCode = FlowEditorIcons.Scanner, Description = "扫码枪节点" });
+            deviceCategory.Tools.Add(new ToolItem { Name = "传感器", IconCode = FlowEditorIcons.Sensor, Description = "传感器节点" });
+            ToolBoxItemsSource.Add(deviceCategory);
+            Debug.WriteLine($"[SequenceViewModel] 添加设备节点类别: {deviceCategory.Name}, 工具数量: {deviceCategory.Tools.Count}");
+
+            Debug.WriteLine($"[SequenceViewModel] 工具类别总数: {ToolBoxItemsSource.Count}");
+        }
+
+        /// <summary>
+        /// 节点创建工厂 - 从工具项创建画布节点
+        /// </summary>
+        public Func<IToolItem, Point, object> NodeFactory
+        {
+            get
+            {
+                return (toolItem, position) =>
+                {
+                    return new CanvasNode
+                    {
+                        Name = toolItem.Name,
+                        X = position.X,
+                        Y = position.Y,
+                        Width = 120,
+                        Height = 60
+                    };
+                };
+            }
         }
 
         /// <summary>
