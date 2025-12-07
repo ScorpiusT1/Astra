@@ -1,4 +1,6 @@
 ﻿using Astra.UI.Serivces;
+using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Geometry;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,6 +14,13 @@ namespace Astra.UI.Controls
 {
     /// <summary>
     /// 流程编辑器自定义控件 - 支持从工具箱拖拽节点到画布
+    /// 
+    /// 节点创建机制：
+    /// 1. 从工具箱拖拽工具项到画布时，会根据 IToolItem.NodeType 自动创建节点实例
+    /// 2. IToolItem.NodeType 可以是 Type 对象或类型名称字符串（完整类型名）
+    /// 3. 节点类型必须是 Node 的子类，且必须有公共无参构造函数
+    /// 4. 创建的节点会自动设置 Name、NodeType、Position、Description 等属性
+    /// 5. 画布数据源（CanvasItemsSource）中的所有对象必须是 Node 的子类
     /// </summary>
     [TemplatePart(Name = "PART_NodeToolBox", Type = typeof(NodeToolBox))]
     [TemplatePart(Name = "PART_InfiniteCanvas", Type = typeof(InfiniteCanvas))]
@@ -56,16 +65,6 @@ namespace Astra.UI.Controls
                 new PropertyMetadata(null, OnCanvasItemsSourceChanged));
 
         /// <summary>
-        /// 节点创建委托 - 用于从工具项创建节点对象
-        /// </summary>
-        public static readonly DependencyProperty NodeFactoryProperty =
-            DependencyProperty.Register(
-                nameof(NodeFactory),
-                typeof(Func<IToolItem, Point, object>),
-                typeof(FlowEditor),
-                new PropertyMetadata(null));
-
-        /// <summary>
         /// 工具箱宽度
         /// </summary>
         public static readonly DependencyProperty ToolBoxWidthProperty =
@@ -95,15 +94,6 @@ namespace Astra.UI.Controls
         {
             get => (IEnumerable)GetValue(CanvasItemsSourceProperty);
             set => SetValue(CanvasItemsSourceProperty, value);
-        }
-
-        /// <summary>
-        /// 节点创建委托 - 参数: (工具项, 画布坐标位置) => 节点对象
-        /// </summary>
-        public Func<IToolItem, Point, object> NodeFactory
-        {
-            get => (Func<IToolItem, Point, object>)GetValue(NodeFactoryProperty);
-            set => SetValue(NodeFactoryProperty, value);
         }
 
         /// <summary>
@@ -161,10 +151,34 @@ namespace Astra.UI.Controls
         {
             if (_infiniteCanvas != null)
             {
+                // 确保 InfiniteCanvas 启用拖放功能
+                _infiniteCanvas.AllowDrop = true;
+                
+                // 订阅拖放事件（使用预览事件确保能捕获到）
+                _infiniteCanvas.PreviewDragOver += OnCanvasDragOver;
+                _infiniteCanvas.PreviewDrop += OnCanvasDrop;
+                _infiniteCanvas.PreviewDragEnter += OnCanvasDragEnter;
+                _infiniteCanvas.PreviewDragLeave += OnCanvasDragLeave;
+                
+                // 同时订阅普通事件（作为备用）
                 _infiniteCanvas.DragOver += OnCanvasDragOver;
                 _infiniteCanvas.Drop += OnCanvasDrop;
                 _infiniteCanvas.DragEnter += OnCanvasDragEnter;
                 _infiniteCanvas.DragLeave += OnCanvasDragLeave;
+                
+                // 添加更多调试信息
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] SubscribeToEvents: InfiniteCanvas AllowDrop={_infiniteCanvas.AllowDrop}, IsLoaded={_infiniteCanvas.IsLoaded}, IsVisible={_infiniteCanvas.IsVisible}, IsEnabled={_infiniteCanvas.IsEnabled}");
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] SubscribeToEvents: InfiniteCanvas ActualWidth={_infiniteCanvas.ActualWidth}, ActualHeight={_infiniteCanvas.ActualHeight}");
+                
+                // 在 Loaded 事件中再次确认
+                _infiniteCanvas.Loaded += (s, e) =>
+                {
+                    System.Diagnostics.Debug.WriteLine($"[FlowEditor] InfiniteCanvas Loaded: AllowDrop={_infiniteCanvas.AllowDrop}, IsHitTestVisible={_infiniteCanvas.IsHitTestVisible}");
+                };
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] SubscribeToEvents: _infiniteCanvas 为 null！");
             }
         }
 
@@ -172,6 +186,13 @@ namespace Astra.UI.Controls
         {
             if (_infiniteCanvas != null)
             {
+                // 取消预览事件订阅
+                _infiniteCanvas.PreviewDragOver -= OnCanvasDragOver;
+                _infiniteCanvas.PreviewDrop -= OnCanvasDrop;
+                _infiniteCanvas.PreviewDragEnter -= OnCanvasDragEnter;
+                _infiniteCanvas.PreviewDragLeave -= OnCanvasDragLeave;
+                
+                // 取消普通事件订阅
                 _infiniteCanvas.DragOver -= OnCanvasDragOver;
                 _infiniteCanvas.Drop -= OnCanvasDrop;
                 _infiniteCanvas.DragEnter -= OnCanvasDragEnter;
@@ -185,22 +206,41 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDragEnter(object sender, DragEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragEnter 事件触发，sender={sender?.GetType().Name}, AllowDrop: {_infiniteCanvas?.AllowDrop}, Source={e.Source?.GetType().Name}, OriginalSource={e.OriginalSource?.GetType().Name}");
             if (IsValidDragData(e.Data))
             {
                 e.Effects = DragDropEffects.Copy;
                 e.Handled = true;
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragEnter: 拖拽数据有效，设置为 Copy");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragEnter: 拖拽数据无效");
             }
         }
 
         private void OnCanvasDragOver(object sender, DragEventArgs e)
         {
-            if (IsValidDragData(e.Data))
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragOver 事件触发，sender={sender?.GetType().Name}, Source={e.Source?.GetType().Name}");
+            
+            // 检查拖拽数据是否有效
+            bool isValid = IsValidDragData(e.Data);
+            
+            if (isValid)
             {
                 e.Effects = DragDropEffects.Copy;
                 e.Handled = true;
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragOver: 拖拽数据有效，设置为 Copy");
             }
             else
             {
+                // 只有在数据确实无效时才设置 None
+                // 如果数据格式不匹配，记录调试信息
+                if (e.Data != null)
+                {
+                    var formats = e.Data.GetFormats();
+                    System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragOver: 数据格式不匹配。可用格式: {string.Join(", ", formats)}");
+                }
                 e.Effects = DragDropEffects.None;
                 e.Handled = true;
             }
@@ -213,8 +253,10 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDrop(object sender, DragEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop 事件触发");
             if (!IsValidDragData(e.Data))
             {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop: 拖拽数据无效，返回");
                 return;
             }
 
@@ -224,27 +266,23 @@ namespace Astra.UI.Controls
                 var toolItem = e.Data.GetData(DragDropDataFormats.ToolItem) as IToolItem;
                 if (toolItem == null)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop: 无法从拖拽数据中获取 IToolItem");
                     return;
                 }
+
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop: 成功获取工具项: {toolItem.Name}");
 
                 // 获取鼠标在画布上的位置（画布坐标系）
                 var dropPosition = e.GetPosition(_infiniteCanvas);
                 var canvasPosition = _infiniteCanvas.ScreenToCanvas(dropPosition);
 
-                // 创建节点
-                object node = null;
-                if (NodeFactory != null)
-                {
-                    node = NodeFactory(toolItem, canvasPosition);
-                }
-                else
-                {
-                    // 默认实现：创建一个简单的节点对象
-                    node = CreateDefaultNode(toolItem, canvasPosition);
-                }
+                // 创建节点（根据 IToolItem.NodeType 自动创建）
+                Node node = CreateDefaultNode(toolItem, canvasPosition);
 
+                // 验证节点必须不为空
                 if (node == null)
                 {
+                    System.Diagnostics.Debug.WriteLine($"创建的节点为 null，无法添加到画布");
                     return;
                 }
 
@@ -270,70 +308,201 @@ namespace Astra.UI.Controls
         /// </summary>
         private bool IsValidDragData(IDataObject data)
         {
-            return data != null && data.GetDataPresent(DragDropDataFormats.ToolItem);
+            if (data == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] IsValidDragData: data 为 null");
+                return false;
+            }
+
+            bool hasFormat = data.GetDataPresent(DragDropDataFormats.ToolItem);
+            if (!hasFormat)
+            {
+                // 列出所有可用的数据格式，便于调试
+                var formats = data.GetFormats();
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] IsValidDragData: 未找到格式 '{DragDropDataFormats.ToolItem}'。可用格式: {string.Join(", ", formats)}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] IsValidDragData: 找到有效格式 '{DragDropDataFormats.ToolItem}'");
+            }
+
+            return hasFormat;
         }
 
         /// <summary>
-        /// 创建默认节点（当未提供 NodeFactory 时使用）
+        /// 根据工具项创建节点
+        /// 要求：
+        /// 1. IToolItem.NodeType 必须指定为 Node 的子类类型（Type 对象或类型名称字符串）
+        /// 2. 节点类型必须不是抽象类
+        /// 3. 节点类型必须有公共无参构造函数
+        /// 如果创建失败，返回 null
         /// </summary>
-        private object CreateDefaultNode(IToolItem toolItem, Point position)
+        private Node CreateDefaultNode(IToolItem toolItem, Point position)
         {
-            // 创建一个简单的节点对象，包含位置信息
-            return new
+            // 如果工具项没有指定节点类型，返回 null
+            if (toolItem.NodeType == null)
             {
-                Name = toolItem.Name,
-                X = position.X,
-                Y = position.Y,
-                Width = 100.0,
-                Height = 50.0
-            };
+                System.Diagnostics.Debug.WriteLine($"工具项 {toolItem.Name} 未指定 NodeType，无法创建节点");
+                return null;
+            }
+
+            try
+            {
+                Type nodeType = null;
+
+                // 如果 NodeType 是 Type 对象，直接使用
+                if (toolItem.NodeType is Type type)
+                {
+                    nodeType = type;
+                }
+                // 如果 NodeType 是字符串，尝试解析为类型
+                else if (toolItem.NodeType is string typeName && !string.IsNullOrWhiteSpace(typeName))
+                {
+                    // 首先在当前程序集中查找
+                    nodeType = Type.GetType(typeName, false);
+                    
+                    // 如果找不到，尝试在所有已加载的程序集中查找
+                    if (nodeType == null)
+                    {
+                        foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+                        {
+                            nodeType = assembly.GetType(typeName, false);
+                            if (nodeType != null)
+                                break;
+                        }
+                    }
+                }
+
+                // 如果找不到类型，返回 null
+                if (nodeType == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"无法找到节点类型: {toolItem.NodeType}");
+                    return null;
+                }
+
+                // 验证类型必须是 Node 的子类
+                if (!typeof(Node).IsAssignableFrom(nodeType))
+                {
+                    System.Diagnostics.Debug.WriteLine($"节点类型 {nodeType.FullName} 不是 Node 的子类，返回 null");
+                    return null;
+                }
+
+                // 检查是否是抽象类
+                if (nodeType.IsAbstract)
+                {
+                    System.Diagnostics.Debug.WriteLine($"节点类型 {nodeType.FullName} 是抽象类，无法创建实例，返回 null");
+                    return null;
+                }
+
+                // 尝试使用无参构造函数创建实例
+                var instance = System.Activator.CreateInstance(nodeType) as Node;
+                if (instance == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"无法创建节点实例: {nodeType.FullName}");
+                    return null;
+                }
+
+                // 设置节点名称
+                instance.Name = toolItem.Name ?? "未命名节点";
+
+                // 设置节点类型字符串（用于序列化和识别）
+                instance.NodeType = nodeType.Name;
+
+                // 设置位置属性（使用 Point2D）
+                instance.Position = new Point2D(position.X, position.Y);
+
+                // 如果工具项有描述，设置描述
+                if (!string.IsNullOrWhiteSpace(toolItem.Description))
+                {
+                    instance.Description = toolItem.Description;
+                }
+
+                return instance;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"使用 NodeType 创建节点时发生错误: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 设置节点位置（支持多种位置属性格式）
+        /// </summary>
+        private void SetNodePosition(object node, Point position)
+        {
+            if (node == null) return;
+
+            var nodeType = node.GetType();
+
+            // 尝试设置 Position 属性（Point2D 类型）
+            var positionProp = nodeType.GetProperty("Position");
+            if (positionProp != null && positionProp.CanWrite)
+            {
+                var positionType = positionProp.PropertyType;
+                // 检查是否是 Point2D 类型
+                if (positionType.Name == "Point2D")
+                {
+                    // 尝试创建 Point2D 实例
+                    var point2DType = positionType;
+                    var xProp = point2DType.GetProperty("X");
+                    var yProp = point2DType.GetProperty("Y");
+                    if (xProp != null && yProp != null)
+                    {
+                        // 使用构造函数创建 Point2D
+                        var constructor = point2DType.GetConstructor(new[] { typeof(double), typeof(double) });
+                        if (constructor != null)
+                        {
+                            var point2D = constructor.Invoke(new object[] { position.X, position.Y });
+                            positionProp.SetValue(node, point2D);
+                            return;
+                        }
+                    }
+                }
+                // 如果是 System.Windows.Point 类型
+                else if (positionType == typeof(Point))
+                {
+                    positionProp.SetValue(node, position);
+                    return;
+                }
+            }
+
+            // 尝试设置 X 和 Y 属性
+            var xProp2 = nodeType.GetProperty("X");
+            var yProp2 = nodeType.GetProperty("Y");
+            if (xProp2 != null && xProp2.CanWrite)
+            {
+                xProp2.SetValue(node, position.X);
+            }
+            if (yProp2 != null && yProp2.CanWrite)
+            {
+                yProp2.SetValue(node, position.Y);
+            }
         }
 
         /// <summary>
         /// 添加节点到画布数据源
+        /// 要求：节点必须是 Node 的子类
         /// </summary>
-        private void AddNodeToCanvas(object node, Point position)
+        private void AddNodeToCanvas(Node node, Point position)
         {
             if (CanvasItemsSource == null)
             {
+                System.Diagnostics.Debug.WriteLine("CanvasItemsSource 为 null，无法添加节点");
                 return;
             }
 
-            // 如果节点是 FrameworkElement，设置 Canvas 附加属性
-            if (node is FrameworkElement element)
+            // 验证节点类型（参数已经是 Node 类型，这里只检查是否为 null）
+            if (node == null)
             {
-                Canvas.SetLeft(element, position.X);
-                Canvas.SetTop(element, position.Y);
+                System.Diagnostics.Debug.WriteLine("节点为 null，无法添加到画布");
+                return;
             }
-            else
+
+            // 确保位置已设置（Node 使用 Point2D）
+            if (node.Position == null || node.Position.X != position.X || node.Position.Y != position.Y)
             {
-                // 尝试通过反射设置 X 和 Y 属性
-                var xProp = node.GetType().GetProperty("X");
-                var yProp = node.GetType().GetProperty("Position");
-
-                if (xProp != null && xProp.CanWrite)
-                {
-                    xProp.SetValue(node, position.X);
-                }
-
-                if (yProp != null && yProp.CanWrite)
-                {
-                    // 如果 Position 是 Point 类型
-                    var posType = yProp.PropertyType;
-                    if (posType == typeof(Point))
-                    {
-                        yProp.SetValue(node, position);
-                    }
-                    else
-                    {
-                        // 尝试设置 Y 属性
-                        var yProp2 = node.GetType().GetProperty("Y");
-                        if (yProp2 != null && yProp2.CanWrite)
-                        {
-                            yProp2.SetValue(node, position.Y);
-                        }
-                    }
-                }
+                node.Position = new Point2D(position.X, position.Y);
             }
 
             // 添加到集合
@@ -358,7 +527,7 @@ namespace Astra.UI.Controls
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"CanvasItemsSource 不支持添加操作，请使用 IList 或 ObservableCollection<T>");
+                    System.Diagnostics.Debug.WriteLine($"CanvasItemsSource 不支持添加操作，请使用 IList 或 ObservableCollection<Node>");
                 }
             }
         }
@@ -410,6 +579,19 @@ namespace Astra.UI.Controls
         private static void OnCanvasItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var editor = (FlowEditor)d;
+            
+            // 验证集合中的元素必须是 Node 的子类
+            if (e.NewValue is IEnumerable items)
+            {
+                foreach (var item in items)
+                {
+                    if (item != null && !(item is Node))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"警告：CanvasItemsSource 中包含非 Node 类型的对象: {item.GetType().FullName}");
+                    }
+                }
+            }
+            
             if (editor._infiniteCanvas != null)
             {
                 editor._infiniteCanvas.ItemsSource = e.NewValue as IEnumerable;
@@ -423,6 +605,20 @@ namespace Astra.UI.Controls
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             ApplyDataSources();
+            
+            // 确保在加载后 InfiniteCanvas 的 AllowDrop 已设置
+            if (_infiniteCanvas != null)
+            {
+                _infiniteCanvas.AllowDrop = true;
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] OnLoaded: InfiniteCanvas AllowDrop={_infiniteCanvas.AllowDrop}, IsLoaded={_infiniteCanvas.IsLoaded}");
+                
+                // 确保内容画布也启用拖放
+                if (_infiniteCanvas is InfiniteCanvas canvas)
+                {
+                    // 通过反射或直接访问内容画布（如果可能）
+                    // 注意：内容画布是私有字段，我们已经在 InfiniteCanvas 的 OnApplyTemplate 中设置了
+                }
+            }
         }
 
         #endregion

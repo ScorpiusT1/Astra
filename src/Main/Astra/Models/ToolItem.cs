@@ -11,6 +11,7 @@ namespace Astra.Models
         private string _name;
         private string _iconCode;
         private string _description;
+        private object _nodeType;
         private bool _isSelected;
         private bool _isEnabled = true;
 
@@ -49,6 +50,22 @@ namespace Astra.Models
                 {
                     _description = value;
                     OnPropertyChanged(nameof(Description));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 节点类型 - 可以是 Type 对象或类型名称字符串
+        /// </summary>
+        public object NodeType
+        {
+            get => _nodeType;
+            set
+            {
+                if (_nodeType != value)
+                {
+                    _nodeType = value;
+                    OnPropertyChanged(nameof(NodeType));
                 }
             }
         }

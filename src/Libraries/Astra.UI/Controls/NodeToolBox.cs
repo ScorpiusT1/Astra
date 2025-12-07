@@ -1,4 +1,4 @@
-﻿using Astra.UI.Adapters;
+﻿﻿using Astra.UI.Adapters;
 using Astra.UI.Serivces;
 using System;
 using System.Collections;
@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -245,6 +246,11 @@ namespace Astra.UI.Controls
         /// 工具描述
         /// </summary>
         string Description { get; set; }
+
+        /// <summary>
+        /// 节点类型 - 用于创建节点对象的类型信息（可以是 Type 对象或类型名称字符串）
+        /// </summary>
+        object NodeType { get; set; }
 
         /// <summary>
         /// 是否被选中
@@ -726,7 +732,10 @@ namespace Astra.UI.Controls
 
         // 事件订阅管理
         private ItemsControl _toolbarItemsControl;
-        private ItemsControl _toolItemsControl;
+        
+        // 拖拽预览相关
+        private Window _dragPreviewWindow;
+        private IToolItem _currentDraggingTool;
 
         #endregion
 
@@ -740,6 +749,11 @@ namespace Astra.UI.Controls
             InitializeHideTimer();
             Loaded += OnLoaded;
             Unloaded += OnUnloaded;
+            
+            // 订阅拖拽反馈事件
+            GiveFeedback += OnGiveFeedback;
+            QueryContinueDrag += OnQueryContinueDrag;
+            DragLeave += OnDragLeave;
         }
 
         #endregion
@@ -779,6 +793,29 @@ namespace Astra.UI.Controls
             _toolPanel = GetTemplateChild(TemplatePartNames.NodeToolBox.ToolPanel) as Border;
             _toolsScrollViewer = GetTemplateChild(TemplatePartNames.NodeToolBox.ToolsScrollViewer) as ScrollViewer;
             _toolsItemsControl = GetTemplateChild(TemplatePartNames.NodeToolBox.ToolsItemsControl) as ItemsControl;
+            
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] GetTemplateParts: _mainToolbar={_mainToolbar != null}, _popupPanel={_popupPanel != null}, _toolPanel={_toolPanel != null}, _toolsScrollViewer={_toolsScrollViewer != null}, _toolsItemsControl={_toolsItemsControl != null}");
+            
+            // 如果 _toolsItemsControl 为空，可能是因为它在 Popup 中，需要延迟查找
+            if (_toolsItemsControl == null && _toolPanel != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] GetTemplateParts: _toolsItemsControl 为空，将在 Loaded 事件中重新查找");
+                _toolPanel.Loaded += (s, e) =>
+                {
+                    _toolsItemsControl = GetTemplateChild(TemplatePartNames.NodeToolBox.ToolsItemsControl) as ItemsControl;
+                    if (_toolsItemsControl == null)
+                    {
+                        _toolsItemsControl = FindVisualChild<ItemsControl>(_toolPanel);
+                    }
+                    System.Diagnostics.Debug.WriteLine($"[NodeToolBox] GetTemplateParts (Loaded): _toolsItemsControl={_toolsItemsControl != null}");
+                    
+                    if (_toolsItemsControl != null)
+                    {
+                        // 重新订阅事件
+                        SubscribeToToolPanelEvents();
+                    }
+                };
+            }
         }
 
         /// <summary>
@@ -847,22 +884,54 @@ namespace Astra.UI.Controls
         /// </summary>
         private void SubscribeToToolPanelEvents()
         {
-            if (_toolPanel == null) return;
+            if (_toolPanel == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolPanelEvents: _toolPanel 为 null");
+                return;
+            }
 
             _toolPanel.MouseLeave += OnToolPanelMouseLeave;
 
-            _toolItemsControl = FindVisualChild<ItemsControl>(_toolPanel);
-            if (_toolItemsControl == null) return;
-
-            _toolItemsControl.ItemContainerGenerator.StatusChanged += OnToolItemsControlStatusChanged;
-
-            if (_toolItemsControl.IsLoaded)
+            // 直接使用 GetTemplateParts 中已经获取的 _toolsItemsControl
+            // 如果为空，尝试通过 FindVisualChild 查找（备用方案）
+            if (_toolsItemsControl == null)
             {
-                SubscribeToToolItemButtons(_toolItemsControl);
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolPanelEvents: _toolsItemsControl 为 null，尝试通过 FindVisualChild 查找");
+                _toolsItemsControl = FindVisualChild<ItemsControl>(_toolPanel);
+            }
+
+            if (_toolsItemsControl == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolPanelEvents: 无法找到 ItemsControl");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolPanelEvents: 找到 ItemsControl，类型={_toolsItemsControl.GetType().Name}");
+
+            // 在 ItemsControl 上订阅 PreviewMouseMove 作为备用方案
+            _toolsItemsControl.PreviewMouseMove += OnToolItemsControlPreviewMouseMove;
+            _toolsItemsControl.PreviewMouseLeftButtonDown += OnToolItemsControlPreviewMouseLeftButtonDown;
+
+            _toolsItemsControl.ItemContainerGenerator.StatusChanged += OnToolItemsControlStatusChanged;
+
+            if (_toolsItemsControl.IsLoaded)
+            {
+                // 延迟订阅，确保按钮完全加载
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                {
+                    SubscribeToToolItemButtons(_toolsItemsControl);
+                }));
             }
             else
             {
-                _toolItemsControl.Loaded += (s, e) => SubscribeToToolItemButtons(_toolItemsControl);
+                _toolsItemsControl.Loaded += (s, e) =>
+                {
+                    // 延迟订阅，确保按钮完全加载
+                    Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                    {
+                        SubscribeToToolItemButtons(_toolsItemsControl);
+                    }));
+                };
             }
         }
 
@@ -878,9 +947,11 @@ namespace Astra.UI.Controls
                 _toolPanel.Loaded -= OnToolPanelLoaded;
             }
 
-            if (_toolItemsControl != null)
+            if (_toolsItemsControl != null)
             {
-                _toolItemsControl.ItemContainerGenerator.StatusChanged -= OnToolItemsControlStatusChanged;
+                _toolsItemsControl.ItemContainerGenerator.StatusChanged -= OnToolItemsControlStatusChanged;
+                _toolsItemsControl.PreviewMouseMove -= OnToolItemsControlPreviewMouseMove;
+                _toolsItemsControl.PreviewMouseLeftButtonDown -= OnToolItemsControlPreviewMouseLeftButtonDown;
             }
 
             if (_toolbarItemsControl != null)
@@ -914,9 +985,13 @@ namespace Astra.UI.Controls
             var generator = sender as ItemContainerGenerator;
             if (generator?.Status != GeneratorStatus.ContainersGenerated) return;
 
-            if (_toolItemsControl != null)
+            if (_toolsItemsControl != null)
             {
-                SubscribeToToolItemButtons(_toolItemsControl);
+                // 延迟订阅，确保按钮完全加载
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                {
+                    SubscribeToToolItemButtons(_toolsItemsControl);
+                }));
             }
         }
 
@@ -973,16 +1048,37 @@ namespace Astra.UI.Controls
         /// </summary>
         private void SubscribeToToolItemButtons(ItemsControl itemsControl)
         {
-            if (itemsControl == null) return;
+            if (itemsControl == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: itemsControl 为 null");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: 开始订阅，Items.Count={itemsControl.Items.Count}, Status={itemsControl.ItemContainerGenerator.Status}");
 
             for (int i = 0; i < itemsControl.Items.Count; i++)
             {
                 if (itemsControl.ItemContainerGenerator.Status != GeneratorStatus.ContainersGenerated)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: 容器未生成完成，索引 {i}");
                     continue;
+                }
 
                 var container = itemsControl.ItemContainerGenerator.ContainerFromIndex(i);
+                if (container == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: 容器为 null，索引 {i}");
+                    continue;
+                }
+
                 var button = FindVisualChild<Button>(container);
-                if (button == null) continue;
+                if (button == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: 未找到 Button，索引 {i}, 容器类型={container.GetType().Name}");
+                    continue;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: 找到 Button，索引 {i}, 按钮名称={button.Name}");
 
                 // 取消之前的订阅
                 button.Click -= OnToolItemButtonClick;
@@ -995,6 +1091,8 @@ namespace Astra.UI.Controls
                 button.PreviewMouseLeftButtonDown += OnToolItemPreviewMouseLeftButtonDown;
                 button.MouseMove += OnToolItemMouseMove;
                 button.PreviewMouseMove += OnToolItemPreviewMouseMove;
+                
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] SubscribeToToolItemButtons: 成功订阅事件，索引 {i}");
             }
         }
 
@@ -1277,10 +1375,49 @@ namespace Astra.UI.Controls
         #region 拖拽支持
 
         /// <summary>
+        /// ItemsControl 预览鼠标左键按下（备用方案）
+        /// </summary>
+        private void OnToolItemsControlPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // 查找鼠标下的按钮
+            var button = e.OriginalSource as DependencyObject;
+            while (button != null && !(button is Button))
+            {
+                button = VisualTreeHelper.GetParent(button);
+            }
+
+            if (button is Button btn)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] OnToolItemsControlPreviewMouseLeftButtonDown: 在 ItemsControl 上找到按钮");
+                OnToolItemPreviewMouseLeftButtonDown(btn, e);
+            }
+        }
+
+        /// <summary>
+        /// ItemsControl 预览鼠标移动（备用方案）
+        /// </summary>
+        private void OnToolItemsControlPreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            // 查找鼠标下的按钮
+            var button = e.OriginalSource as DependencyObject;
+            while (button != null && !(button is Button))
+            {
+                button = VisualTreeHelper.GetParent(button);
+            }
+
+            if (button is Button btn && e.LeftButton == MouseButtonState.Pressed)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] OnToolItemsControlPreviewMouseMove: 在 ItemsControl 上找到按钮，左键按下");
+                HandleDragOperation(btn, e, true);
+            }
+        }
+
+        /// <summary>
         /// 工具项预览鼠标左键按下
         /// </summary>
         private void OnToolItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] PreviewMouseLeftButtonDown 触发: {sender?.GetType().Name}");
             _dragStartPoint = e.GetPosition(this);
             _isDraggingFromToolbox = false;
         }
@@ -1290,6 +1427,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnToolItemMouseMove(object sender, MouseEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] MouseMove 触发: {sender?.GetType().Name}, LeftButton: {e.LeftButton}");
             HandleDragOperation(sender, e, false);
         }
 
@@ -1298,6 +1436,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnToolItemPreviewMouseMove(object sender, MouseEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] PreviewMouseMove 触发: {sender?.GetType().Name}, LeftButton: {e.LeftButton}");
             HandleDragOperation(sender, e, true);
         }
 
@@ -1306,34 +1445,67 @@ namespace Astra.UI.Controls
         /// </summary>
         private void HandleDragOperation(object sender, MouseEventArgs e, bool markHandled)
         {
-            if (e.LeftButton != MouseButtonState.Pressed) return;
-            if (!(sender is Button btn)) return;
-
-            var pos = e.GetPosition(this);
-            var diff = pos - _dragStartPoint;
-            if (_isDraggingFromToolbox ||
-                (Math.Abs(diff.X) <= SystemParameters.MinimumHorizontalDragDistance &&
-                 Math.Abs(diff.Y) <= SystemParameters.MinimumVerticalDragDistance))
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation 进入: sender={sender?.GetType().Name}, LeftButton={e.LeftButton}, _isDraggingFromToolbox={_isDraggingFromToolbox}");
+            
+            if (e.LeftButton != MouseButtonState.Pressed)
             {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 左键未按下，返回");
+                return;
+            }
+            
+            if (!(sender is Button btn))
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 发送者不是 Button，返回");
                 return;
             }
 
+            var pos = e.GetPosition(this);
+            var diff = pos - _dragStartPoint;
+            var distanceX = Math.Abs(diff.X);
+            var distanceY = Math.Abs(diff.Y);
+            var minDistanceX = SystemParameters.MinimumHorizontalDragDistance;
+            var minDistanceY = SystemParameters.MinimumVerticalDragDistance;
+            
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 移动距离 X={distanceX}, Y={distanceY}, 阈值 X={minDistanceX}, Y={minDistanceY}");
+            
+            if (_isDraggingFromToolbox)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 已经在拖拽中，返回");
+                return;
+            }
+            
+            if (distanceX <= minDistanceX && distanceY <= minDistanceY)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 移动距离未超过阈值，返回");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 开始拖拽操作");
             _isDraggingFromToolbox = true;
 
             var tool = GetToolItemFromDataContext(btn.DataContext);
             var category = GetCurrentCategoryAsInterface();
+            
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: tool={tool != null}, category={category != null}, btn.DataContext={btn.DataContext?.GetType().Name}");
+            
             if (tool == null || category == null)
             {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: tool 或 category 为 null，取消拖拽");
                 _isDraggingFromToolbox = false;
                 return;
             }
 
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 工具项名称={tool.Name}, 类别名称={GetCategoryName(category)}");
+
             var data = CreateDragDropData(tool, category);
             if (data == null)
             {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 创建拖拽数据失败，取消拖拽");
                 _isDraggingFromToolbox = false;
                 return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 拖拽数据创建成功，准备调用 DragDrop.DoDragDrop");
 
             var dragStartArgs = new ToolItemDragEventArgs(
                 tool,              
@@ -1356,6 +1528,12 @@ namespace Astra.UI.Controls
                 _isDraggingFromToolbox = false;
                 return;
             }
+            
+            // 拖拽开始时隐藏Popup面板
+            IsPanelVisible = false;
+            
+            // 创建拖拽预览窗口
+            ShowDragPreview(tool);
 
             if (markHandled)
             {
@@ -1365,11 +1543,30 @@ namespace Astra.UI.Controls
             DragDropEffects result = DragDropEffects.None;
             try
             {
+                // 保存当前拖拽的工具
+                _currentDraggingTool = tool;
+                
+                // 获取鼠标位置，检查是否在画布上
+                var mousePos = Mouse.GetPosition(Application.Current.MainWindow);
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 调用 DragDrop.DoDragDrop 前，鼠标位置=({mousePos.X}, {mousePos.Y})");
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 调用 DragDrop.DoDragDrop，按钮={btn.Name ?? "未命名"}, 数据格式={string.Join(", ", data.GetFormats())}");
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 按钮位置=({Canvas.GetLeft(btn)}, {Canvas.GetTop(btn)}), 按钮大小=({btn.ActualWidth}, {btn.ActualHeight})");
+                
                 result = DragDrop.DoDragDrop(btn, data, DragDropEffects.Copy);
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: DragDrop.DoDragDrop 完成，结果={result}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: DragDrop.DoDragDrop 发生异常: {ex.Message}");
+                throw;
             }
             finally
             {
                 _isDraggingFromToolbox = false;
+                _currentDraggingTool = null;
+                
+                // 隐藏拖拽预览
+                HideDragPreview();
 
                 // 触发拖拽完成事件
                 var dragCompletedArgs = new ToolItemDragCompletedEventArgs(
@@ -1378,6 +1575,8 @@ namespace Astra.UI.Controls
                     GetCategoryName(category),
                     result);
                 ToolItemDragCompleted?.Invoke(this, dragCompletedArgs);
+                
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] HandleDragOperation: 拖拽操作完成，结果={result}");
             }
         }
 
@@ -1389,6 +1588,42 @@ namespace Astra.UI.Controls
             // 使用注入的构建器，如果没有则使用默认实现
             var builder = DragDropPayloadBuilder ?? new DefaultDragDropPayloadBuilder();
             return builder.BuildPayload(tool, category);
+        }
+
+        /// <summary>
+        /// 拖拽反馈事件处理 - 显示自定义拖拽预览
+        /// </summary>
+        private void OnGiveFeedback(object sender, GiveFeedbackEventArgs e)
+        {
+            // 更新预览窗口位置
+            UpdateDragPreviewPosition();
+            
+            // 隐藏默认光标，使用自定义预览
+            Mouse.SetCursor(Cursors.None);
+            e.UseDefaultCursors = false;
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// 查询是否继续拖拽事件处理
+        /// </summary>
+        private void OnQueryContinueDrag(object sender, QueryContinueDragEventArgs e)
+        {
+            // 如果按下 ESC 键，取消拖拽
+            if (e.EscapePressed)
+            {
+                e.Action = DragAction.Cancel;
+                e.Handled = true;
+            }
+        }
+        
+        /// <summary>
+        /// 拖拽离开事件处理
+        /// </summary>
+        private void OnDragLeave(object sender, DragEventArgs e)
+        {
+            // 拖拽离开控件时，也要更新预览位置
+            UpdateDragPreviewPosition();
         }
 
         #endregion
@@ -1700,6 +1935,10 @@ namespace Astra.UI.Controls
             _hideDelayTimer?.Stop();
             _hideDelayTimer = null;
 
+            // 取消拖拽事件订阅
+            GiveFeedback -= OnGiveFeedback;
+            QueryContinueDrag -= OnQueryContinueDrag;
+
             if (_boundItemsSourceNotify != null)
             {
                 _boundItemsSourceNotify.CollectionChanged -= OnExternalItemsSourceChanged;
@@ -1772,6 +2011,186 @@ namespace Astra.UI.Controls
             }
         }
 
+        #endregion
+        
+        #region 拖拽预览窗口管理
+
+        /// <summary>
+        /// 显示拖拽预览窗口
+        /// </summary>
+        private void ShowDragPreview(IToolItem tool)
+        {
+            if (tool == null) return;
+            
+            // 如果已经有预览窗口，先关闭
+            HideDragPreview();
+            
+            // 创建透明的顶层窗口
+            _dragPreviewWindow = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
+                ShowInTaskbar = false,
+                Topmost = true,
+                Width = 220,  // 与 NodeControl 宽度一致
+                Height = 40,  // 与 NodeControl 高度一致
+                Left = -10000,
+                Top = -10000,
+                IsHitTestVisible = false,
+                Opacity = 0.85  // 设置半透明，让用户知道这是预览
+            };
+            
+            // 创建与 NodeControl 相同的样式
+            var mainBorder = new Border
+            {
+                Background = (Brush)TryFindResource("SurfaceBrush") ?? new SolidColorBrush(Colors.White),
+                CornerRadius = new CornerRadius(6),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = (Color)(TryFindResource("ShadowColor") ?? Colors.Black),
+                    BlurRadius = 4,
+                    ShadowDepth = 1,
+                    Opacity = 0.2
+                }
+            };
+            
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });  // 图标区
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // 文字区
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // 时间区
+            
+            // 图标区域
+            var iconBorder = new Border
+            {
+                Background = (Brush)TryFindResource("PrimaryBrush") ?? new SolidColorBrush(Color.FromRgb(0, 120, 215)),
+                CornerRadius = new CornerRadius(6, 0, 0, 6)
+            };
+            Grid.SetColumn(iconBorder, 0);
+            
+            var iconViewbox = new Viewbox
+            {
+                Width = 20,
+                Height = 20,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            
+            var iconCanvas = new Canvas
+            {
+                Width = 24,
+                Height = 24
+            };
+            
+            // 创建图标路径
+            var iconPath = new System.Windows.Shapes.Path
+            {
+                Stroke = (Brush)TryFindResource("SurfaceBrush") ?? new SolidColorBrush(Colors.White),
+                StrokeThickness = 2,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
+            };
+            
+            // 默认图标（通知图标）
+            string iconData = "M15 17H20L18.5951 15.5951C18.2141 15.2141 18 14.6973 18 14.1585V11C18 8.38757 16.3304 6.16509 14 5.34142V5C14 3.89543 13.1046 3 12 3C10.8954 3 10 3.89543 10 5V5.34142C7.66962 6.16509 6 8.38757 6 11V14.1585C6 14.6973 5.78595 15.2141 5.40493 15.5951L4 17H9M15 17V18C15 19.6569 13.6569 21 12 21C10.3431 21 9 19.6569 9 18V17M15 17H9";
+            
+            try
+            {
+                iconPath.Data = Geometry.Parse(iconData);
+            }
+            catch { }
+            
+            iconCanvas.Children.Add(iconPath);
+            iconViewbox.Child = iconCanvas;
+            iconBorder.Child = iconViewbox;
+            grid.Children.Add(iconBorder);
+            
+            // 文字区域
+            var textBorder = new Border
+            {
+                Margin = new Thickness(10, 0, 10, 0),
+                Background = Brushes.Transparent
+            };
+            Grid.SetColumn(textBorder, 1);
+            
+            var textBlock = new TextBlock
+            {
+                Text = tool.Name ?? "节点标题",
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)TryFindResource("PrimaryTextBrush") ?? new SolidColorBrush(Colors.Black)
+            };
+            
+            textBorder.Child = textBlock;
+            grid.Children.Add(textBorder);
+            
+            // 时间区域（显示一个提示）
+            var timeTextBlock = new TextBlock
+            {
+                Text = "拖拽",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0),
+                Foreground = (Brush)TryFindResource("SecondaryTextBrush") ?? new SolidColorBrush(Colors.Gray)
+            };
+            Grid.SetColumn(timeTextBlock, 2);
+            grid.Children.Add(timeTextBlock);
+            
+            mainBorder.Child = grid;
+            _dragPreviewWindow.Content = mainBorder;
+            
+            // 显示窗口
+            _dragPreviewWindow.Show();
+            
+            // 初始化位置
+            UpdateDragPreviewPosition();
+        }
+
+        /// <summary>
+        /// 更新拖拽预览窗口位置
+        /// </summary>
+        private void UpdateDragPreviewPosition()
+        {
+            if (_dragPreviewWindow == null || !_dragPreviewWindow.IsVisible)
+                return;
+            
+            try
+            {
+                // 获取鼠标屏幕坐标（使用 WPF API）
+                var point = new System.Drawing.Point();
+                if (GetCursorPos(ref point))
+                {
+                    // 设置窗口位置（偏移一些，避免遮挡鼠标）
+                    _dragPreviewWindow.Left = point.X + 15;
+                    _dragPreviewWindow.Top = point.Y + 15;
+                }
+            }
+            catch
+            {
+                // 如果获取位置失败，忽略
+            }
+        }
+        
+        /// <summary>
+        /// 获取鼠标屏幕坐标（P/Invoke）
+        /// </summary>
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetCursorPos(ref System.Drawing.Point lpPoint);
+
+        /// <summary>
+        /// 隐藏拖拽预览窗口
+        /// </summary>
+        private void HideDragPreview()
+        {
+            if (_dragPreviewWindow != null)
+            {
+                _dragPreviewWindow.Close();
+                _dragPreviewWindow = null;
+            }
+        }
+        
         #endregion
     }
 }

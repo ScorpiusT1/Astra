@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿﻿﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -337,8 +337,37 @@ namespace Astra.UI.Controls
             _minimapCollapseButton = GetTemplateChild(PART_MinimapCollapseButton) as Button;
             _minimapExpandButton = GetTemplateChild(PART_MinimapExpandButton) as Button;
 
+            // 启用拖放功能
+            AllowDrop = true;
+            IsHitTestVisible = true;
+            
+            // 订阅拖放事件（Preview 事件优先）
+            PreviewDragEnter += OnInfiniteCanvasDragEnter;
+            PreviewDragOver += OnInfiniteCanvasDragOver;
+            PreviewDragLeave += OnInfiniteCanvasDragLeave;
+            PreviewDrop += OnInfiniteCanvasDrop;
+            
+            DragEnter += OnInfiniteCanvasDragEnter;
+            DragOver += OnInfiniteCanvasDragOver;
+            DragLeave += OnInfiniteCanvasDragLeave;
+            Drop += OnInfiniteCanvasDrop;
+
             if (_contentCanvas != null)
             {
+                // 确保内容画布启用拖放
+                _contentCanvas.AllowDrop = true;
+                
+                // 订阅拖放事件（Preview 和普通事件）
+                _contentCanvas.PreviewDragOver += OnContentCanvasDragOver;
+                _contentCanvas.PreviewDrop += OnContentCanvasDrop;
+                _contentCanvas.PreviewDragEnter += OnContentCanvasDragEnter;
+                _contentCanvas.PreviewDragLeave += OnContentCanvasDragLeave;
+                
+                _contentCanvas.DragOver += OnContentCanvasDragOver;
+                _contentCanvas.Drop += OnContentCanvasDrop;
+                _contentCanvas.DragEnter += OnContentCanvasDragEnter;
+                _contentCanvas.DragLeave += OnContentCanvasDragLeave;
+                
                 InitializeTransforms();
                 InitializeEventHandlers();
             }
@@ -896,6 +925,90 @@ namespace Astra.UI.Controls
             SizeChanged += OnSizeChanged;
         }
 
+        #region 内容画布拖放事件处理（确保事件能正确冒泡）
+
+        /// <summary>
+        /// 内容画布拖拽进入事件
+        /// </summary>
+        private void OnContentCanvasDragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetFormats().Any(f => f.Contains("ToolItem") || f.Contains("FlowEditor")))
+            {
+                e.Effects = DragDropEffects.Copy;
+            }
+        }
+
+        /// <summary>
+        /// 内容画布拖拽经过事件
+        /// </summary>
+        private void OnContentCanvasDragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetFormats().Any(f => f.Contains("ToolItem") || f.Contains("FlowEditor")))
+            {
+                e.Effects = DragDropEffects.Copy;
+            }
+        }
+
+        /// <summary>
+        /// 内容画布拖拽离开事件
+        /// </summary>
+        private void OnContentCanvasDragLeave(object sender, DragEventArgs e)
+        {
+            // 可以添加视觉反馈清除逻辑
+        }
+
+        /// <summary>
+        /// 内容画布放置事件
+        /// </summary>
+        private void OnContentCanvasDrop(object sender, DragEventArgs e)
+        {
+            // 不处理，让事件冒泡到 FlowEditor
+        }
+
+        #endregion
+
+        #region InfiniteCanvas 本身的拖放事件处理（备用）
+
+        /// <summary>
+        /// InfiniteCanvas 拖拽进入事件
+        /// </summary>
+        private void OnInfiniteCanvasDragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetFormats().Any(f => f.Contains("ToolItem") || f.Contains("FlowEditor")))
+            {
+                e.Effects = DragDropEffects.Copy;
+            }
+        }
+
+        /// <summary>
+        /// InfiniteCanvas 拖拽经过事件
+        /// </summary>
+        private void OnInfiniteCanvasDragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetFormats().Any(f => f.Contains("ToolItem") || f.Contains("FlowEditor")))
+            {
+                e.Effects = DragDropEffects.Copy;
+            }
+        }
+
+        /// <summary>
+        /// InfiniteCanvas 拖拽离开事件
+        /// </summary>
+        private void OnInfiniteCanvasDragLeave(object sender, DragEventArgs e)
+        {
+            // 可以添加视觉反馈清除逻辑
+        }
+
+        /// <summary>
+        /// InfiniteCanvas 放置事件
+        /// </summary>
+        private void OnInfiniteCanvasDrop(object sender, DragEventArgs e)
+        {
+            // 不处理，让事件继续冒泡到 FlowEditor
+        }
+
+        #endregion
+
         private void OnMouseWheel(object sender, MouseWheelEventArgs e)
         {
             if (!EnableZoom) return;
@@ -907,6 +1020,7 @@ namespace Astra.UI.Controls
 
         private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
+            // 只有按下修饰键且左键点击时才开始平移
             if (e.ChangedButton == MouseButton.Left &&
                 Keyboard.Modifiers == PanModifierKey)
             {
@@ -919,13 +1033,14 @@ namespace Astra.UI.Controls
 
         private void OnPreviewMouseMove(object sender, MouseEventArgs e)
         {
-            if (_state.IsPanning)
+            if (_state.IsPanning && IsMouseCaptured)
             {
                 var currentPos = e.GetPosition(this);
                 var delta = _state.CalculatePanDelta(currentPos);
 
                 PanX = delta.X;
                 PanY = delta.Y;
+                e.Handled = true;
             }
         }
 

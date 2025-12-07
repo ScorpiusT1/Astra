@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Astra.Core.Nodes.Geometry;
+using Astra.Core.Nodes.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,24 +13,23 @@ using System.Windows.Media;
 namespace Astra.UI.Controls
 {
     /// <summary>
-    /// 节点状态枚举
-    /// </summary>
-    public enum NodeStatus
-    {
-        Info,
-        Success,
-        Running,
-        Pending,
-        Error
-    }
-
-    /// <summary>
     /// 流程节点控件
     /// </summary>
     public class NodeControl : Control
     {
         private TextBox _editTextBox;
         private TextBlock _titleTextBlock;
+        
+        // 拖拽移动相关字段
+        private bool _isDragging;
+        private bool _isMouseDown;
+        private Point _dragStartMousePosition;  // 鼠标按下时的屏幕坐标（相对于 InfiniteCanvas）
+        private Point _dragStartMousePositionRelative;  // 鼠标按下时相对于 NodeControl 的位置
+        private Point2D _dragStartNodePosition;  // 拖拽开始时节点在画布坐标系中的位置
+        private InfiniteCanvas _parentCanvas;
+        private DateTime _mouseDownTime;  // 鼠标按下的时间（用于长按检测，无需定时器）
+        private ContentPresenter _contentPresenter;  // 缓存的 ContentPresenter 引用
+        private TranslateTransform _dragTransform;  // 拖拽时的临时变换（用于流畅拖拽）
 
         static NodeControl()
         {
@@ -39,8 +40,14 @@ namespace Astra.UI.Controls
         public NodeControl()
         {
             Loaded += NodeControl_Loaded;
-            // 添加鼠标按下事件监听
-            AddHandler(PreviewMouseDownEvent, new MouseButtonEventHandler(OnPreviewMouseDown), true);
+            
+            // 只使用 Preview 事件，避免重复处理
+            PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+            PreviewMouseMove += OnPreviewMouseMove;
+            PreviewMouseLeftButtonUp += OnPreviewMouseLeftButtonUp;
+            
+            // 确保控件可以接收鼠标事件
+            IsHitTestVisible = true;
         }
 
         public override void OnApplyTemplate()
@@ -99,15 +106,15 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
-        /// 节点状态
+        /// 节点状态 - 使用 NodeExecutionState 枚举
         /// </summary>
         public static readonly DependencyProperty StatusProperty =
-            DependencyProperty.Register("Status", typeof(NodeStatus), typeof(NodeControl),
-                new PropertyMetadata(NodeStatus.Success, OnStatusChanged));
+            DependencyProperty.Register("Status", typeof(NodeExecutionState), typeof(NodeControl),
+                new PropertyMetadata(NodeExecutionState.Idle, OnStatusChanged));
 
-        public NodeStatus Status
+        public NodeExecutionState Status
         {
-            get { return (NodeStatus)GetValue(StatusProperty); }
+            get { return (NodeExecutionState)GetValue(StatusProperty); }
             set { SetValue(StatusProperty, value); }
         }
 
@@ -229,8 +236,15 @@ namespace Astra.UI.Controls
             }
         }
 
-        private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+        private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            // 检查是否点击在按钮上，如果是则不允许拖拽
+            if (e.OriginalSource is System.Windows.Controls.Button ||
+                e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase)
+            {
+                return;
+            }
+            
             // 如果当前处于编辑状态
             if (IsEditing && _editTextBox != null)
             {
@@ -255,6 +269,165 @@ namespace Astra.UI.Controls
                 {
                     ExitEditMode();
                 }
+                return;
+            }
+            
+            // 如果不是编辑状态，并且没有按下修饰键，准备拖拽移动
+            if (!IsEditing && !_isDragging)
+            {
+                // 检查是否按下了修饰键（Ctrl/Shift）用于平移画布
+                if (Keyboard.Modifiers == ModifierKeys.Control || Keyboard.Modifiers == ModifierKeys.Shift)
+                {
+                    return;  // 不处理，让 InfiniteCanvas 处理平移
+                }
+                
+                // 查找父画布和 ContentPresenter
+                _parentCanvas = FindParentCanvas(this);
+                _contentPresenter = FindParentContentPresenter(this);
+                
+                if (_parentCanvas == null || _contentPresenter == null)
+                {
+                    return;
+                }
+                
+                // 记录鼠标按下状态和位置
+                _isMouseDown = true;
+                _mouseDownTime = DateTime.Now;
+                _dragStartMousePosition = e.GetPosition(_parentCanvas);
+                _dragStartMousePositionRelative = e.GetPosition(this);
+                
+                // 获取当前节点在画布坐标系中的位置
+                _dragStartNodePosition = GetCurrentCanvasPosition();
+                
+                // 捕获鼠标
+                CaptureMouse();
+                
+                // 阻止事件冒泡
+                e.Handled = true;
+            }
+        }
+        
+        private void OnPreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_parentCanvas == null || _contentPresenter == null)
+                return;
+            
+            // 只有鼠标被捕获时才处理
+            if (!IsMouseCaptured)
+                return;
+            
+            // 获取当前鼠标位置
+            var currentMousePosition = e.GetPosition(_parentCanvas);
+            var deltaX = currentMousePosition.X - _dragStartMousePosition.X;
+            var deltaY = currentMousePosition.Y - _dragStartMousePosition.Y;
+            var distance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            // 如果还没有开始拖拽，检查是否应该开始
+            if (_isMouseDown && !_isDragging)
+            {
+                // 移动距离超过阈值，开始拖拽
+                if (distance > SystemParameters.MinimumHorizontalDragDistance)
+                {
+                    StartDragging();
+                }
+                else
+                {
+                    return; // 距离不够，不处理
+                }
+            }
+            
+            // 如果正在拖拽，使用 RenderTransform 临时移动（流畅拖拽）
+            if (_isDragging && _dragTransform != null)
+            {
+                _dragTransform.X = deltaX;
+                _dragTransform.Y = deltaY;
+                e.Handled = true;
+            }
+        }
+        
+        private void OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isMouseDown || _isDragging)
+            {
+                // 如果正在拖拽，结束拖拽并同步最终位置
+                if (_isDragging)
+                {
+                    EndDragging();
+                }
+                
+                // 重置状态
+                _isMouseDown = false;
+                _isDragging = false;
+                
+                if (IsMouseCaptured)
+                {
+                    ReleaseMouseCapture();
+                }
+                
+                Cursor = Cursors.Arrow;
+                e.Handled = true;
+            }
+        }
+        
+        private void StartDragging()
+        {
+            if (_parentCanvas == null || _contentPresenter == null)
+                return;
+            
+            _isDragging = true;
+            Cursor = Cursors.Hand;
+            
+            // 初始化拖拽变换（仅用于视觉反馈，不影响数据绑定）
+            var transformGroup = _contentPresenter.RenderTransform as TransformGroup;
+            if (transformGroup == null)
+            {
+                transformGroup = new TransformGroup();
+                _contentPresenter.RenderTransform = transformGroup;
+            }
+            
+            // 添加 TranslateTransform
+            _dragTransform = transformGroup.Children.OfType<TranslateTransform>().FirstOrDefault();
+            if (_dragTransform == null)
+            {
+                _dragTransform = new TranslateTransform();
+                transformGroup.Children.Add(_dragTransform);
+            }
+            
+            // 重置变换值
+            _dragTransform.X = 0;
+            _dragTransform.Y = 0;
+        }
+        
+        private void EndDragging()
+        {
+            if (_dragTransform != null && _parentCanvas != null && _contentPresenter != null)
+            {
+                // 计算最终位置（画布坐标系）
+                var canvasDeltaX = _dragTransform.X / _parentCanvas.Scale;
+                var canvasDeltaY = _dragTransform.Y / _parentCanvas.Scale;
+                
+                var finalCanvasPosition = new Point2D(
+                    _dragStartNodePosition.X + canvasDeltaX,
+                    _dragStartNodePosition.Y + canvasDeltaY
+                );
+                
+                // 清除拖拽变换
+                if (_contentPresenter.RenderTransform is TransformGroup transformGroup)
+                {
+                    transformGroup.Children.Remove(_dragTransform);
+                    if (transformGroup.Children.Count == 0)
+                    {
+                        _contentPresenter.RenderTransform = null;
+                    }
+                }
+                _dragTransform = null;
+                
+                // 更新数据模型
+                UpdateNodePosition(finalCanvasPosition);
+                
+                // 直接设置 Canvas 附加属性，确保位置正确（即使绑定不更新）
+                Canvas.SetLeft(_contentPresenter, finalCanvasPosition.X);
+                Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
             }
         }
 
@@ -344,8 +517,9 @@ namespace Astra.UI.Controls
 
         /// <summary>
         /// 从资源字典获取画刷
+        /// 所有颜色资源都应在 Colors.xaml 中定义
         /// </summary>
-        private Brush GetBrushFromResource(string resourceKey, Color fallbackColor)
+        private Brush GetBrushFromResource(string resourceKey)
         {
             try
             {
@@ -361,8 +535,24 @@ namespace Astra.UI.Controls
             }
             catch { }
 
-            // 如果找不到资源，使用回退颜色
-            return new SolidColorBrush(fallbackColor);
+            // 如果找不到资源，尝试使用 PrimaryBrush 作为 fallback
+            // 这应该不会发生，因为所有颜色都在 Colors.xaml 中定义
+            try
+            {
+                var fallbackResource = Application.Current.TryFindResource("PrimaryBrush");
+                if (fallbackResource is Brush fallbackBrush)
+                {
+                    return fallbackBrush;
+                }
+                if (fallbackResource is Color fallbackColor)
+                {
+                    return new SolidColorBrush(fallbackColor);
+                }
+            }
+            catch { }
+
+            // 最后的 fallback：返回透明画刷（不应该到达这里）
+            return new SolidColorBrush(Colors.Transparent);
         }
 
         private void UpdateStatusColors()
@@ -373,25 +563,27 @@ namespace Astra.UI.Controls
                 return;
             }
 
+            // 所有颜色都从 Colors.xaml 资源字典中获取，使用现有颜色资源
             switch (Status)
             {
-                case NodeStatus.Success:
-                    IconColor = GetBrushFromResource("SuccessBrush", Color.FromRgb(76, 175, 80));
+                case NodeExecutionState.Success:
+                    IconColor = GetBrushFromResource("SuccessBrush");
                     break;
-                case NodeStatus.Running:
-                    IconColor = GetBrushFromResource("RunningBrush", Color.FromRgb(33, 150, 243));
+                case NodeExecutionState.Running:
+                    IconColor = GetBrushFromResource("WarningBrush");
                     break;
-                case NodeStatus.Pending:
-                    IconColor = GetBrushFromResource("PendingBrush", Color.FromRgb(255, 152, 0));
+                case NodeExecutionState.Skipped:
+                    IconColor = GetBrushFromResource("InfoBrush");
                     break;
-                case NodeStatus.Error:
-                    IconColor = GetBrushFromResource("ErrorBrush", Color.FromRgb(244, 67, 54));
+                case NodeExecutionState.Failed:
+                case NodeExecutionState.Cancelled:
+                    IconColor = GetBrushFromResource("DangerBrush");
                     break;
-                case NodeStatus.Info:
-                    IconColor = GetBrushFromResource("InfoBrush", Color.FromRgb(0, 188, 212));
+                case NodeExecutionState.Idle:
+                    IconColor = GetBrushFromResource("PrimaryBrush");
                     break;
                 default:
-                    IconColor = GetBrushFromResource("PrimaryBrush", Color.FromRgb(33, 150, 243));
+                    IconColor = GetBrushFromResource("PrimaryBrush");
                     break;
             }
         }
@@ -407,23 +599,24 @@ namespace Astra.UI.Controls
             string pathData = "";
             switch (Status)
             {
-                case NodeStatus.Success:
+                case NodeExecutionState.Success:
                     // 勾选图标
                     pathData = "M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z";
                     break;
-                case NodeStatus.Running:
+                case NodeExecutionState.Running:
                     // 加载/旋转图标
                     pathData = "M12 2V6M12 18V22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12H6M18 12H22M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93";
                     break;
-                case NodeStatus.Pending:
+                case NodeExecutionState.Skipped:
                     // 时钟图标
                     pathData = "M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z M12 7V12L15 15";
                     break;
-                case NodeStatus.Error:
+                case NodeExecutionState.Failed:
+                case NodeExecutionState.Cancelled:
                     // 警告图标
                     pathData = "M12 8V12M12 16H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z";
                     break;
-                case NodeStatus.Info:
+                case NodeExecutionState.Idle:
                     // 通知图标
                     pathData = "M15 17H20L18.5951 15.5951C18.2141 15.2141 18 14.6973 18 14.1585V11C18 8.38757 16.3304 6.16509 14 5.34142V5C14 3.89543 13.1046 3 12 3C10.8954 3 10 3.89543 10 5V5.34142C7.66962 6.16509 6 8.38757 6 11V14.1585C6 14.6973 5.78595 15.2141 5.40493 15.5951L4 17H9M15 17V18C15 19.6569 13.6569 21 12 21C10.3431 21 9 19.6569 9 18V17M15 17H9";
                     break;
@@ -436,6 +629,145 @@ namespace Astra.UI.Controls
             HasCustomIcon = oldValue;
         }
 
+        #endregion
+        
+        #region 拖拽移动辅助方法
+        
+        /// <summary>
+        /// 查找父 InfiniteCanvas
+        /// </summary>
+        private InfiniteCanvas FindParentCanvas(DependencyObject element)
+        {
+            var parent = VisualTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                if (parent is InfiniteCanvas canvas)
+                {
+                    return canvas;
+                }
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+        
+        /// <summary>
+        /// 获取当前节点在画布坐标系中的位置
+        /// </summary>
+        private Point2D GetCurrentCanvasPosition()
+        {
+            var dataContext = DataContext;
+            if (dataContext == null) 
+                return Point2D.Zero;
+            
+            // 如果 DataContext 是 Node 类型，直接获取 Position 属性
+            if (dataContext is Node node)
+            {
+                return node.Position;
+            }
+            
+            // 尝试通过反射获取 Position 属性
+            var positionProp = dataContext.GetType().GetProperty("Position");
+            if (positionProp != null)
+            {
+                var position = positionProp.GetValue(dataContext);
+                if (position != null)
+                {
+                    var positionType = position.GetType();
+                    
+                    // 如果是 Point2D 类型
+                    if (positionType.Name == "Point2D")
+                    {
+                        var xProp = positionType.GetProperty("X");
+                        var yProp = positionType.GetProperty("Y");
+                        if (xProp != null && yProp != null)
+                        {
+                            var x = Convert.ToDouble(xProp.GetValue(position) ?? 0);
+                            var y = Convert.ToDouble(yProp.GetValue(position) ?? 0);
+                            return new Point2D(x, y);
+                        }
+                    }
+                }
+            }
+            
+            // 如果都没有，从 Canvas 附加属性获取
+            if (_parentCanvas != null)
+            {
+                var left = Canvas.GetLeft(this);
+                var top = Canvas.GetTop(this);
+                if (!double.IsNaN(left) && !double.IsNaN(top))
+                {
+                    // 转换为画布坐标系
+                    var screenPoint = new Point(left, top);
+                    var canvasPoint = _parentCanvas.ScreenToCanvas(screenPoint);
+                    return new Point2D(canvasPoint.X, canvasPoint.Y);
+                }
+            }
+            
+            return Point2D.Zero;
+        }
+        
+        /// <summary>
+        /// 更新节点位置（只在拖拽结束时调用一次）
+        /// </summary>
+        private void UpdateNodePosition(Point2D canvasPosition)
+        {
+            var dataContext = DataContext;
+            if (dataContext == null) return;
+            
+            try
+            {
+                // 更新数据模型，让绑定系统自动更新 UI 位置
+                if (dataContext is Node node)
+                {
+                    node.Position = canvasPosition;
+                }
+                else
+                {
+                    // 尝试通过反射设置 Position 属性
+                    var positionProp = dataContext.GetType().GetProperty("Position");
+                    if (positionProp != null && positionProp.CanWrite)
+                    {
+                        var positionType = positionProp.PropertyType;
+                        
+                        if (positionType.Name == "Point2D")
+                        {
+                            var constructor = positionType.GetConstructor(new[] { typeof(double), typeof(double) });
+                            if (constructor != null)
+                            {
+                                var newPoint2D = constructor.Invoke(new object[] { canvasPosition.X, canvasPosition.Y });
+                                positionProp.SetValue(dataContext, newPoint2D);
+                            }
+                        }
+                        else if (positionType == typeof(Point))
+                        {
+                            positionProp.SetValue(dataContext, new Point(canvasPosition.X, canvasPosition.Y));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NodeControl] 更新节点位置失败: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// 查找父 ContentPresenter（节点被包裹在其中）
+        /// </summary>
+        private ContentPresenter FindParentContentPresenter(DependencyObject element)
+        {
+            var parent = VisualTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                if (parent is ContentPresenter cp)
+                {
+                    return cp;
+                }
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+        
         #endregion
     }
 

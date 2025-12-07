@@ -1,11 +1,14 @@
 ﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:local="clr-namespace:Astra.UI.Controls"
-                    xmlns:converters="clr-namespace:Astra.UI.Converters">
+                    xmlns:converters="clr-namespace:Astra.UI.Converters"
+                    xmlns:models="clr-namespace:Astra.Core.Nodes.Models;assembly=Astra.Core">
 
 
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
+    <converters:PositionConverter x:Key="PositionConverter" />
+    <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
 
     <!-- InfiniteCanvas 默认样式 -->
     <Style TargetType="{x:Type local:InfiniteCanvas}">
@@ -22,6 +25,17 @@
                 Value="True" />
         <Setter Property="Focusable"
                 Value="True" />
+        
+        <!-- 默认数据模板：使用 NodeControl，绑定 Node 类的属性 -->
+        <Setter Property="ItemTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <local:NodeControl Title="{Binding Name, FallbackValue='节点'}"
+                                      Status="{Binding ExecutionState, FallbackValue={x:Static models:NodeExecutionState.Idle}}"
+                                      ExecutionTime="{Binding LastExecutionResult, Converter={StaticResource ExecutionResultToTimeConverter}, FallbackValue='0 s'}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
 
         <Setter Property="Template">
             <Setter.Value>
@@ -34,9 +48,13 @@
 
                         <!-- 内容层 -->
                         <Canvas x:Name="PART_ContentCanvas"
-                                Panel.ZIndex="1">
+                                Panel.ZIndex="1"
+                                AllowDrop="True"
+                                Background="Transparent">
                             <ItemsControl ItemsSource="{TemplateBinding ItemsSource}"
-                                          ItemTemplate="{TemplateBinding ItemTemplate}">
+                                          ItemTemplate="{TemplateBinding ItemTemplate}"
+                                          AllowDrop="True"
+                                          Background="Transparent">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <Canvas />
@@ -45,10 +63,17 @@
 
                                 <ItemsControl.ItemContainerStyle>
                                     <Style TargetType="ContentPresenter">
-                                        <Setter Property="Canvas.Left"
-                                                Value="{Binding X}" />
-                                        <Setter Property="Canvas.Top"
-                                                Value="{Binding Y}" />
+                                        <!-- 绑定到 Position 属性，使用双向绑定模式 -->
+                                        <Setter Property="Canvas.Left">
+                                            <Setter.Value>
+                                                <Binding Path="Position" Converter="{StaticResource PositionConverter}" ConverterParameter="X" Mode="OneWay" />
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Setter Property="Canvas.Top">
+                                            <Setter.Value>
+                                                <Binding Path="Position" Converter="{StaticResource PositionConverter}" ConverterParameter="Y" Mode="OneWay" />
+                                            </Setter.Value>
+                                        </Setter>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                             </ItemsControl>
