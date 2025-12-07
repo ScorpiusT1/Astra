@@ -30,7 +30,7 @@
         <Setter Property="ItemTemplate">
             <Setter.Value>
                 <DataTemplate>
-                    <local:NodeControl Title="{Binding Name, FallbackValue='节点'}"
+                    <local:NodeControl Title="{Binding Name, Mode=TwoWay, FallbackValue='节点'}"
                                       Status="{Binding ExecutionState, FallbackValue={x:Static models:NodeExecutionState.Idle}}"
                                       ExecutionTime="{Binding LastExecutionResult, Converter={StaticResource ExecutionResultToTimeConverter}, FallbackValue='0 s'}" />
                 </DataTemplate>

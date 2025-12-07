@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Geometry;
+﻿﻿﻿﻿using Astra.Core.Nodes.Geometry;
 using Astra.Core.Nodes.Models;
 using System;
 using System.Collections.Generic;
@@ -40,6 +40,7 @@ namespace Astra.UI.Controls
         public NodeControl()
         {
             Loaded += NodeControl_Loaded;
+            Unloaded += NodeControl_Unloaded;
             
             // 只使用 Preview 事件，避免重复处理
             PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
@@ -75,6 +76,40 @@ namespace Astra.UI.Controls
             // 初始化时设置默认图标和颜色
             UpdateStatusColors();
             UpdateDefaultIcon();
+            
+            // 订阅应用程序级别的鼠标按下事件，用于检测点击节点外部
+            if (Application.Current?.MainWindow != null)
+            {
+                Application.Current.MainWindow.PreviewMouseLeftButtonDown += OnApplicationMouseDown;
+            }
+        }
+        
+        private void NodeControl_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // 取消订阅应用程序级别事件，避免内存泄漏
+            if (Application.Current?.MainWindow != null)
+            {
+                Application.Current.MainWindow.PreviewMouseLeftButtonDown -= OnApplicationMouseDown;
+            }
+        }
+        
+        /// <summary>
+        /// 应用程序鼠标按下事件处理（用于检测点击节点外部）
+        /// </summary>
+        private void OnApplicationMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!IsEditing)
+                return;
+            
+            // 检查点击位置是否在当前节点外部
+            var mousePosition = e.GetPosition(this);
+            var hitResult = VisualTreeHelper.HitTest(this, mousePosition);
+            
+            // 如果点击在节点外部（hitResult 为 null），退出编辑模式
+            if (hitResult == null)
+            {
+                ExitEditMode();
+            }
         }
 
         #region 依赖属性
@@ -243,6 +278,32 @@ namespace Astra.UI.Controls
                 e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase)
             {
                 return;
+            }
+            
+            // 检查是否是双击（用于重命名）
+            if (e.ClickCount == 2)
+            {
+                // 检查是否点击在标题区域
+                var clickedElement = e.OriginalSource as DependencyObject;
+                bool isClickOnTitle = false;
+                var current = clickedElement;
+                while (current != null)
+                {
+                    if (current == _titleTextBlock)
+                    {
+                        isClickOnTitle = true;
+                        break;
+                    }
+                    current = VisualTreeHelper.GetParent(current);
+                }
+                
+                if (isClickOnTitle)
+                {
+                    // 双击标题，进入编辑模式
+                    IsEditing = true;
+                    e.Handled = true;
+                    return;
+                }
             }
             
             // 如果当前处于编辑状态
