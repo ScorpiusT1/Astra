@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using Astra.Core.Nodes.Geometry;
+﻿using Astra.Core.Nodes.Geometry;
 using Astra.Core.Nodes.Models;
 using System;
 using System.Collections.Generic;
@@ -248,6 +248,35 @@ namespace Astra.UI.Controls
                 control?.EnterEditMode();
             }
         }
+        
+        /// <summary>
+        /// 是否被选中（用于框选等）
+        /// </summary>
+        public static readonly DependencyProperty IsSelectedProperty =
+            DependencyProperty.Register("IsSelected", typeof(bool), typeof(NodeControl),
+                new PropertyMetadata(false, OnIsSelectedChanged));
+
+        public bool IsSelected
+        {
+            get { return (bool)GetValue(IsSelectedProperty); }
+            set { SetValue(IsSelectedProperty, value); }
+        }
+        
+        private static void OnIsSelectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var control = d as NodeControl;
+            if (control == null)
+                return;
+            
+            var isSelected = (bool)e.NewValue;
+            var node = control.DataContext as Astra.Core.Nodes.Models.Node;
+            
+            // 同步数据模型的选中状态
+            if (node != null && node.IsSelected != isSelected)
+            {
+                node.IsSelected = isSelected;
+            }
+        }
 
         #endregion
 
@@ -283,7 +312,6 @@ namespace Astra.UI.Controls
             // 检查是否是双击（用于重命名）
             if (e.ClickCount == 2)
             {
-                // 检查是否点击在标题区域
                 var clickedElement = e.OriginalSource as DependencyObject;
                 bool isClickOnTitle = false;
                 var current = clickedElement;
@@ -299,7 +327,6 @@ namespace Astra.UI.Controls
                 
                 if (isClickOnTitle)
                 {
-                    // 双击标题，进入编辑模式
                     IsEditing = true;
                     e.Handled = true;
                     return;
@@ -309,10 +336,7 @@ namespace Astra.UI.Controls
             // 如果当前处于编辑状态
             if (IsEditing && _editTextBox != null)
             {
-                // 获取点击的元素
                 var clickedElement = e.OriginalSource as DependencyObject;
-
-                // 检查点击的是否是编辑文本框或其子元素
                 bool isClickOnTextBox = false;
                 var current = clickedElement;
                 while (current != null)
@@ -325,7 +349,6 @@ namespace Astra.UI.Controls
                     current = VisualTreeHelper.GetParent(current);
                 }
 
-                // 如果点击的不是文本框，退出编辑模式
                 if (!isClickOnTextBox)
                 {
                     ExitEditMode();
@@ -333,22 +356,55 @@ namespace Astra.UI.Controls
                 return;
             }
             
-            // 如果不是编辑状态，并且没有按下修饰键，准备拖拽移动
+            // 如果按下了 Ctrl 键，让 InfiniteCanvas 处理平移，不捕获鼠标
+            if (Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                return;  // 不处理，让事件继续传播到 InfiniteCanvas
+            }
+            
+            // 准备拖拽节点
             if (!IsEditing && !_isDragging)
             {
-                // 检查是否按下了修饰键（Ctrl/Shift）用于平移画布
-                if (Keyboard.Modifiers == ModifierKeys.Control || Keyboard.Modifiers == ModifierKeys.Shift)
-                {
-                    return;  // 不处理，让 InfiniteCanvas 处理平移
-                }
-                
-                // 查找父画布和 ContentPresenter
                 _parentCanvas = FindParentCanvas(this);
                 _contentPresenter = FindParentContentPresenter(this);
                 
                 if (_parentCanvas == null || _contentPresenter == null)
                 {
                     return;
+                }
+                
+                // 处理节点选中逻辑
+                var node = DataContext as Astra.Core.Nodes.Models.Node;
+                if (node != null)
+                {
+                    // 如果当前节点未选中，则选中它
+                    if (!node.IsSelected)
+                    {
+                        // 清除其他节点的选中状态（同时更新数据、视觉状态和 SelectedItems 集合）
+                        ClearOtherNodesSelection(node);
+                        
+                        // 选中当前节点（同时更新数据和 SelectedItems 集合）
+                        node.IsSelected = true;
+                        
+                        // 将当前节点添加到 SelectedItems 集合
+                        if (_parentCanvas.SelectedItems != null)
+                        {
+                            _parentCanvas.SelectedItems.Clear();
+                            _parentCanvas.SelectedItems.Add(node);
+                        }
+                        
+                        // 同步视觉状态
+                        IsSelected = true;
+                    }
+                    else
+                    {
+                        // 如果当前节点已经被选中，确保它在 SelectedItems 中
+                        // （可能是通过框选或其他方式选中的，但还未添加到 SelectedItems）
+                        if (_parentCanvas.SelectedItems != null && !_parentCanvas.SelectedItems.Contains(node))
+                        {
+                            _parentCanvas.SelectedItems.Add(node);
+                        }
+                    }
                 }
                 
                 // 记录鼠标按下状态和位置
@@ -363,7 +419,7 @@ namespace Astra.UI.Controls
                 // 捕获鼠标
                 CaptureMouse();
                 
-                // 阻止事件冒泡
+                // 阻止事件冒泡（重要：防止 InfiniteCanvas 开始框选）
                 e.Handled = true;
             }
         }
@@ -400,9 +456,66 @@ namespace Astra.UI.Controls
             // 如果正在拖拽，使用 RenderTransform 临时移动（流畅拖拽）
             if (_isDragging && _dragTransform != null)
             {
-                _dragTransform.X = deltaX;
-                _dragTransform.Y = deltaY;
+                // 将鼠标在屏幕坐标系中的偏移转换为画布坐标系中的偏移
+                // 这样无论当前缩放比例如何，节点在屏幕上的移动都能与鼠标保持一致
+                var canvasDeltaX = deltaX / _parentCanvas.Scale;
+                var canvasDeltaY = deltaY / _parentCanvas.Scale;
+
+                _dragTransform.X = canvasDeltaX;
+                _dragTransform.Y = canvasDeltaY;
+                
+                // 如果当前节点被选中，且有多选，则实时移动其他选中的节点
+                var currentNode = DataContext as Astra.Core.Nodes.Models.Node;
+                if (currentNode != null && currentNode.IsSelected && 
+                    _parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 1)
+                {
+                    UpdateOtherSelectedNodesTransform(canvasDeltaX, canvasDeltaY, currentNode);
+                }
+                
                 e.Handled = true;
+            }
+        }
+        
+        /// <summary>
+        /// 更新其他选中节点的变换（用于拖动过程中的实时显示）
+        /// </summary>
+        private void UpdateOtherSelectedNodesTransform(double canvasDeltaX, double canvasDeltaY, Astra.Core.Nodes.Models.Node excludeNode)
+        {
+            if (_parentCanvas == null || _parentCanvas.SelectedItems == null || _parentCanvas.ItemsSource == null)
+                return;
+            
+            var itemsControl = FindItemsControl(_parentCanvas);
+            if (itemsControl == null)
+                return;
+            
+            foreach (var item in _parentCanvas.SelectedItems)
+            {
+                if (item is Astra.Core.Nodes.Models.Node node && node != excludeNode)
+                {
+                    var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+                    if (container != null)
+                    {
+                        // 获取或创建变换组
+                        var transformGroup = container.RenderTransform as TransformGroup;
+                        if (transformGroup == null)
+                        {
+                            transformGroup = new TransformGroup();
+                            container.RenderTransform = transformGroup;
+                        }
+                        
+                        // 获取或创建 TranslateTransform
+                        var translateTransform = transformGroup.Children.OfType<TranslateTransform>().FirstOrDefault();
+                        if (translateTransform == null)
+                        {
+                            translateTransform = new TranslateTransform();
+                            transformGroup.Children.Add(translateTransform);
+                        }
+                        
+                        // 应用画布坐标系中的偏移量（与当前节点相同）
+                        translateTransform.X = canvasDeltaX;
+                        translateTransform.Y = canvasDeltaY;
+                    }
+                }
             }
         }
         
@@ -461,35 +574,193 @@ namespace Astra.UI.Controls
         
         private void EndDragging()
         {
-            if (_dragTransform != null && _parentCanvas != null && _contentPresenter != null)
+            if (_parentCanvas == null || _contentPresenter == null)
+                return;
+
+            // 计算最终位置（画布坐标系）
+            // 直接使用当前鼠标位置，避免因缩放/变换累积导致的偏差
+            var mouseScreenPoint = Mouse.GetPosition(_parentCanvas);
+            var mouseCanvasPoint = _parentCanvas.ScreenToCanvas(mouseScreenPoint);
+
+            // 鼠标在节点内部的相对位置在画布坐标系中与 NodeControl 的本地坐标一致
+            var finalCanvasPosition = new Point2D(
+                mouseCanvasPoint.X - _dragStartMousePositionRelative.X,
+                mouseCanvasPoint.Y - _dragStartMousePositionRelative.Y
+            );
+
+            // 不做边界约束，允许自由拖动
+
+            // 清除当前节点的拖拽变换
+            if (_dragTransform != null && _contentPresenter.RenderTransform is TransformGroup transformGroup)
             {
-                // 计算最终位置（画布坐标系）
-                var canvasDeltaX = _dragTransform.X / _parentCanvas.Scale;
-                var canvasDeltaY = _dragTransform.Y / _parentCanvas.Scale;
-                
-                var finalCanvasPosition = new Point2D(
-                    _dragStartNodePosition.X + canvasDeltaX,
-                    _dragStartNodePosition.Y + canvasDeltaY
-                );
-                
-                // 清除拖拽变换
-                if (_contentPresenter.RenderTransform is TransformGroup transformGroup)
+                transformGroup.Children.Remove(_dragTransform);
+                if (transformGroup.Children.Count == 0)
                 {
-                    transformGroup.Children.Remove(_dragTransform);
-                    if (transformGroup.Children.Count == 0)
+                    _contentPresenter.RenderTransform = null;
+                }
+            }
+            _dragTransform = null;
+
+            // 获取当前节点
+            var currentNode = DataContext as Astra.Core.Nodes.Models.Node;
+
+            // 计算画布坐标系中的偏移量（用于多选移动）
+            var offsetX = finalCanvasPosition.X - _dragStartNodePosition.X;
+            var offsetY = finalCanvasPosition.Y - _dragStartNodePosition.Y;
+
+            // 如果当前节点被选中，且有多选，则一起移动所有选中的节点
+            if (currentNode != null &&
+                currentNode.IsSelected &&
+                _parentCanvas.SelectedItems != null &&
+                _parentCanvas.SelectedItems.Count > 1)
+            {
+                var itemsControl = FindItemsControl(_parentCanvas);
+
+                foreach (var item in _parentCanvas.SelectedItems)
+                {
+                    if (item is Astra.Core.Nodes.Models.Node selectedNode && selectedNode.Position != null)
                     {
-                        _contentPresenter.RenderTransform = null;
+                        if (selectedNode == currentNode)
+                        {
+                            // 当前节点：使用精确计算的最终位置
+                            UpdateNodePosition(finalCanvasPosition);
+                            Canvas.SetLeft(_contentPresenter, finalCanvasPosition.X);
+                            Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
+                        }
+                        else
+                        {
+                            // 其他选中节点：按偏移量平移
+                            var newPosition = new Point2D(
+                                selectedNode.Position.X + offsetX,
+                                selectedNode.Position.Y + offsetY
+                            );
+                            selectedNode.Position = newPosition;
+
+                            if (itemsControl != null)
+                            {
+                                var container = itemsControl.ItemContainerGenerator.ContainerFromItem(selectedNode) as ContentPresenter;
+                                if (container != null)
+                                {
+                                    // 清除拖动过程中的临时变换
+                                    if (container.RenderTransform is TransformGroup otherTransformGroup)
+                                    {
+                                        var translateTransform = otherTransformGroup.Children.OfType<TranslateTransform>().FirstOrDefault();
+                                        if (translateTransform != null)
+                                        {
+                                            otherTransformGroup.Children.Remove(translateTransform);
+                                            if (otherTransformGroup.Children.Count == 0)
+                                            {
+                                                container.RenderTransform = null;
+                                            }
+                                        }
+                                    }
+
+                                    // 更新最终位置
+                                    Canvas.SetLeft(container, newPosition.X);
+                                    Canvas.SetTop(container, newPosition.Y);
+                                }
+                            }
+                        }
                     }
                 }
-                _dragTransform = null;
-                
-                // 更新数据模型
+            }
+            else if (currentNode != null)
+            {
+                // 单个节点拖动
                 UpdateNodePosition(finalCanvasPosition);
-                
-                // 直接设置 Canvas 附加属性，确保位置正确（即使绑定不更新）
                 Canvas.SetLeft(_contentPresenter, finalCanvasPosition.X);
                 Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
             }
+        }
+        
+        /// <summary>
+        /// 当画布缩放到最小值时，将节点限制在可见区域内
+        /// </summary>
+        private Point2D ClampToVisibleArea(Point2D desiredCanvasPosition)
+        {
+            if (_parentCanvas == null)
+                return desiredCanvasPosition;
+
+            // 获取节点的实际尺寸
+            var nodeWidth = ActualWidth > 0 ? ActualWidth : 220;
+            var nodeHeight = ActualHeight > 0 ? ActualHeight : 120;
+
+            // 获取画布的实际可视区域大小
+            var canvasWidth = _parentCanvas.ActualWidth;
+            var canvasHeight = _parentCanvas.ActualHeight;
+
+            // 如果画布尺寸无效，不做限制
+            if (canvasWidth <= 0 || canvasHeight <= 0)
+                return desiredCanvasPosition;
+
+            // 考虑缩放：将画布屏幕尺寸转换为画布坐标系尺寸
+            var canvasLogicalWidth = canvasWidth / _parentCanvas.Scale;
+            var canvasLogicalHeight = canvasHeight / _parentCanvas.Scale;
+
+            // 考虑平移：计算当前可见区域在画布坐标系中的范围
+            var visibleLeft = -_parentCanvas.PanX / _parentCanvas.Scale;
+            var visibleTop = -_parentCanvas.PanY / _parentCanvas.Scale;
+            var visibleRight = visibleLeft + canvasLogicalWidth;
+            var visibleBottom = visibleTop + canvasLogicalHeight;
+
+            // 边界限制：节点必须完全在可见区域内
+            // 左边界：节点左边不能超出可见区域左边
+            var clampedX = Math.Max(visibleLeft, desiredCanvasPosition.X);
+            // 右边界：节点右边不能超出可见区域右边
+            clampedX = Math.Min(visibleRight - nodeWidth, clampedX);
+
+            // 上边界：节点上边不能超出可见区域上边
+            var clampedY = Math.Max(visibleTop, desiredCanvasPosition.Y);
+            // 下边界：节点下边不能超出可见区域下边
+            clampedY = Math.Min(visibleBottom - nodeHeight, clampedY);
+
+            return new Point2D(clampedX, clampedY);
+        }
+
+        /// <summary>
+        /// 查找最近的 ItemsControl（支持从当前元素向上、向下搜索）
+        /// 说明：节点所在的 ItemsControl 通常是 InfiniteCanvas 的子元素而非父元素，
+        /// 仅向上查找会导致获取失败，进而无法批量移动其他选中节点。
+        /// </summary>
+        private ItemsControl FindItemsControl(DependencyObject element)
+        {
+            if (element == null)
+                return null;
+
+            // 1) 如果自身就是 ItemsControl，直接返回
+            if (element is ItemsControl selfItems)
+                return selfItems;
+
+            // 2) 先尝试向上查找（兼容原有逻辑）
+            var parent = VisualTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                if (parent is ItemsControl parentItems)
+                {
+                    return parentItems;
+                }
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            // 3) 向下广度优先查找子级 ItemsControl（适用于 InfiniteCanvas 这种子层级）
+            var queue = new Queue<DependencyObject>();
+            queue.Enqueue(element);
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                var childCount = VisualTreeHelper.GetChildrenCount(current);
+                for (int i = 0; i < childCount; i++)
+                {
+                    var child = VisualTreeHelper.GetChild(current, i);
+                    if (child is ItemsControl childItems)
+                    {
+                        return childItems;
+                    }
+                    queue.Enqueue(child);
+                }
+            }
+
+            return null;
         }
 
         private void TitleTextBlock_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -693,6 +964,39 @@ namespace Astra.UI.Controls
         #endregion
         
         #region 拖拽移动辅助方法
+        
+        /// <summary>
+        /// 清除其他节点的选中状态（同时更新数据模型和视觉状态）
+        /// </summary>
+        private void ClearOtherNodesSelection(Astra.Core.Nodes.Models.Node currentNode)
+        {
+            if (_parentCanvas == null || _parentCanvas.ItemsSource == null)
+                return;
+            
+            var itemsControl = FindItemsControl(_parentCanvas);
+            
+            foreach (var item in _parentCanvas.ItemsSource)
+            {
+                if (item is Astra.Core.Nodes.Models.Node otherNode && otherNode != currentNode)
+                {
+                    // 清除数据模型的选中状态
+                    otherNode.IsSelected = false;
+                    
+                    // 清除视觉状态（NodeControl.IsSelected）
+                    if (itemsControl != null)
+                    {
+                        var container = itemsControl.ItemContainerGenerator.ContainerFromItem(otherNode) as ContentPresenter;
+                        if (container != null && VisualTreeHelper.GetChildrenCount(container) > 0)
+                        {
+                            if (VisualTreeHelper.GetChild(container, 0) is NodeControl nodeControl)
+                            {
+                                nodeControl.IsSelected = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         
         /// <summary>
         /// 查找父 InfiniteCanvas

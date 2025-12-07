@@ -74,6 +74,12 @@ namespace Astra.Core.Nodes.Models
         
         [JsonPropertyOrder(9)]
         public bool IsLocked { get; set; }
+        
+        /// <summary>
+        /// 节点是否被选中（用于 UI 框选等交互）
+        /// </summary>
+        [JsonIgnore]
+        public bool IsSelected { get; set; }
 
         // ===== 参数和结果 =====
         

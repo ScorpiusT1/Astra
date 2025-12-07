@@ -8,6 +8,7 @@
         <ResourceDictionary Source="../Styles/Controls/CommonStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/InputStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/Buttons.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/ContextMenuStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/ToolboxStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/Badges.xaml" />
         <ResourceDictionary Source="../Styles/Controls/ProgressBars.xaml" />

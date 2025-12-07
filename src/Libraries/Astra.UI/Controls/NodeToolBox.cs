@@ -1,4 +1,4 @@
-﻿﻿using Astra.UI.Adapters;
+﻿using Astra.UI.Adapters;
 using Astra.UI.Serivces;
 using System;
 using System.Collections;
@@ -735,7 +735,10 @@ namespace Astra.UI.Controls
         
         // 拖拽预览相关
         private Window _dragPreviewWindow;
+        private ScaleTransform _dragPreviewScaleTransform;  // 预览窗口的缩放变换
+        private double _currentCanvasScale = 1.0;  // 当前画布缩放比例
         private IToolItem _currentDraggingTool;
+        private bool _panelHitTestDisabled;
 
         #endregion
 
@@ -1531,6 +1534,7 @@ namespace Astra.UI.Controls
             
             // 拖拽开始时隐藏Popup面板
             IsPanelVisible = false;
+            DisablePanelHitTestDuringDrag();
             
             // 创建拖拽预览窗口
             ShowDragPreview(tool);
@@ -1567,6 +1571,7 @@ namespace Astra.UI.Controls
                 
                 // 隐藏拖拽预览
                 HideDragPreview();
+                RestorePanelHitTestAfterDrag();
 
                 // 触发拖拽完成事件
                 var dragCompletedArgs = new ToolItemDragCompletedEventArgs(
@@ -1595,7 +1600,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnGiveFeedback(object sender, GiveFeedbackEventArgs e)
         {
-            // 更新预览窗口位置
+            // 更新预览窗口位置和缩放
             UpdateDragPreviewPosition();
             
             // 隐藏默认光标，使用自定义预览
@@ -1624,6 +1629,32 @@ namespace Astra.UI.Controls
         {
             // 拖拽离开控件时，也要更新预览位置
             UpdateDragPreviewPosition();
+        }
+
+        /// <summary>
+        /// 拖拽开始时禁用弹窗的命中测试，避免遮挡画布左侧的放置命中
+        /// </summary>
+        private void DisablePanelHitTestDuringDrag()
+        {
+            if (_panelHitTestDisabled)
+                return;
+
+            _panelHitTestDisabled = true;
+            _popupPanel?.SetCurrentValue(UIElement.IsHitTestVisibleProperty, false);
+            _toolPanel?.SetCurrentValue(UIElement.IsHitTestVisibleProperty, false);
+        }
+
+        /// <summary>
+        /// 拖拽结束后恢复弹窗的命中测试
+        /// </summary>
+        private void RestorePanelHitTestAfterDrag()
+        {
+            if (!_panelHitTestDisabled)
+                return;
+
+            _panelHitTestDisabled = false;
+            _popupPanel?.SetCurrentValue(UIElement.IsHitTestVisibleProperty, true);
+            _toolPanel?.SetCurrentValue(UIElement.IsHitTestVisibleProperty, true);
         }
 
         #endregion
@@ -2025,6 +2056,10 @@ namespace Astra.UI.Controls
             // 如果已经有预览窗口，先关闭
             HideDragPreview();
             
+            // 获取初始画布缩放比例
+            var initialScale = FindCanvasScale() ?? 1.0;
+            _currentCanvasScale = initialScale;
+            
             // 创建透明的顶层窗口
             _dragPreviewWindow = new Window
             {
@@ -2052,8 +2087,13 @@ namespace Astra.UI.Controls
                     BlurRadius = 4,
                     ShadowDepth = 1,
                     Opacity = 0.2
-                }
+                },
+                RenderTransformOrigin = new Point(0, 0)  // 从左上角开始缩放
             };
+            
+            // 添加缩放变换
+            _dragPreviewScaleTransform = new ScaleTransform(initialScale, initialScale);
+            mainBorder.RenderTransform = _dragPreviewScaleTransform;
             
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });  // 图标区
@@ -2158,6 +2198,9 @@ namespace Astra.UI.Controls
             
             try
             {
+                // 尝试从拖拽数据中获取画布缩放比例
+                UpdatePreviewScaleFromDragData();
+                
                 // 获取鼠标屏幕坐标（使用 WPF API）
                 var point = new System.Drawing.Point();
                 if (GetCursorPos(ref point))
@@ -2170,6 +2213,86 @@ namespace Astra.UI.Controls
             catch
             {
                 // 如果获取位置失败，忽略
+            }
+        }
+        
+        /// <summary>
+        /// 从拖拽数据中更新预览的缩放比例
+        /// </summary>
+        private void UpdatePreviewScaleFromDragData()
+        {
+            try
+            {
+                // 尝试通过查找 InfiniteCanvas 获取缩放比例
+                var scale = FindCanvasScale();
+                if (scale.HasValue && Math.Abs(scale.Value - _currentCanvasScale) > 0.01)
+                {
+                    _currentCanvasScale = scale.Value;
+                    ApplyPreviewScale(scale.Value);
+                }
+            }
+            catch
+            {
+                // 忽略错误，保持当前缩放
+            }
+        }
+        
+        /// <summary>
+        /// 查找画布的缩放比例
+        /// </summary>
+        private double? FindCanvasScale()
+        {
+            try
+            {
+                // 从主窗口查找 InfiniteCanvas
+                var mainWindow = Application.Current.MainWindow;
+                if (mainWindow != null)
+                {
+                    var canvas = FindVisualDescendant<InfiniteCanvas>(mainWindow);
+                    if (canvas != null)
+                    {
+                        return canvas.Scale;
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略错误
+            }
+            return null;
+        }
+        
+        /// <summary>
+        /// 查找可视化树中的后代元素
+        /// </summary>
+        private T FindVisualDescendant<T>(DependencyObject parent) where T : DependencyObject
+        {
+            if (parent == null) return null;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T result)
+                    return result;
+
+                var descendant = FindVisualDescendant<T>(child);
+                if (descendant != null)
+                    return descendant;
+            }
+            return null;
+        }
+        
+        /// <summary>
+        /// 应用预览缩放
+        /// </summary>
+        private void ApplyPreviewScale(double scale)
+        {
+            if (_dragPreviewScaleTransform != null)
+            {
+                _dragPreviewScaleTransform.ScaleX = scale;
+                _dragPreviewScaleTransform.ScaleY = scale;
+                
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 应用拖拽预览缩放: {scale:F2}");
             }
         }
         
@@ -2189,6 +2312,8 @@ namespace Astra.UI.Controls
                 _dragPreviewWindow.Close();
                 _dragPreviewWindow = null;
             }
+            _dragPreviewScaleTransform = null;
+            _currentCanvasScale = 1.0;
         }
         
         #endregion

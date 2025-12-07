@@ -1,6 +1,7 @@
-﻿﻿﻿﻿using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -39,6 +40,20 @@ namespace Astra.UI.Controls
             DefaultStyleKeyProperty.OverrideMetadata(
                 typeof(InfiniteCanvas),
                 new FrameworkPropertyMetadata(typeof(InfiniteCanvas)));
+            
+            // 确保 InfiniteCanvas 可以获取焦点以接收鼠标滚轮事件
+            FocusableProperty.OverrideMetadata(
+                typeof(InfiniteCanvas),
+                new FrameworkPropertyMetadata(true));
+        }
+
+        /// <summary>
+        /// 实例构造函数
+        /// 确保 SelectedItems 默认可用，避免框选后拖动多选节点时集合为空
+        /// </summary>
+        public InfiniteCanvas()
+        {
+            SelectedItems ??= new ObservableCollection<object>();
         }
 
         #region 依赖属性 - 使用 DynamicResource
@@ -64,7 +79,7 @@ namespace Astra.UI.Controls
 
         public static readonly DependencyProperty MinScaleProperty =
             DependencyProperty.Register(nameof(MinScale), typeof(double), typeof(InfiniteCanvas),
-                new PropertyMetadata(0.2));
+                new PropertyMetadata(0.4));  // 最小缩放40%
 
         public double MinScale
         {
@@ -74,7 +89,7 @@ namespace Astra.UI.Controls
 
         public static readonly DependencyProperty MaxScaleProperty =
             DependencyProperty.Register(nameof(MaxScale), typeof(double), typeof(InfiniteCanvas),
-                new PropertyMetadata(4.0));
+                new PropertyMetadata(2.0));  // 最大缩放200%
 
         public double MaxScale
         {
@@ -285,6 +300,38 @@ namespace Astra.UI.Controls
             get => (ModifierKeys)GetValue(PanModifierKeyProperty);
             set => SetValue(PanModifierKeyProperty, value);
         }
+        
+        /// <summary>
+        /// 是否启用框选功能
+        /// </summary>
+        public static readonly DependencyProperty EnableBoxSelectionProperty =
+            DependencyProperty.Register(
+                nameof(EnableBoxSelection),
+                typeof(bool),
+                typeof(InfiniteCanvas),
+                new PropertyMetadata(true));
+
+        public bool EnableBoxSelection
+        {
+            get => (bool)GetValue(EnableBoxSelectionProperty);
+            set => SetValue(EnableBoxSelectionProperty, value);
+        }
+        
+        /// <summary>
+        /// 当前选中的项集合
+        /// </summary>
+        public static readonly DependencyProperty SelectedItemsProperty =
+            DependencyProperty.Register(
+                nameof(SelectedItems),
+                typeof(IList),
+                typeof(InfiniteCanvas),
+                new PropertyMetadata(null));
+
+        public IList SelectedItems
+        {
+            get => (IList)GetValue(SelectedItemsProperty);
+            set => SetValue(SelectedItemsProperty, value);
+        }
 
         #endregion
 
@@ -319,6 +366,17 @@ namespace Astra.UI.Controls
         private Button _minimapCollapseButton;
         private Button _minimapExpandButton;
         private bool _isNavigatingMinimap;
+        private FrameworkElement _transformTarget; // 专门用于承载缩放/平移变换的视觉元素
+        
+        // 框选相关字段
+        private bool _isBoxSelecting;
+        private Point _selectionStartPoint;
+        private Rectangle _selectionBox;
+        private List<object> _selectedItems = new List<object>();
+        
+        // 性能优化：节流控制
+        private DateTime _lastGridUpdateTime = DateTime.MinValue;
+        private const int GridUpdateThrottleMs = 16; // 约60fps
 
         #endregion
 
@@ -336,6 +394,13 @@ namespace Astra.UI.Controls
             _viewportIndicator = GetTemplateChild(PART_ViewportIndicator) as Rectangle;
             _minimapCollapseButton = GetTemplateChild(PART_MinimapCollapseButton) as Button;
             _minimapExpandButton = GetTemplateChild(PART_MinimapExpandButton) as Button;
+            
+            // 获取框选矩形（如果模板中有）
+            _selectionBox = GetTemplateChild("PART_SelectionBox") as Rectangle;
+            if (_selectionBox != null)
+            {
+                _selectionBox.Visibility = Visibility.Collapsed;
+            }            
 
             // 启用拖放功能
             AllowDrop = true;
@@ -357,6 +422,9 @@ namespace Astra.UI.Controls
                 // 确保内容画布启用拖放
                 _contentCanvas.AllowDrop = true;
                 
+                // 锁定真正承载缩放/平移的目标（只对内容做变换，不缩放命中区域）
+                ResolveTransformTarget();
+
                 // 订阅拖放事件（Preview 和普通事件）
                 _contentCanvas.PreviewDragOver += OnContentCanvasDragOver;
                 _contentCanvas.PreviewDrop += OnContentCanvasDrop;
@@ -379,19 +447,35 @@ namespace Astra.UI.Controls
 
             InitializeMinimapButtons();
 
-            UpdateGrid();
-            UpdateMinimap();
-            
-            // 确保指示器在初始化后更新
-            if (_viewportIndicator != null && ShowMinimap && !IsMinimapCollapsed)
+            // 延迟更新网格和缩略图，等待布局完成后再绘制
+            Dispatcher.BeginInvoke(new Action(() =>
             {
-                // 延迟更新，等待布局完成
-                Dispatcher.BeginInvoke(new Action(() => UpdateViewportIndicator()), System.Windows.Threading.DispatcherPriority.Loaded);
-            }
+                UpdateGrid();
+                UpdateMinimap();
+                UpdateViewportIndicator();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// 确定用于应用缩放/平移变换的视觉对象。
+        /// 仅对实际内容（ItemsControl）做变换，保持命中区域与画布大小一致，避免缩放后可交互区域缩小。
+        /// </summary>
+        private void ResolveTransformTarget()
+        {
+            // 模板中 ItemsControl 是 PART_ContentCanvas 的直接子元素
+            var itemsHost = _contentCanvas?.Children.OfType<ItemsControl>().FirstOrDefault();
+
+            // 优先对 ItemsControl 施加变换，保持外层 Canvas（透明背景）尺寸不变以承接命中测试
+            _transformTarget = itemsHost as FrameworkElement ?? _contentCanvas;
         }
 
         private void InitializeTransforms()
         {
+            if (_transformTarget == null)
+            {
+                return;
+            }
+
             var transformGroup = new TransformGroup();
             _scaleTransform = new ScaleTransform(Scale, Scale);
             _translateTransform = new TranslateTransform(PanX, PanY);
@@ -399,8 +483,8 @@ namespace Astra.UI.Controls
             transformGroup.Children.Add(_scaleTransform);
             transformGroup.Children.Add(_translateTransform);
 
-            _contentCanvas.RenderTransform = transformGroup;
-            _contentCanvas.RenderTransformOrigin = new Point(0, 0);
+            _transformTarget.RenderTransform = transformGroup;
+            _transformTarget.RenderTransformOrigin = new Point(0, 0);
         }
 
         private void InitializeMinimap()
@@ -491,15 +575,27 @@ namespace Astra.UI.Controls
         {
             if (_gridLayer == null || !ShowGrid) return;
 
-            _gridLayer.Children.Clear();
-
             var width = ActualWidth;
             var height = ActualHeight;
+            
+            // 如果尺寸无效，跳过绘制（但不启用节流，允许下次重试）
+            if (width <= 0 || height <= 0)
+                return;
+
+            // 节流控制：避免频繁更新
+            var now = DateTime.Now;
+            if ((now - _lastGridUpdateTime).TotalMilliseconds < GridUpdateThrottleMs)
+                return;
+            
+            _lastGridUpdateTime = now;
+
+            _gridLayer.Children.Clear();
+
             var spacing = GridSpacing * Scale;
 
             if (spacing < 5) return;
 
-            // ✅ 动态获取网格画刷（如果未设置，使用 DynamicResource 默认值）
+            // 动态获取网格画刷
             var gridBrush = GridBrush ?? TryFindResource("BorderBrush") as Brush ?? Brushes.LightGray;
 
             // 绘制垂直线
@@ -916,13 +1012,26 @@ namespace Astra.UI.Controls
 
         private void InitializeEventHandlers()
         {
-            MouseWheel += OnMouseWheel;
+            // 使用 AddHandler 并启用 handledEventsToo，确保即使父级控件（如 ScrollViewer）
+            // 已经处理了鼠标滚轮事件，InfiniteCanvas 仍然可以收到事件用于缩放
+            AddHandler(MouseWheelEvent, new MouseWheelEventHandler(OnMouseWheel), true);
+
             PreviewMouseDown += OnPreviewMouseDown;
             PreviewMouseMove += OnPreviewMouseMove;
             PreviewMouseUp += OnPreviewMouseUp;
             KeyDown += OnKeyDown;
             KeyUp += OnKeyUp;
             SizeChanged += OnSizeChanged;
+            MouseEnter += OnMouseEnter;  // 鼠标进入时获取焦点
+        }
+        
+        private void OnMouseEnter(object sender, MouseEventArgs e)
+        {
+            // 鼠标进入画布时获取焦点，确保能接收鼠标滚轮事件
+            if (!IsFocused)
+            {
+                Focus();
+            }
         }
 
         #region 内容画布拖放事件处理（确保事件能正确冒泡）
@@ -1013,14 +1122,20 @@ namespace Astra.UI.Controls
         {
             if (!EnableZoom) return;
 
-            var zoomFactor = e.Delta > 0 ? 1.1 : 0.9;
-            ZoomToPoint(e.GetPosition(this), zoomFactor);
-            e.Handled = true;
+            // 直接使用滚轮缩放，不需要按任何修饰键
+            // 如果按下了修饰键，则不缩放（避免与其他操作冲突）
+            if (Keyboard.Modifiers == ModifierKeys.None)
+            {
+                // 稍大一些的缩放因子，使缩放更灵敏
+                var zoomFactor = e.Delta > 0 ? 1.15 : 0.85;
+                ZoomToPoint(e.GetPosition(this), zoomFactor);
+                e.Handled = true;
+            }
         }
 
         private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
-            // 只有按下修饰键且左键点击时才开始平移
+            // 优先级1: Ctrl+左键 - 平移画布
             if (e.ChangedButton == MouseButton.Left &&
                 Keyboard.Modifiers == PanModifierKey)
             {
@@ -1028,19 +1143,57 @@ namespace Astra.UI.Controls
                 CaptureMouse();
                 Cursor = Cursors.Hand;
                 e.Handled = true;
+                return;
+            }
+            
+            // 优先级2: 左键点击空白区域 - 框选
+            // 重要：先检查是否点击在空白区域，如果不是，让事件继续传递给子控件（如 NodeControl）
+            if (e.ChangedButton == MouseButton.Left && 
+                Keyboard.Modifiers == ModifierKeys.None &&
+                EnableBoxSelection)
+            {
+                // 使用更可靠的空白区域判断
+                var hitElement = e.OriginalSource as DependencyObject;
+                if (IsClickOnCanvasBackground(hitElement))
+                {
+                    // 点击在画布背景上，开始框选
+                    StartBoxSelection(e.GetPosition(this));
+                    e.Handled = true;
+                    return;
+                }
+                // 否则不处理，让事件传递给子控件（NodeControl）
             }
         }
 
         private void OnPreviewMouseMove(object sender, MouseEventArgs e)
         {
+            // 优先处理平移
             if (_state.IsPanning && IsMouseCaptured)
             {
                 var currentPos = e.GetPosition(this);
                 var delta = _state.CalculatePanDelta(currentPos);
 
+                // 直接更新变换，不触发依赖属性回调（性能优化）
+                if (_translateTransform != null)
+                {
+                    _translateTransform.X = delta.X;
+                    _translateTransform.Y = delta.Y;
+                }
+                
+                // 同时更新依赖属性（用于绑定和其他逻辑）
                 PanX = delta.X;
                 PanY = delta.Y;
+                
                 e.Handled = true;
+                return;
+            }
+            
+            // 处理框选
+            if (_isBoxSelecting && IsMouseCaptured)
+            {
+                UpdateBoxSelection(e.GetPosition(this));
+                e.Handled = true;
+                return;
             }
         }
 
@@ -1051,6 +1204,23 @@ namespace Astra.UI.Controls
                 _state.EndPanning();
                 ReleaseMouseCapture();
                 Cursor = Cursors.Arrow;
+                
+                // 重置节流时间，确保拖动结束后一定会更新网格
+                _lastGridUpdateTime = DateTime.MinValue;
+                
+                // 拖动结束后更新网格和视口指示器
+                UpdateGrid();
+                UpdateViewportIndicator();
+                
+                e.Handled = true;
+                return;
+            }
+            
+            if (_isBoxSelecting)
+            {
+                EndBoxSelection();
+                e.Handled = true;
+                return;
             }
         }
 
@@ -1058,6 +1228,13 @@ namespace Astra.UI.Controls
         {
             if (e.Key == Key.Space && !_state.IsPanning)
                 Cursor = Cursors.Hand;
+            
+            // Delete 键删除选中项
+            if (e.Key == Key.Delete)
+            {
+                DeleteSelectedItems();
+                e.Handled = true;
+            }
         }
 
         private void OnKeyUp(object sender, KeyEventArgs e)
@@ -1068,6 +1245,8 @@ namespace Astra.UI.Controls
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
+            // 重置节流时间，确保尺寸改变时一定会更新网格
+            _lastGridUpdateTime = DateTime.MinValue;
             UpdateGrid();
             UpdateViewportIndicator();
         }
@@ -1084,23 +1263,44 @@ namespace Astra.UI.Controls
                 canvas._scaleTransform.ScaleX = (double)e.NewValue;
                 canvas._scaleTransform.ScaleY = (double)e.NewValue;
             }
-            canvas.UpdateGrid();
-            canvas.UpdateViewportIndicator();
+            
+            // 重置节流时间，确保缩放改变时一定会更新网格
+            canvas._lastGridUpdateTime = DateTime.MinValue;
+            
+            // 使用 Render 优先级，在渲染时更新
+            canvas.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                canvas.UpdateGrid();
+                canvas.UpdateViewportIndicator();
+            }), System.Windows.Threading.DispatcherPriority.Render);
+            
             canvas.RaiseViewTransformChanged();
         }
 
         private static void OnTransformChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var canvas = (InfiniteCanvas)d;
-            if (canvas._translateTransform != null)
+            
+            // 变换已经在 OnPreviewMouseMove 中直接更新，这里只处理其他情况
+            if (canvas._translateTransform != null && !canvas._state.IsPanning)
             {
                 if (e.Property == PanXProperty)
                     canvas._translateTransform.X = (double)e.NewValue;
                 else if (e.Property == PanYProperty)
                     canvas._translateTransform.Y = (double)e.NewValue;
+                
+                // 重置节流时间，确保平移改变时一定会更新网格
+                canvas._lastGridUpdateTime = DateTime.MinValue;
+                    
+                // 只在非拖动时更新网格和视口指示器
+                canvas.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    canvas.UpdateGrid();
+                    canvas.UpdateViewportIndicator();
+                }), System.Windows.Threading.DispatcherPriority.Render);
             }
-            canvas.UpdateGrid();
-            canvas.UpdateViewportIndicator();
+            // 如果正在拖动，只在拖动结束时更新（在 OnPreviewMouseUp 中处理）
+            
             canvas.RaiseViewTransformChanged();
         }
 
@@ -1129,6 +1329,370 @@ namespace Astra.UI.Controls
         private void RaiseViewTransformChanged()
         {
             RaiseEvent(new RoutedEventArgs(ViewTransformChangedEvent));
+        }
+
+        #endregion
+        
+        #region 框选功能
+        
+        /// <summary>
+        /// 判断是否点击在画布背景上（不是任何子控件）
+        /// 使用更精确的命中测试
+        /// </summary>
+        private bool IsClickOnCanvasBackground(DependencyObject hitElement)
+        {
+            if (hitElement == null)
+                return false;
+
+            // 检查是否点击在 NodeControl 或其他交互控件上
+            var current = hitElement;
+            while (current != null && current != this)
+            {
+                // 如果是这些类型的控件，说明不是空白区域
+                if (current is NodeControl || 
+                    current is System.Windows.Controls.TextBox ||
+                    current is System.Windows.Controls.Primitives.ButtonBase)
+                {
+                    return false;
+                }
+                
+                // 检查是否是 ContentPresenter（节点的容器）
+                if (current is ContentPresenter)
+                {
+                    return false;
+                }
+                
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            // 如果遍历到这里都没有找到交互控件，说明点击的是空白区域
+            // 包括：InfiniteCanvas 本身、ContentCanvas、GridLayer、AlignmentLayer、
+            // 或者是节点容器 ItemsControl（但不是具体的节点 ContentPresenter）
+            return true;
+        }
+
+        /// <summary>
+        /// 开始框选
+        /// </summary>
+        private void StartBoxSelection(Point startPoint)
+        {
+            if (!EnableBoxSelection || _selectionBox == null)
+                return;
+
+            // 清除之前的选中状态（除非按住 Ctrl 键）
+            if (Keyboard.Modifiers != ModifierKeys.Control)
+            {
+                ClearSelection();
+            }
+
+            _isBoxSelecting = true;
+            
+            // 使用屏幕坐标系来绘制框选框（因为 SelectionBox 在最外层 Grid 中）
+            _selectionStartPoint = startPoint;
+
+            // 设置框选矩形的初始位置
+            if (_selectionBox != null)
+            {
+                Canvas.SetLeft(_selectionBox, startPoint.X);
+                Canvas.SetTop(_selectionBox, startPoint.Y);
+                _selectionBox.Width = 0;
+                _selectionBox.Height = 0;
+                _selectionBox.Visibility = Visibility.Visible;
+            }
+
+            // 捕获鼠标（确保能接收到 MouseMove 和 MouseUp 事件）
+            CaptureMouse();
+        }
+
+        /// <summary>
+        /// 更新框选区域
+        /// </summary>
+        private void UpdateBoxSelection(Point currentPoint)
+        {
+            if (!_isBoxSelecting || _selectionBox == null)
+                return;
+
+            // 使用屏幕坐标系来绘制框选框
+            var x = Math.Min(_selectionStartPoint.X, currentPoint.X);
+            var y = Math.Min(_selectionStartPoint.Y, currentPoint.Y);
+            var width = Math.Abs(currentPoint.X - _selectionStartPoint.X);
+            var height = Math.Abs(currentPoint.Y - _selectionStartPoint.Y);
+
+            Canvas.SetLeft(_selectionBox, x);
+            Canvas.SetTop(_selectionBox, y);
+            _selectionBox.Width = width;
+            _selectionBox.Height = height;
+
+            // 将屏幕坐标转换为画布坐标来检测节点
+            // 使用更稳定的 Rect 构造方式（x, y, width, height）
+            var topLeft = ScreenToCanvas(new Point(x, y));
+            var bottomRight = ScreenToCanvas(new Point(x + width, y + height));
+            
+            // 确保正确的矩形构造（处理缩放后坐标可能反转的情况）
+            var canvasX = Math.Min(topLeft.X, bottomRight.X);
+            var canvasY = Math.Min(topLeft.Y, bottomRight.Y);
+            var canvasWidth = Math.Abs(bottomRight.X - topLeft.X);
+            var canvasHeight = Math.Abs(bottomRight.Y - topLeft.Y);
+            
+            var canvasRect = new Rect(canvasX, canvasY, canvasWidth, canvasHeight);
+            
+            UpdateSelectedItems(canvasRect);
+        }
+
+        /// <summary>
+        /// 结束框选
+        /// </summary>
+        private void EndBoxSelection()
+        {
+            if (!_isBoxSelecting)
+                return;
+
+            _isBoxSelecting = false;
+            
+            if (_selectionBox != null)
+            {
+                _selectionBox.Visibility = Visibility.Collapsed;
+            }
+
+            // 释放鼠标捕获
+            if (IsMouseCaptured)
+            {
+                ReleaseMouseCapture();
+            }
+        }
+
+        /// <summary>
+        /// 根据框选区域更新选中项
+        /// </summary>
+        private void UpdateSelectedItems(Rect selectionRect)
+        {
+            if (ItemsSource == null)
+                return;
+
+            _selectedItems.Clear();
+
+            // 尽量使用 UI 容器（ContentPresenter + NodeControl）计算命中，
+            // 保证与实际界面位置完全一致，而不是依赖数据模型中的 Position/Size
+            ItemsControl itemsControl = null;
+            if (_contentCanvas != null)
+            {
+                itemsControl = _contentCanvas.Children
+                    .OfType<ItemsControl>()
+                    .FirstOrDefault();
+            }
+
+            foreach (var item in ItemsSource)
+            {
+                bool isSelected = false;
+
+                if (itemsControl != null)
+                {
+                    var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item) as ContentPresenter;
+                    if (container != null)
+                    {
+                        // ContentPresenter 在内容画布坐标系中的位置和大小
+                        var left = Canvas.GetLeft(container);
+                        var top = Canvas.GetTop(container);
+                        if (double.IsNaN(left)) left = 0;
+                        if (double.IsNaN(top)) top = 0;
+
+                        var itemRect = new Rect(left, top, container.ActualWidth, container.ActualHeight);
+                        isSelected = selectionRect.IntersectsWith(itemRect);
+
+                        // 设置 NodeControl 的 IsSelected（视觉高亮）
+                        if (VisualTreeHelper.GetChildrenCount(container) > 0)
+                        {
+                            if (VisualTreeHelper.GetChild(container, 0) is NodeControl nodeControl)
+                            {
+                                nodeControl.IsSelected = isSelected;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // 回退到旧的几何判断逻辑
+                    isSelected = IsItemInSelectionRect(item, selectionRect);
+                }
+
+                // 更新数据模型中的 IsSelected（供业务逻辑使用）
+                if (item is Astra.Core.Nodes.Models.Node nodeModel)
+                {
+                    nodeModel.IsSelected = isSelected;
+                }
+
+                if (isSelected)
+                {
+                    _selectedItems.Add(item);
+                }
+            }
+
+            // 更新 SelectedItems 属性
+            if (SelectedItems == null)
+            {
+                SelectedItems = new ObservableCollection<object>();
+            }
+
+            if (SelectedItems != null)
+            {
+                SelectedItems.Clear();
+                foreach (var item in _selectedItems)
+                {
+                    SelectedItems.Add(item);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 判断项是否在框选区域内
+        /// </summary>
+        private bool IsItemInSelectionRect(object item, Rect selectionRect)
+        {
+            if (item == null)
+                return false;
+
+            // selectionRect 已经是画布坐标系，不需要转换
+
+            // 如果是 FrameworkElement，直接获取位置
+            if (item is FrameworkElement element)
+            {
+                var left = Canvas.GetLeft(element);
+                var top = Canvas.GetTop(element);
+                if (double.IsNaN(left)) left = 0;
+                if (double.IsNaN(top)) top = 0;
+
+                var itemRect = new Rect(left, top, element.ActualWidth, element.ActualHeight);
+                return selectionRect.IntersectsWith(itemRect);
+            }
+            // 如果是 Node 类型，通过 Position 属性获取位置
+            else if (item is Astra.Core.Nodes.Models.Node node)
+            {
+                if (node.Position != null)
+                {
+                    // 默认节点大小（如果 Node.Size 为空或无效）
+                    var width = node.Size.IsEmpty ? 220 : node.Size.Width;
+                    var height = node.Size.IsEmpty ? 40 : node.Size.Height;
+                    
+                    var itemRect = new Rect(
+                        node.Position.X,
+                        node.Position.Y,
+                        width,
+                        height
+                    );
+                    return selectionRect.IntersectsWith(itemRect);
+                }
+            }
+            // 其他情况，尝试通过反射获取位置
+            else
+            {
+                var itemType = item.GetType();
+                var xProp = itemType.GetProperty("X");
+                var yProp = itemType.GetProperty("Y");
+                var wProp = itemType.GetProperty("Width");
+                var hProp = itemType.GetProperty("Height");
+
+                if (xProp != null && yProp != null)
+                {
+                    var x = Convert.ToDouble(xProp.GetValue(item) ?? 0);
+                    var y = Convert.ToDouble(yProp.GetValue(item) ?? 0);
+                    var w = wProp != null ? Convert.ToDouble(wProp.GetValue(item) ?? 220) : 220;
+                    var h = hProp != null ? Convert.ToDouble(hProp.GetValue(item) ?? 40) : 40;
+
+                    var itemRect = new Rect(x, y, w, h);
+                    return selectionRect.IntersectsWith(itemRect);
+                }
+            }
+
+            return false;
+        }
+        
+        /// <summary>
+        /// 清除所有选中项
+        /// </summary>
+        public void ClearSelection()
+        {
+            _selectedItems.Clear();
+
+            // 清除所有节点的选中状态（数据 + 视觉）
+            ItemsControl itemsControl = null;
+            if (_contentCanvas != null)
+            {
+                itemsControl = _contentCanvas.Children
+                    .OfType<ItemsControl>()
+                    .FirstOrDefault();
+            }
+
+            if (ItemsSource != null)
+            {
+                foreach (var item in ItemsSource)
+                {
+                    if (item is Astra.Core.Nodes.Models.Node nodeModel)
+                    {
+                        nodeModel.IsSelected = false;
+                    }
+
+                    if (itemsControl != null)
+                    {
+                        var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item) as ContentPresenter;
+                        if (container != null && VisualTreeHelper.GetChildrenCount(container) > 0)
+                        {
+                            if (VisualTreeHelper.GetChild(container, 0) is NodeControl nodeControl)
+                            {
+                                nodeControl.IsSelected = false;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (SelectedItems != null)
+            {
+                SelectedItems.Clear();
+            }
+            else
+            {
+                SelectedItems = new ObservableCollection<object>();
+            }
+        }
+        
+        /// <summary>
+        /// 删除选中的项（仅从 ItemsSource 中移除）
+        /// </summary>
+        public void DeleteSelectedItems()
+        {
+            if (_selectedItems.Count == 0 || ItemsSource == null)
+                return;
+
+            var itemsToDelete = new List<object>(_selectedItems);
+
+            if (ItemsSource is IList list)
+            {
+                foreach (var item in itemsToDelete)
+                {
+                    list.Remove(item);
+                }
+            }
+            else
+            {
+                // 尝试通过反射调用 Remove 方法
+                var removeMethod = ItemsSource.GetType().GetMethod("Remove");
+                if (removeMethod != null)
+                {
+                    foreach (var item in itemsToDelete)
+                    {
+                        try
+                        {
+                            removeMethod.Invoke(ItemsSource, new[] { item });
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[删除项时发生错误]: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            ClearSelection();
         }
 
         #endregion

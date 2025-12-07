@@ -176,6 +176,17 @@
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
+                        
+                        <!-- 选中状态：添加高亮边框 -->
+                        <Trigger Property="IsSelected"
+                                 Value="True">
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

@@ -9,6 +9,9 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Drawing;
+using System.Windows.Media;
 
 namespace Astra.UI.Controls
 {
@@ -111,6 +114,9 @@ namespace Astra.UI.Controls
 
         private NodeToolBox _nodeToolBox;
         private InfiniteCanvas _infiniteCanvas;
+        private ContextMenu _canvasContextMenu;  // 画布右键菜单
+        private Window _hostWindow;
+        private bool _windowEventsAttached;
 
         #endregion
 
@@ -119,6 +125,18 @@ namespace Astra.UI.Controls
         public FlowEditor()
         {
             Loaded += OnLoaded;
+            Unloaded += OnUnloaded;
+            
+            // 确保控件可以获取键盘焦点
+            Focusable = true;
+            
+            // 订阅键盘事件（支持 Delete 键删除）
+            KeyDown += OnFlowEditorKeyDown;
+
+            // 允许整个控件范围接受拖放，避免靠近工具箱边缘时事件未命中画布
+            AllowDrop = true;
+            PreviewDragOver += OnFlowEditorPreviewDragOver;
+            PreviewDrop += OnFlowEditorPreviewDrop;
         }
 
         #endregion
@@ -153,6 +171,7 @@ namespace Astra.UI.Controls
             {
                 // 确保 InfiniteCanvas 启用拖放功能
                 _infiniteCanvas.AllowDrop = true;
+                _infiniteCanvas.IsHitTestVisible = true;
                 
                 // 订阅拖放事件（使用预览事件确保能捕获到）
                 _infiniteCanvas.PreviewDragOver += OnCanvasDragOver;
@@ -166,19 +185,11 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.DragEnter += OnCanvasDragEnter;
                 _infiniteCanvas.DragLeave += OnCanvasDragLeave;
                 
-                // 添加更多调试信息
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] SubscribeToEvents: InfiniteCanvas AllowDrop={_infiniteCanvas.AllowDrop}, IsLoaded={_infiniteCanvas.IsLoaded}, IsVisible={_infiniteCanvas.IsVisible}, IsEnabled={_infiniteCanvas.IsEnabled}");
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] SubscribeToEvents: InfiniteCanvas ActualWidth={_infiniteCanvas.ActualWidth}, ActualHeight={_infiniteCanvas.ActualHeight}");
+                // 订阅右键菜单事件
+                _infiniteCanvas.MouseRightButtonDown += OnCanvasRightMouseDown;
                 
-                // 在 Loaded 事件中再次确认
-                _infiniteCanvas.Loaded += (s, e) =>
-                {
-                    System.Diagnostics.Debug.WriteLine($"[FlowEditor] InfiniteCanvas Loaded: AllowDrop={_infiniteCanvas.AllowDrop}, IsHitTestVisible={_infiniteCanvas.IsHitTestVisible}");
-                };
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] SubscribeToEvents: _infiniteCanvas 为 null！");
+                // 初始化右键菜单
+                InitializeContextMenu();
             }
         }
 
@@ -197,6 +208,9 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.Drop -= OnCanvasDrop;
                 _infiniteCanvas.DragEnter -= OnCanvasDragEnter;
                 _infiniteCanvas.DragLeave -= OnCanvasDragLeave;
+                
+                // 取消右键菜单事件
+                _infiniteCanvas.MouseRightButtonDown -= OnCanvasRightMouseDown;
             }
         }
 
@@ -206,43 +220,23 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDragEnter(object sender, DragEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragEnter 事件触发，sender={sender?.GetType().Name}, AllowDrop: {_infiniteCanvas?.AllowDrop}, Source={e.Source?.GetType().Name}, OriginalSource={e.OriginalSource?.GetType().Name}");
             if (IsValidDragData(e.Data))
             {
                 e.Effects = DragDropEffects.Copy;
-                e.Handled = true;
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragEnter: 拖拽数据有效，设置为 Copy");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragEnter: 拖拽数据无效");
             }
         }
 
         private void OnCanvasDragOver(object sender, DragEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragOver 事件触发，sender={sender?.GetType().Name}, Source={e.Source?.GetType().Name}");
-            
             // 检查拖拽数据是否有效
-            bool isValid = IsValidDragData(e.Data);
-            
-            if (isValid)
+            if (IsValidDragData(e.Data))
             {
                 e.Effects = DragDropEffects.Copy;
-                e.Handled = true;
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragOver: 拖拽数据有效，设置为 Copy");
+                // 不设置 Handled，让事件继续传播
             }
             else
             {
-                // 只有在数据确实无效时才设置 None
-                // 如果数据格式不匹配，记录调试信息
-                if (e.Data != null)
-                {
-                    var formats = e.Data.GetFormats();
-                    System.Diagnostics.Debug.WriteLine($"[FlowEditor] DragOver: 数据格式不匹配。可用格式: {string.Join(", ", formats)}");
-                }
                 e.Effects = DragDropEffects.None;
-                e.Handled = true;
             }
         }
 
@@ -253,50 +247,215 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDrop(object sender, DragEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop 事件触发");
-            if (!IsValidDragData(e.Data))
+            if (_infiniteCanvas == null)
+                return;
+
+            var dropPosition = e.GetPosition(_infiniteCanvas);
+            TryHandleNodeDrop(e, dropPosition);
+        }
+
+        #endregion
+
+        #region 键盘事件
+
+        /// <summary>
+        /// FlowEditor 键盘事件（支持 Delete 键删除）
+        /// </summary>
+        private void OnFlowEditorKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete)
             {
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop: 拖拽数据无效，返回");
+                DeleteSelectedNodes();
+                e.Handled = true;
+            }
+        }
+
+        #endregion
+
+        #region 控件级拖放兼容处理
+
+        /// <summary>
+        /// 预览拖放（作用于整个 FlowEditor），确保靠近工具箱边缘时也能正确显示拷贝光标
+        /// </summary>
+        private void OnFlowEditorPreviewDragOver(object sender, DragEventArgs e)
+        {
+            if (_infiniteCanvas == null || !IsValidDragData(e.Data))
+            {
+                e.Effects = DragDropEffects.None;
                 return;
             }
 
-            try
+            var point = e.GetPosition(_infiniteCanvas);
+            if (IsPointInsideCanvas(point))
             {
-                // 获取工具项
-                var toolItem = e.Data.GetData(DragDropDataFormats.ToolItem) as IToolItem;
-                if (toolItem == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop: 无法从拖拽数据中获取 IToolItem");
-                    return;
-                }
-
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop: 成功获取工具项: {toolItem.Name}");
-
-                // 获取鼠标在画布上的位置（画布坐标系）
-                var dropPosition = e.GetPosition(_infiniteCanvas);
-                var canvasPosition = _infiniteCanvas.ScreenToCanvas(dropPosition);
-
-                // 创建节点（根据 IToolItem.NodeType 自动创建）
-                Node node = CreateDefaultNode(toolItem, canvasPosition);
-
-                // 验证节点必须不为空
-                if (node == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"创建的节点为 null，无法添加到画布");
-                    return;
-                }
-
-                // 添加到画布数据源
-                AddNodeToCanvas(node, canvasPosition);
-
                 e.Effects = DragDropEffects.Copy;
                 e.Handled = true;
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"拖放节点时发生错误: {ex.Message}");
                 e.Effects = DragDropEffects.None;
             }
+        }
+
+        /// <summary>
+        /// 预览放置（作用于整个 FlowEditor），兜底处理在画布边缘的拖放
+        /// </summary>
+        private void OnFlowEditorPreviewDrop(object sender, DragEventArgs e)
+        {
+            if (_infiniteCanvas == null)
+                return;
+
+            var point = e.GetPosition(_infiniteCanvas);
+            TryHandleNodeDrop(e, point);
+        }
+
+        #endregion
+
+        #region 右键菜单
+
+        /// <summary>
+        /// 初始化画布右键菜单
+        /// </summary>
+        private void InitializeContextMenu()
+        {
+            _canvasContextMenu = new ContextMenu();
+            
+            // 应用主题样式
+            var contextMenuStyle = TryFindResource("ThemedContextMenu") as Style;
+            if (contextMenuStyle != null)
+            {
+                _canvasContextMenu.Style = contextMenuStyle;
+            }
+
+            // 删除菜单项
+            var deleteMenuItem = new MenuItem()
+            {
+                Header = "删除选中项",
+                InputGestureText = "Delete",  // 快捷键提示
+                Tag = "Danger"  // 标记为危险操作，用于应用危险色样式
+            };
+            
+            // 应用主题样式
+            var menuItemStyle = TryFindResource("ThemedMenuItem") as Style;
+            if (menuItemStyle != null)
+            {
+                deleteMenuItem.Style = menuItemStyle;
+            }
+            
+            // 创建删除图标（使用 Viewbox 包裹 Canvas）
+            var iconViewbox = new Viewbox
+            {
+                Width = 16,
+                Height = 16,
+                Stretch = Stretch.Uniform
+            };
+            
+            var iconCanvas = new Canvas
+            {
+                Width = 24,
+                Height = 24
+            };
+            
+            var iconPath = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M19 7L18.1327 19.1425C18.0579 20.1891 17.187 21 16.1378 21H7.86224C6.81296 21 5.94208 20.1891 5.86732 19.1425L5 7M10 11V17M14 11V17M15 7V4C15 3.44772 14.5523 3 14 3H10C9.44772 3 9 3.44772 9 4V7M4 7H20"),
+                Stroke = (System.Windows.Media.Brush)TryFindResource("DangerBrush") ?? System.Windows.Media.Brushes.Red,
+                StrokeThickness = 2,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
+            };
+            
+            iconCanvas.Children.Add(iconPath);
+            iconViewbox.Child = iconCanvas;
+            deleteMenuItem.Icon = iconViewbox;
+            
+            deleteMenuItem.Click += OnDeleteMenuItemClick;
+
+            _canvasContextMenu.Items.Add(deleteMenuItem);
+        }
+
+        /// <summary>
+        /// 画布右键按下事件
+        /// </summary>
+        private void OnCanvasRightMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (_infiniteCanvas == null || _canvasContextMenu == null)
+                return;
+
+            // 检查是否有选中项
+            var selectedCount = _infiniteCanvas.SelectedItems?.Count ?? 0;
+            if (selectedCount == 0)
+            {
+                // 没有选中项，不显示菜单
+                return;
+            }
+
+            // 更新菜单项文本
+            if (_canvasContextMenu.Items[0] is MenuItem deleteItem)
+            {
+                deleteItem.Header = selectedCount > 1 ? $"删除 {selectedCount} 个选中项" : "删除选中项";
+            }
+
+            // 显示菜单
+            _canvasContextMenu.PlacementTarget = _infiniteCanvas;
+            _canvasContextMenu.IsOpen = true;
+
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// 删除菜单项点击事件
+        /// </summary>
+        private void OnDeleteMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            DeleteSelectedNodes();
+        }
+
+        /// <summary>
+        /// 删除选中的节点
+        /// </summary>
+        private void DeleteSelectedNodes()
+        {
+            if (_infiniteCanvas?.SelectedItems == null || _infiniteCanvas.SelectedItems.Count == 0)
+                return;
+
+            if (CanvasItemsSource == null)
+                return;
+
+            // 复制选中项列表（避免在迭代时修改集合）
+            var itemsToDelete = new List<object>(_infiniteCanvas.SelectedItems.Cast<object>());
+
+            // 从数据源中删除
+            if (CanvasItemsSource is IList list)
+            {
+                foreach (var item in itemsToDelete)
+                {
+                    list.Remove(item);
+                }
+            }
+            else
+            {
+                // 尝试通过反射调用 Remove 方法
+                var removeMethod = CanvasItemsSource.GetType().GetMethod("Remove");
+                if (removeMethod != null)
+                {
+                    foreach (var item in itemsToDelete)
+                    {
+                        try
+                        {
+                            removeMethod.Invoke(CanvasItemsSource, new[] { item });
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"删除节点时发生错误: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            // 清除选中状态
+            _infiniteCanvas.ClearSelection();
         }
 
         #endregion
@@ -309,24 +468,83 @@ namespace Astra.UI.Controls
         private bool IsValidDragData(IDataObject data)
         {
             if (data == null)
-            {
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] IsValidDragData: data 为 null");
                 return false;
-            }
 
+            // 优先检查自定义格式
             bool hasFormat = data.GetDataPresent(DragDropDataFormats.ToolItem);
+
+            // 如果自定义格式不存在，尝试按类型检查（向后兼容）
             if (!hasFormat)
             {
-                // 列出所有可用的数据格式，便于调试
-                var formats = data.GetFormats();
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] IsValidDragData: 未找到格式 '{DragDropDataFormats.ToolItem}'。可用格式: {string.Join(", ", formats)}");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] IsValidDragData: 找到有效格式 '{DragDropDataFormats.ToolItem}'");
+                hasFormat = data.GetDataPresent(typeof(IToolItem));
             }
 
             return hasFormat;
+        }
+
+        /// <summary>
+        /// 检查坐标是否位于画布可见区域内
+        /// </summary>
+        private bool IsPointInsideCanvas(System.Windows.Point pointOnCanvasControl)
+        {
+            if (_infiniteCanvas == null)
+                return false;
+
+            // 允许一定的安全边距，避免列分隔线/浮层裁剪导致的临界点失效（尤其是靠近左边界时）
+            const double safeMargin = 48.0;
+
+            // 若尺寸尚未计算，避免阻断拖放
+            if (_infiniteCanvas.ActualWidth <= 0 || _infiniteCanvas.ActualHeight <= 0)
+                return true;
+
+            return pointOnCanvasControl.X >= -safeMargin && pointOnCanvasControl.X <= _infiniteCanvas.ActualWidth + safeMargin &&
+                   pointOnCanvasControl.Y >= -safeMargin && pointOnCanvasControl.Y <= _infiniteCanvas.ActualHeight + safeMargin;
+        }
+
+        /// <summary>
+        /// 统一的节点拖放处理逻辑，支持画布与外层控件的拖放事件
+        /// </summary>
+        private bool TryHandleNodeDrop(DragEventArgs e, System.Windows.Point pointOnCanvasControl)
+        {
+            if (_infiniteCanvas == null || !IsValidDragData(e.Data) || !IsPointInsideCanvas(pointOnCanvasControl))
+                return false;
+
+            try
+            {
+                // 获取工具项
+                var toolItem = e.Data.GetData(DragDropDataFormats.ToolItem) as IToolItem;
+
+                // 如果自定义格式获取失败，尝试通过类型获取（向后兼容）
+                if (toolItem == null && e.Data.GetDataPresent(typeof(IToolItem)))
+                {
+                    toolItem = e.Data.GetData(typeof(IToolItem)) as IToolItem;
+                }
+
+                if (toolItem == null)
+                    return false;
+
+                // 将控件坐标转换到画布坐标系
+                var canvasPosition = _infiniteCanvas.ScreenToCanvas(pointOnCanvasControl);
+
+                // 创建节点
+                Node node = CreateDefaultNode(toolItem, canvasPosition);
+
+                if (node == null)
+                    return false;
+
+                // 添加到画布
+                AddNodeToCanvas(node, canvasPosition);
+
+                e.Effects = DragDropEffects.Copy;
+                e.Handled = true;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] Drop 错误: {ex.Message}");
+                e.Effects = DragDropEffects.None;
+                return false;
+            }
         }
 
         /// <summary>
@@ -337,7 +555,7 @@ namespace Astra.UI.Controls
         /// 3. 节点类型必须有公共无参构造函数
         /// 如果创建失败，返回 null
         /// </summary>
-        private Node CreateDefaultNode(IToolItem toolItem, Point position)
+        private Node CreateDefaultNode(IToolItem toolItem, System.Windows.Point position)
         {
             // 如果工具项没有指定节点类型，返回 null
             if (toolItem.NodeType == null)
@@ -429,7 +647,7 @@ namespace Astra.UI.Controls
         /// <summary>
         /// 设置节点位置（支持多种位置属性格式）
         /// </summary>
-        private void SetNodePosition(object node, Point position)
+        private void SetNodePosition(object node, System.Windows.Point position)
         {
             if (node == null) return;
 
@@ -460,7 +678,7 @@ namespace Astra.UI.Controls
                     }
                 }
                 // 如果是 System.Windows.Point 类型
-                else if (positionType == typeof(Point))
+                else if (positionType == typeof(System.Windows.Point))
                 {
                     positionProp.SetValue(node, position);
                     return;
@@ -484,7 +702,7 @@ namespace Astra.UI.Controls
         /// 添加节点到画布数据源
         /// 要求：节点必须是 Node 的子类
         /// </summary>
-        private void AddNodeToCanvas(Node node, Point position)
+        private void AddNodeToCanvas(Node node, System.Windows.Point position)
         {
             if (CanvasItemsSource == null)
             {
@@ -540,14 +758,17 @@ namespace Astra.UI.Controls
             if (_nodeToolBox != null)
             {
                 _nodeToolBox.ItemsSource = ToolBoxItemsSource;
-                // 确保数据源设置后，NodeToolBox 能正确初始化
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] 设置 NodeToolBox.ItemsSource: {ToolBoxItemsSource != null}, Count: {(ToolBoxItemsSource as System.Collections.ICollection)?.Count ?? 0}");
             }
 
             if (_infiniteCanvas != null)
             {
                 _infiniteCanvas.ItemsSource = CanvasItemsSource;
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] 设置 InfiniteCanvas.ItemsSource: {CanvasItemsSource != null}, Count: {(CanvasItemsSource as System.Collections.ICollection)?.Count ?? 0}");
+                
+                // 初始化 SelectedItems 集合
+                if (_infiniteCanvas.SelectedItems == null)
+                {
+                    _infiniteCanvas.SelectedItems = new System.Collections.ObjectModel.ObservableCollection<object>();
+                }
             }
         }
 
@@ -561,7 +782,6 @@ namespace Astra.UI.Controls
             if (editor._nodeToolBox != null)
             {
                 editor._nodeToolBox.ItemsSource = e.NewValue as IEnumerable;
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] ToolBoxItemsSource 变更: {e.NewValue != null}, Count: {(e.NewValue as System.Collections.ICollection)?.Count ?? 0}");
             }
             else
             {
@@ -610,16 +830,101 @@ namespace Astra.UI.Controls
             if (_infiniteCanvas != null)
             {
                 _infiniteCanvas.AllowDrop = true;
-                System.Diagnostics.Debug.WriteLine($"[FlowEditor] OnLoaded: InfiniteCanvas AllowDrop={_infiniteCanvas.AllowDrop}, IsLoaded={_infiniteCanvas.IsLoaded}");
-                
-                // 确保内容画布也启用拖放
-                if (_infiniteCanvas is InfiniteCanvas canvas)
-                {
-                    // 通过反射或直接访问内容画布（如果可能）
-                    // 注意：内容画布是私有字段，我们已经在 InfiniteCanvas 的 OnApplyTemplate 中设置了
-                }
+                _infiniteCanvas.IsHitTestVisible = true;
             }
+
+            AttachWindowDragHandlers();
         }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            DetachWindowDragHandlers();
+        }
+
+        #endregion
+
+        #region 窗口级拖放兜底
+
+        private void AttachWindowDragHandlers()
+        {
+            if (_windowEventsAttached)
+                return;
+
+            _hostWindow = Window.GetWindow(this);
+            if (_hostWindow == null)
+                return;
+
+            _hostWindow.AllowDrop = true;
+            _hostWindow.PreviewDragOver += OnWindowPreviewDragOver;
+            _hostWindow.PreviewDrop += OnWindowPreviewDrop;
+            _windowEventsAttached = true;
+        }
+
+        private void DetachWindowDragHandlers()
+        {
+            if (!_windowEventsAttached || _hostWindow == null)
+                return;
+
+            _hostWindow.PreviewDragOver -= OnWindowPreviewDragOver;
+            _hostWindow.PreviewDrop -= OnWindowPreviewDrop;
+            _windowEventsAttached = false;
+            _hostWindow = null;
+        }
+
+        /// <summary>
+        /// 当鼠标经过主窗口的任意区域时兜底设置拖放效果，避免 Popup 等非同一视觉树元素遮挡导致事件丢失
+        /// </summary>
+        private void OnWindowPreviewDragOver(object sender, DragEventArgs e)
+        {
+            if (_infiniteCanvas == null || !IsValidDragData(e.Data))
+                return;
+
+            var screenPoint = GetCursorScreenPoint();
+            if (!IsScreenPointInsideFlowEditor(screenPoint))
+                return;
+
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// 窗口级放置兜底，将屏幕坐标转换到画布并调用统一的节点创建逻辑
+        /// </summary>
+        private void OnWindowPreviewDrop(object sender, DragEventArgs e)
+        {
+            if (_infiniteCanvas == null)
+                return;
+
+            var screenPoint = GetCursorScreenPoint();
+            if (!IsScreenPointInsideFlowEditor(screenPoint))
+                return;
+
+            var pointOnCanvas = _infiniteCanvas.PointFromScreen(screenPoint);
+            TryHandleNodeDrop(e, pointOnCanvas);
+        }
+
+        /// <summary>
+        /// 判断屏幕坐标是否位于当前 FlowEditor 区域
+        /// </summary>
+        private bool IsScreenPointInsideFlowEditor(System.Windows.Point screenPoint)
+        {
+            var topLeft = PointToScreen(new System.Windows.Point(0, 0));
+            var bounds = new Rect(topLeft, new System.Windows.Size(ActualWidth, ActualHeight));
+            return bounds.Contains(screenPoint);
+        }
+
+        /// <summary>
+        /// 获取当前鼠标的屏幕坐标
+        /// </summary>
+        private System.Windows.Point GetCursorScreenPoint()
+        {
+            var p = new System.Drawing.Point();
+            GetCursorPos(ref p);
+            return new System.Windows.Point(p.X, p.Y);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetCursorPos(ref System.Drawing.Point lpPoint);
 
         #endregion
     }
