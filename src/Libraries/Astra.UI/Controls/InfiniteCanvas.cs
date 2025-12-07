@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Specialized;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -10,6 +11,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Geometry;
 
 namespace Astra.UI.Controls
 {
@@ -259,6 +262,28 @@ namespace Astra.UI.Controls
             set => SetValue(ItemsSourceProperty, value);
         }
 
+        /// <summary>
+        /// 连线数据源
+        /// </summary>
+        public static readonly DependencyProperty EdgeItemsSourceProperty =
+            DependencyProperty.Register(nameof(EdgeItemsSource), typeof(IEnumerable), typeof(InfiniteCanvas),
+                new PropertyMetadata(null, OnEdgeItemsSourceChanged));
+
+        public IEnumerable EdgeItemsSource
+        {
+            get => (IEnumerable)GetValue(EdgeItemsSourceProperty);
+            set => SetValue(EdgeItemsSourceProperty, value);
+        }
+
+        /// <summary>
+        /// 撤销/重做管理器（由 FlowEditor 注入）
+        /// </summary>
+        public UndoRedoManager UndoRedoManager
+        {
+            get => _undoRedoManager;
+            set => _undoRedoManager = value;
+        }
+
         public static readonly DependencyProperty ItemTemplateProperty =
             DependencyProperty.Register(nameof(ItemTemplate), typeof(DataTemplate), typeof(InfiniteCanvas),
                 new PropertyMetadata(null));
@@ -367,6 +392,17 @@ namespace Astra.UI.Controls
         private Button _minimapExpandButton;
         private bool _isNavigatingMinimap;
         private FrameworkElement _transformTarget; // 专门用于承载缩放/平移变换的视觉元素
+        private Canvas _edgeLayer;                // 连线层（在节点下方）
+        private Canvas _connectionPreviewLayer;   // 临时连线层
+        private Polyline _connectionPreviewLine;  // 临时连线（正交路径）
+        private bool _isConnecting;
+        private Node _connectionSourceNode;
+        private FrameworkElement _connectionSourcePortElement;  // 保存源端口元素，用于获取端口ID
+        private Point _connectionStartPoint;
+        private INotifyCollectionChanged _edgeCollectionNotify;
+        private UndoRedoManager _undoRedoManager;
+        private FrameworkElement _hoveredPort;  // 当前悬停的端口
+        private const double PortSnapDistance = 30.0;  // 端口吸附距离（像素）
         
         // 框选相关字段
         private bool _isBoxSelecting;
@@ -422,6 +458,8 @@ namespace Astra.UI.Controls
                 // 确保内容画布启用拖放
                 _contentCanvas.AllowDrop = true;
                 
+                EnsureEdgeLayer();
+                
                 // 锁定真正承载缩放/平移的目标（只对内容做变换，不缩放命中区域）
                 ResolveTransformTarget();
 
@@ -476,16 +514,50 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            var transformGroup = new TransformGroup();
+            // 创建共享的 ScaleTransform 和 TranslateTransform
             _scaleTransform = new ScaleTransform(Scale, Scale);
             _translateTransform = new TranslateTransform(PanX, PanY);
 
+            // 为 transformTarget 创建 TransformGroup
+            var transformGroup = new TransformGroup();
             transformGroup.Children.Add(_scaleTransform);
             transformGroup.Children.Add(_translateTransform);
-
             _transformTarget.RenderTransform = transformGroup;
             _transformTarget.RenderTransformOrigin = new Point(0, 0);
+
+            ApplyTransformsToLayers();
         }
+
+        /// <summary>
+        /// 将当前平移/缩放应用到连线层和预览层（使用独立的 Transform 对象，避免同一 Transform 多父问题）
+        /// 修改：复用 _scaleTransform 和 _translateTransform 以确保同步更新
+        /// </summary>
+        private void ApplyTransformsToLayers()
+        {
+            // 确保变换对象已初始化
+            if (_scaleTransform == null || _translateTransform == null)
+                return;
+
+            if (_edgeLayer != null)
+            {
+                var edgeTransformGroup = new TransformGroup();
+                // 复用相同的变换对象，实现同步更新
+                edgeTransformGroup.Children.Add(_scaleTransform);
+                edgeTransformGroup.Children.Add(_translateTransform);
+                _edgeLayer.RenderTransform = edgeTransformGroup;
+                _edgeLayer.RenderTransformOrigin = new Point(0, 0);
+            }
+            if (_connectionPreviewLayer != null)
+            {
+                var previewTransformGroup = new TransformGroup();
+                // 复用相同的变换对象，实现同步更新
+                previewTransformGroup.Children.Add(_scaleTransform);
+                previewTransformGroup.Children.Add(_translateTransform);
+                _connectionPreviewLayer.RenderTransform = previewTransformGroup;
+                _connectionPreviewLayer.RenderTransformOrigin = new Point(0, 0);
+            }
+        }
+
 
         private void InitializeMinimap()
         {
@@ -518,6 +590,34 @@ namespace Astra.UI.Controls
 
         #endregion
 
+        /// <summary>
+        /// 创建连线层和临时连线层（插入到内容画布最前，保证在节点下方）
+        /// </summary>
+        private void EnsureEdgeLayer()
+        {
+            if (_contentCanvas == null)
+                return;
+
+            if (_edgeLayer == null)
+            {
+                _edgeLayer = new Canvas
+                {
+                    IsHitTestVisible = false
+                };
+                _contentCanvas.Children.Insert(0, _edgeLayer);
+            }
+
+            if (_connectionPreviewLayer == null)
+            {
+                _connectionPreviewLayer = new Canvas
+                {
+                    IsHitTestVisible = false
+                };
+                // 放在连线层上方，仍在节点下方
+                _contentCanvas.Children.Insert(1, _connectionPreviewLayer);
+            }
+        }
+
         #region 坐标转换
 
         public Point ScreenToCanvas(Point screenPoint)
@@ -534,6 +634,52 @@ namespace Astra.UI.Controls
                 canvasPoint.X * Scale + PanX,
                 canvasPoint.Y * Scale + PanY
             );
+        }
+
+        /// <summary>
+        /// 获取鼠标位置的逻辑坐标（统一的未缩放/未平移坐标系）
+        /// </summary>
+        private Point GetLogicalMousePoint(MouseEventArgs e)
+        {
+            // 优先使用 transformTarget (内容画布) 坐标
+            // WPF 的 GetPosition 会自动处理 RenderTransform 的逆变换，直接返回逻辑坐标
+            if (_transformTarget != null)
+            {
+                try
+                {
+                    return e.GetPosition(_transformTarget);
+                }
+                catch
+                {
+                    // 忽略，使用回退方案
+                }
+            }
+
+            // 回退：使用 ScreenToCanvas
+            return ScreenToCanvas(e.GetPosition(this));
+        }
+
+        /// <summary>
+        /// 获取鼠标位置的逻辑坐标（统一的未缩放/未平移坐标系）- MouseButtonEventArgs 重载
+        /// </summary>
+        private Point GetLogicalMousePoint(MouseButtonEventArgs e)
+        {
+            // 优先使用 transformTarget (内容画布) 坐标
+            // WPF 的 GetPosition 会自动处理 RenderTransform 的逆变换，直接返回逻辑坐标
+            if (_transformTarget != null)
+            {
+                try
+                {
+                    return e.GetPosition(_transformTarget);
+                }
+                catch
+                {
+                    // 忽略，使用回退方案
+                }
+            }
+
+            // 回退：使用 ScreenToCanvas
+            return ScreenToCanvas(e.GetPosition(this));
         }
 
         #endregion
@@ -1008,6 +1154,1181 @@ namespace Astra.UI.Controls
 
         #endregion
 
+        #region 连线绘制与交互
+
+        private void OnEdgeCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            RefreshEdges();
+        }
+
+        /// <summary>
+        /// 刷新连线层
+        /// </summary>
+        public void RefreshEdges()
+        {
+            if (_edgeLayer == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[连线刷新] 连线层为空");
+                return;
+            }
+
+            _edgeLayer.Children.Clear();
+
+            if (EdgeItemsSource == null || ItemsSource == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[连线刷新] EdgeItemsSource: {EdgeItemsSource != null}, ItemsSource: {ItemsSource != null}");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[连线刷新] 开始刷新，连线数量: {EdgeItemsSource.Cast<object>().Count()}");
+
+            var nodes = ItemsSource.OfType<Node>().ToDictionary(n => n.Id, n => n);
+            var primaryBrush = TryFindResource("PrimaryBrush") as Brush ?? Brushes.SteelBlue;
+            var selectedBrush = TryFindResource("InfoBrush") as Brush ?? Brushes.DeepSkyBlue;
+
+            // 预先计算所有节点的边界，用于避障
+            var nodeBounds = new Dictionary<string, Rect>();
+            foreach (var node in nodes.Values)
+            {
+                nodeBounds[node.Id] = GetNodeBounds(node);
+            }
+
+            foreach (var edgeObj in EdgeItemsSource)
+            {
+                if (edgeObj is not Edge edge)
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(edge.SourceNodeId) || string.IsNullOrWhiteSpace(edge.TargetNodeId))
+                    continue;
+
+                if (!nodes.TryGetValue(edge.SourceNodeId, out var source) ||
+                    !nodes.TryGetValue(edge.TargetNodeId, out var target))
+                {
+                    continue;
+                }
+
+                var points = new PointCollection();
+
+                // 优先使用端口ID查找，如果没有ID则使用坐标作为提示
+                var startHint = edge.Points != null && edge.Points.Count > 0
+                    ? new Point(edge.Points.First().X, edge.Points.First().Y)
+                    : (Point?)null;
+                var endHint = edge.Points != null && edge.Points.Count > 0
+                    ? new Point(edge.Points.Last().X, edge.Points.Last().Y)
+                    : (Point?)null;
+
+                // 使用端口ID查找端口，如果没有ID则回退到hint查找
+                var startPort = GetPortPoint(source, edge.SourcePortId, startHint) ?? GetNodeCenter(source);
+                var endPort = GetPortPoint(target, edge.TargetPortId, endHint) ?? GetNodeCenter(target);
+
+                // 准备障碍物列表（排除源节点和目标节点）
+            // 确保只使用有效的边界
+            var obstacles = new List<Rect>();
+            foreach (var kvp in nodeBounds)
+            {
+                // 排除源和目标节点，且必须是有效的矩形
+                if (kvp.Key != source.Id && kvp.Key != target.Id && !kvp.Value.IsEmpty && kvp.Value.Width > 1 && kvp.Value.Height > 1)
+                {
+                    obstacles.Add(kvp.Value);
+                }
+            }
+            
+            // 调试障碍物信息
+            if (obstacles.Count == 0 && nodeBounds.Count > 2)
+            {
+                // 仅用于调试，实际可删除
+            }
+            else
+            {
+                // System.Diagnostics.Debug.WriteLine($"[连线刷新] 准备路由 - 源: {source.Id}, 目标: {target.Id}, 障碍物数量: {obstacles.Count}");
+            }
+
+            var routed = BuildOrthogonalRoute(startPort, source, endPort, target, obstacles);
+                points = new PointCollection(routed);
+
+                // 覆盖 Edge.Points 为最新路径，便于序列化/后续刷新
+                edge.Points = routed.Select(p => new Point2D(p.X, p.Y)).ToList();
+
+                var polyline = new Polyline
+                {
+                    Stroke = edge.IsSelected ? selectedBrush : primaryBrush,
+                    StrokeThickness = edge.IsSelected ? 3 : 2,
+                    StrokeLineJoin = PenLineJoin.Round,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    Points = points,
+                    Opacity = 0.9,
+                    Tag = edge,
+                    IsHitTestVisible = false
+                };
+
+                // 箭头
+                var arrow = BuildArrow(points, edge.IsSelected ? selectedBrush : primaryBrush);
+
+                System.Diagnostics.Debug.WriteLine($"[连线刷新] 添加连线 - 点数: {points.Count}, 起点: ({points[0].X:F2}, {points[0].Y:F2}), 终点: ({points[points.Count - 1].X:F2}, {points[points.Count - 1].Y:F2})");
+                
+                _edgeLayer.Children.Add(polyline);
+                if (arrow != null)
+                {
+                    _edgeLayer.Children.Add(arrow);
+                }
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"[连线刷新] 完成刷新，绘制了 {_edgeLayer.Children.Count} 条连线");
+        }
+
+        private void OnCanvasMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // 备用手势：Shift + 左键且点在端口上开始连线
+            if (Keyboard.Modifiers == ModifierKeys.Shift)
+            {
+                var port = FindPortFromHit(e.OriginalSource as DependencyObject);
+                var nodeControl = FindParentNodeControl(port ?? e.OriginalSource as DependencyObject);
+                if (port != null && nodeControl?.DataContext is Node node)
+                {
+                    BeginConnection(node, port);
+                    e.Handled = true;
+                }
+            }
+        }
+
+        private void OnCanvasMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isConnecting || _connectionPreviewLine == null)
+                return;
+
+            // 获取逻辑坐标（统一的未缩放/未平移坐标系）
+            var canvasPoint = GetLogicalMousePoint(e);
+            
+            // 检测附近端口并吸附
+            var nearbyPort = FindNearbyPort(canvasPoint);
+            if (nearbyPort != null && nearbyPort != _hoveredPort)
+            {
+                // 切换到新端口，更新预览终点
+                _hoveredPort = nearbyPort;
+                var portCenter = GetPortCenter(nearbyPort);
+                if (!double.IsNaN(portCenter.X) && !double.IsNaN(portCenter.Y))
+                {
+                    UpdateConnectionPreview(portCenter);
+                }
+            }
+            else if (nearbyPort == null && _hoveredPort != null)
+            {
+                // 离开端口区域，使用鼠标位置
+                _hoveredPort = null;
+                UpdateConnectionPreview(canvasPoint);
+            }
+            else if (nearbyPort == null)
+            {
+                // 没有靠近端口，使用鼠标位置
+                UpdateConnectionPreview(canvasPoint);
+            }
+        }
+
+        private void OnCanvasMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isConnecting)
+                return;
+
+            // 优先使用吸附的端口，如果没有则尝试从命中点查找
+            var targetPort = _hoveredPort ?? FindPortFromHit(e.OriginalSource as DependencyObject);
+            
+            // 如果还是没有找到端口，尝试在鼠标位置附近查找
+            if (targetPort == null)
+            {
+                var canvasPoint = GetLogicalMousePoint(e);
+                System.Diagnostics.Debug.WriteLine($"[连线] 鼠标位置（逻辑坐标）: ({canvasPoint.X:F2}, {canvasPoint.Y:F2}), Scale={Scale:F2}, Pan=({PanX:F2},{PanY:F2})");
+                targetPort = FindNearbyPort(canvasPoint);
+            }
+
+            var targetControl = FindParentNodeControl(targetPort ?? e.OriginalSource as DependencyObject);
+            var targetNode = targetControl?.DataContext as Node;
+
+            System.Diagnostics.Debug.WriteLine($"[连线] 释放鼠标 - 目标端口: {targetPort != null}, 目标节点: {targetNode?.Name ?? "null"}, 源节点: {_connectionSourceNode?.Name ?? "null"}");
+
+            // 检查是否连接到了同一节点
+            bool isSameNode = targetNode != null && _connectionSourceNode != null && 
+                             (ReferenceEquals(targetNode, _connectionSourceNode) || targetNode.Id == _connectionSourceNode.Id);
+            
+            // 允许替换现有连线，所以不再在此处阻止（TryCreateEdge 会处理替换）
+            // bool hasExistingEdge = targetNode != null && _connectionSourceNode != null && 
+            //                       HasEdgeBetween(_connectionSourceNode.Id, targetNode.Id);
+
+            if (targetPort != null &&
+                targetNode != null &&
+                _connectionSourceNode != null &&
+                !isSameNode)
+            {
+                var endPoint = GetPortCenter(targetPort);
+                System.Diagnostics.Debug.WriteLine($"[连线] 端点坐标 - 起点: ({_connectionStartPoint.X:F2}, {_connectionStartPoint.Y:F2}), 终点: ({endPoint.X:F2}, {endPoint.Y:F2})");
+                
+                if (!double.IsNaN(endPoint.X) && !double.IsNaN(endPoint.Y))
+                {
+                    TryCreateEdge(_connectionSourceNode, targetNode, _connectionStartPoint, endPoint);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[连线] 警告：端点坐标无效");
+                }
+            }
+            else
+            {
+                if (isSameNode)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[连线] 无法创建连线：不能连接到同一节点（{_connectionSourceNode?.Name ?? "未知"}）");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[连线] 无法创建连线 - 目标端口: {targetPort != null}, 目标节点: {targetNode?.Name ?? "null"}, 源节点: {_connectionSourceNode?.Name ?? "null"}");
+                }
+            }
+
+            StopConnectionPreview();
+            _isConnecting = false;
+            _connectionSourceNode = null;
+            _hoveredPort = null;
+
+            if (IsMouseCaptured)
+            {
+                ReleaseMouseCapture();
+            }
+        }
+
+        /// <summary>
+        /// 从外部（节点端口）发起连线（必须点在端口上）
+        /// </summary>
+        public void BeginConnection(Node sourceNode, FrameworkElement sourcePortElement)
+        {
+            if (sourceNode == null || sourcePortElement == null)
+                return;
+
+            var start = GetPortCenter(sourcePortElement);
+            if (double.IsNaN(start.X) || double.IsNaN(start.Y))
+                return;
+
+            // 确保源端口有稳定的 PortId（若未设置则自动生成）
+            if (sourcePortElement is PortControl pc && string.IsNullOrWhiteSpace(pc.PortId))
+            {
+                pc.PortId = Guid.NewGuid().ToString("N");
+                System.Diagnostics.Debug.WriteLine($"[连线] 为源端口自动生成 PortId: {pc.PortId}");
+            }
+
+            _isConnecting = true;
+            _connectionSourceNode = sourceNode;
+            _connectionSourcePortElement = sourcePortElement;  // 保存源端口元素
+            _connectionStartPoint = start;
+            StartConnectionPreview(_connectionStartPoint);
+            CaptureMouse();
+        }
+
+        private void StartConnectionPreview(Point start)
+        {
+            if (_connectionPreviewLayer == null)
+                return;
+
+            _connectionPreviewLayer.Children.Clear();
+            _connectionPreviewLine = new Polyline
+            {
+                Stroke = TryFindResource("InfoBrush") as Brush ?? Brushes.DeepSkyBlue,
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 4, 4 },
+                StrokeLineJoin = PenLineJoin.Round,
+                Opacity = 0.9,
+                Points = new PointCollection { start }
+            };
+            _connectionPreviewLayer.Children.Add(_connectionPreviewLine);
+        }
+
+        private void UpdateConnectionPreview(Point end)
+        {
+            if (_connectionPreviewLine == null || _connectionSourceNode == null)
+                return;
+
+            List<Point> route;
+
+            // 如果鼠标悬停在目标端口上，使用完整的正交路由
+            if (_hoveredPort != null)
+            {
+                var targetControl = FindParentNodeControl(_hoveredPort);
+                if (targetControl?.DataContext is Node hoveredNode)
+                {
+                    var endPort = GetPortCenter(_hoveredPort);
+                    route = BuildOrthogonalRoute(_connectionStartPoint, _connectionSourceNode, endPort, hoveredNode);
+                }
+                else
+                {
+                    // 悬停端口但找不到节点，使用简化路径
+                    route = BuildSimpleOrthogonalPath(_connectionStartPoint, end, _connectionSourceNode);
+                }
+            }
+            else
+            {
+                // 没有悬停端口，使用简化的L形路径到鼠标位置
+                route = BuildSimpleOrthogonalPath(_connectionStartPoint, end, _connectionSourceNode);
+            }
+            
+            // 更新 Polyline 的点集合
+            _connectionPreviewLine.Points = new PointCollection(route);
+        }
+
+        /// <summary>
+        /// 构建简单的正交路径（用于预览，无目标节点）
+        /// </summary>
+        private List<Point> BuildSimpleOrthogonalPath(Point start, Point end, Node sourceNode)
+        {
+            const double margin = 18.0;
+            var sourceBounds = GetNodeBounds(sourceNode);
+            
+            // 判断起始端口在节点的哪一边
+            var sourceSide = GetPortSideByDistance(start, sourceBounds);
+            
+            // 计算源外扩点
+            var sourceOut = GetExpansionAlongSide(start, sourceBounds, margin, sourceSide);
+            
+            // 简单的L形路径：起点 -> 外扩点 -> 转折点 -> 终点
+            var route = new List<Point> { start, sourceOut };
+            
+            // 根据源端口方向选择转折方式
+            if (sourceSide == PortSide.Top || sourceSide == PortSide.Bottom)
+            {
+                // 垂直方向的端口，先垂直后水平
+                route.Add(new Point(sourceOut.X, end.Y));
+            }
+            else
+            {
+                // 水平方向的端口，先水平后垂直
+                route.Add(new Point(end.X, sourceOut.Y));
+            }
+            
+            route.Add(end);
+            
+            // 去除重复点
+            for (int i = route.Count - 2; i >= 0; i--)
+            {
+                if (IsSamePoint(route[i], route[i + 1]))
+                    route.RemoveAt(i + 1);
+            }
+            
+            return route;
+        }
+
+        private void StopConnectionPreview()
+        {
+            _connectionPreviewLayer?.Children.Clear();
+            _connectionPreviewLine = null;
+            _hoveredPort = null;
+        }
+
+        private void TryCreateEdge(Node source, Node target, Point startPoint, Point endPoint)
+        {
+            System.Diagnostics.Debug.WriteLine($"[连线] TryCreateEdge - EdgeItemsSource: {EdgeItemsSource != null}, 类型: {EdgeItemsSource?.GetType().Name ?? "null"}");
+
+            // 如果 EdgeItemsSource 为 null，尝试从父级 FlowEditor 获取或自动创建
+            if (EdgeItemsSource == null)
+            {
+                var flowEditor = FindParentFlowEditor(this);
+                if (flowEditor != null)
+                {
+                    System.Diagnostics.Debug.WriteLine("[连线] 从 FlowEditor 获取 EdgeItemsSource");
+                    EdgeItemsSource = flowEditor.EdgeItemsSource;
+                    
+                    // 如果 FlowEditor 的也是 null，自动创建一个新的集合
+                    if (flowEditor.EdgeItemsSource == null)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[连线] FlowEditor 的 EdgeItemsSource 也为 null，自动创建新的集合");
+                        var edges = new System.Collections.ObjectModel.ObservableCollection<Edge>();
+                        flowEditor.EdgeItemsSource = edges;
+                        EdgeItemsSource = edges;
+                    }
+                }
+                else
+                {
+                    // 如果找不到 FlowEditor，直接创建一个本地集合
+                    System.Diagnostics.Debug.WriteLine("[连线] 未找到 FlowEditor，创建本地 EdgeItemsSource 集合");
+                    EdgeItemsSource = new System.Collections.ObjectModel.ObservableCollection<Edge>();
+                }
+            }
+
+            if (EdgeItemsSource is not System.Collections.IList list)
+            {
+                System.Diagnostics.Debug.WriteLine($"[连线] 错误：EdgeItemsSource 不是 IList 类型，类型: {EdgeItemsSource?.GetType().Name ?? "null"}");
+                return;
+            }
+
+            // 获取源端口和目标端口的ID
+            string sourcePortId = null;
+            string targetPortId = null;
+
+            if (_connectionSourcePortElement is PortControl sourcePort)
+            {
+                sourcePortId = sourcePort.PortId;
+                System.Diagnostics.Debug.WriteLine($"[连线] 源端口ID: {sourcePortId ?? "null"}");
+            }
+
+            if (_hoveredPort is PortControl targetPort)
+            {
+                // 确保目标端口有稳定的 PortId（若未设置则自动生成）
+                if (string.IsNullOrWhiteSpace(targetPort.PortId))
+                {
+                    targetPort.PortId = Guid.NewGuid().ToString("N");
+                    System.Diagnostics.Debug.WriteLine($"[连线] 为目标端口自动生成 PortId: {targetPort.PortId}");
+                }
+
+                targetPortId = targetPort.PortId;
+                System.Diagnostics.Debug.WriteLine($"[连线] 目标端口ID: {targetPortId ?? "null"}");
+            }
+
+            var edge = new Edge
+            {
+                SourceNodeId = source.Id,
+                TargetNodeId = target.Id,
+                SourcePortId = sourcePortId,  // 保存源端口ID
+                TargetPortId = targetPortId,  // 保存目标端口ID
+                Points = new List<Point2D>
+                {
+                    new Point2D(startPoint.X, startPoint.Y),
+                    new Point2D(endPoint.X, endPoint.Y)
+                }
+            };
+
+            System.Diagnostics.Debug.WriteLine($"[连线] 创建连线 - 源节点ID: {source.Id}, 目标节点ID: {target.Id}, 源端口: {sourcePortId ?? "无"}, 目标端口: {targetPortId ?? "无"}, 点数: {edge.Points.Count}");
+
+            // 查找已存在的连线（相同源和目标节点，无论方向）
+            // 用户要求：如果两个节点之间已经有一条连线了，若再在两条节点上画一条连线，则需要删除之前的连线
+            var existingEdges = new List<object>();
+            foreach (var item in list)
+            {
+                if (item is Edge e)
+                {
+                    // 检查 A->B 或 B->A
+                    if ((e.SourceNodeId == source.Id && e.TargetNodeId == target.Id) ||
+                        (e.SourceNodeId == target.Id && e.TargetNodeId == source.Id))
+                    {
+                        existingEdges.Add(e);
+                    }
+                }
+            }
+
+            if (_undoRedoManager != null)
+            {
+                var commands = new List<IUndoableCommand>();
+                
+                // 1. 如果有旧连线，先删除
+                if (existingEdges.Count > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[连线] 发现 {existingEdges.Count} 条现有连线，准备替换");
+                    commands.Add(new DeleteEdgeCommand(list, existingEdges));
+                }
+                
+                // 2. 添加新连线
+                commands.Add(new CreateEdgeCommand(list, edge));
+                
+                System.Diagnostics.Debug.WriteLine("[连线] 使用组合命令（删除旧连线+创建新连线）");
+                _undoRedoManager.Do(new CompositeCommand(commands));
+            }
+            else
+            {
+                // 不使用 UndoRedoManager，直接操作
+                foreach (var oldEdge in existingEdges)
+                {
+                    list.Remove(oldEdge);
+                }
+                System.Diagnostics.Debug.WriteLine("[连线] 直接添加到集合");
+                list.Add(edge);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[连线] 连线集合数量: {list.Count}");
+            RefreshEdges();
+        }
+
+        private bool HasEdgeBetween(string sourceId, string targetId)
+        {
+            if (EdgeItemsSource == null)
+                return false;
+
+            foreach (var edgeObj in EdgeItemsSource)
+            {
+                if (edgeObj is not Edge edge) continue;
+
+                if (edge.SourceNodeId == sourceId && edge.TargetNodeId == targetId)
+                    return true;
+
+                // 视为双向唯一
+                if (edge.SourceNodeId == targetId && edge.TargetNodeId == sourceId)
+                    return true;
+            }
+            return false;
+        }
+
+        private Point GetNodeCenter(Node node)
+        {
+            var width = node.Size.IsEmpty ? 220 : node.Size.Width;
+            var height = node.Size.IsEmpty ? 40 : node.Size.Height;
+
+            return new Point(
+                node.Position.X + width / 2,
+                node.Position.Y + height / 2);
+        }
+
+        private Point? GetPortPoint(Node node, string portId = null, Point? hint = null)
+        {
+            if (_contentCanvas == null || node == null)
+                return null;
+
+            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            if (itemsControl == null)
+                return null;
+
+            var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+            if (container == null)
+                return null;
+
+            var ports = FindPortsInContainer(container).ToList();
+            if (ports.Count == 0)
+                return null;
+
+            FrameworkElement port = null;
+
+            // 优先使用端口ID查找
+            if (!string.IsNullOrEmpty(portId))
+            {
+                port = ports.OfType<PortControl>()
+                    .FirstOrDefault(p => p.PortId == portId);
+                
+                if (port != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[端口查找] 通过ID找到端口: {portId} 在节点 {node.Name}");
+                    return GetPortCenter(port);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[端口查找] 未找到ID为 {portId} 的端口在节点 {node.Name}，使用hint或默认端口");
+                }
+            }
+
+            // 如果没有找到指定ID的端口，使用 hint
+            if (hint.HasValue && ports.Count > 0)
+            {
+                port = ports
+                    .OrderBy(p =>
+                    {
+                        var center = GetPortCenter(p);
+                        return (center.X - hint.Value.X) * (center.X - hint.Value.X) +
+                               (center.Y - hint.Value.Y) * (center.Y - hint.Value.Y);
+                    })
+                    .FirstOrDefault();
+            }
+            else
+            {
+                port = ports.FirstOrDefault();
+            }
+
+            if (port == null)
+                return null;
+
+            return GetPortCenter(port);
+        }
+
+        private FrameworkElement FindPortFromHit(DependencyObject source)
+        {
+            var current = source;
+            while (current != null)
+            {
+                if (current is PortControl pc)
+                    return pc;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        private Point GetPortCenter(FrameworkElement portElement)
+        {
+            if (portElement == null)
+                return new Point(double.NaN, double.NaN);
+
+            // 优先使用基于节点位置的计算（GetPortCenterByNodePosition）
+            // 原因：在快速拖动时，Canvas.SetLeft/Top 虽然已更新，但 WPF 的视觉树可能尚未完成 Render Pass，
+            // 导致直接 TranslatePoint 到画布根节点会返回上一帧的旧坐标，从而产生连线滞后。
+            // 而 node.Position 是实时更新的，相对偏移也是稳定的，因此计算结果更实时。
+            var pointByPos = GetPortCenterByNodePosition(portElement);
+            if (!double.IsNaN(pointByPos.X) && !double.IsNaN(pointByPos.Y))
+            {
+                return pointByPos;
+            }
+
+            // 获取端口中心在端口内的相对位置
+            var portCenter = new Point(portElement.ActualWidth / 2, portElement.ActualHeight / 2);
+            
+            // 回退：直接转换到 transformTarget (逻辑坐标系)
+            if (_transformTarget != null)
+            {
+                try
+                {
+                    return portElement.TranslatePoint(portCenter, _transformTarget);
+                }
+                catch { }
+            }
+
+            // 回退：直接转换到内容画布坐标
+            if (_contentCanvas != null)
+            {
+                try
+                {
+                    return portElement.TranslatePoint(portCenter, _contentCanvas);
+                }
+                catch { }
+            }
+
+            return new Point(double.NaN, double.NaN);
+        }
+
+        /// <summary>
+        /// 通过节点位置计算端口中心（备用方法）
+        /// </summary>
+        private Point GetPortCenterByNodePosition(FrameworkElement portElement)
+        {
+            // 找到端口所属的节点
+            var nodeControl = FindParentNodeControl(portElement);
+            if (nodeControl == null || nodeControl.DataContext is not Node node)
+                return new Point(double.NaN, double.NaN);
+
+            // 获取节点在画布上的位置
+            var itemsControl = _contentCanvas?.Children.OfType<ItemsControl>().FirstOrDefault();
+            if (itemsControl == null)
+                return new Point(double.NaN, double.NaN);
+
+            var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+            if (container == null)
+                return new Point(double.NaN, double.NaN);
+
+            var nodeX = Canvas.GetLeft(container);
+            var nodeY = Canvas.GetTop(container);
+            if (double.IsNaN(nodeX)) nodeX = node.Position.X;
+            if (double.IsNaN(nodeY)) nodeY = node.Position.Y;
+
+            // 获取端口相对于节点的位置
+            var portCenter = new Point(portElement.ActualWidth / 2, portElement.ActualHeight / 2);
+            var portInNode = portElement.TranslatePoint(portCenter, nodeControl);
+
+            // 计算端口在画布上的绝对位置
+            return new Point(nodeX + portInNode.X, nodeY + portInNode.Y);
+        }
+
+        /// <summary>
+        /// 查找指定画布坐标附近最近的端口
+        /// </summary>
+        private FrameworkElement FindNearbyPort(Point canvasPoint)
+        {
+            if (ItemsSource == null || _contentCanvas == null)
+                return null;
+
+            FrameworkElement closestPort = null;
+            // 吸附距离（画布坐标），考虑缩放后仍然保持合理的吸附范围；放大系数便于诊断
+            double minDistance = (PortSnapDistance * 3) / Math.Max(Scale, 0.1);
+
+            System.Diagnostics.Debug.WriteLine($"[端口查找] 查找附近端口，鼠标位置: ({canvasPoint.X:F2}, {canvasPoint.Y:F2}), 吸附距离: {minDistance:F2}, 缩放: {Scale:F2}");
+
+            // 遍历所有节点，查找它们的端口
+            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            if (itemsControl == null)
+                return null;
+
+            int portCount = 0;
+            foreach (var node in ItemsSource.OfType<Node>())
+            {
+                // 跳过源节点（不能连接到自己）
+                if (_connectionSourceNode != null && node.Id == _connectionSourceNode.Id)
+                    continue;
+
+                var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+                if (container == null)
+                    continue;
+
+                // 查找节点内的所有端口
+                var ports = FindPortsInContainer(container);
+                foreach (var port in ports)
+                {
+                    var portCenter = GetPortCenter(port);
+                    if (double.IsNaN(portCenter.X) || double.IsNaN(portCenter.Y))
+                        continue;
+
+                    var distance = Math.Sqrt(
+                        Math.Pow(canvasPoint.X - portCenter.X, 2) +
+                        Math.Pow(canvasPoint.Y - portCenter.Y, 2));
+
+                    portCount++;
+                    if (portCount <= 5)  // 只输出前5个端口的信息，避免日志太多
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[端口查找] 节点: {node.Name}, 端口中心: ({portCenter.X:F2}, {portCenter.Y:F2}), 距离: {distance:F2}");
+                    }
+
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        closestPort = port;
+                    }
+                }
+            }
+
+            if (closestPort != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[端口查找] 找到最近端口，最终距离: {minDistance:F2}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[端口查找] 未找到符合距离的端口，检查了 {portCount} 个端口");
+            }
+
+            return closestPort;
+        }
+
+        /// <summary>
+        /// 在容器中查找所有端口控件
+        /// </summary>
+        private List<FrameworkElement> FindPortsInContainer(DependencyObject container)
+        {
+            var ports = new List<FrameworkElement>();
+            if (container == null)
+                return ports;
+
+            FindPortsRecursive(container, ports);
+            return ports;
+        }
+
+        /// <summary>
+        /// 递归查找端口控件
+        /// </summary>
+        private void FindPortsRecursive(DependencyObject element, List<FrameworkElement> ports)
+        {
+            if (element == null)
+                return;
+
+            if (element is PortControl portControl)
+            {
+                ports.Add(portControl);
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(element);
+            for (int i = 0; i < childCount; i++)
+            {
+                var child = VisualTreeHelper.GetChild(element, i);
+                FindPortsRecursive(child, ports);
+            }
+        }
+
+        private NodeControl FindParentNodeControl(DependencyObject element)
+        {
+            var current = element;
+            while (current != null)
+            {
+                if (current is NodeControl nc)
+                    return nc;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 查找父级 FlowEditor 控件
+        /// </summary>
+        private FlowEditor FindParentFlowEditor(DependencyObject element)
+        {
+            var current = element;
+            while (current != null)
+            {
+                if (current is FlowEditor flowEditor)
+                    return flowEditor;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 构建正交线路径：端口 -> 源外扩点 -> L 形折线 -> 目标外扩点 -> 端口
+        /// 改进版：基于端口实际位置和节点相对位置选择最优路径，并支持避障
+        /// </summary>
+        private List<Point> BuildOrthogonalRoute(Point startPort, Node source, Point endPort, Node target, List<Rect> obstacles = null)
+        {
+            const double margin = 18.0; // 外扩距离
+
+            var sourceBounds = GetNodeBounds(source);
+            var targetBounds = GetNodeBounds(target);
+
+            // 判断端口在节点的哪一边（基于端口到各边的距离）
+            var sourceSide = GetPortSideByDistance(startPort, sourceBounds);
+            var targetSide = GetPortSideByDistance(endPort, targetBounds);
+
+            // 计算外扩点
+            var sourceOut = GetExpansionAlongSide(startPort, sourceBounds, margin, sourceSide);
+            var targetOut = GetExpansionAlongSide(endPort, targetBounds, margin, targetSide);
+
+            // 构建路径：简化为 StartPort -> SourceOut -> (L/Z) -> TargetOut -> EndPort
+            var route = new List<Point> { startPort, sourceOut };
+
+            if (!IsSamePoint(sourceOut, targetOut))
+            {
+                if (IsSameValue(sourceOut.X, targetOut.X) || IsSameValue(sourceOut.Y, targetOut.Y))
+                {
+                    // 共线直接连
+                }
+                else
+                {
+                    // 简单 L：先水平后垂直（若需要 Z 由碰撞/A* 处理）
+                    var mid = new Point(targetOut.X, sourceOut.Y);
+                    route.Add(mid);
+                }
+            }
+
+            route.Add(targetOut);
+            route.Add(endPort);
+
+            // 去除连续重复点
+            for (int i = route.Count - 2; i >= 0; i--)
+            {
+                if (IsSamePoint(route[i], route[i + 1]))
+                    route.RemoveAt(i + 1);
+            }
+
+            // 检查障碍物碰撞
+            if (obstacles != null && obstacles.Count > 0)
+            {
+                // 除了中间的线段，也要检查起点和终点的连接段（如果起点终点外扩点被挡住了）
+                // 尤其是当两个节点靠得很近时，外扩点可能落在另一个节点的边界内
+                // 但通常外扩点是为了离开节点，所以主要检查中间路径
+                
+                // 额外检查：如果源节点和目标节点非常近，直接连线可能会穿过它们自己
+                // 这种情况在 BuildOrthogonalRoute 的初始阶段已经通过 margin 规避了一部分
+                // 但如果两个 Top 端口相连，且Y轴错开不远，可能会穿过其中一个节点
+
+                bool collision = false;
+                for (int i = 0; i < route.Count - 1; i++)
+                {
+                    var p1 = route[i];
+                    var p2 = route[i + 1];
+                    
+                    foreach (var obs in obstacles)
+                    {
+                        // 稍微缩小障碍物矩形以允许贴边（避免误判）
+                        const double obstacleMargin = 8.0;
+                        var checkRect = new Rect(obs.X - obstacleMargin, obs.Y - obstacleMargin,
+                                                 Math.Max(1, obs.Width + obstacleMargin * 2),
+                                                 Math.Max(1, obs.Height + obstacleMargin * 2));
+                        
+                        // 记录碰撞检测信息
+                        bool intersected = IntersectsRect(p1, p2, checkRect);
+                        if (intersected)
+                        {
+                             System.Diagnostics.Debug.WriteLine($"[碰撞检测] 发生碰撞！线段: ({p1.X:F2},{p1.Y:F2})->({p2.X:F2},{p2.Y:F2}), 障碍物: {checkRect}");
+                             collision = true;
+                             break;
+                        }
+                    }
+                    if (collision) break;
+                }
+                
+                // 还要检查是否穿过了源节点或目标节点本身（除了第一段和最后一段）
+                // 因为标准的 L 形路由可能会产生穿过源/目标节点的情况（特别是 Top 到 Top）
+                if (!collision)
+                {
+                    // 检查除第一段外的所有段是否穿过源节点
+                    for (int i = 1; i < route.Count - 1; i++)
+                    {
+                        if (IntersectsRect(route[i], route[i+1], sourceBounds))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[碰撞检测] 连线穿过源节点！");
+                            collision = true;
+                            break;
+                        }
+                    }
+                    
+                    // 检查除最后一段外的所有段是否穿过目标节点
+                    if (!collision)
+                    {
+                         for (int i = 0; i < route.Count - 2; i++)
+                         {
+                             if (IntersectsRect(route[i], route[i+1], targetBounds))
+                             {
+                                 System.Diagnostics.Debug.WriteLine($"[碰撞检测] 连线穿过目标节点！");
+                                 collision = true;
+                                 break;
+                             }
+                         }
+                    }
+                }
+
+                if (collision)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[连线] 检测到与节点碰撞，切换到 A* 寻路");
+                    // 使用A*算法重新规划路径
+                    // 注意：这里我们需要把源节点和目标节点也当作障碍物（除了它们各自的端口区域）
+                    // 但简单的做法是把它们加入障碍物列表，A* 会处理起点终点在障碍物内的情况（通常 A* 会寻找最近的无障碍点）
+                    // 为了让 A* 能走出源节点，我们需要确保起点和终点本身被视为"可通行"
+                    
+                    var allObstacles = new List<Rect>(obstacles);
+                    allObstacles.Add(sourceBounds);
+                    allObstacles.Add(targetBounds);
+                    
+                    // 调整 A* 参数以偏好特定类型的路径
+                    return FindPathAStar(startPort, endPort, allObstacles);
+                }
+            }
+            // 即使没有外部障碍物，也要检查是否穿过源/目标节点自己
+            else 
+            {
+                 bool selfCollision = false;
+                 // 检查除第一段外的所有段是否穿过源节点
+                for (int i = 1; i < route.Count - 1; i++)
+                {
+                    if (IntersectsRect(route[i], route[i+1], sourceBounds))
+                    {
+                        selfCollision = true; break;
+                    }
+                }
+                // 检查除最后一段外的所有段是否穿过目标节点
+                if (!selfCollision)
+                {
+                     for (int i = 0; i < route.Count - 2; i++)
+                     {
+                         if (IntersectsRect(route[i], route[i+1], targetBounds))
+                         {
+                             selfCollision = true; break;
+                         }
+                     }
+                }
+                
+                if (selfCollision)
+                {
+                     System.Diagnostics.Debug.WriteLine($"[连线] 连线穿过源/目标节点，切换到 A* 寻路");
+                     var selfObstacles = new List<Rect> { sourceBounds, targetBounds };
+                     return FindPathAStar(startPort, endPort, selfObstacles);
+                }
+            }
+
+            return route;
+        }
+
+        private bool IntersectsRect(Point p1, Point p2, Rect rect)
+        {
+            double minX = Math.Min(p1.X, p2.X);
+            double maxX = Math.Max(p1.X, p2.X);
+            double minY = Math.Min(p1.Y, p2.Y);
+            double maxY = Math.Max(p1.Y, p2.Y);
+
+            if (maxX < rect.Left || minX > rect.Right || maxY < rect.Top || minY > rect.Bottom)
+                return false;
+
+            if (rect.Contains(p1) || rect.Contains(p2))
+                return true;
+
+            // 对于水平线，确保 X 轴和 Y 轴范围都有交集（包含边界）
+            if (Math.Abs(p1.Y - p2.Y) < 0.1)
+                return p1.Y >= rect.Top && p1.Y <= rect.Bottom &&
+                       maxX >= rect.Left && minX <= rect.Right;
+
+            // 对于垂直线，确保 Y 轴和 X 轴范围都有交集（包含边界）
+            if (Math.Abs(p1.X - p2.X) < 0.1)
+                return p1.X >= rect.Left && p1.X <= rect.Right &&
+                       maxY >= rect.Top && minY <= rect.Bottom;
+
+            return true;
+        }
+
+        /// <summary>
+        /// 获取节点边界矩形（使用实际视觉尺寸）
+        /// </summary>
+        private Rect GetNodeBounds(Node node)
+        {
+            // 优先使用节点容器的实际视觉尺寸，直接转换到 transformTarget (逻辑坐标系)
+            if (_transformTarget != null && _contentCanvas != null)
+            {
+                var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+                if (itemsControl != null)
+                {
+                    var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+                    // 如果容器已经生成，且有实际尺寸
+                    if (container != null && container.ActualWidth > 0 && container.ActualHeight > 0)
+                    {
+                        try
+                        {
+                            // 确保获取的是相对于 _transformTarget 的坐标（逻辑坐标）
+                            var pos = container.TranslatePoint(new Point(0, 0), _transformTarget);
+                            return new Rect(
+                                pos.X,
+                                pos.Y,
+                                container.ActualWidth,
+                                container.ActualHeight
+                            );
+                        }
+                        catch { }
+                    }
+                    // 如果容器未生成（可能刚添加），尝试在 ItemsControl 中查找
+                    else if (container == null)
+                    {
+                        // 强制更新布局可能导致死循环，所以这里尝试查找视觉树
+                        // 但通常 ItemContainerGenerator 在 OnItemsChanged 后应该能获取到 container
+                        // 如果获取不到，回退到数据绑定的位置
+                    }
+                }
+            }
+
+            // 回退：使用容器的 Canvas.Left/Top 或 Node.Position
+            double x = node.Position.X;
+            double y = node.Position.Y;
+            if (_contentCanvas != null)
+            {
+                var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+                if (itemsControl != null)
+                {
+                    var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+                    if (container != null)
+                    {
+                        var cx = Canvas.GetLeft(container);
+                        var cy = Canvas.GetTop(container);
+                        if (!double.IsNaN(cx)) x = cx;
+                        if (!double.IsNaN(cy)) y = cy;
+                    }
+                }
+            }
+
+            var width = node.Size.IsEmpty ? 220 : node.Size.Width;
+            var height = node.Size.IsEmpty ? 40 : node.Size.Height;
+
+            return new Rect(
+                x,
+                y,
+                width,
+                height
+            );
+        }
+
+        private enum PortSide
+        {
+            Top,
+            Bottom,
+            Left,
+            Right
+        }
+
+        private PortSide GetPortSide(Point port, Rect bounds)
+        {
+            var cx = bounds.Left + bounds.Width / 2;
+            var cy = bounds.Top + bounds.Height / 2;
+            var dx = port.X - cx;
+            var dy = port.Y - cy;
+            if (Math.Abs(dx) >= Math.Abs(dy))
+                return dx >= 0 ? PortSide.Right : PortSide.Left;
+            return dy >= 0 ? PortSide.Bottom : PortSide.Top;
+        }
+
+        /// <summary>
+        /// 基于端口相对节点中心的方向判断端口在哪一边
+        /// 使用归一化方向判断，确保端口方向准确
+        /// </summary>
+        private PortSide GetPortSideByDistance(Point port, Rect bounds)
+        {
+            // 计算节点中心
+            var cx = bounds.Left + bounds.Width / 2;
+            var cy = bounds.Top + bounds.Height / 2;
+
+            // 计算端口相对于中心的偏移
+            var dx = port.X - cx;
+            var dy = port.Y - cy;
+
+            // 归一化到节点尺寸，避免宽高比影响判断
+            var normalizedDx = dx / (bounds.Width / 2 + 0.0001); // 避免除零
+            var normalizedDy = dy / (bounds.Height / 2 + 0.0001);
+
+            // 基于归一化距离判断主方向
+            if (Math.Abs(normalizedDx) > Math.Abs(normalizedDy))
+            {
+                // 水平方向占主导
+                return normalizedDx > 0 ? PortSide.Right : PortSide.Left;
+            }
+            else
+            {
+                // 垂直方向占主导
+                return normalizedDy > 0 ? PortSide.Bottom : PortSide.Top;
+            }
+        }
+
+        private Point GetExpansionAlongSide(Point port, Rect bounds, double margin, PortSide side)
+        {
+            switch (side)
+            {
+                case PortSide.Top:
+                    // 上侧端口：外扩点在端口正上方，X保持不变，Y向上外扩
+                    return new Point(port.X, bounds.Top - margin);
+                    
+                case PortSide.Bottom:
+                    // 下侧端口：外扩点在端口正下方（或节点底部外），X保持不变，Y向下外扩
+                    return new Point(port.X, bounds.Bottom + margin);
+                    
+                case PortSide.Left:
+                    // 左侧端口：外扩点在端口正左方，Y保持不变，X向左外扩
+                    return new Point(bounds.Left - margin, port.Y);
+                    
+                case PortSide.Right:
+                default:
+                    // 右侧端口：外扩点在端口正右方，Y保持不变，X向右外扩
+                    return new Point(bounds.Right + margin, port.Y);
+            }
+        }
+
+        private bool IsSameValue(double a, double b) => Math.Abs(a - b) < 0.01;
+
+        private double Manhattan(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+
+        private bool IsSamePoint(Point a, Point b) => Math.Abs(a.X - b.X) < 0.01 && Math.Abs(a.Y - b.Y) < 0.01;
+
+        /// <summary>
+        /// 为折线终点构建箭头
+        /// </summary>
+        private Path BuildArrow(PointCollection points, Brush stroke)
+        {
+            if (points == null || points.Count < 2)
+                return null;
+
+            var end = points[^1];
+            var prev = points[^2];
+
+            var dx = end.X - prev.X;
+            var dy = end.Y - prev.Y;
+            var len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 0.0001) return null;
+
+            dx /= len;
+            dy /= len;
+
+            const double size = 10.0;
+            var back = new Point(end.X - dx * size, end.Y - dy * size);
+            var perpX = -dy;
+            var perpY = dx;
+
+            var p1 = end;
+            var p2 = new Point(back.X + perpX * (size / 2), back.Y + perpY * (size / 2));
+            var p3 = new Point(back.X - perpX * (size / 2), back.Y - perpY * (size / 2));
+
+            var geo = new StreamGeometry();
+            using (var ctx = geo.Open())
+            {
+                ctx.BeginFigure(p1, true, true);
+                ctx.LineTo(p2, true, false);
+                ctx.LineTo(p3, true, false);
+            }
+            geo.Freeze();
+
+            return new Path
+            {
+                Data = geo,
+                Fill = stroke,
+                Stroke = stroke,
+                StrokeThickness = 1,
+                IsHitTestVisible = false
+            };
+        }
+
+        #endregion
+
         #region 事件处理
 
         private void InitializeEventHandlers()
@@ -1015,6 +2336,9 @@ namespace Astra.UI.Controls
             // 使用 AddHandler 并启用 handledEventsToo，确保即使父级控件（如 ScrollViewer）
             // 已经处理了鼠标滚轮事件，InfiniteCanvas 仍然可以收到事件用于缩放
             AddHandler(MouseWheelEvent, new MouseWheelEventHandler(OnMouseWheel), true);
+            AddHandler(MouseLeftButtonDownEvent, new MouseButtonEventHandler(OnCanvasMouseLeftButtonDown), true);
+            AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnCanvasMouseLeftButtonUp), true);
+            AddHandler(MouseMoveEvent, new MouseEventHandler(OnCanvasMouseMove), true);
 
             PreviewMouseDown += OnPreviewMouseDown;
             PreviewMouseMove += OnPreviewMouseMove;
@@ -1263,7 +2587,7 @@ namespace Astra.UI.Controls
                 canvas._scaleTransform.ScaleX = (double)e.NewValue;
                 canvas._scaleTransform.ScaleY = (double)e.NewValue;
             }
-            
+
             // 重置节流时间，确保缩放改变时一定会更新网格
             canvas._lastGridUpdateTime = DateTime.MinValue;
             
@@ -1314,6 +2638,25 @@ namespace Astra.UI.Controls
             var canvas = (InfiniteCanvas)d;
             // 当内容变化时更新缩略图
             canvas.UpdateMinimap();
+            canvas.RefreshEdges();
+        }
+
+        private static void OnEdgeItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            if (canvas._edgeCollectionNotify != null)
+            {
+                canvas._edgeCollectionNotify.CollectionChanged -= canvas.OnEdgeCollectionChanged;
+                canvas._edgeCollectionNotify = null;
+            }
+
+            canvas._edgeCollectionNotify = e.NewValue as INotifyCollectionChanged;
+            if (canvas._edgeCollectionNotify != null)
+            {
+                canvas._edgeCollectionNotify.CollectionChanged += canvas.OnEdgeCollectionChanged;
+            }
+
+            canvas.RefreshEdges();
         }
 
         private static void OnMinimapCollapsedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -1693,6 +3036,189 @@ namespace Astra.UI.Controls
             }
 
             ClearSelection();
+        }
+
+        /// <summary>
+        /// 使用A*算法寻找避开障碍物的正交路径
+        /// </summary>
+        private List<Point> FindPathAStar(Point start, Point end, List<Rect> obstacles)
+        {
+            // 网格大小
+            double gridSize = 20.0;
+
+            // 启发式函数：曼哈顿距离
+            double Heuristic(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+
+            // 将点对齐到网格
+            Point Snap(Point p) => new Point(Math.Round(p.X / gridSize) * gridSize, Math.Round(p.Y / gridSize) * gridSize);
+
+            var startNode = Snap(start);
+            var targetNode = Snap(end);
+
+            var openSet = new PriorityQueue<Point, double>();
+            openSet.Enqueue(startNode, 0);
+
+            var cameFrom = new Dictionary<Point, Point>();
+            var gScore = new Dictionary<Point, double>();
+            gScore[startNode] = 0;
+
+            // 记录方向以惩罚转弯
+            var cameFromDir = new Dictionary<Point, Vector>();
+            cameFromDir[startNode] = new Vector(0, 0);
+
+            // 扩充障碍物区域，给予一点缓冲
+            var expandedObstacles = obstacles.Select(r => new Rect(r.X - 10, r.Y - 10, r.Width + 20, r.Height + 20)).ToList();
+
+            // 搜索边界 (限制搜索范围以提高性能)
+            double minX = Math.Min(startNode.X, targetNode.X);
+            double maxX = Math.Max(startNode.X, targetNode.X);
+            double minY = Math.Min(startNode.Y, targetNode.Y);
+            double maxY = Math.Max(startNode.Y, targetNode.Y);
+
+            // 确保边界包含起点和终点
+            minX = Math.Min(minX, Math.Min(start.X, end.X));
+            maxX = Math.Max(maxX, Math.Max(start.X, end.X));
+            minY = Math.Min(minY, Math.Min(start.Y, end.Y));
+            maxY = Math.Max(maxY, Math.Max(start.Y, end.Y));
+
+            // 如果有障碍物，扩展边界以允许绕路
+            if (obstacles.Count > 0)
+            {
+                foreach (var obs in expandedObstacles)
+                {
+                    // 简单的包含检查优化
+                    if (obs.Right < minX - 100 || obs.Left > maxX + 100 || obs.Bottom < minY - 100 || obs.Top > maxY + 100)
+                        continue;
+                        
+                    minX = Math.Min(minX, obs.Left);
+                    maxX = Math.Max(maxX, obs.Right);
+                    minY = Math.Min(minY, obs.Top);
+                    maxY = Math.Max(maxY, obs.Bottom);
+                }
+            }
+
+            // 增加额外的搜索边距
+            double margin = 100;
+            var searchBounds = new Rect(minX - margin, minY - margin, (maxX - minX) + margin * 2, (maxY - minY) + margin * 2);
+
+            // 仅允许正交方向
+            var directions = new[] { new Vector(gridSize, 0), new Vector(-gridSize, 0), new Vector(0, gridSize), new Vector(0, -gridSize) };
+
+            int maxSteps = 3000; // 防止无限循环
+            int steps = 0;
+
+            while (openSet.Count > 0 && steps++ < maxSteps)
+            {
+                var current = openSet.Dequeue();
+
+                if (Math.Abs(current.X - targetNode.X) < 1.0 && Math.Abs(current.Y - targetNode.Y) < 1.0)
+                {
+                    // 重建路径
+                    var path = new List<Point>();
+                    var curr = current;
+                    while (cameFrom.ContainsKey(curr))
+                    {
+                        path.Add(curr);
+                        curr = cameFrom[curr];
+                    }
+                    path.Add(start);
+                    path.Reverse();
+                    path.Add(end);
+
+                    // 简化路径（去除共线点），保证正交性
+                    // 由于网格搜索天生是正交的，但简化时要小心不要引入斜线（正常简化共线点不会引入斜线）
+                    if (path.Count > 2)
+                    {
+                        for (int i = path.Count - 2; i > 0; i--)
+                        {
+                            var p1 = path[i - 1];
+                            var p2 = path[i];
+                            var p3 = path[i + 1];
+
+                            // 检查三点共线
+                            // 注意：由于是网格点，浮点误差很小，可以直接判断坐标是否相等
+                            bool colinearX = Math.Abs(p1.X - p2.X) < 0.1 && Math.Abs(p2.X - p3.X) < 0.1;
+                            bool colinearY = Math.Abs(p1.Y - p2.Y) < 0.1 && Math.Abs(p2.Y - p3.Y) < 0.1;
+
+                            if (colinearX || colinearY)
+                            {
+                                path.RemoveAt(i);
+                            }
+                        }
+                    }
+                    
+                    // 再次确保所有线段都是正交的（A* 网格搜索本身应该保证这一点，但为了保险起见）
+                    // 如果存在非正交线段（例如起点/终点吸附到网格时引入的），需要插入中间点
+                    for (int i = 0; i < path.Count - 1; i++)
+                    {
+                        var p1 = path[i];
+                        var p2 = path[i + 1];
+                        if (Math.Abs(p1.X - p2.X) > 0.1 && Math.Abs(p1.Y - p2.Y) > 0.1)
+                        {
+                            // 发现斜线，插入中间拐点
+                            // 优先水平移动
+                            var mid = new Point(p2.X, p1.Y);
+                            path.Insert(i + 1, mid);
+                            i++; // 跳过新插入的点
+                        }
+                    }
+
+                    return path;
+                }
+
+                foreach (var dir in directions)
+                {
+                    var neighbor = new Point(current.X + dir.X, current.Y + dir.Y);
+
+                    // 检查边界
+                    if (!searchBounds.Contains(neighbor)) continue;
+
+                    // 检查障碍物
+                    bool collision = false;
+                    foreach (var obs in expandedObstacles)
+                    {
+                        if (obs.Contains(neighbor))
+                        {
+                            collision = true;
+                            break;
+                        }
+                    }
+                    if (collision) continue;
+
+                    // 计算代价
+                    double tentativeGScore = gScore[current] + gridSize;
+
+                    // 转弯惩罚
+                    if (cameFromDir.TryGetValue(current, out var prevDir))
+                    {
+                        if (prevDir.Length > 0 && (prevDir.X != dir.X || prevDir.Y != dir.Y))
+                        {
+                            tentativeGScore += gridSize * 0.5; // 转弯代价
+                        }
+                    }
+
+                    if (!gScore.ContainsKey(neighbor) || tentativeGScore < gScore[neighbor])
+                    {
+                        cameFrom[neighbor] = current;
+                        cameFromDir[neighbor] = dir;
+                        gScore[neighbor] = tentativeGScore;
+                        double fScore = tentativeGScore + Heuristic(neighbor, targetNode);
+                        openSet.Enqueue(neighbor, fScore);
+                    }
+                }
+            }
+
+            // 如果找不到路径，回退到正交折线连接
+            // A* 失败回退逻辑优化：保证回退路径也是正交的
+            var fallbackPath = new List<Point> { start };
+            
+            // 简单的中间点折线逻辑（与 BuildSimpleOrthogonalPath 类似）
+            var midX = (start.X + end.X) / 2;
+            fallbackPath.Add(new Point(midX, start.Y));
+            fallbackPath.Add(new Point(midX, end.Y));
+            
+            fallbackPath.Add(end);
+            return fallbackPath;
         }
 
         #endregion

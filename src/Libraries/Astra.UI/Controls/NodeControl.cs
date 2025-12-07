@@ -26,6 +26,7 @@ namespace Astra.UI.Controls
         private Point _dragStartMousePosition;  // 鼠标按下时的屏幕坐标（相对于 InfiniteCanvas）
         private Point _dragStartMousePositionRelative;  // 鼠标按下时相对于 NodeControl 的位置
         private Point2D _dragStartNodePosition;  // 拖拽开始时节点在画布坐标系中的位置
+        private Dictionary<string, Point2D> _selectedNodesInitialPositions; // 选中节点的初始位置（用于多选拖动）
         private InfiniteCanvas _parentCanvas;
         private DateTime _mouseDownTime;  // 鼠标按下的时间（用于长按检测，无需定时器）
         private ContentPresenter _contentPresenter;  // 缓存的 ContentPresenter 引用
@@ -302,6 +303,18 @@ namespace Astra.UI.Controls
 
         private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            _parentCanvas ??= FindParentCanvas(this);
+
+            // 如果点击在端口上，优先进入“连线”模式而不是拖拽
+            var hitPort = FindHitPort(e.OriginalSource as DependencyObject);
+            if (hitPort != null)
+            {
+                var node = DataContext as Astra.Core.Nodes.Models.Node;
+                _parentCanvas?.BeginConnection(node, hitPort);
+                e.Handled = true;
+                return;
+            }
+
             // 检查是否点击在按钮上，如果是则不允许拖拽
             if (e.OriginalSource is System.Windows.Controls.Button ||
                 e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase)
@@ -453,25 +466,80 @@ namespace Astra.UI.Controls
                 }
             }
             
-            // 如果正在拖拽，使用 RenderTransform 临时移动（流畅拖拽）
-            if (_isDragging && _dragTransform != null)
+            // 如果正在拖拽，直接更新节点位置（实时刷新连线）
+            if (_isDragging)
             {
-                // 将鼠标在屏幕坐标系中的偏移转换为画布坐标系中的偏移
-                // 这样无论当前缩放比例如何，节点在屏幕上的移动都能与鼠标保持一致
                 var canvasDeltaX = deltaX / _parentCanvas.Scale;
                 var canvasDeltaY = deltaY / _parentCanvas.Scale;
 
-                _dragTransform.X = canvasDeltaX;
-                _dragTransform.Y = canvasDeltaY;
-                
-                // 如果当前节点被选中，且有多选，则实时移动其他选中的节点
                 var currentNode = DataContext as Astra.Core.Nodes.Models.Node;
-                if (currentNode != null && currentNode.IsSelected && 
-                    _parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 1)
+                if (currentNode != null)
                 {
-                    UpdateOtherSelectedNodesTransform(canvasDeltaX, canvasDeltaY, currentNode);
+                    var newPos = new Point2D(_dragStartNodePosition.X + canvasDeltaX, _dragStartNodePosition.Y + canvasDeltaY);
+                    UpdateNodePosition(newPos);
+                    Canvas.SetLeft(_contentPresenter, newPos.X);
+                    Canvas.SetTop(_contentPresenter, newPos.Y);
+
+                    // 多选同步移动
+                    if (_parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 1)
+                    {
+                        foreach (var item in _parentCanvas.SelectedItems)
+                        {
+                            if (item is Astra.Core.Nodes.Models.Node node && node != currentNode)
+                            {
+                                // 从初始位置字典中获取原始位置
+                                if (_selectedNodesInitialPositions != null && _selectedNodesInitialPositions.TryGetValue(node.Id, out var initialPos))
+                                {
+                                    var newOtherPos = new Point2D(
+                                        initialPos.X + canvasDeltaX,
+                                        initialPos.Y + canvasDeltaY);
+                                        
+                                    // 更新位置
+                                    node.Position = newOtherPos;
+
+                                    var otherContainer = FindItemsControl(_parentCanvas)?
+                                        .ItemContainerGenerator.ContainerFromItem(node) as ContentPresenter;
+                                    if (otherContainer != null)
+                                    {
+                                        Canvas.SetLeft(otherContainer, newOtherPos.X);
+                                        Canvas.SetTop(otherContainer, newOtherPos.Y);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 实时刷新连线（连线会基于节点位置自动重新计算）
+                    // 优化：仅当拖动的是已连接的节点时才刷新连线
+                    // 检查当前移动的节点（或选中的其他节点）是否有关联的连线
+                    bool needRefresh = false;
+                    if (_parentCanvas.EdgeItemsSource != null)
+                    {
+                        var allEdges = _parentCanvas.EdgeItemsSource.OfType<Edge>().ToList();
+                        var movedNodes = new List<string> { currentNode.Id };
+                        
+                        if (_parentCanvas.SelectedItems != null)
+                        {
+                            foreach (var item in _parentCanvas.SelectedItems)
+                            {
+                                if (item is Astra.Core.Nodes.Models.Node node)
+                                    movedNodes.Add(node.Id);
+                            }
+                        }
+
+                        // 如果任何移动的节点是某条连线的起点或终点，则需要刷新
+                        if (allEdges.Any(edge => movedNodes.Contains(edge.SourceNodeId) || movedNodes.Contains(edge.TargetNodeId)))
+                        {
+                            needRefresh = true;
+                        }
+                    }
+
+                    if (needRefresh)
+                    {
+                        _parentCanvas.RefreshEdges();
+                    }
                 }
-                
+
                 e.Handled = true;
             }
         }
@@ -550,26 +618,19 @@ namespace Astra.UI.Controls
             
             _isDragging = true;
             Cursor = Cursors.Hand;
-            
-            // 初始化拖拽变换（仅用于视觉反馈，不影响数据绑定）
-            var transformGroup = _contentPresenter.RenderTransform as TransformGroup;
-            if (transformGroup == null)
+
+            // 记录所有选中节点的初始位置
+            _selectedNodesInitialPositions = new Dictionary<string, Point2D>();
+            if (_parentCanvas.SelectedItems != null)
             {
-                transformGroup = new TransformGroup();
-                _contentPresenter.RenderTransform = transformGroup;
+                foreach (var item in _parentCanvas.SelectedItems)
+                {
+                    if (item is Astra.Core.Nodes.Models.Node node)
+                    {
+                        _selectedNodesInitialPositions[node.Id] = node.Position;
+                    }
+                }
             }
-            
-            // 添加 TranslateTransform
-            _dragTransform = transformGroup.Children.OfType<TranslateTransform>().FirstOrDefault();
-            if (_dragTransform == null)
-            {
-                _dragTransform = new TranslateTransform();
-                transformGroup.Children.Add(_dragTransform);
-            }
-            
-            // 重置变换值
-            _dragTransform.X = 0;
-            _dragTransform.Y = 0;
         }
         
         private void EndDragging()
@@ -577,36 +638,26 @@ namespace Astra.UI.Controls
             if (_parentCanvas == null || _contentPresenter == null)
                 return;
 
-            // 计算最终位置（画布坐标系）
-            // 直接使用当前鼠标位置，避免因缩放/变换累积导致的偏差
-            var mouseScreenPoint = Mouse.GetPosition(_parentCanvas);
-            var mouseCanvasPoint = _parentCanvas.ScreenToCanvas(mouseScreenPoint);
+            // 使用与 OnPreviewMouseMove 相同的逻辑计算最终位置
+            // 这样可以避免计算方式不一致导致的跳变
+            var currentMousePosition = Mouse.GetPosition(_parentCanvas);
+            var deltaX = currentMousePosition.X - _dragStartMousePosition.X;
+            var deltaY = currentMousePosition.Y - _dragStartMousePosition.Y;
+            
+            var canvasDeltaX = deltaX / _parentCanvas.Scale;
+            var canvasDeltaY = deltaY / _parentCanvas.Scale;
 
-            // 鼠标在节点内部的相对位置在画布坐标系中与 NodeControl 的本地坐标一致
             var finalCanvasPosition = new Point2D(
-                mouseCanvasPoint.X - _dragStartMousePositionRelative.X,
-                mouseCanvasPoint.Y - _dragStartMousePositionRelative.Y
+                _dragStartNodePosition.X + canvasDeltaX, 
+                _dragStartNodePosition.Y + canvasDeltaY
             );
-
-            // 不做边界约束，允许自由拖动
-
-            // 清除当前节点的拖拽变换
-            if (_dragTransform != null && _contentPresenter.RenderTransform is TransformGroup transformGroup)
-            {
-                transformGroup.Children.Remove(_dragTransform);
-                if (transformGroup.Children.Count == 0)
-                {
-                    _contentPresenter.RenderTransform = null;
-                }
-            }
-            _dragTransform = null;
 
             // 获取当前节点
             var currentNode = DataContext as Astra.Core.Nodes.Models.Node;
 
             // 计算画布坐标系中的偏移量（用于多选移动）
-            var offsetX = finalCanvasPosition.X - _dragStartNodePosition.X;
-            var offsetY = finalCanvasPosition.Y - _dragStartNodePosition.Y;
+            var offsetX = canvasDeltaX;
+            var offsetY = canvasDeltaY;
 
             // 如果当前节点被选中，且有多选，则一起移动所有选中的节点
             if (currentNode != null &&
@@ -629,35 +680,24 @@ namespace Astra.UI.Controls
                         }
                         else
                         {
-                            // 其他选中节点：按偏移量平移
-                            var newPosition = new Point2D(
-                                selectedNode.Position.X + offsetX,
-                                selectedNode.Position.Y + offsetY
-                            );
-                            selectedNode.Position = newPosition;
-
-                            if (itemsControl != null)
+                            // 其他选中节点：从初始位置开始偏移
+                            if (_selectedNodesInitialPositions != null && _selectedNodesInitialPositions.TryGetValue(selectedNode.Id, out var initialPos))
                             {
-                                var container = itemsControl.ItemContainerGenerator.ContainerFromItem(selectedNode) as ContentPresenter;
-                                if (container != null)
-                                {
-                                    // 清除拖动过程中的临时变换
-                                    if (container.RenderTransform is TransformGroup otherTransformGroup)
-                                    {
-                                        var translateTransform = otherTransformGroup.Children.OfType<TranslateTransform>().FirstOrDefault();
-                                        if (translateTransform != null)
-                                        {
-                                            otherTransformGroup.Children.Remove(translateTransform);
-                                            if (otherTransformGroup.Children.Count == 0)
-                                            {
-                                                container.RenderTransform = null;
-                                            }
-                                        }
-                                    }
+                                var newPosition = new Point2D(
+                                    initialPos.X + offsetX,
+                                    initialPos.Y + offsetY
+                                );
+                                selectedNode.Position = newPosition;
 
-                                    // 更新最终位置
-                                    Canvas.SetLeft(container, newPosition.X);
-                                    Canvas.SetTop(container, newPosition.Y);
+                                if (itemsControl != null)
+                                {
+                                    var container = itemsControl.ItemContainerGenerator.ContainerFromItem(selectedNode) as ContentPresenter;
+                                    if (container != null)
+                                    {
+                                        // 更新最终位置
+                                        Canvas.SetLeft(container, newPosition.X);
+                                        Canvas.SetTop(container, newPosition.Y);
+                                    }
                                 }
                             }
                         }
@@ -671,6 +711,9 @@ namespace Astra.UI.Controls
                 Canvas.SetLeft(_contentPresenter, finalCanvasPosition.X);
                 Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
             }
+
+            // 更新连线
+            _parentCanvas?.RefreshEdges();
         }
         
         /// <summary>
@@ -1115,7 +1158,24 @@ namespace Astra.UI.Controls
                 System.Diagnostics.Debug.WriteLine($"[NodeControl] 更新节点位置失败: {ex.Message}");
             }
         }
-        
+
+        /// <summary>
+        /// 判断是否点在端口上（PortControl），返回命中的端口
+        /// </summary>
+        private FrameworkElement FindHitPort(DependencyObject source)
+        {
+            var current = source;
+            while (current != null)
+            {
+                if (current is PortControl)
+                {
+                    return current as FrameworkElement;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
         /// <summary>
         /// 查找父 ContentPresenter（节点被包裹在其中）
         /// </summary>
@@ -1132,6 +1192,7 @@ namespace Astra.UI.Controls
             }
             return null;
         }
+
         
         #endregion
     }
@@ -1145,6 +1206,38 @@ namespace Astra.UI.Controls
         {
             DefaultStyleKeyProperty.OverrideMetadata(typeof(PortControl),
                 new FrameworkPropertyMetadata(typeof(PortControl)));
+        }
+
+        /// <summary>
+        /// 端口唯一标识符
+        /// </summary>
+        public static readonly DependencyProperty PortIdProperty =
+            DependencyProperty.Register(
+                nameof(PortId),
+                typeof(string),
+                typeof(PortControl),
+                new PropertyMetadata(null));
+
+        public string PortId
+        {
+            get => (string)GetValue(PortIdProperty);
+            set => SetValue(PortIdProperty, value);
+        }
+
+        /// <summary>
+        /// 端口类型（Input/Output）
+        /// </summary>
+        public static readonly DependencyProperty PortTypeProperty =
+            DependencyProperty.Register(
+                nameof(PortType),
+                typeof(string),
+                typeof(PortControl),
+                new PropertyMetadata("Output"));
+
+        public string PortType
+        {
+            get => (string)GetValue(PortTypeProperty);
+            set => SetValue(PortTypeProperty, value);
         }
     }
 }

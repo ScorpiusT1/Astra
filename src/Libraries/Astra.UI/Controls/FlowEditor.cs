@@ -68,6 +68,16 @@ namespace Astra.UI.Controls
                 new PropertyMetadata(null, OnCanvasItemsSourceChanged));
 
         /// <summary>
+        /// 连线数据源
+        /// </summary>
+        public static readonly DependencyProperty EdgeItemsSourceProperty =
+            DependencyProperty.Register(
+                nameof(EdgeItemsSource),
+                typeof(IEnumerable),
+                typeof(FlowEditor),
+                new PropertyMetadata(null, OnEdgeItemsSourceChanged));
+
+        /// <summary>
         /// 工具箱宽度
         /// </summary>
         public static readonly DependencyProperty ToolBoxWidthProperty =
@@ -100,6 +110,15 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
+        /// 连线数据源
+        /// </summary>
+        public IEnumerable EdgeItemsSource
+        {
+            get => (IEnumerable)GetValue(EdgeItemsSourceProperty);
+            set => SetValue(EdgeItemsSourceProperty, value);
+        }
+
+        /// <summary>
         /// 工具箱宽度
         /// </summary>
         public double ToolBoxWidth
@@ -107,6 +126,15 @@ namespace Astra.UI.Controls
             get => (double)GetValue(ToolBoxWidthProperty);
             set => SetValue(ToolBoxWidthProperty, value);
         }
+
+        /// <summary>
+        /// 是否可撤销/重做（连线相关）
+        /// </summary>
+        public bool CanUndo => _undoRedoManager.CanUndo;
+        public bool CanRedo => _undoRedoManager.CanRedo;
+
+        public void Undo() => _undoRedoManager.Undo();
+        public void Redo() => _undoRedoManager.Redo();
 
         #endregion
 
@@ -117,6 +145,7 @@ namespace Astra.UI.Controls
         private ContextMenu _canvasContextMenu;  // 画布右键菜单
         private Window _hostWindow;
         private bool _windowEventsAttached;
+        private readonly UndoRedoManager _undoRedoManager = new UndoRedoManager();
 
         #endregion
 
@@ -454,6 +483,38 @@ namespace Astra.UI.Controls
                 }
             }
 
+            // 同步删除关联的连线
+            if (EdgeItemsSource is IList edgeList)
+            {
+                var removeIds = new HashSet<string>(
+                    itemsToDelete.OfType<Node>().Select(n => n.Id));
+
+                if (removeIds.Count > 0)
+                {
+                    var edgesToDelete = edgeList
+                        .Cast<object>()
+                        .OfType<Edge>()
+                        .Where(e => removeIds.Contains(e.SourceNodeId) || removeIds.Contains(e.TargetNodeId))
+                        .Cast<object>()
+                        .ToList();
+
+                    if (edgesToDelete.Count > 0)
+                    {
+                        if (_undoRedoManager != null)
+                        {
+                            _undoRedoManager.Do(new DeleteEdgeCommand(edgeList, edgesToDelete));
+                        }
+                        else
+                        {
+                            foreach (var edge in edgesToDelete)
+                            {
+                                edgeList.Remove(edge);
+                            }
+                        }
+                    }
+                }
+            }
+
             // 清除选中状态
             _infiniteCanvas.ClearSelection();
         }
@@ -769,6 +830,9 @@ namespace Astra.UI.Controls
                 {
                     _infiniteCanvas.SelectedItems = new System.Collections.ObjectModel.ObservableCollection<object>();
                 }
+
+                _infiniteCanvas.EdgeItemsSource = EdgeItemsSource;
+                _infiniteCanvas.UndoRedoManager = _undoRedoManager;
             }
         }
 
@@ -815,6 +879,26 @@ namespace Astra.UI.Controls
             if (editor._infiniteCanvas != null)
             {
                 editor._infiniteCanvas.ItemsSource = e.NewValue as IEnumerable;
+            }
+        }
+
+        private static void OnEdgeItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var editor = (FlowEditor)d;
+            if (editor._infiniteCanvas != null)
+            {
+                editor._infiniteCanvas.EdgeItemsSource = e.NewValue as IEnumerable;
+            }
+            else
+            {
+                // 如果模板部件还未加载，延迟到 ApplyDataSources 中处理
+                editor.Loaded += (s, args) =>
+                {
+                    if (editor._infiniteCanvas != null)
+                    {
+                        editor._infiniteCanvas.EdgeItemsSource = e.NewValue as IEnumerable;
+                    }
+                };
             }
         }
 
