@@ -1,5 +1,5 @@
 ﻿using Astra.UI.Adapters;
-using Astra.UI.Serivces;
+using Astra.UI.Services;
 using System;
 using System.Collections;
 using System.Collections.Generic;

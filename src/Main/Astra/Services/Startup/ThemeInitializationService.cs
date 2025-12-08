@@ -1,4 +1,4 @@
-using Astra.UI.Serivces;
+using Astra.UI.Services;
 using Astra.Utilities;
 using System;
 using System.Diagnostics;

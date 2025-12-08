@@ -538,6 +538,9 @@ namespace Astra.UI.Controls
                     {
                         _parentCanvas.RefreshEdges();
                     }
+                    
+                    // 🗺️ 请求更新小地图（带节流，避免性能问题）
+                    _parentCanvas.RequestMinimapUpdate();
                 }
 
                 e.Handled = true;

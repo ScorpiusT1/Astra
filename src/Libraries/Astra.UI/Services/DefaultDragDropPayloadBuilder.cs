@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace Astra.UI.Serivces
+namespace Astra.UI.Services
 {
     /// <summary>
     /// 默认拖拽数据构建器 - 构建向后兼容的拖拽数据格式

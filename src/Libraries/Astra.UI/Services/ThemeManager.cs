@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace Astra.UI.Serivces
+namespace Astra.UI.Services
 {
     /// <summary>
     /// 主题管理器（线程安全的单例）

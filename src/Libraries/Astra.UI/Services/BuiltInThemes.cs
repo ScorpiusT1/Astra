@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Astra.UI.Serivces
+namespace Astra.UI.Services
 {
     /// <summary>
     /// 内置主题定义

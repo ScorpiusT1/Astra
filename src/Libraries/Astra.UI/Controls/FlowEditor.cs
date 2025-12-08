@@ -1,4 +1,4 @@
-﻿using Astra.UI.Serivces;
+﻿using Astra.UI.Services;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
 using System;
