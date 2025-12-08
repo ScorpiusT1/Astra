@@ -736,6 +736,7 @@ namespace Astra.UI.Controls
         // 拖拽预览相关
         private Window _dragPreviewWindow;
         private ScaleTransform _dragPreviewScaleTransform;  // 预览窗口的缩放变换
+        private Border _dragPreviewBorder;  // 预览窗口的主边框（用于调整大小）
         private double _currentCanvasScale = 1.0;  // 当前画布缩放比例
         private IToolItem _currentDraggingTool;
         private bool _panelHitTestDisabled;
@@ -2061,6 +2062,8 @@ namespace Astra.UI.Controls
             _currentCanvasScale = initialScale;
             
             // 创建透明的顶层窗口
+            var baseWidth = 220.0;  // 基础宽度（与 NodeControl 一致）
+            var baseHeight = 40.0;   // 基础高度（与 NodeControl 一致）
             _dragPreviewWindow = new Window
             {
                 WindowStyle = WindowStyle.None,
@@ -2068,8 +2071,8 @@ namespace Astra.UI.Controls
                 Background = Brushes.Transparent,
                 ShowInTaskbar = false,
                 Topmost = true,
-                Width = 220,  // 与 NodeControl 宽度一致
-                Height = 40,  // 与 NodeControl 高度一致
+                Width = baseWidth * initialScale,
+                Height = baseHeight * initialScale,
                 Left = -10000,
                 Top = -10000,
                 IsHitTestVisible = false,
@@ -2077,23 +2080,24 @@ namespace Astra.UI.Controls
             };
             
             // 创建与 NodeControl 相同的样式
+            // 🔧 Border 保持基础尺寸，通过 ScaleTransform 缩放以保持样式一致性
             var mainBorder = new Border
             {
+                Width = baseWidth,    // 保持基础宽度
+                Height = baseHeight,  // 保持基础高度
                 Background = (Brush)TryFindResource("SurfaceBrush") ?? new SolidColorBrush(Colors.White),
                 CornerRadius = new CornerRadius(6),
-                Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    Color = (Color)(TryFindResource("ShadowColor") ?? Colors.Black),
-                    BlurRadius = 4,
-                    ShadowDepth = 1,
-                    Opacity = 0.2
-                },
-                RenderTransformOrigin = new Point(0, 0)  // 从左上角开始缩放
+                RenderTransformOrigin = new Point(0, 0)  // 从左上角缩放
             };
             
-            // 添加缩放变换
+            // 🔧 使用 LayoutTransform 进行缩放，保持字体、图标等样式的视觉一致性
             _dragPreviewScaleTransform = new ScaleTransform(initialScale, initialScale);
-            mainBorder.RenderTransform = _dragPreviewScaleTransform;
+            mainBorder.LayoutTransform = _dragPreviewScaleTransform;
+            
+            // 🔧 应用 BorderClipHelper 以正确裁剪圆角内容
+            Astra.UI.Helpers.BorderClipHelper.SetClipToBounds(mainBorder, true);
+            
+            _dragPreviewBorder = mainBorder;    // 保存引用用于后续调整
             
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });  // 图标区
@@ -2225,15 +2229,22 @@ namespace Astra.UI.Controls
             {
                 // 尝试通过查找 InfiniteCanvas 获取缩放比例
                 var scale = FindCanvasScale();
-                if (scale.HasValue && Math.Abs(scale.Value - _currentCanvasScale) > 0.01)
+                if (scale.HasValue)
                 {
-                    _currentCanvasScale = scale.Value;
-                    ApplyPreviewScale(scale.Value);
+                    // 🔧 降低阈值，使缩放更灵敏（0.01 -> 0.001）
+                    // 并且始终在找到缩放值时至少更新一次
+                    if (Math.Abs(scale.Value - _currentCanvasScale) > 0.001 || _currentCanvasScale == 1.0)
+                    {
+                        _currentCanvasScale = scale.Value;
+                        ApplyPreviewScale(scale.Value);
+                        System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 更新预览缩放: {scale.Value:F3}");
+                    }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 忽略错误，保持当前缩放
+                // 记录错误，帮助调试
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 更新预览缩放失败: {ex.Message}");
             }
         }
         
@@ -2251,13 +2262,23 @@ namespace Astra.UI.Controls
                     var canvas = FindVisualDescendant<InfiniteCanvas>(mainWindow);
                     if (canvas != null)
                     {
-                        return canvas.Scale;
+                        var scale = canvas.Scale;
+                        System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 找到画布缩放: {scale:F3}");
+                        return scale;
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("[NodeToolBox] 未找到 InfiniteCanvas");
                     }
                 }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[NodeToolBox] 主窗口为 null");
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // 忽略错误
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 查找画布缩放失败: {ex.Message}");
             }
             return null;
         }
@@ -2287,12 +2308,27 @@ namespace Astra.UI.Controls
         /// </summary>
         private void ApplyPreviewScale(double scale)
         {
-            if (_dragPreviewScaleTransform != null)
+            // 🔧 通过 ScaleTransform 缩放 Border，保持样式的视觉一致性
+            // Border 本身保持基础尺寸（220x40），通过变换缩放到画布比例
+            if (_dragPreviewWindow != null)
             {
-                _dragPreviewScaleTransform.ScaleX = scale;
-                _dragPreviewScaleTransform.ScaleY = scale;
+                var baseWidth = 220.0;  // 基础宽度
+                var baseHeight = 40.0;   // 基础高度
+                var scaledWidth = baseWidth * scale;
+                var scaledHeight = baseHeight * scale;
                 
-                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 应用拖拽预览缩放: {scale:F2}");
+                // 调整窗口大小以容纳缩放后的内容
+                _dragPreviewWindow.Width = scaledWidth;
+                _dragPreviewWindow.Height = scaledHeight;
+                
+                // 更新 ScaleTransform 以缩放 Border 内容
+                if (_dragPreviewScaleTransform != null)
+                {
+                    _dragPreviewScaleTransform.ScaleX = scale;
+                    _dragPreviewScaleTransform.ScaleY = scale;
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"[NodeToolBox] 应用拖拽预览缩放: {scale:F3}, 窗口大小: {scaledWidth:F1}x{scaledHeight:F1}");
             }
         }
         
@@ -2313,6 +2349,7 @@ namespace Astra.UI.Controls
                 _dragPreviewWindow = null;
             }
             _dragPreviewScaleTransform = null;
+            _dragPreviewBorder = null;
             _currentCanvasScale = 1.0;
         }
         

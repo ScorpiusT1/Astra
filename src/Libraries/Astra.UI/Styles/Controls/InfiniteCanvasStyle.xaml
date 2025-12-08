@@ -92,7 +92,7 @@
                               VerticalAlignment="Bottom"
                               Margin="12"
                               Panel.ZIndex="10"
-                              IsHitTestVisible="False"
+                              IsHitTestVisible="True"
                               Visibility="{TemplateBinding ShowMinimap, Converter={StaticResource BooleanToVisibilityConverter}}">
 
                             <!-- 展开状态的完整缩略图 -->
@@ -104,6 +104,8 @@
                                     BorderThickness="1"
                                     CornerRadius="4"
                                     IsHitTestVisible="True"
+                                    Focusable="True"
+                                    FocusVisualStyle="{x:Null}"
                                     Visibility="{Binding IsMinimapCollapsed, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource InvertedBooleanToVisibilityConverter}}">
 
                                 <!-- 阴影效果 -->
@@ -129,46 +131,129 @@
                                                        VerticalAlignment="Center"
                                                        Margin="8,0" />
 
-                                            <!-- 折叠按钮（最小化图标） -->
-                                            <Button x:Name="PART_MinimapCollapseButton"
-                                                    HorizontalAlignment="Right"
-                                                    Width="32"
-                                                    Height="32"
-                                                    Margin="4"
-                                                    Padding="0"
-                                                    Background="Transparent"
-                                                    BorderThickness="0"
-                                                    Cursor="Hand"
-                                                    ToolTip="折叠缩略图">
-                                                <Button.Content>
-                                                    <Path Data="M5 12h14"
-                                                          Stroke="{DynamicResource PrimaryTextBrush}"
-                                                          StrokeThickness="1.5"
-                                                          Stretch="Uniform"
-                                                          Width="12"
-                                                          Height="12"
-                                                          HorizontalAlignment="Center"
-                                                          VerticalAlignment="Center" />
-                                                </Button.Content>
-                                            </Button>
+                                            <StackPanel Orientation="Horizontal"
+                                                       HorizontalAlignment="Right">
+                                                <!-- 适应画布按钮 -->
+                                                <Button x:Name="PART_MinimapFitButton"
+                                                        Width="28"
+                                                        Height="28"
+                                                        Margin="2"
+                                                        Padding="0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Cursor="Hand"
+                                                        ToolTip="适应画布 (Fit to Screen)">
+                                                    <Button.Content>
+                                                        <Path Data="M4 4h4v4M20 4h-4v4M20 20h-4v-4M4 20h4v-4"
+                                                              Stroke="{DynamicResource PrimaryTextBrush}"
+                                                              StrokeThickness="1.5"
+                                                              Stretch="Uniform"
+                                                              Width="14"
+                                                              Height="14"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                                    </Button.Content>
+                                                </Button>
+
+                                                <!-- 折叠按钮（最小化图标） -->
+                                                <Button x:Name="PART_MinimapCollapseButton"
+                                                        Width="28"
+                                                        Height="28"
+                                                        Margin="2,2,4,2"
+                                                        Padding="0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Cursor="Hand"
+                                                        ToolTip="折叠缩略图">
+                                                    <Button.Content>
+                                                        <Path Data="M5 12h14"
+                                                              Stroke="{DynamicResource PrimaryTextBrush}"
+                                                              StrokeThickness="1.5"
+                                                              Stretch="Uniform"
+                                                              Width="12"
+                                                              Height="12"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                                    </Button.Content>
+                                                </Button>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
 
                                     <!-- 画布缩略图 -->
                                     <Canvas x:Name="PART_MinimapCanvas"
                                             Background="{DynamicResource BackgroundBrush}"
-                                            IsHitTestVisible="True">
-                                        <!-- 视口指示器 - 显示当前可见区域 -->
-                                        <Rectangle x:Name="PART_ViewportIndicator"
-                                                   Stroke="{DynamicResource PrimaryBrush}"
-                                                   StrokeThickness="2"
-                                                   Fill="{DynamicResource PrimaryBrush}"
-                                                   Opacity="0.3"
-                                                   Panel.ZIndex="100"
-                                                   IsHitTestVisible="False"
-                                                   Visibility="Visible"
-                                                   Width="20"
-                                                   Height="20" />
+                                            ClipToBounds="True"
+                                            IsHitTestVisible="True"
+                                            FocusVisualStyle="{x:Null}"
+                                            Focusable="True">
+                                        <!-- 右键菜单 -->
+                                        <Canvas.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="适应画布 (_F)"
+                                                          InputGestureText="Ctrl+0"
+                                                          x:Name="PART_MinimapContextFit">
+                                                    <MenuItem.Icon>
+                                                        <Path Data="M4 4h4v4M20 4h-4v4M20 20h-4v-4M4 20h4v-4"
+                                                              Stroke="{DynamicResource PrimaryTextBrush}"
+                                                              StrokeThickness="1.5"
+                                                              Stretch="Uniform"
+                                                              Width="14"
+                                                              Height="14" />
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <Separator />
+                                                <MenuItem Header="自动适应内容 (_A)"
+                                                          IsCheckable="True"
+                                                          IsChecked="{Binding PlacementTarget.DataContext.MinimapAutoFit, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay, FallbackValue=True}" />
+                                                <MenuItem Header="边界约束 (_B)"
+                                                          IsCheckable="True"
+                                                          IsChecked="{Binding PlacementTarget.DataContext.MinimapBoundaryConstraint, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay, FallbackValue=True}" />
+                                            </ContextMenu>
+                                        </Canvas.ContextMenu>
+                                        
+                                        <!-- 视口指示器 - 使用 Thumb 控件实现拖拽 -->
+                                        <Thumb x:Name="PART_ViewportIndicator"
+                                               Panel.ZIndex="1000"
+                                               Cursor="Hand"
+                                               Width="30"
+                                               Height="30"
+                                               Background="Transparent"
+                                               Opacity="1.0">
+                                            <Thumb.Template>
+                                                <ControlTemplate TargetType="Thumb">
+                                                    <Border x:Name="ThumbBorder"
+                                                            Background="{DynamicResource PrimaryBrush}"
+                                                            BorderBrush="{DynamicResource PrimaryBrush}"
+                                                            BorderThickness="3"
+                                                            CornerRadius="2"
+                                                            Opacity="0.25"
+                                                            IsHitTestVisible="True">
+                                                        <Border.Effect>
+                                                            <DropShadowEffect Color="{DynamicResource PrimaryColor}"
+                                                                              BlurRadius="8"
+                                                                              ShadowDepth="0"
+                                                                              Opacity="0.5" />
+                                                        </Border.Effect>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="ThumbBorder" Property="Opacity" Value="0.4"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsDragging" Value="True">
+                                                            <Setter TargetName="ThumbBorder" Property="Opacity" Value="0.6"/>
+                                                            <Setter Property="Cursor" Value="SizeAll"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Thumb.Template>
+                                            <Thumb.ToolTip>
+                                                <ToolTip Content="拖拽以移动视口" 
+                                                         FontWeight="Bold"
+                                                         Background="{DynamicResource InfoBrush}"
+                                                         Foreground="White"/>
+                                            </Thumb.ToolTip>
+                                        </Thumb>
                                     </Canvas>
                                 </DockPanel>
                             </Border>

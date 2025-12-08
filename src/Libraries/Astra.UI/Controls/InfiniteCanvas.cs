@@ -11,8 +11,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Data;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
+using HandyControl.Tools.Extension;
 
 namespace Astra.UI.Controls
 {
@@ -24,9 +26,10 @@ namespace Astra.UI.Controls
     [TemplatePart(Name = PART_AlignmentLayer, Type = typeof(Canvas))]
     [TemplatePart(Name = PART_MinimapContainer, Type = typeof(Border))]
     [TemplatePart(Name = PART_MinimapCanvas, Type = typeof(Canvas))]
-    [TemplatePart(Name = PART_ViewportIndicator, Type = typeof(Rectangle))]
+    [TemplatePart(Name = PART_ViewportIndicator, Type = typeof(System.Windows.Controls.Primitives.Thumb))]
     [TemplatePart(Name = PART_MinimapCollapseButton, Type = typeof(Button))]
     [TemplatePart(Name = PART_MinimapExpandButton, Type = typeof(Button))]
+    [TemplatePart(Name = PART_MinimapFitButton, Type = typeof(Button))]
     public class InfiniteCanvas : Control
     {
         private const string PART_ContentCanvas = "PART_ContentCanvas";
@@ -37,13 +40,14 @@ namespace Astra.UI.Controls
         private const string PART_ViewportIndicator = "PART_ViewportIndicator";
         private const string PART_MinimapCollapseButton = "PART_MinimapCollapseButton";
         private const string PART_MinimapExpandButton = "PART_MinimapExpandButton";
+        private const string PART_MinimapFitButton = "PART_MinimapFitButton";
 
         static InfiniteCanvas()
         {
             DefaultStyleKeyProperty.OverrideMetadata(
                 typeof(InfiniteCanvas),
                 new FrameworkPropertyMetadata(typeof(InfiniteCanvas)));
-            
+
             // 确保 InfiniteCanvas 可以获取焦点以接收鼠标滚轮事件
             FocusableProperty.OverrideMetadata(
                 typeof(InfiniteCanvas),
@@ -57,6 +61,54 @@ namespace Astra.UI.Controls
         public InfiniteCanvas()
         {
             SelectedItems ??= new ObservableCollection<object>();
+            
+            // 监听控件卸载事件以清理资源
+            Unloaded += OnInfiniteCanvasUnloaded;
+        }
+
+        /// <summary>
+        /// 控件卸载时清理资源
+        /// </summary>
+        private void OnInfiniteCanvasUnloaded(object sender, RoutedEventArgs e)
+        {
+            // 停止并清理定时器
+            if (_minimapUpdateTimer != null)
+            {
+                _minimapUpdateTimer.Stop();
+                _minimapUpdateTimer.Tick -= (s, ev) => UpdateMinimapThrottled();
+                _minimapUpdateTimer = null;
+            }
+
+            // 取消订阅布局更新事件
+            if (_contentCanvas != null)
+            {
+                _contentCanvas.LayoutUpdated -= OnContentCanvasLayoutUpdated;
+            }
+
+            // 取消订阅集合变化事件
+            if (_itemsCollectionNotify != null)
+            {
+                _itemsCollectionNotify.CollectionChanged -= OnItemsCollectionChanged;
+                _itemsCollectionNotify = null;
+            }
+
+            if (_edgeCollectionNotify != null)
+            {
+                _edgeCollectionNotify.CollectionChanged -= OnEdgeCollectionChanged;
+                _edgeCollectionNotify = null;
+            }
+
+            // 取消订阅所有节点的属性变化事件
+            if (ItemsSource != null)
+            {
+                foreach (var item in ItemsSource)
+                {
+                    if (item is System.ComponentModel.INotifyPropertyChanged notifyItem)
+                    {
+                        notifyItem.PropertyChanged -= OnNodePropertyChanged;
+                    }
+                }
+            }
         }
 
         #region 依赖属性 - 使用 DynamicResource
@@ -212,7 +264,13 @@ namespace Astra.UI.Controls
 
         public static readonly DependencyProperty ShowMinimapProperty =
             DependencyProperty.Register(nameof(ShowMinimap), typeof(bool), typeof(InfiniteCanvas),
-                new PropertyMetadata(true));
+                new PropertyMetadata(true, OnShowMinimapChanged));
+
+        private static void OnShowMinimapChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            canvas.UpdateMinimapVisibility();
+        }
 
         public bool ShowMinimap
         {
@@ -248,6 +306,32 @@ namespace Astra.UI.Controls
         {
             get => (bool)GetValue(IsMinimapCollapsedProperty);
             set => SetValue(IsMinimapCollapsedProperty, value);
+        }
+
+        /// <summary>
+        /// 小地图边界约束模式：true=限制视口在内容边界内，false=无限画布模式
+        /// </summary>
+        public static readonly DependencyProperty MinimapBoundaryConstraintProperty =
+            DependencyProperty.Register(nameof(MinimapBoundaryConstraint), typeof(bool), typeof(InfiniteCanvas),
+                new PropertyMetadata(true)); // 默认启用边界约束
+
+        public bool MinimapBoundaryConstraint
+        {
+            get => (bool)GetValue(MinimapBoundaryConstraintProperty);
+            set => SetValue(MinimapBoundaryConstraintProperty, value);
+        }
+
+        /// <summary>
+        /// 小地图自动适应模式：true=自动调整显示所有节点，false=固定比例
+        /// </summary>
+        public static readonly DependencyProperty MinimapAutoFitProperty =
+            DependencyProperty.Register(nameof(MinimapAutoFit), typeof(bool), typeof(InfiniteCanvas),
+                new PropertyMetadata(true, OnMinimapSettingsChanged));
+
+        public bool MinimapAutoFit
+        {
+            get => (bool)GetValue(MinimapAutoFitProperty);
+            set => SetValue(MinimapAutoFitProperty, value);
         }
 
         // ============ 数据源 ============
@@ -325,7 +409,7 @@ namespace Astra.UI.Controls
             get => (ModifierKeys)GetValue(PanModifierKeyProperty);
             set => SetValue(PanModifierKeyProperty, value);
         }
-        
+
         /// <summary>
         /// 是否启用框选功能
         /// </summary>
@@ -341,7 +425,7 @@ namespace Astra.UI.Controls
             get => (bool)GetValue(EnableBoxSelectionProperty);
             set => SetValue(EnableBoxSelectionProperty, value);
         }
-        
+
         /// <summary>
         /// 当前选中的项集合
         /// </summary>
@@ -387,10 +471,13 @@ namespace Astra.UI.Controls
         private ViewportState _state = new();
         private Border _minimapContainer;
         private Canvas _minimapCanvas;
-        private Rectangle _viewportIndicator;
+        private System.Windows.Controls.Primitives.Thumb _viewportIndicator;
         private Button _minimapCollapseButton;
         private Button _minimapExpandButton;
+        private Button _minimapFitButton;
         private bool _isNavigatingMinimap;
+        private bool _isDraggingViewportIndicator;  // 是否正在拖拽视口指示器
+        private Point _viewportIndicatorDragStart;  // 视口指示器拖拽起始点（小地图坐标）
         private FrameworkElement _transformTarget; // 专门用于承载缩放/平移变换的视觉元素
         private Canvas _edgeLayer;                // 连线层（在节点下方）
         private Canvas _connectionPreviewLayer;   // 临时连线层
@@ -400,19 +487,27 @@ namespace Astra.UI.Controls
         private FrameworkElement _connectionSourcePortElement;  // 保存源端口元素，用于获取端口ID
         private Point _connectionStartPoint;
         private INotifyCollectionChanged _edgeCollectionNotify;
+        private INotifyCollectionChanged _itemsCollectionNotify;
         private UndoRedoManager _undoRedoManager;
         private FrameworkElement _hoveredPort;  // 当前悬停的端口
         private const double PortSnapDistance = 30.0;  // 端口吸附距离（像素）
-        
+
         // 框选相关字段
         private bool _isBoxSelecting;
         private Point _selectionStartPoint;
         private Rectangle _selectionBox;
         private List<object> _selectedItems = new List<object>();
-        
+
         // 性能优化：节流控制
         private DateTime _lastGridUpdateTime = DateTime.MinValue;
         private const int GridUpdateThrottleMs = 16; // 约60fps
+        
+        // 小地图更新节流
+        private DateTime _lastMinimapUpdateTime = DateTime.MinValue;
+        private const int MinimapUpdateThrottleMs = 100; // 每100ms最多更新一次
+        private System.Windows.Threading.DispatcherTimer _minimapUpdateTimer;
+        private bool _suppressMinimapUpdateAfterDrag; // 拖拽结束后抑制一次小地图重算，防止跳回
+        private bool _minimapNeedsRecalc = true; // 小地图是否需要重算（内容/尺寸变化时置为 true）
 
         #endregion
 
@@ -422,32 +517,52 @@ namespace Astra.UI.Controls
         {
             base.OnApplyTemplate();
 
+            System.Diagnostics.Debug.WriteLine("=== [InfiniteCanvas] OnApplyTemplate 开始 ===");
+
             _contentCanvas = GetTemplateChild(PART_ContentCanvas) as Canvas;
             _gridLayer = GetTemplateChild(PART_GridLayer) as Canvas;
             _alignmentLayer = GetTemplateChild(PART_AlignmentLayer) as Canvas;
             _minimapContainer = GetTemplateChild(PART_MinimapContainer) as Border;
             _minimapCanvas = GetTemplateChild(PART_MinimapCanvas) as Canvas;
-            _viewportIndicator = GetTemplateChild(PART_ViewportIndicator) as Rectangle;
+            _viewportIndicator = GetTemplateChild(PART_ViewportIndicator) as System.Windows.Controls.Primitives.Thumb;
             _minimapCollapseButton = GetTemplateChild(PART_MinimapCollapseButton) as Button;
             _minimapExpandButton = GetTemplateChild(PART_MinimapExpandButton) as Button;
-            
+            _minimapFitButton = GetTemplateChild(PART_MinimapFitButton) as Button;
+
+            System.Diagnostics.Debug.WriteLine($"[InfiniteCanvas] 模板控件获取结果:");
+            System.Diagnostics.Debug.WriteLine($"  - _contentCanvas: {_contentCanvas != null}");
+            System.Diagnostics.Debug.WriteLine($"  - _minimapContainer: {_minimapContainer != null}");
+            System.Diagnostics.Debug.WriteLine($"  - _minimapCanvas: {_minimapCanvas != null}");
+            System.Diagnostics.Debug.WriteLine($"  - _viewportIndicator: {_viewportIndicator != null}");
+            System.Diagnostics.Debug.WriteLine($"  - ShowMinimap: {ShowMinimap}");
+            System.Diagnostics.Debug.WriteLine($"  - IsMinimapCollapsed: {IsMinimapCollapsed}");
+
+            // 清除 XAML 中可能存在的 Visibility 绑定，由代码完全接管控制权
+            // 避免 Binding 和 Code Behind 冲突导致的状态不一致（如缩小后无法还原）
+            if (_minimapContainer != null) BindingOperations.ClearBinding(_minimapContainer, VisibilityProperty);
+            if (_minimapExpandButton != null) BindingOperations.ClearBinding(_minimapExpandButton, VisibilityProperty);
+            if (_minimapCollapseButton != null) BindingOperations.ClearBinding(_minimapCollapseButton, VisibilityProperty);
+
+            // 初始化缩略图可见性
+            UpdateMinimapVisibility();
+
             // 获取框选矩形（如果模板中有）
             _selectionBox = GetTemplateChild("PART_SelectionBox") as Rectangle;
             if (_selectionBox != null)
             {
                 _selectionBox.Visibility = Visibility.Collapsed;
-            }            
+            }
 
             // 启用拖放功能
             AllowDrop = true;
             IsHitTestVisible = true;
-            
+
             // 订阅拖放事件（Preview 事件优先）
             PreviewDragEnter += OnInfiniteCanvasDragEnter;
             PreviewDragOver += OnInfiniteCanvasDragOver;
             PreviewDragLeave += OnInfiniteCanvasDragLeave;
             PreviewDrop += OnInfiniteCanvasDrop;
-            
+
             DragEnter += OnInfiniteCanvasDragEnter;
             DragOver += OnInfiniteCanvasDragOver;
             DragLeave += OnInfiniteCanvasDragLeave;
@@ -457,9 +572,9 @@ namespace Astra.UI.Controls
             {
                 // 确保内容画布启用拖放
                 _contentCanvas.AllowDrop = true;
-                
+
                 EnsureEdgeLayer();
-                
+
                 // 锁定真正承载缩放/平移的目标（只对内容做变换，不缩放命中区域）
                 ResolveTransformTarget();
 
@@ -468,22 +583,30 @@ namespace Astra.UI.Controls
                 _contentCanvas.PreviewDrop += OnContentCanvasDrop;
                 _contentCanvas.PreviewDragEnter += OnContentCanvasDragEnter;
                 _contentCanvas.PreviewDragLeave += OnContentCanvasDragLeave;
-                
+
                 _contentCanvas.DragOver += OnContentCanvasDragOver;
                 _contentCanvas.Drop += OnContentCanvasDrop;
                 _contentCanvas.DragEnter += OnContentCanvasDragEnter;
                 _contentCanvas.DragLeave += OnContentCanvasDragLeave;
-                
+
                 InitializeTransforms();
                 InitializeEventHandlers();
+                InitializeMinimapUpdateTimer();
             }
 
             if (_minimapCanvas != null && _viewportIndicator != null)
             {
+                System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 准备初始化小地图...");
                 InitializeMinimap();
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[InfiniteCanvas] ⚠️ 无法初始化小地图: _minimapCanvas={_minimapCanvas != null}, _viewportIndicator={_viewportIndicator != null}");
             }
 
             InitializeMinimapButtons();
+
+            System.Diagnostics.Debug.WriteLine("=== [InfiniteCanvas] OnApplyTemplate 完成 ===");
 
             // 延迟更新网格和缩略图，等待布局完成后再绘制
             Dispatcher.BeginInvoke(new Action(() =>
@@ -563,14 +686,152 @@ namespace Astra.UI.Controls
         {
             if (_minimapCanvas == null || _viewportIndicator == null) return;
 
-            // 为缩略图画布添加鼠标事件处理
-            _minimapCanvas.MouseLeftButtonDown += OnMinimapMouseDown;
+            System.Diagnostics.Debug.WriteLine("[小地图] 初始化小地图和视口指示器");
+
+            // 确保视口指示器的基本属性
+            _viewportIndicator.IsHitTestVisible = true;
+            _viewportIndicator.Focusable = true;
+            _viewportIndicator.Cursor = Cursors.Hand;
+            Panel.SetZIndex(_viewportIndicator, 1000);
+            
+            // 诊断：输出视口指示器的属性
+            System.Diagnostics.Debug.WriteLine($"[视口指示器] 属性检查:");
+            System.Diagnostics.Debug.WriteLine($"  - IsHitTestVisible: {_viewportIndicator.IsHitTestVisible}");
+            System.Diagnostics.Debug.WriteLine($"  - Focusable: {_viewportIndicator.Focusable}");
+            System.Diagnostics.Debug.WriteLine($"  - IsEnabled: {_viewportIndicator.IsEnabled}");
+            System.Diagnostics.Debug.WriteLine($"  - Visibility: {_viewportIndicator.Visibility}");
+          
+            System.Diagnostics.Debug.WriteLine($"  - Opacity: {_viewportIndicator.Opacity}");
+            System.Diagnostics.Debug.WriteLine($"  - Width x Height: {_viewportIndicator.Width} x {_viewportIndicator.Height}");
+            System.Diagnostics.Debug.WriteLine($"  - Parent: {_viewportIndicator.Parent?.GetType().Name ?? "null"}");
+
+            // 为小地图容器添加诊断事件
+            if (_minimapContainer != null)
+            {
+                _minimapContainer.PreviewMouseDown += (s, e) => {
+                    System.Diagnostics.Debug.WriteLine($"🟦 [小地图容器] PreviewMouseDown - Source: {e.OriginalSource?.GetType().Name}");
+                };
+                _minimapContainer.MouseDown += (s, e) => {
+                    System.Diagnostics.Debug.WriteLine($"🟦 [小地图容器] MouseDown - Source: {e.OriginalSource?.GetType().Name}");
+                };
+            }
+
+            // 为缩略图画布添加鼠标事件处理（点击空白区域快速跳转）
+            _minimapCanvas.MouseEnter += (s, e) => System.Diagnostics.Debug.WriteLine("✨ [小地图] 鼠标进入小地图区域");
+            _minimapCanvas.MouseLeave += (s, e) => System.Diagnostics.Debug.WriteLine("⬅️ [小地图] 鼠标离开小地图区域");
+            
+            // 🔧 使用 AddHandler 强制捕获小地图点击事件，在 Preview 阶段就处理（优先于视口指示器）
+            _minimapCanvas.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, 
+                new MouseButtonEventHandler(OnMinimapMouseDown), handledEventsToo: true);
             _minimapCanvas.MouseLeftButtonUp += OnMinimapMouseUp;
             _minimapCanvas.MouseMove += OnMinimapMouseMove;
-            _minimapCanvas.MouseLeave += OnMinimapMouseLeave;
             
+            // MouseLeave 没有 Preview 版本，使用普通事件
+            _minimapCanvas.MouseLeave += OnMinimapMouseLeave;
+
+            // 🔒 冗余保护：即使事件被提前标记为 Handled 也要捕获
+            _minimapCanvas.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((s, e) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"📍 [小地图画布-AddHandler] PreviewMouseLeftButtonDown - Source: {e.OriginalSource?.GetType().Name}, Handled={e.Handled}");
+            }), true);
+            _minimapCanvas.AddHandler(UIElement.MouseLeftButtonDownEvent, new MouseButtonEventHandler((s, e) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"📍 [小地图画布-AddHandler] MouseLeftButtonDown - Source: {e.OriginalSource?.GetType().Name}, Handled={e.Handled}");
+            }), true);
+            
+            // 视口指示器进入/离开事件
+            _viewportIndicator.MouseEnter += (s, e) => System.Diagnostics.Debug.WriteLine("🎯 [视口指示器-Thumb] 鼠标进入视口指示器");
+            _viewportIndicator.MouseLeave += (s, e) => System.Diagnostics.Debug.WriteLine("⬅️ [视口指示器-Thumb] 鼠标离开视口指示器");
+            
+            // 使用 Thumb 的专用拖拽事件（保留作为备用）
+            _viewportIndicator.DragStarted += OnViewportIndicatorDragStarted;
+            _viewportIndicator.DragDelta += OnViewportIndicatorDragDelta;
+            _viewportIndicator.DragCompleted += OnViewportIndicatorDragCompleted;
+            
+            // 🔧 手动实现拖拽：使用 AddHandler 强制捕获所有事件（即使已被标记 Handled）
+            _viewportIndicator.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, 
+                new MouseButtonEventHandler(OnViewportIndicatorMouseLeftButtonDown), handledEventsToo: true);
+            _viewportIndicator.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent, 
+                new MouseButtonEventHandler(OnViewportIndicatorMouseLeftButtonUp), handledEventsToo: true);
+            _viewportIndicator.AddHandler(UIElement.PreviewMouseMoveEvent, 
+                new MouseEventHandler(OnViewportIndicatorMouseMove), handledEventsToo: true);
+            
+            // 滚轮缩放
+            _viewportIndicator.MouseWheel += OnViewportIndicatorMouseWheel;
+
+            // 测试：添加任意鼠标按下事件
+            _viewportIndicator.PreviewMouseDown += (s, e) => {
+                System.Diagnostics.Debug.WriteLine($"🔍 [视口指示器-Thumb] PreviewMouseDown - 按钮: {e.ChangedButton}, 状态: {e.ButtonState}");
+            };
+            _viewportIndicator.MouseDown += (s, e) => {
+                System.Diagnostics.Debug.WriteLine($"🔍 [视口指示器-Thumb] MouseDown - 按钮: {e.ChangedButton}, 状态: {e.ButtonState}");
+            };
+
+            // 🔒 冗余保护：捕获被标记 Handled 的鼠标事件
+            _viewportIndicator.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((s, e) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"🔒 [视口指示器-Thumb] AddHandler PreviewMouseLeftButtonDown - Source: {e.OriginalSource?.GetType().Name}, Handled={e.Handled}");
+            }), true);
+            _viewportIndicator.AddHandler(UIElement.MouseLeftButtonDownEvent, new MouseButtonEventHandler((s, e) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"🔒 [视口指示器-Thumb] AddHandler MouseLeftButtonDown - Source: {e.OriginalSource?.GetType().Name}, Handled={e.Handled}");
+            }), true);
+
+            System.Diagnostics.Debug.WriteLine("[小地图] 视口指示器事件已绑定（Preview + 普通事件）");
+
+            // 🔴 调试测试：创建一个简单的测试矩形
+            var testRect = new Rectangle
+            {
+                Width = 50,
+                Height = 50,
+                Fill = Brushes.Red,
+                Opacity = 0.5,
+                IsHitTestVisible = true,
+                Cursor = Cursors.Hand
+            };
+            Canvas.SetLeft(testRect, 10);
+            Canvas.SetTop(testRect, 10);
+            Canvas.SetZIndex(testRect, 2000);
+            
+            testRect.PreviewMouseDown += (s, e) => {
+                System.Diagnostics.Debug.WriteLine("🔴 [测试矩形] PreviewMouseDown - 成功！");
+            };
+            testRect.MouseDown += (s, e) => {
+                System.Diagnostics.Debug.WriteLine("🔴 [测试矩形] MouseDown - 成功！");
+            };
+            
+            _minimapCanvas.Children.Add(testRect);
+            System.Diagnostics.Debug.WriteLine("🔴 [测试] 红色测试矩形已添加到小地图左上角");
+            System.Diagnostics.Debug.WriteLine($"🔴 [测试] 小地图画布子元素数量: {_minimapCanvas.Children.Count}");
+            System.Diagnostics.Debug.WriteLine($"🔴 [测试] 小地图画布属性:");
+            System.Diagnostics.Debug.WriteLine($"  - ActualWidth x ActualHeight: {_minimapCanvas.ActualWidth} x {_minimapCanvas.ActualHeight}");
+            System.Diagnostics.Debug.WriteLine($"  - IsHitTestVisible: {_minimapCanvas.IsHitTestVisible}");
+            System.Diagnostics.Debug.WriteLine($"  - IsEnabled: {_minimapCanvas.IsEnabled}");
+            System.Diagnostics.Debug.WriteLine($"  - Visibility: {_minimapCanvas.Visibility}");
+            
+            // 检查小地图容器
+            if (_minimapContainer != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"🔴 [测试] 小地图容器属性:");
+                System.Diagnostics.Debug.WriteLine($"  - ActualWidth x ActualHeight: {_minimapContainer.ActualWidth} x {_minimapContainer.ActualHeight}");
+                System.Diagnostics.Debug.WriteLine($"  - IsHitTestVisible: {_minimapContainer.IsHitTestVisible}");
+                System.Diagnostics.Debug.WriteLine($"  - IsEnabled: {_minimapContainer.IsEnabled}");
+                System.Diagnostics.Debug.WriteLine($"  - Visibility: {_minimapContainer.Visibility}");
+            }
+
             // 监听布局更新，确保视口指示器正确显示
             _minimapCanvas.LayoutUpdated += (s, e) => UpdateViewportIndicator();
+
+            // 绑定右键菜单的适应画布事件
+            if (_minimapCanvas.ContextMenu != null)
+            {
+                var fitMenuItem = _minimapCanvas.ContextMenu.Items.OfType<MenuItem>()
+                    .FirstOrDefault(m => m.Name == "PART_MinimapContextFit");
+                if (fitMenuItem != null)
+                {
+                    fitMenuItem.Click += (s, e) => FitToScreen();
+                }
+            }
         }
 
         private void InitializeMinimapButtons()
@@ -586,6 +847,80 @@ namespace Astra.UI.Controls
             {
                 _minimapExpandButton.Click += (s, e) => IsMinimapCollapsed = false;
             }
+
+            // 适应画布按钮
+            if (_minimapFitButton != null)
+            {
+                _minimapFitButton.Click += (s, e) => FitToScreen();
+            }
+        }
+
+        /// <summary>
+        /// 初始化小地图更新定时器（用于拖动节点时的实时更新）
+        /// </summary>
+        private void InitializeMinimapUpdateTimer()
+        {
+            // 创建定时器，用于在拖动等操作时定期更新小地图
+            _minimapUpdateTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(MinimapUpdateThrottleMs)
+            };
+            _minimapUpdateTimer.Tick += (s, e) =>
+            {
+                // 定时器触发时更新小地图
+                UpdateMinimapThrottled();
+            };
+
+            // 监听内容画布的布局更新（节点拖动时会触发）
+            if (_contentCanvas != null)
+            {
+                _contentCanvas.LayoutUpdated += OnContentCanvasLayoutUpdated;
+            }
+        }
+
+        /// <summary>
+        /// 内容画布布局更新时的回调（节点拖动、大小变化等会触发）
+        /// </summary>
+        private void OnContentCanvasLayoutUpdated(object sender, EventArgs e)
+        {
+            // 启动或重置定时器（防止频繁更新）
+            if (!_minimapUpdateTimer.IsEnabled)
+            {
+                _minimapUpdateTimer.Start();
+            }
+        }
+
+        /// <summary>
+        /// 带节流的小地图更新（避免频繁刷新）
+        /// </summary>
+        private void UpdateMinimapThrottled()
+        {
+            var now = DateTime.Now;
+            if ((now - _lastMinimapUpdateTime).TotalMilliseconds < MinimapUpdateThrottleMs)
+            {
+                return;
+            }
+
+            _lastMinimapUpdateTime = now;
+            
+            // 停止定时器直到下次布局更新
+            _minimapUpdateTimer.Stop();
+
+            // 更新小地图和视口指示器
+            UpdateMinimap();
+            UpdateViewportIndicator();
+        }
+
+        /// <summary>
+        /// 强制立即更新小地图（忽略节流，用于重要操作后的立即刷新）
+        /// </summary>
+        public void ForceUpdateMinimap()
+        {
+            _suppressMinimapUpdateAfterDrag = false;
+            _minimapNeedsRecalc = true;
+            _lastMinimapUpdateTime = DateTime.MinValue;
+            UpdateMinimap();
+            UpdateViewportIndicator();
         }
 
         #endregion
@@ -713,6 +1048,55 @@ namespace Astra.UI.Controls
             PanY += deltaY;
         }
 
+        /// <summary>
+        /// 适应画布：自动调整视图使所有节点可见
+        /// </summary>
+        public void FitToScreen()
+        {
+            if (ItemsSource == null || ActualWidth <= 0 || ActualHeight <= 0)
+                return;
+
+            var bounds = GetContentBounds();
+            if (bounds.IsEmpty)
+            {
+                // 没有内容时重置到默认视图
+                ResetView();
+                return;
+            }
+
+            // 添加边距（10%）
+            const double marginPercent = 0.1;
+            var marginX = bounds.Width * marginPercent;
+            var marginY = bounds.Height * marginPercent;
+            var paddedBounds = new Rect(
+                bounds.X - marginX,
+                bounds.Y - marginY,
+                bounds.Width + marginX * 2,
+                bounds.Height + marginY * 2
+            );
+
+            // 计算缩放比例以适应视口
+            var scaleX = ActualWidth / paddedBounds.Width;
+            var scaleY = ActualHeight / paddedBounds.Height;
+            var targetScale = Math.Min(scaleX, scaleY);
+
+            // 限制缩放范围
+            targetScale = Math.Max(MinScale, Math.Min(MaxScale, targetScale));
+
+            // 计算居中位置
+            var centerX = paddedBounds.Left + paddedBounds.Width / 2;
+            var centerY = paddedBounds.Top + paddedBounds.Height / 2;
+
+            // 设置缩放和平移
+            Scale = targetScale;
+            PanX = ActualWidth / 2 - centerX * targetScale;
+            PanY = ActualHeight / 2 - centerY * targetScale;
+
+            // 立即更新小地图
+            UpdateMinimap();
+            UpdateViewportIndicator();
+        }
+
         #endregion
 
         #region 网格绘制（动态使用 GridBrush）
@@ -723,7 +1107,7 @@ namespace Astra.UI.Controls
 
             var width = ActualWidth;
             var height = ActualHeight;
-            
+
             // 如果尺寸无效，跳过绘制（但不启用节流，允许下次重试）
             if (width <= 0 || height <= 0)
                 return;
@@ -732,7 +1116,7 @@ namespace Astra.UI.Controls
             var now = DateTime.Now;
             if ((now - _lastGridUpdateTime).TotalMilliseconds < GridUpdateThrottleMs)
                 return;
-            
+
             _lastGridUpdateTime = now;
 
             _gridLayer.Children.Clear();
@@ -840,21 +1224,65 @@ namespace Astra.UI.Controls
         #region 缩略图功能
 
         /// <summary>
-        /// 更新缩略图 - 显示画布上所有内容的缩小版
+        /// 更新缩略图 - 显示画布上所有内容的缩小版（重构版）
         /// </summary>
         private void UpdateMinimap()
         {
-            if (_minimapCanvas == null || !ShowMinimap || _contentCanvas == null || IsMinimapCollapsed) return;
+            if (_minimapCanvas == null || !ShowMinimap || _contentCanvas == null || IsMinimapCollapsed) 
+                return;
+
+            // 拖拽后的一次性抑制：避免拖拽刚结束时定时器/布局触发的重新计算导致跳回
+            if (_suppressMinimapUpdateAfterDrag)
+            {
+                System.Diagnostics.Debug.WriteLine("⏸️ [UpdateMinimap] 拖拽结束后抑制一次更新");
+                _suppressMinimapUpdateAfterDrag = false;
+                return;
+            }
+
+            // 🔒 拖动视口指示器期间，禁止更新小地图（避免 contentBounds/scale 被重新计算导致位置跳动）
+            if (_isDraggingViewportIndicator)
+            {
+                System.Diagnostics.Debug.WriteLine("⏸️ [UpdateMinimap] 拖动期间跳过更新");
+                return;
+            }
+
+            // 如果当前不需要重算（内容无变化），直接返回，避免重新计算边界导致指示器跳回
+            if (!_minimapNeedsRecalc)
+            {
+                return;
+            }
 
             _minimapCanvas.Children.Clear();
+
+            // 重新添加视口指示器（因为 Clear() 会将其移除）
+            RestoreViewportIndicatorToMinimap();
 
             // 计算画布内容的边界
             var contentBounds = GetContentBounds();
 
+            // 处理空内容：使用当前视口为参考，确保 _minimapContentBounds/_minimapScale 有值
+            if (!MinimapAutoFit || contentBounds.IsEmpty)
+            {
+                // 使用当前视口区域作为小地图参考
+                var viewportWidth = Math.Max(ActualWidth / Math.Max(Scale, 0.0001), 2000);
+                var viewportHeight = Math.Max(ActualHeight / Math.Max(Scale, 0.0001), 2000);
+                var viewportCenterX = -PanX / Math.Max(Scale, 0.0001) + viewportWidth / 2;
+                var viewportCenterY = -PanY / Math.Max(Scale, 0.0001) + viewportHeight / 2;
+                
+                contentBounds = new Rect(
+                    viewportCenterX - viewportWidth,
+                    viewportCenterY - viewportHeight,
+                    viewportWidth * 2,
+                    viewportHeight * 2
+                );
+            }
+
+            // 若仍为空（极端情况），使用默认大区域
             if (contentBounds.IsEmpty)
             {
-                UpdateViewportIndicator();
-                return;
+                var mainWidth = Math.Max(ActualWidth, 2000);
+                var mainHeight = Math.Max(ActualHeight, 2000);
+                contentBounds = new Rect(-mainWidth / 2, -mainHeight / 2, mainWidth, mainHeight);
             }
 
             // 计算缩放比例以适应缩略图
@@ -867,54 +1295,7 @@ namespace Astra.UI.Controls
             // 绘制缩略图内容
             if (ItemsSource != null)
             {
-                var contentBrush = TryFindResource("PrimaryBrush") as Brush ?? Brushes.Blue;
-                foreach (var item in ItemsSource)
-                {
-                    if (item is FrameworkElement element)
-                    {
-                        var x = Canvas.GetLeft(element);
-                        var y = Canvas.GetTop(element);
-                        if (double.IsNaN(x)) x = 0;
-                        if (double.IsNaN(y)) y = 0;
-
-                        var minimapRect = new Rectangle
-                        {
-                            Width = Math.Max(element.ActualWidth * minimapScale, 2),
-                            Height = Math.Max(element.ActualHeight * minimapScale, 2),
-                            Fill = contentBrush,
-                            Opacity = 0.6
-                        };
-
-                        Canvas.SetLeft(minimapRect, (x - contentBounds.Left) * minimapScale);
-                        Canvas.SetTop(minimapRect, (y - contentBounds.Top) * minimapScale);
-
-                        _minimapCanvas.Children.Add(minimapRect);
-                    }
-                    else if (item is DependencyObject depObj)
-                    {
-                        // 尝试从绑定中获取位置
-                        var xProp = depObj.GetType().GetProperty("X");
-                        var yProp = depObj.GetType().GetProperty("Y");
-                        if (xProp != null && yProp != null)
-                        {
-                            var x = Convert.ToDouble(xProp.GetValue(depObj) ?? 0);
-                            var y = Convert.ToDouble(yProp.GetValue(depObj) ?? 0);
-
-                            var minimapRect = new Rectangle
-                            {
-                                Width = 4,
-                                Height = 4,
-                                Fill = contentBrush,
-                                Opacity = 0.6
-                            };
-
-                            Canvas.SetLeft(minimapRect, (x - contentBounds.Left) * minimapScale);
-                            Canvas.SetTop(minimapRect, (y - contentBounds.Top) * minimapScale);
-
-                            _minimapCanvas.Children.Add(minimapRect);
-                        }
-                    }
-                }
+                DrawMinimapContent(contentBounds, minimapScale);
             }
 
             // 存储缩放信息用于导航
@@ -923,14 +1304,173 @@ namespace Astra.UI.Controls
 
             // 立即更新视口指示器
             UpdateViewportIndicator();
+
+            // 完成一次重算，标记为已处理
+            _minimapNeedsRecalc = false;
+        }
+
+        /// <summary>
+        /// 恢复视口指示器到小地图画布
+        /// </summary>
+        private void RestoreViewportIndicatorToMinimap()
+        {
+            if (_viewportIndicator == null || _minimapCanvas == null) return;
+
+            // 确保指示器不在小地图的子元素中
+            if (_minimapCanvas.Children.Contains(_viewportIndicator))
+            {
+                // 已经在了，无需重新添加
+                return;
+            }
+
+            // 如果指示器还在其他父容器中，先移除
+            try
+            {
+                if (_viewportIndicator.Parent is Panel parent)
+                {
+                    parent.Children.Remove(_viewportIndicator);
+                }
+            }
+            catch { }
+
+            // 添加到小地图画布（作为最后一个子元素，确保在最上层）
+            _minimapCanvas.Children.Add(_viewportIndicator);
+            
+            // 确保 Z-Index 最高
+            Panel.SetZIndex(_viewportIndicator, 1000);
+            
+            // 确保可以接收鼠标事件
+            _viewportIndicator.IsHitTestVisible = true;
+        }
+
+        /// <summary>
+        /// 绘制小地图内容
+        /// </summary>
+        private void DrawMinimapContent(Rect contentBounds, double minimapScale)
+        {
+            var contentBrush = TryFindResource("PrimaryBrush") as Brush ?? Brushes.Blue;
+            var itemsControl = _contentCanvas?.Children.OfType<ItemsControl>().FirstOrDefault();
+
+            foreach (var item in ItemsSource)
+            {
+                var nodeDimensions = GetItemDimensions(item, itemsControl);
+                if (!nodeDimensions.HasValue) 
+                    continue;
+
+                var (x, y, width, height) = nodeDimensions.Value;
+
+                var minimapRect = new Rectangle
+                {
+                    Width = Math.Max(width * minimapScale, 2),
+                    Height = Math.Max(height * minimapScale, 2),
+                    Fill = contentBrush,
+                    Opacity = 0.6,
+                    IsHitTestVisible = false,
+                    RadiusX = 2,
+                    RadiusY = 2
+                };
+
+                Canvas.SetLeft(minimapRect, (x - contentBounds.Left) * minimapScale);
+                Canvas.SetTop(minimapRect, (y - contentBounds.Top) * minimapScale);
+
+                _minimapCanvas.Children.Add(minimapRect);
+            }
+        }
+
+        /// <summary>
+        /// 获取项目的尺寸和位置（统一处理）
+        /// 优先使用 UI 容器的实际位置，这样在拖动节点时能获取实时位置
+        /// </summary>
+        private (double x, double y, double width, double height)? GetItemDimensions(object item, ItemsControl itemsControl)
+        {
+            double x = 0, y = 0, width = 0, height = 0;
+            bool hasDimensions = false;
+
+            // 1. 优先从 UI 容器获取（最准确，包含拖动中的实时位置）
+            if (itemsControl != null)
+            {
+                var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item) as FrameworkElement;
+                if (container != null && container.ActualWidth > 0 && container.ActualHeight > 0)
+                {
+                    // 优先使用 Canvas.Left/Top（拖动时会实时更新这些附加属性）
+                    var left = Canvas.GetLeft(container);
+                    var top = Canvas.GetTop(container);
+                    
+                    if (!double.IsNaN(left) && !double.IsNaN(top))
+                    {
+                        x = left;
+                        y = top;
+                    }
+                    else if (_transformTarget != null)
+                    {
+                        // 回退：使用 TranslatePoint 获取相对于 transformTarget 的逻辑坐标
+                        try
+                        {
+                            var pos = container.TranslatePoint(new Point(0, 0), _transformTarget);
+                            x = pos.X;
+                            y = pos.Y;
+                        }
+                        catch 
+                        { 
+                            // 如果失败，继续尝试 contentCanvas
+                            if (_contentCanvas != null)
+                            {
+                                try
+                                {
+                                    var pos = container.TranslatePoint(new Point(0, 0), _contentCanvas);
+                                    x = pos.X;
+                                    y = pos.Y;
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    
+                    width = container.ActualWidth;
+                    height = container.ActualHeight;
+                    hasDimensions = true;
+                }
+            }
+
+            // 2. 回退到数据模型属性（当容器尚未生成或不可用时）
+            if (!hasDimensions)
+            {
+                if (item is Node node)
+                {
+                    width = node.Size.IsEmpty ? 220 : node.Size.Width;
+                    height = node.Size.IsEmpty ? 40 : node.Size.Height;
+                    x = node.Position.X;
+                    y = node.Position.Y;
+                    hasDimensions = true;
+                }
+                else if (item is FrameworkElement element)
+                {
+                    width = element.ActualWidth > 0 ? element.ActualWidth : element.Width;
+                    height = element.ActualHeight > 0 ? element.ActualHeight : element.Height;
+                    if (double.IsNaN(width)) width = 50;
+                    if (double.IsNaN(height)) height = 50;
+                    
+                    var left = Canvas.GetLeft(element);
+                    var top = Canvas.GetTop(element);
+                    x = double.IsNaN(left) ? 0 : left;
+                    y = double.IsNaN(top) ? 0 : top;
+                    hasDimensions = true;
+                }
+            }
+
+            return hasDimensions ? (x, y, width, height) : ((double, double, double, double)?)null;
         }
 
         /// <summary>
         /// 更新视口指示器 - 高亮显示当前可见区域
         /// </summary>
-        private void UpdateViewportIndicator()
+        private void UpdateViewportIndicator(bool allowDuringDrag = false)
         {
-            if (_viewportIndicator == null || _minimapCanvas == null || !ShowMinimap || IsMinimapCollapsed) 
+            // 如果正在拖拽视口指示器，跳过更新（避免拖拽时抖动）
+            if (_isDraggingViewportIndicator && !allowDuringDrag)
+                return;
+
+            if (_viewportIndicator == null || _minimapCanvas == null || !ShowMinimap || IsMinimapCollapsed)
             {
                 if (_viewportIndicator != null)
                     _viewportIndicator.Visibility = Visibility.Collapsed;
@@ -940,7 +1480,7 @@ namespace Astra.UI.Controls
             // 确保画布已布局
             var canvasWidth = _minimapCanvas.ActualWidth;
             var canvasHeight = _minimapCanvas.ActualHeight;
-            
+
             if (canvasWidth <= 0 || canvasHeight <= 0 || ActualWidth <= 0 || ActualHeight <= 0)
             {
                 // 延迟更新，等待布局完成
@@ -969,7 +1509,7 @@ namespace Astra.UI.Controls
                     var mainWidth = Math.Max(ActualWidth, 2000); // 至少2000像素
                     var mainHeight = Math.Max(ActualHeight, 2000);
                     _minimapContentBounds = new Rect(-mainWidth / 2, -mainHeight / 2, mainWidth, mainHeight);
-                    
+
                     // 计算缩放比例，使整个内容区域能显示在缩略图中
                     var availableWidth = canvasWidth;
                     var availableHeight = canvasHeight;
@@ -987,10 +1527,17 @@ namespace Astra.UI.Controls
 
             // 计算当前视口在画布坐标系中的位置和大小
             // 视口在画布坐标系中的位置 = (屏幕坐标 - 平移) / 缩放
-            var viewportLeft = -PanX / Scale;
-            var viewportTop = -PanY / Scale;
-            var viewportWidth = ActualWidth / Scale;
-            var viewportHeight = ActualHeight / Scale;
+            // 【关键修复】使用 ScaleTransform 的实际值而不是依赖属性
+            var currentScale = _scaleTransform?.ScaleX ?? Scale;
+            if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+            {
+                currentScale = 1.0; // 回退到默认值
+            }
+
+            var viewportLeft = -PanX / currentScale;
+            var viewportTop = -PanY / currentScale;
+            var viewportWidth = ActualWidth / currentScale;
+            var viewportHeight = ActualHeight / currentScale;
 
             // 转换为缩略图坐标系
             var contentBounds = _minimapContentBounds;
@@ -1007,7 +1554,7 @@ namespace Astra.UI.Controls
             minimapHeight = Math.Max(8, Math.Min(minimapHeight, canvasHeight - minimapTop));
 
             // 确保值有效
-            if (double.IsNaN(minimapLeft) || double.IsNaN(minimapTop) || 
+            if (double.IsNaN(minimapLeft) || double.IsNaN(minimapTop) ||
                 double.IsNaN(minimapWidth) || double.IsNaN(minimapHeight) ||
                 minimapWidth <= 0 || minimapHeight <= 0)
             {
@@ -1020,7 +1567,9 @@ namespace Astra.UI.Controls
             Canvas.SetTop(_viewportIndicator, minimapTop);
             _viewportIndicator.Width = minimapWidth;
             _viewportIndicator.Height = minimapHeight;
-            
+
+            System.Diagnostics.Debug.WriteLine($"🔄 [反向计算] Pan: ({PanX:F2}, {PanY:F2}) → 画布视口: ({viewportLeft:F2}, {viewportTop:F2}) → 小地图位置: ({minimapLeft:F2}, {minimapTop:F2})");
+
             // 确保指示器可见（最后设置，确保所有属性都已设置）
             _viewportIndicator.Visibility = Visibility.Visible;
         }
@@ -1087,7 +1636,10 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
-        /// 从缩略图坐标转换为画布坐标并导航
+        /// 从缩略图坐标转换为画布坐标并导航（支持边界约束）
+        /// </summary>
+        /// <summary>
+        /// 导航到小地图上的指定点（该点将被放置在主视口中心）
         /// </summary>
         private void NavigateToMinimapPoint(Point minimapPoint)
         {
@@ -1100,6 +1652,38 @@ namespace Astra.UI.Controls
             // 计算新的Pan值，使该点位于视口中心
             var newPanX = -canvasX * Scale + ActualWidth / 2;
             var newPanY = -canvasY * Scale + ActualHeight / 2;
+
+            // 应用边界约束（如果启用）
+            if (MinimapBoundaryConstraint)
+            {
+                var viewportWidth = ActualWidth / Scale;
+                var viewportHeight = ActualHeight / Scale;
+
+                // 计算允许的平移范围
+                var minPanX = -((_minimapContentBounds.Right - viewportWidth) * Scale);
+                var maxPanX = -_minimapContentBounds.Left * Scale;
+                var minPanY = -((_minimapContentBounds.Bottom - viewportHeight) * Scale);
+                var maxPanY = -_minimapContentBounds.Top * Scale;
+
+                // 如果内容小于视口，居中显示
+                if (_minimapContentBounds.Width <= viewportWidth)
+                {
+                    newPanX = -(_minimapContentBounds.Left + _minimapContentBounds.Width / 2) * Scale + ActualWidth / 2;
+                }
+                else
+                {
+                    newPanX = Math.Max(minPanX, Math.Min(maxPanX, newPanX));
+                }
+
+                if (_minimapContentBounds.Height <= viewportHeight)
+                {
+                    newPanY = -(_minimapContentBounds.Top + _minimapContentBounds.Height / 2) * Scale + ActualHeight / 2;
+                }
+                else
+                {
+                    newPanY = Math.Max(minPanY, Math.Min(maxPanY, newPanY));
+                }
+            }
 
             PanX = newPanX;
             PanY = newPanY;
@@ -1114,20 +1698,53 @@ namespace Astra.UI.Controls
 
         private void OnMinimapMouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (!ShowMinimap || _minimapCanvas == null) return;
+            System.Diagnostics.Debug.WriteLine($"🗺️🗺️🗺️ [小地图点击] MouseDown 事件被触发！");
+            System.Diagnostics.Debug.WriteLine($"🗺️ OriginalSource: {e.OriginalSource?.GetType().Name}, Source: {e.Source?.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine($"🗺️ _viewportIndicator 类型: {_viewportIndicator?.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine($"🗺️ 是否点击指示器: {e.OriginalSource == _viewportIndicator}");
 
+            if (!ShowMinimap || _minimapCanvas == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"🗺️ ❌ 条件检查失败：ShowMinimap={ShowMinimap}, _minimapCanvas={_minimapCanvas != null}");
+                return;
+            }
+
+            // 如果点击在视口指示器或其子元素上，不处理（让 Thumb 的拖拽事件处理）
+            var isClickOnIndicator = IsDescendant(_viewportIndicator, e.OriginalSource as DependencyObject);
+            System.Diagnostics.Debug.WriteLine($"🗺️ IsDescendant 判断结果: {isClickOnIndicator}");
+            
+            if (isClickOnIndicator)
+            {
+                System.Diagnostics.Debug.WriteLine("🗺️ ⏭️ 检测到点击视口指示器（或子元素），跳过处理，让 Thumb 处理拖拽");
+                return; // 不设置 Handled，让 Thumb 控件能接收到事件
+            }
+
+            System.Diagnostics.Debug.WriteLine("🗺️✅ 点击空白区域，执行快速跳转！");
+
+            // 点击小地图空白区域，快速跳转
             var point = e.GetPosition(_minimapCanvas);
+            System.Diagnostics.Debug.WriteLine($"🗺️ 点击位置: ({point.X:F2}, {point.Y:F2})");
+            
             NavigateToMinimapPoint(point);
             _isNavigatingMinimap = true;
             _minimapCanvas.CaptureMouse();
             e.Handled = true;
+            
+            System.Diagnostics.Debug.WriteLine("🗺️✅ 快速跳转完成！");
         }
 
         private void OnMinimapMouseMove(object sender, MouseEventArgs e)
         {
-            if (!ShowMinimap || _minimapCanvas == null || !_isNavigatingMinimap) return;
+            if (!ShowMinimap || _minimapCanvas == null) return;
 
-            if (e.LeftButton == MouseButtonState.Pressed)
+            // 如果正在拖拽视口指示器，不处理小地图的拖动
+            if (_isDraggingViewportIndicator)
+            {
+                return;
+            }
+
+            // 小地图拖动导航
+            if (_isNavigatingMinimap && e.LeftButton == MouseButtonState.Pressed)
             {
                 var point = e.GetPosition(_minimapCanvas);
                 NavigateToMinimapPoint(point);
@@ -1143,6 +1760,24 @@ namespace Astra.UI.Controls
             }
         }
 
+        /// <summary>
+        /// 判断 child 是否为 parent 的后代（包含自己）
+        /// </summary>
+        private bool IsDescendant(DependencyObject parent, DependencyObject child)
+        {
+            if (parent == null || child == null) return false;
+            if (ReferenceEquals(parent, child)) return true;
+
+            var current = VisualTreeHelper.GetParent(child);
+            while (current != null)
+            {
+                if (ReferenceEquals(current, parent))
+                    return true;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return false;
+        }
+
         private void OnMinimapMouseLeave(object sender, MouseEventArgs e)
         {
             if (_minimapCanvas != null && _isNavigatingMinimap)
@@ -1154,11 +1789,480 @@ namespace Astra.UI.Controls
 
         #endregion
 
+        #region 视口指示器拖拽与缩放（使用 Thumb 控件）
+
+        /// <summary>
+        /// 视口指示器拖拽开始（Thumb.DragStarted）
+        /// </summary>
+        private void OnViewportIndicatorDragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine($"✅ [视口指示器-Thumb] DragStarted - 位置: ({e.HorizontalOffset:F2}, {e.VerticalOffset:F2})");
+            
+            if (!ShowMinimap || _minimapCanvas == null || _viewportIndicator == null)
+                return;
+
+            // 拖拽开始，允许后续正常更新
+            _suppressMinimapUpdateAfterDrag = false;
+            _minimapNeedsRecalc = false; // 拖拽期间不需要重算
+
+            // 确保小地图内容边界和缩放已初始化
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                UpdateViewportIndicator(allowDuringDrag: true);
+            }
+
+            _isDraggingViewportIndicator = true;
+            _viewportIndicator.Cursor = Cursors.SizeAll;
+            
+            // 记录当前视口指示器的位置作为拖拽起始点
+            var left = Canvas.GetLeft(_viewportIndicator);
+            var top = Canvas.GetTop(_viewportIndicator);
+            _viewportIndicatorDragStart = new Point(
+                double.IsNaN(left) ? 0 : left,
+                double.IsNaN(top) ? 0 : top
+            );
+        }
+
+        /// <summary>
+        /// 视口指示器拖拽移动（Thumb.DragDelta）
+        /// </summary>
+        private void OnViewportIndicatorDragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine($"✅ [视口指示器-Thumb] DragDelta - 偏移: ({e.HorizontalChange:F2}, {e.VerticalChange:F2})");
+
+            if (!ShowMinimap || _minimapCanvas == null || _viewportIndicator == null)
+                return;
+
+            // 确保小地图内容边界和缩放已初始化
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                UpdateViewportIndicator(allowDuringDrag: true);
+                if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+                    return; // 仍然无效，放弃本次更新
+            }
+
+            // 计算视口指示器的当前位置
+            var currentLeft = Canvas.GetLeft(_viewportIndicator);
+            var currentTop = Canvas.GetTop(_viewportIndicator);
+            if (double.IsNaN(currentLeft)) currentLeft = 0;
+            if (double.IsNaN(currentTop)) currentTop = 0;
+
+            // 计算新位置
+            var newLeft = currentLeft + e.HorizontalChange;
+            var newTop = currentTop + e.VerticalChange;
+
+            // 边界限制
+            var canvasWidth = _minimapCanvas.ActualWidth;
+            var canvasHeight = _minimapCanvas.ActualHeight;
+            var indicatorWidth = _viewportIndicator.Width;
+            var indicatorHeight = _viewportIndicator.Height;
+
+            if (MinimapBoundaryConstraint)
+            {
+                // 严格边界约束
+                newLeft = Math.Max(0, Math.Min(newLeft, canvasWidth - indicatorWidth));
+                newTop = Math.Max(0, Math.Min(newTop, canvasHeight - indicatorHeight));
+            }
+            else
+            {
+                // 无限画布模式
+                var minVisible = 20.0;
+                newLeft = Math.Max(-indicatorWidth + minVisible, Math.Min(newLeft, canvasWidth - minVisible));
+                newTop = Math.Max(-indicatorHeight + minVisible, Math.Min(newTop, canvasHeight - minVisible));
+            }
+
+            // 更新指示器视觉位置
+            Canvas.SetLeft(_viewportIndicator, newLeft);
+            Canvas.SetTop(_viewportIndicator, newTop);
+
+            // 【关键修复】直接从小地图坐标计算主画布的 PanX/PanY
+            // 将视口指示器的左上角转换为画布坐标系中的视口左上角
+            var viewportLeftInCanvas = newLeft / _minimapScale + _minimapContentBounds.Left;
+            var viewportTopInCanvas = newTop / _minimapScale + _minimapContentBounds.Top;
+
+            // 读取当前的 Scale，确保使用 ScaleTransform 的实际值而不是依赖属性
+            var currentScale = _scaleTransform?.ScaleX ?? Scale;
+            if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+            {
+                currentScale = 1.0; // 回退到默认值
+            }
+
+            System.Diagnostics.Debug.WriteLine($"🔍 [Scale检查] Scale属性: {Scale:F4} | ScaleTransform.ScaleX: {_scaleTransform?.ScaleX:F4} | 使用值: {currentScale:F4}");
+
+            // 根据视口左上角反推 PanX/PanY
+            // 因为：viewportLeft = -PanX / Scale，所以：PanX = -viewportLeft * Scale
+            var newPanX = -viewportLeftInCanvas * currentScale;
+            var newPanY = -viewportTopInCanvas * currentScale;
+
+            System.Diagnostics.Debug.WriteLine($"🔄 [拖拽计算] 小地图位置: ({newLeft:F2}, {newTop:F2}) → 画布视口: ({viewportLeftInCanvas:F2}, {viewportTopInCanvas:F2}) → Pan: ({newPanX:F2}, {newPanY:F2})");
+
+            // 手动更新变换（因为 OnTransformChanged 在拖动期间被跳过）
+            if (_translateTransform != null)
+            {
+                _translateTransform.X = newPanX;
+                _translateTransform.Y = newPanY;
+            }
+
+            // 同时更新依赖属性（用于绑定和其他逻辑）
+            PanX = newPanX;
+            PanY = newPanY;
+            
+            // 拖动过程中不调用 UpdateViewportIndicator，避免反复覆盖导致位置跳动
+        }
+
+        /// <summary>
+        /// 视口指示器鼠标释放 - 结束拖拽
+        /// </summary>
+        /// <summary>
+        /// 视口指示器拖拽完成（Thumb.DragCompleted）
+        /// </summary>
+        private void OnViewportIndicatorDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine($"✅ [视口指示器-Thumb] DragCompleted - 已取消: {e.Canceled}");
+
+            if (!ShowMinimap || _viewportIndicator == null)
+                return;
+
+            // 抑制拖拽结束后的第一轮小地图重算，防止跳回
+            _suppressMinimapUpdateAfterDrag = true;
+            // 拖拽完成后如无内容变化，不重算小地图
+            _minimapNeedsRecalc = false;
+
+            // 在最终同步 Pan 之前保持拖拽状态为 true，避免依赖属性回调插队
+            // （OnTransformChanged 在 _isDraggingViewportIndicator 为 true 时会跳过异步更新）
+            _isDraggingViewportIndicator = true;
+
+            // 确保小地图边界与缩放有效
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                UpdateViewportIndicator(allowDuringDrag: true);
+            }
+
+            // 读取指示器当前位置（拖拽结束时的最终位置）
+            var finalLeft = Canvas.GetLeft(_viewportIndicator);
+            var finalTop = Canvas.GetTop(_viewportIndicator);
+            if (double.IsNaN(finalLeft)) finalLeft = 0;
+            if (double.IsNaN(finalTop)) finalTop = 0;
+
+            // 使用实际的 ScaleTransform 值计算最终 Pan
+            var currentScale = _scaleTransform?.ScaleX ?? Scale;
+            if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+            {
+                currentScale = 1.0;
+            }
+
+            // 反推最终 PanX/PanY
+            var viewportLeftInCanvas = finalLeft / _minimapScale + _minimapContentBounds.Left;
+            var viewportTopInCanvas = finalTop / _minimapScale + _minimapContentBounds.Top;
+            var finalPanX = -viewportLeftInCanvas * currentScale;
+            var finalPanY = -viewportTopInCanvas * currentScale;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"🏁 [拖拽完成] 指示器: ({finalLeft:F2}, {finalTop:F2}) → 画布视口: ({viewportLeftInCanvas:F2}, {viewportTopInCanvas:F2}) → Pan: ({finalPanX:F2}, {finalPanY:F2})");
+
+            // 同步到变换与依赖属性
+            if (_translateTransform != null)
+            {
+                _translateTransform.X = finalPanX;
+                _translateTransform.Y = finalPanY;
+            }
+            PanX = finalPanX;
+            PanY = finalPanY;
+
+            _isDraggingViewportIndicator = false;
+            _viewportIndicator.Cursor = Cursors.Hand;
+            
+            // 重置节流时间，确保拖动结束后一定会更新网格
+            _lastGridUpdateTime = DateTime.MinValue;
+            
+            // 拖拽结束后，更新网格和视口指示器（不需要更新小地图，因为平移不改变节点位置）
+            UpdateGrid();
+            UpdateViewportIndicator();
+        }
+
+        /// <summary>
+        /// 🔧 手动实现：视口指示器鼠标左键按下 - 开始拖拽
+        /// </summary>
+        private void OnViewportIndicatorMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine($"🔧🔧🔧 [视口指示器-手动拖拽] PreviewMouseLeftButtonDown 被触发！");
+            System.Diagnostics.Debug.WriteLine($"🔧 Sender: {sender?.GetType().Name}, OriginalSource: {e.OriginalSource?.GetType().Name}");
+            
+            if (!ShowMinimap || _minimapCanvas == null || _viewportIndicator == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"🔧 条件检查失败：ShowMinimap={ShowMinimap}, _minimapCanvas={_minimapCanvas != null}, _viewportIndicator={_viewportIndicator != null}");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"🔧 准备开始拖拽...");
+
+            // 拖拽开始，允许后续正常更新
+            _suppressMinimapUpdateAfterDrag = false;
+            _minimapNeedsRecalc = false;
+
+            // 确保小地图内容边界和缩放已初始化
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                UpdateViewportIndicator(allowDuringDrag: true);
+            }
+
+            _isDraggingViewportIndicator = true;
+            _viewportIndicator.Cursor = Cursors.SizeAll;
+            
+            // 记录鼠标在视口指示器上的相对位置
+            _viewportIndicatorDragStart = e.GetPosition(_viewportIndicator);
+            
+            // 捕获鼠标，确保后续鼠标移动都能被捕获
+            _viewportIndicator.CaptureMouse();
+            
+            // 🔥 重要：标记事件已处理，防止传播到 Canvas 的 MouseLeftButtonDown
+            e.Handled = true;
+            
+            System.Diagnostics.Debug.WriteLine($"🔧✅ [视口指示器-手动拖拽] 开始拖拽成功！起始点: ({_viewportIndicatorDragStart.X:F2}, {_viewportIndicatorDragStart.Y:F2})");
+        }
+
+        /// <summary>
+        /// 🔧 手动实现：视口指示器鼠标移动 - 拖拽中
+        /// </summary>
+        private void OnViewportIndicatorMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isDraggingViewportIndicator || !ShowMinimap || _minimapCanvas == null || _viewportIndicator == null)
+                return;
+
+            // 确保小地图内容边界和缩放已初始化
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                UpdateViewportIndicator(allowDuringDrag: true);
+                if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+                    return;
+            }
+
+            // 获取鼠标在小地图画布上的位置
+            var currentMousePos = e.GetPosition(_minimapCanvas);
+            
+            // 计算视口指示器的新位置（鼠标位置 - 拖拽起始偏移）
+            var newLeft = currentMousePos.X - _viewportIndicatorDragStart.X;
+            var newTop = currentMousePos.Y - _viewportIndicatorDragStart.Y;
+
+            // 边界限制
+            var canvasWidth = _minimapCanvas.ActualWidth;
+            var canvasHeight = _minimapCanvas.ActualHeight;
+            var indicatorWidth = _viewportIndicator.Width;
+            var indicatorHeight = _viewportIndicator.Height;
+
+            if (MinimapBoundaryConstraint)
+            {
+                // 严格边界约束
+                newLeft = Math.Max(0, Math.Min(newLeft, canvasWidth - indicatorWidth));
+                newTop = Math.Max(0, Math.Min(newTop, canvasHeight - indicatorHeight));
+            }
+            else
+            {
+                // 无限画布模式
+                var minVisible = 20.0;
+                newLeft = Math.Max(-indicatorWidth + minVisible, Math.Min(newLeft, canvasWidth - minVisible));
+                newTop = Math.Max(-indicatorHeight + minVisible, Math.Min(newTop, canvasHeight - minVisible));
+            }
+
+            // 更新指示器视觉位置
+            Canvas.SetLeft(_viewportIndicator, newLeft);
+            Canvas.SetTop(_viewportIndicator, newTop);
+
+            // 将视口指示器的左上角转换为画布坐标系中的视口左上角
+            var viewportLeftInCanvas = newLeft / _minimapScale + _minimapContentBounds.Left;
+            var viewportTopInCanvas = newTop / _minimapScale + _minimapContentBounds.Top;
+
+            // 读取当前的 Scale
+            var currentScale = _scaleTransform?.ScaleX ?? Scale;
+            if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+            {
+                currentScale = 1.0;
+            }
+
+            // 根据视口左上角反推 PanX/PanY
+            var newPanX = -viewportLeftInCanvas * currentScale;
+            var newPanY = -viewportTopInCanvas * currentScale;
+
+            System.Diagnostics.Debug.WriteLine($"🔧 [拖拽计算-手动] 小地图位置: ({newLeft:F2}, {newTop:F2}) → 画布视口: ({viewportLeftInCanvas:F2}, {viewportTopInCanvas:F2}) → Pan: ({newPanX:F2}, {newPanY:F2})");
+
+            // 手动更新变换
+            if (_translateTransform != null)
+            {
+                _translateTransform.X = newPanX;
+                _translateTransform.Y = newPanY;
+            }
+
+            // 同时更新依赖属性
+            PanX = newPanX;
+            PanY = newPanY;
+        }
+
+        /// <summary>
+        /// 🔧 手动实现：视口指示器鼠标左键释放 - 结束拖拽
+        /// </summary>
+        private void OnViewportIndicatorMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isDraggingViewportIndicator)
+                return;
+
+            System.Diagnostics.Debug.WriteLine($"🔧 [视口指示器-手动] MouseLeftButtonUp - 拖拽结束");
+
+            // 抑制拖拽结束后的第一轮小地图重算
+            _suppressMinimapUpdateAfterDrag = true;
+            _minimapNeedsRecalc = false;
+
+            // 确保小地图边界与缩放有效
+            if (_minimapContentBounds.IsEmpty || _minimapScale <= 0)
+            {
+                UpdateViewportIndicator(allowDuringDrag: true);
+            }
+
+            // 读取指示器当前位置
+            var finalLeft = Canvas.GetLeft(_viewportIndicator);
+            var finalTop = Canvas.GetTop(_viewportIndicator);
+            if (double.IsNaN(finalLeft)) finalLeft = 0;
+            if (double.IsNaN(finalTop)) finalTop = 0;
+
+            // 使用实际的 ScaleTransform 值计算最终 Pan
+            var currentScale = _scaleTransform?.ScaleX ?? Scale;
+            if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+            {
+                currentScale = 1.0;
+            }
+
+            // 反推最终 PanX/PanY
+            var viewportLeftInCanvas = finalLeft / _minimapScale + _minimapContentBounds.Left;
+            var viewportTopInCanvas = finalTop / _minimapScale + _minimapContentBounds.Top;
+            var finalPanX = -viewportLeftInCanvas * currentScale;
+            var finalPanY = -viewportTopInCanvas * currentScale;
+
+            System.Diagnostics.Debug.WriteLine($"🏁 [拖拽完成-手动] 指示器: ({finalLeft:F2}, {finalTop:F2}) → Pan: ({finalPanX:F2}, {finalPanY:F2})");
+
+            // 同步到变换与依赖属性
+            if (_translateTransform != null)
+            {
+                _translateTransform.X = finalPanX;
+                _translateTransform.Y = finalPanY;
+            }
+            PanX = finalPanX;
+            PanY = finalPanY;
+
+            _isDraggingViewportIndicator = false;
+            _viewportIndicator.Cursor = Cursors.Hand;
+            
+            // 释放鼠标捕获
+            _viewportIndicator.ReleaseMouseCapture();
+            
+            // 重置节流时间，确保拖动结束后一定会更新网格
+            _lastGridUpdateTime = DateTime.MinValue;
+            
+            // 拖拽结束后，更新网格和视口指示器
+            UpdateGrid();
+            UpdateViewportIndicator();
+            
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// 视口指示器滚轮 - 缩放主画布
+        /// </summary>
+        private void OnViewportIndicatorMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (!ShowMinimap || !EnableZoom) return;
+
+            // 在视口指示器上滚轮缩放，以当前视口中心为缩放中心
+            var zoomFactor = e.Delta > 0 ? 1.15 : 0.85;
+            
+            // 使用主画布中心作为缩放中心点
+            var centerPoint = new Point(ActualWidth / 2, ActualHeight / 2);
+            ZoomToPoint(centerPoint, zoomFactor);
+            
+            e.Handled = true;
+        }
+
+        #endregion
+
         #region 连线绘制与交互
 
         private void OnEdgeCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
             RefreshEdges();
+        }
+
+        /// <summary>
+        /// ItemsSource 集合变化时的回调（添加/删除节点时触发）
+        /// </summary>
+        private void OnItemsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            // 集合变化需要允许小地图刷新
+            _suppressMinimapUpdateAfterDrag = false;
+            _minimapNeedsRecalc = true;
+
+            // 为新添加的节点订阅属性变化事件（监听 Position/Size 变化）
+            if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
+            {
+                foreach (var item in e.NewItems)
+                {
+                    if (item is System.ComponentModel.INotifyPropertyChanged notifyItem)
+                    {
+                        notifyItem.PropertyChanged += OnNodePropertyChanged;
+                    }
+                }
+            }
+
+            // 取消订阅移除节点的事件
+            if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems != null)
+            {
+                foreach (var item in e.OldItems)
+                {
+                    if (item is System.ComponentModel.INotifyPropertyChanged notifyItem)
+                    {
+                        notifyItem.PropertyChanged -= OnNodePropertyChanged;
+                    }
+                }
+            }
+
+            // 重置时取消所有订阅
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                // 无法获取被移除的项，只能在下次添加时重新订阅
+            }
+
+            // 延迟更新以等待 UI 容器生成完成（ItemContainerGenerator 是异步的）
+            // 使用 Loaded 优先级确保布局完成后再更新
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                UpdateMinimap();
+                UpdateViewportIndicator();
+                RefreshEdges();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// 节点属性变化时的回调（Position/Size 变化时触发）
+        /// </summary>
+        private void OnNodePropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            // 只关心影响布局的属性
+            if (e.PropertyName == nameof(Node.Position) || 
+                e.PropertyName == nameof(Node.Size) ||
+                e.PropertyName == "X" || 
+                e.PropertyName == "Y" ||
+                e.PropertyName == "Width" || 
+                e.PropertyName == "Height")
+            {
+                // 节点变化需要允许小地图刷新
+                _suppressMinimapUpdateAfterDrag = false;
+                _minimapNeedsRecalc = true;
+
+                // 延迟更新以避免频繁刷新（使用 Dispatcher 合并多个属性变化）
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    UpdateMinimap();
+                    UpdateViewportIndicator();
+                    RefreshEdges();
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }
         }
 
         /// <summary>
@@ -1222,28 +2326,28 @@ namespace Astra.UI.Controls
                 var endPort = GetPortPoint(target, edge.TargetPortId, endHint) ?? GetNodeCenter(target);
 
                 // 准备障碍物列表（排除源节点和目标节点）
-            // 确保只使用有效的边界
-            var obstacles = new List<Rect>();
-            foreach (var kvp in nodeBounds)
-            {
-                // 排除源和目标节点，且必须是有效的矩形
-                if (kvp.Key != source.Id && kvp.Key != target.Id && !kvp.Value.IsEmpty && kvp.Value.Width > 1 && kvp.Value.Height > 1)
+                // 确保只使用有效的边界
+                var obstacles = new List<Rect>();
+                foreach (var kvp in nodeBounds)
                 {
-                    obstacles.Add(kvp.Value);
+                    // 排除源和目标节点，且必须是有效的矩形
+                    if (kvp.Key != source.Id && kvp.Key != target.Id && !kvp.Value.IsEmpty && kvp.Value.Width > 1 && kvp.Value.Height > 1)
+                    {
+                        obstacles.Add(kvp.Value);
+                    }
                 }
-            }
-            
-            // 调试障碍物信息
-            if (obstacles.Count == 0 && nodeBounds.Count > 2)
-            {
-                // 仅用于调试，实际可删除
-            }
-            else
-            {
-                // System.Diagnostics.Debug.WriteLine($"[连线刷新] 准备路由 - 源: {source.Id}, 目标: {target.Id}, 障碍物数量: {obstacles.Count}");
-            }
 
-            var routed = BuildOrthogonalRoute(startPort, source, endPort, target, obstacles);
+                // 调试障碍物信息
+                if (obstacles.Count == 0 && nodeBounds.Count > 2)
+                {
+                    // 仅用于调试，实际可删除
+                }
+                else
+                {
+                    // System.Diagnostics.Debug.WriteLine($"[连线刷新] 准备路由 - 源: {source.Id}, 目标: {target.Id}, 障碍物数量: {obstacles.Count}");
+                }
+
+                var routed = BuildOrthogonalRoute(startPort, source, endPort, target, obstacles);
                 points = new PointCollection(routed);
 
                 // 覆盖 Edge.Points 为最新路径，便于序列化/后续刷新
@@ -1266,14 +2370,14 @@ namespace Astra.UI.Controls
                 var arrow = BuildArrow(points, edge.IsSelected ? selectedBrush : primaryBrush);
 
                 System.Diagnostics.Debug.WriteLine($"[连线刷新] 添加连线 - 点数: {points.Count}, 起点: ({points[0].X:F2}, {points[0].Y:F2}), 终点: ({points[points.Count - 1].X:F2}, {points[points.Count - 1].Y:F2})");
-                
+
                 _edgeLayer.Children.Add(polyline);
                 if (arrow != null)
                 {
                     _edgeLayer.Children.Add(arrow);
                 }
             }
-            
+
             System.Diagnostics.Debug.WriteLine($"[连线刷新] 完成刷新，绘制了 {_edgeLayer.Children.Count} 条连线");
         }
 
@@ -1299,7 +2403,7 @@ namespace Astra.UI.Controls
 
             // 获取逻辑坐标（统一的未缩放/未平移坐标系）
             var canvasPoint = GetLogicalMousePoint(e);
-            
+
             // 检测附近端口并吸附
             var nearbyPort = FindNearbyPort(canvasPoint);
             if (nearbyPort != null && nearbyPort != _hoveredPort)
@@ -1332,7 +2436,7 @@ namespace Astra.UI.Controls
 
             // 优先使用吸附的端口，如果没有则尝试从命中点查找
             var targetPort = _hoveredPort ?? FindPortFromHit(e.OriginalSource as DependencyObject);
-            
+
             // 如果还是没有找到端口，尝试在鼠标位置附近查找
             if (targetPort == null)
             {
@@ -1347,9 +2451,9 @@ namespace Astra.UI.Controls
             System.Diagnostics.Debug.WriteLine($"[连线] 释放鼠标 - 目标端口: {targetPort != null}, 目标节点: {targetNode?.Name ?? "null"}, 源节点: {_connectionSourceNode?.Name ?? "null"}");
 
             // 检查是否连接到了同一节点
-            bool isSameNode = targetNode != null && _connectionSourceNode != null && 
+            bool isSameNode = targetNode != null && _connectionSourceNode != null &&
                              (ReferenceEquals(targetNode, _connectionSourceNode) || targetNode.Id == _connectionSourceNode.Id);
-            
+
             // 允许替换现有连线，所以不再在此处阻止（TryCreateEdge 会处理替换）
             // bool hasExistingEdge = targetNode != null && _connectionSourceNode != null && 
             //                       HasEdgeBetween(_connectionSourceNode.Id, targetNode.Id);
@@ -1361,7 +2465,7 @@ namespace Astra.UI.Controls
             {
                 var endPoint = GetPortCenter(targetPort);
                 System.Diagnostics.Debug.WriteLine($"[连线] 端点坐标 - 起点: ({_connectionStartPoint.X:F2}, {_connectionStartPoint.Y:F2}), 终点: ({endPoint.X:F2}, {endPoint.Y:F2})");
-                
+
                 if (!double.IsNaN(endPoint.X) && !double.IsNaN(endPoint.Y))
                 {
                     TryCreateEdge(_connectionSourceNode, targetNode, _connectionStartPoint, endPoint);
@@ -1466,7 +2570,7 @@ namespace Astra.UI.Controls
                 // 没有悬停端口，使用简化的L形路径到鼠标位置
                 route = BuildSimpleOrthogonalPath(_connectionStartPoint, end, _connectionSourceNode);
             }
-            
+
             // 更新 Polyline 的点集合
             _connectionPreviewLine.Points = new PointCollection(route);
         }
@@ -1478,16 +2582,16 @@ namespace Astra.UI.Controls
         {
             const double margin = 18.0;
             var sourceBounds = GetNodeBounds(sourceNode);
-            
+
             // 判断起始端口在节点的哪一边
             var sourceSide = GetPortSideByDistance(start, sourceBounds);
-            
+
             // 计算源外扩点
             var sourceOut = GetExpansionAlongSide(start, sourceBounds, margin, sourceSide);
-            
+
             // 简单的L形路径：起点 -> 外扩点 -> 转折点 -> 终点
             var route = new List<Point> { start, sourceOut };
-            
+
             // 根据源端口方向选择转折方式
             if (sourceSide == PortSide.Top || sourceSide == PortSide.Bottom)
             {
@@ -1499,16 +2603,16 @@ namespace Astra.UI.Controls
                 // 水平方向的端口，先水平后垂直
                 route.Add(new Point(end.X, sourceOut.Y));
             }
-            
+
             route.Add(end);
-            
+
             // 去除重复点
             for (int i = route.Count - 2; i >= 0; i--)
             {
                 if (IsSamePoint(route[i], route[i + 1]))
                     route.RemoveAt(i + 1);
             }
-            
+
             return route;
         }
 
@@ -1531,7 +2635,7 @@ namespace Astra.UI.Controls
                 {
                     System.Diagnostics.Debug.WriteLine("[连线] 从 FlowEditor 获取 EdgeItemsSource");
                     EdgeItemsSource = flowEditor.EdgeItemsSource;
-                    
+
                     // 如果 FlowEditor 的也是 null，自动创建一个新的集合
                     if (flowEditor.EdgeItemsSource == null)
                     {
@@ -1612,17 +2716,17 @@ namespace Astra.UI.Controls
             if (_undoRedoManager != null)
             {
                 var commands = new List<IUndoableCommand>();
-                
+
                 // 1. 如果有旧连线，先删除
                 if (existingEdges.Count > 0)
                 {
                     System.Diagnostics.Debug.WriteLine($"[连线] 发现 {existingEdges.Count} 条现有连线，准备替换");
                     commands.Add(new DeleteEdgeCommand(list, existingEdges));
                 }
-                
+
                 // 2. 添加新连线
                 commands.Add(new CreateEdgeCommand(list, edge));
-                
+
                 System.Diagnostics.Debug.WriteLine("[连线] 使用组合命令（删除旧连线+创建新连线）");
                 _undoRedoManager.Do(new CompositeCommand(commands));
             }
@@ -1694,7 +2798,7 @@ namespace Astra.UI.Controls
             {
                 port = ports.OfType<PortControl>()
                     .FirstOrDefault(p => p.PortId == portId);
-                
+
                 if (port != null)
                 {
                     System.Diagnostics.Debug.WriteLine($"[端口查找] 通过ID找到端口: {portId} 在节点 {node.Name}");
@@ -1758,7 +2862,7 @@ namespace Astra.UI.Controls
 
             // 获取端口中心在端口内的相对位置
             var portCenter = new Point(portElement.ActualWidth / 2, portElement.ActualHeight / 2);
-            
+
             // 回退：直接转换到 transformTarget (逻辑坐标系)
             if (_transformTarget != null)
             {
@@ -1995,7 +3099,7 @@ namespace Astra.UI.Controls
                 // 除了中间的线段，也要检查起点和终点的连接段（如果起点终点外扩点被挡住了）
                 // 尤其是当两个节点靠得很近时，外扩点可能落在另一个节点的边界内
                 // 但通常外扩点是为了离开节点，所以主要检查中间路径
-                
+
                 // 额外检查：如果源节点和目标节点非常近，直接连线可能会穿过它们自己
                 // 这种情况在 BuildOrthogonalRoute 的初始阶段已经通过 margin 规避了一部分
                 // 但如果两个 Top 端口相连，且Y轴错开不远，可能会穿过其中一个节点
@@ -2005,7 +3109,7 @@ namespace Astra.UI.Controls
                 {
                     var p1 = route[i];
                     var p2 = route[i + 1];
-                    
+
                     foreach (var obs in obstacles)
                     {
                         // 稍微缩小障碍物矩形以允许贴边（避免误判）
@@ -2013,19 +3117,19 @@ namespace Astra.UI.Controls
                         var checkRect = new Rect(obs.X - obstacleMargin, obs.Y - obstacleMargin,
                                                  Math.Max(1, obs.Width + obstacleMargin * 2),
                                                  Math.Max(1, obs.Height + obstacleMargin * 2));
-                        
+
                         // 记录碰撞检测信息
                         bool intersected = IntersectsRect(p1, p2, checkRect);
                         if (intersected)
                         {
-                             System.Diagnostics.Debug.WriteLine($"[碰撞检测] 发生碰撞！线段: ({p1.X:F2},{p1.Y:F2})->({p2.X:F2},{p2.Y:F2}), 障碍物: {checkRect}");
-                             collision = true;
-                             break;
+                            System.Diagnostics.Debug.WriteLine($"[碰撞检测] 发生碰撞！线段: ({p1.X:F2},{p1.Y:F2})->({p2.X:F2},{p2.Y:F2}), 障碍物: {checkRect}");
+                            collision = true;
+                            break;
                         }
                     }
                     if (collision) break;
                 }
-                
+
                 // 还要检查是否穿过了源节点或目标节点本身（除了第一段和最后一段）
                 // 因为标准的 L 形路由可能会产生穿过源/目标节点的情况（特别是 Top 到 Top）
                 if (!collision)
@@ -2033,26 +3137,26 @@ namespace Astra.UI.Controls
                     // 检查除第一段外的所有段是否穿过源节点
                     for (int i = 1; i < route.Count - 1; i++)
                     {
-                        if (IntersectsRect(route[i], route[i+1], sourceBounds))
+                        if (IntersectsRect(route[i], route[i + 1], sourceBounds))
                         {
                             System.Diagnostics.Debug.WriteLine($"[碰撞检测] 连线穿过源节点！");
                             collision = true;
                             break;
                         }
                     }
-                    
+
                     // 检查除最后一段外的所有段是否穿过目标节点
                     if (!collision)
                     {
-                         for (int i = 0; i < route.Count - 2; i++)
-                         {
-                             if (IntersectsRect(route[i], route[i+1], targetBounds))
-                             {
-                                 System.Diagnostics.Debug.WriteLine($"[碰撞检测] 连线穿过目标节点！");
-                                 collision = true;
-                                 break;
-                             }
-                         }
+                        for (int i = 0; i < route.Count - 2; i++)
+                        {
+                            if (IntersectsRect(route[i], route[i + 1], targetBounds))
+                            {
+                                System.Diagnostics.Debug.WriteLine($"[碰撞检测] 连线穿过目标节点！");
+                                collision = true;
+                                break;
+                            }
+                        }
                     }
                 }
 
@@ -2063,23 +3167,23 @@ namespace Astra.UI.Controls
                     // 注意：这里我们需要把源节点和目标节点也当作障碍物（除了它们各自的端口区域）
                     // 但简单的做法是把它们加入障碍物列表，A* 会处理起点终点在障碍物内的情况（通常 A* 会寻找最近的无障碍点）
                     // 为了让 A* 能走出源节点，我们需要确保起点和终点本身被视为"可通行"
-                    
+
                     var allObstacles = new List<Rect>(obstacles);
                     allObstacles.Add(sourceBounds);
                     allObstacles.Add(targetBounds);
-                    
+
                     // 调整 A* 参数以偏好特定类型的路径
                     return FindPathAStar(startPort, endPort, allObstacles);
                 }
             }
             // 即使没有外部障碍物，也要检查是否穿过源/目标节点自己
-            else 
+            else
             {
-                 bool selfCollision = false;
-                 // 检查除第一段外的所有段是否穿过源节点
+                bool selfCollision = false;
+                // 检查除第一段外的所有段是否穿过源节点
                 for (int i = 1; i < route.Count - 1; i++)
                 {
-                    if (IntersectsRect(route[i], route[i+1], sourceBounds))
+                    if (IntersectsRect(route[i], route[i + 1], sourceBounds))
                     {
                         selfCollision = true; break;
                     }
@@ -2087,20 +3191,20 @@ namespace Astra.UI.Controls
                 // 检查除最后一段外的所有段是否穿过目标节点
                 if (!selfCollision)
                 {
-                     for (int i = 0; i < route.Count - 2; i++)
-                     {
-                         if (IntersectsRect(route[i], route[i+1], targetBounds))
-                         {
-                             selfCollision = true; break;
-                         }
-                     }
+                    for (int i = 0; i < route.Count - 2; i++)
+                    {
+                        if (IntersectsRect(route[i], route[i + 1], targetBounds))
+                        {
+                            selfCollision = true; break;
+                        }
+                    }
                 }
-                
+
                 if (selfCollision)
                 {
-                     System.Diagnostics.Debug.WriteLine($"[连线] 连线穿过源/目标节点，切换到 A* 寻路");
-                     var selfObstacles = new List<Rect> { sourceBounds, targetBounds };
-                     return FindPathAStar(startPort, endPort, selfObstacles);
+                    System.Diagnostics.Debug.WriteLine($"[连线] 连线穿过源/目标节点，切换到 A* 寻路");
+                    var selfObstacles = new List<Rect> { sourceBounds, targetBounds };
+                    return FindPathAStar(startPort, endPort, selfObstacles);
                 }
             }
 
@@ -2258,15 +3362,15 @@ namespace Astra.UI.Controls
                 case PortSide.Top:
                     // 上侧端口：外扩点在端口正上方，X保持不变，Y向上外扩
                     return new Point(port.X, bounds.Top - margin);
-                    
+
                 case PortSide.Bottom:
                     // 下侧端口：外扩点在端口正下方（或节点底部外），X保持不变，Y向下外扩
                     return new Point(port.X, bounds.Bottom + margin);
-                    
+
                 case PortSide.Left:
                     // 左侧端口：外扩点在端口正左方，Y保持不变，X向左外扩
                     return new Point(bounds.Left - margin, port.Y);
-                    
+
                 case PortSide.Right:
                 default:
                     // 右侧端口：外扩点在端口正右方，Y保持不变，X向右外扩
@@ -2348,7 +3452,7 @@ namespace Astra.UI.Controls
             SizeChanged += OnSizeChanged;
             MouseEnter += OnMouseEnter;  // 鼠标进入时获取焦点
         }
-        
+
         private void OnMouseEnter(object sender, MouseEventArgs e)
         {
             // 鼠标进入画布时获取焦点，确保能接收鼠标滚轮事件
@@ -2469,10 +3573,10 @@ namespace Astra.UI.Controls
                 e.Handled = true;
                 return;
             }
-            
+
             // 优先级2: 左键点击空白区域 - 框选
             // 重要：先检查是否点击在空白区域，如果不是，让事件继续传递给子控件（如 NodeControl）
-            if (e.ChangedButton == MouseButton.Left && 
+            if (e.ChangedButton == MouseButton.Left &&
                 Keyboard.Modifiers == ModifierKeys.None &&
                 EnableBoxSelection)
             {
@@ -2503,15 +3607,15 @@ namespace Astra.UI.Controls
                     _translateTransform.X = delta.X;
                     _translateTransform.Y = delta.Y;
                 }
-                
+
                 // 同时更新依赖属性（用于绑定和其他逻辑）
                 PanX = delta.X;
                 PanY = delta.Y;
-                
+
                 e.Handled = true;
                 return;
             }
-            
+
             // 处理框选
             if (_isBoxSelecting && IsMouseCaptured)
             {
@@ -2528,18 +3632,18 @@ namespace Astra.UI.Controls
                 _state.EndPanning();
                 ReleaseMouseCapture();
                 Cursor = Cursors.Arrow;
-                
+
                 // 重置节流时间，确保拖动结束后一定会更新网格
                 _lastGridUpdateTime = DateTime.MinValue;
-                
+
                 // 拖动结束后更新网格和视口指示器
                 UpdateGrid();
                 UpdateViewportIndicator();
-                
+
                 e.Handled = true;
                 return;
             }
-            
+
             if (_isBoxSelecting)
             {
                 EndBoxSelection();
@@ -2552,11 +3656,25 @@ namespace Astra.UI.Controls
         {
             if (e.Key == Key.Space && !_state.IsPanning)
                 Cursor = Cursors.Hand;
-            
+
             // Delete 键删除选中项
             if (e.Key == Key.Delete)
             {
                 DeleteSelectedItems();
+                e.Handled = true;
+            }
+
+            // Ctrl+0 适应画布
+            if (e.Key == Key.D0 && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                FitToScreen();
+                e.Handled = true;
+            }
+
+            // F 键适应画布（常用快捷键）
+            if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.None)
+            {
+                FitToScreen();
                 e.Handled = true;
             }
         }
@@ -2590,32 +3708,33 @@ namespace Astra.UI.Controls
 
             // 重置节流时间，确保缩放改变时一定会更新网格
             canvas._lastGridUpdateTime = DateTime.MinValue;
-            
+
             // 使用 Render 优先级，在渲染时更新
             canvas.Dispatcher.BeginInvoke(new Action(() =>
             {
                 canvas.UpdateGrid();
                 canvas.UpdateViewportIndicator();
             }), System.Windows.Threading.DispatcherPriority.Render);
-            
+
             canvas.RaiseViewTransformChanged();
         }
 
         private static void OnTransformChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var canvas = (InfiniteCanvas)d;
-            
+
             // 变换已经在 OnPreviewMouseMove 中直接更新，这里只处理其他情况
-            if (canvas._translateTransform != null && !canvas._state.IsPanning)
+            // 🔒 如果正在拖动视口指示器，跳过更新（避免排队的异步调用在拖动结束后执行导致跳回）
+            if (canvas._translateTransform != null && !canvas._state.IsPanning && !canvas._isDraggingViewportIndicator)
             {
                 if (e.Property == PanXProperty)
                     canvas._translateTransform.X = (double)e.NewValue;
                 else if (e.Property == PanYProperty)
                     canvas._translateTransform.Y = (double)e.NewValue;
-                
+
                 // 重置节流时间，确保平移改变时一定会更新网格
                 canvas._lastGridUpdateTime = DateTime.MinValue;
-                    
+
                 // 只在非拖动时更新网格和视口指示器
                 canvas.Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -2623,8 +3742,8 @@ namespace Astra.UI.Controls
                     canvas.UpdateViewportIndicator();
                 }), System.Windows.Threading.DispatcherPriority.Render);
             }
-            // 如果正在拖动，只在拖动结束时更新（在 OnPreviewMouseUp 中处理）
-            
+            // 如果正在拖动画布或视口指示器，只在拖动结束时更新（在 OnPreviewMouseUp 或 OnViewportIndicatorDragCompleted 中处理）
+
             canvas.RaiseViewTransformChanged();
         }
 
@@ -2636,6 +3755,45 @@ namespace Astra.UI.Controls
         private static void OnItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var canvas = (InfiniteCanvas)d;
+
+            // 取消订阅旧集合和旧项的事件
+            if (canvas._itemsCollectionNotify != null)
+            {
+                canvas._itemsCollectionNotify.CollectionChanged -= canvas.OnItemsCollectionChanged;
+                canvas._itemsCollectionNotify = null;
+            }
+
+            // 取消订阅旧集合中所有项的属性变化事件
+            if (e.OldValue is IEnumerable oldItems)
+            {
+                foreach (var item in oldItems)
+                {
+                    if (item is System.ComponentModel.INotifyPropertyChanged notifyItem)
+                    {
+                        notifyItem.PropertyChanged -= canvas.OnNodePropertyChanged;
+                    }
+                }
+            }
+
+            // 订阅新集合的事件
+            canvas._itemsCollectionNotify = e.NewValue as INotifyCollectionChanged;
+            if (canvas._itemsCollectionNotify != null)
+            {
+                canvas._itemsCollectionNotify.CollectionChanged += canvas.OnItemsCollectionChanged;
+            }
+
+            // 订阅新集合中所有现有项的属性变化事件
+            if (e.NewValue is IEnumerable newItems)
+            {
+                foreach (var item in newItems)
+                {
+                    if (item is System.ComponentModel.INotifyPropertyChanged notifyItem)
+                    {
+                        notifyItem.PropertyChanged += canvas.OnNodePropertyChanged;
+                    }
+                }
+            }
+
             // 当内容变化时更新缩略图
             canvas.UpdateMinimap();
             canvas.RefreshEdges();
@@ -2662,10 +3820,59 @@ namespace Astra.UI.Controls
         private static void OnMinimapCollapsedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var canvas = (InfiniteCanvas)d;
+
+            // 更新可见性状态
+            canvas.UpdateMinimapVisibility();
+
             // 当展开时更新缩略图
             if (!canvas.IsMinimapCollapsed)
             {
                 canvas.UpdateMinimap();
+            }
+        }
+
+        private static void OnMinimapSettingsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            canvas.UpdateMinimap();
+            canvas.UpdateViewportIndicator();
+        }
+
+        /// <summary>
+        /// 更新缩略图相关控件的可见性
+        /// </summary>
+        private void UpdateMinimapVisibility()
+        {
+            System.Diagnostics.Debug.WriteLine($"[小地图可见性] ShowMinimap={ShowMinimap}, IsMinimapCollapsed={IsMinimapCollapsed}");
+
+            if (!ShowMinimap)
+            {
+                System.Diagnostics.Debug.WriteLine("[小地图可见性] ShowMinimap=false，隐藏所有小地图控件");
+                if (_minimapContainer != null) _minimapContainer.Visibility = Visibility.Collapsed;
+                if (_minimapCollapseButton != null) _minimapCollapseButton.Visibility = Visibility.Collapsed;
+                if (_minimapExpandButton != null) _minimapExpandButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (IsMinimapCollapsed)
+            {
+                System.Diagnostics.Debug.WriteLine("[小地图可见性] 折叠状态");
+                // 折叠状态：隐藏容器（包含画布），隐藏折叠按钮，显示展开按钮
+                if (_minimapContainer != null) _minimapContainer.Visibility = Visibility.Collapsed;
+                if (_minimapCollapseButton != null) _minimapCollapseButton.Visibility = Visibility.Collapsed;
+                if (_minimapExpandButton != null) _minimapExpandButton.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[小地图可见性] 展开状态 - 小地图应该可见");
+                // 展开状态：显示容器，显示折叠按钮，隐藏展开按钮
+                if (_minimapContainer != null) 
+                {
+                    _minimapContainer.Visibility = Visibility.Visible;
+                    System.Diagnostics.Debug.WriteLine($"[小地图可见性] _minimapContainer 设置为 Visible");
+                }
+                if (_minimapCollapseButton != null) _minimapCollapseButton.Visibility = Visibility.Visible;
+                if (_minimapExpandButton != null) _minimapExpandButton.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -2675,9 +3882,9 @@ namespace Astra.UI.Controls
         }
 
         #endregion
-        
+
         #region 框选功能
-        
+
         /// <summary>
         /// 判断是否点击在画布背景上（不是任何子控件）
         /// 使用更精确的命中测试
@@ -2692,19 +3899,19 @@ namespace Astra.UI.Controls
             while (current != null && current != this)
             {
                 // 如果是这些类型的控件，说明不是空白区域
-                if (current is NodeControl || 
+                if (current is NodeControl ||
                     current is System.Windows.Controls.TextBox ||
                     current is System.Windows.Controls.Primitives.ButtonBase)
                 {
                     return false;
                 }
-                
+
                 // 检查是否是 ContentPresenter（节点的容器）
                 if (current is ContentPresenter)
                 {
                     return false;
                 }
-                
+
                 current = VisualTreeHelper.GetParent(current);
             }
 
@@ -2729,7 +3936,7 @@ namespace Astra.UI.Controls
             }
 
             _isBoxSelecting = true;
-            
+
             // 使用屏幕坐标系来绘制框选框（因为 SelectionBox 在最外层 Grid 中）
             _selectionStartPoint = startPoint;
 
@@ -2770,15 +3977,15 @@ namespace Astra.UI.Controls
             // 使用更稳定的 Rect 构造方式（x, y, width, height）
             var topLeft = ScreenToCanvas(new Point(x, y));
             var bottomRight = ScreenToCanvas(new Point(x + width, y + height));
-            
+
             // 确保正确的矩形构造（处理缩放后坐标可能反转的情况）
             var canvasX = Math.Min(topLeft.X, bottomRight.X);
             var canvasY = Math.Min(topLeft.Y, bottomRight.Y);
             var canvasWidth = Math.Abs(bottomRight.X - topLeft.X);
             var canvasHeight = Math.Abs(bottomRight.Y - topLeft.Y);
-            
+
             var canvasRect = new Rect(canvasX, canvasY, canvasWidth, canvasHeight);
-            
+
             UpdateSelectedItems(canvasRect);
         }
 
@@ -2791,7 +3998,7 @@ namespace Astra.UI.Controls
                 return;
 
             _isBoxSelecting = false;
-            
+
             if (_selectionBox != null)
             {
                 _selectionBox.Visibility = Visibility.Collapsed;
@@ -2915,7 +4122,7 @@ namespace Astra.UI.Controls
                     // 默认节点大小（如果 Node.Size 为空或无效）
                     var width = node.Size.IsEmpty ? 220 : node.Size.Width;
                     var height = node.Size.IsEmpty ? 40 : node.Size.Height;
-                    
+
                     var itemRect = new Rect(
                         node.Position.X,
                         node.Position.Y,
@@ -2948,7 +4155,7 @@ namespace Astra.UI.Controls
 
             return false;
         }
-        
+
         /// <summary>
         /// 清除所有选中项
         /// </summary>
@@ -2987,7 +4194,7 @@ namespace Astra.UI.Controls
                     }
                 }
             }
-            
+
             if (SelectedItems != null)
             {
                 SelectedItems.Clear();
@@ -2997,7 +4204,7 @@ namespace Astra.UI.Controls
                 SelectedItems = new ObservableCollection<object>();
             }
         }
-        
+
         /// <summary>
         /// 删除选中的项（仅从 ItemsSource 中移除）
         /// </summary>
@@ -3089,7 +4296,7 @@ namespace Astra.UI.Controls
                     // 简单的包含检查优化
                     if (obs.Right < minX - 100 || obs.Left > maxX + 100 || obs.Bottom < minY - 100 || obs.Top > maxY + 100)
                         continue;
-                        
+
                     minX = Math.Min(minX, obs.Left);
                     maxX = Math.Max(maxX, obs.Right);
                     minY = Math.Min(minY, obs.Top);
@@ -3146,7 +4353,7 @@ namespace Astra.UI.Controls
                             }
                         }
                     }
-                    
+
                     // 再次确保所有线段都是正交的（A* 网格搜索本身应该保证这一点，但为了保险起见）
                     // 如果存在非正交线段（例如起点/终点吸附到网格时引入的），需要插入中间点
                     for (int i = 0; i < path.Count - 1; i++)
@@ -3211,12 +4418,12 @@ namespace Astra.UI.Controls
             // 如果找不到路径，回退到正交折线连接
             // A* 失败回退逻辑优化：保证回退路径也是正交的
             var fallbackPath = new List<Point> { start };
-            
+
             // 简单的中间点折线逻辑（与 BuildSimpleOrthogonalPath 类似）
             var midX = (start.X + end.X) / 2;
             fallbackPath.Add(new Point(midX, start.Y));
             fallbackPath.Add(new Point(midX, end.Y));
-            
+
             fallbackPath.Add(end);
             return fallbackPath;
         }
