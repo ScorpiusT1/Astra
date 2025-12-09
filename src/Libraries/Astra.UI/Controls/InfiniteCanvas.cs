@@ -1102,7 +1102,12 @@ namespace Astra.UI.Controls
         /// <summary>
         /// 显示对齐辅助线
         /// </summary>
-        public void ShowAlignmentLines(IEnumerable<double> verticalPositions, IEnumerable<double> horizontalPositions)
+        public void ShowAlignmentLines(
+            IEnumerable<double> verticalPositions,
+            IEnumerable<double> horizontalPositions,
+            Rect? movingBounds = null,
+            List<(double x, double y1, double y2)> verticalExtents = null,
+            List<(double y, double x1, double x2)> horizontalExtents = null)
         {
             if (_alignmentLayer == null || !EnableAlignment) return;
 
@@ -1113,18 +1118,48 @@ namespace Astra.UI.Controls
             var width = ActualWidth;
             var height = ActualHeight;
 
+            // 默认长度（全屏），如提供精确范围则使用
+            const double linePadding = 30;
+            double defaultVTop = 0, defaultVBottom = height;
+            double defaultHLeft = 0, defaultHRight = width;
+
+            if (movingBounds.HasValue && movingBounds.Value.Width > 0 && movingBounds.Value.Height > 0)
+            {
+                var mb = movingBounds.Value;
+                defaultVTop = Math.Max(0, CanvasToScreen(new Point(0, mb.Top - linePadding)).Y);
+                defaultVBottom = Math.Min(height, CanvasToScreen(new Point(0, mb.Bottom + linePadding)).Y);
+                defaultHLeft = Math.Max(0, CanvasToScreen(new Point(mb.Left - linePadding, 0)).X);
+                defaultHRight = Math.Min(width, CanvasToScreen(new Point(mb.Right + linePadding, 0)).X);
+            }
+
             // 绘制垂直对齐线
             if (verticalPositions != null)
             {
                 foreach (var x in verticalPositions)
                 {
                     var screenX = CanvasToScreen(new Point(x, 0)).X;
+                    double y1 = defaultVTop;
+                    double y2 = defaultVBottom;
+
+                    if (verticalExtents != null)
+                    {
+                        var match = verticalExtents.FirstOrDefault(v => Math.Abs(v.x - x) < 0.5);
+                        if (!match.Equals(default((double, double, double))))
+                        {
+                            y1 = CanvasToScreen(new Point(0, match.y1)).Y;
+                            y2 = CanvasToScreen(new Point(0, match.y2)).Y;
+                        }
+                    }
+
+                    y1 = Math.Max(0, Math.Min(y1, height));
+                    y2 = Math.Max(0, Math.Min(y2, height));
+
                     _alignmentLayer.Children.Add(new Line
                     {
                         X1 = screenX,
-                        Y1 = 0,
+                        Y1 = y1,
                         X2 = screenX,
-                        Y2 = height,
+                        Y2 = y2,
                         Stroke = lineBrush,
                         StrokeThickness = 1.5,
                         StrokeDashArray = new DoubleCollection { 4, 4 }
@@ -1138,11 +1173,27 @@ namespace Astra.UI.Controls
                 foreach (var y in horizontalPositions)
                 {
                     var screenY = CanvasToScreen(new Point(0, y)).Y;
+                    double x1 = defaultHLeft;
+                    double x2 = defaultHRight;
+
+                    if (horizontalExtents != null)
+                    {
+                        var match = horizontalExtents.FirstOrDefault(h => Math.Abs(h.y - y) < 0.5);
+                        if (!match.Equals(default((double, double, double))))
+                        {
+                            x1 = CanvasToScreen(new Point(match.x1, 0)).X;
+                            x2 = CanvasToScreen(new Point(match.x2, 0)).X;
+                        }
+                    }
+
+                    x1 = Math.Max(0, Math.Min(x1, width));
+                    x2 = Math.Max(0, Math.Min(x2, width));
+
                     _alignmentLayer.Children.Add(new Line
                     {
-                        X1 = 0,
+                        X1 = x1,
                         Y1 = screenY,
-                        X2 = width,
+                        X2 = x2,
                         Y2 = screenY,
                         Stroke = lineBrush,
                         StrokeThickness = 1.5,
@@ -1155,6 +1206,252 @@ namespace Astra.UI.Controls
         public void HideAlignmentLines()
         {
             _alignmentLayer?.Children.Clear();
+        }
+
+        /// <summary>
+        /// 拖动节点时根据当前位置动态计算对齐线
+        /// </summary>
+        /// <param name="movingItem">正在移动的节点对象</param>
+        /// <param name="movingBounds">节点在画布坐标系中的矩形</param>
+        internal void UpdateAlignmentGuides(object movingItem, Rect movingBounds)
+        {
+            if (!EnableAlignment || _alignmentLayer == null)
+            {
+                HideAlignmentLines();
+                return;
+            }
+
+            if (ItemsSource == null || _contentCanvas == null)
+            {
+                HideAlignmentLines();
+                return;
+            }
+
+            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            var tolerance = AlignmentTolerance;
+            var verticals = new List<double>();
+            var horizontals = new List<double>();
+            var verticalExtents = new List<(double x, double y1, double y2)>();
+            var horizontalExtents = new List<(double y, double x1, double x2)>();
+            const double linePadding = 30;
+
+            // 多选拖动时，忽略所有已选中的节点作为对齐参考，避免自对齐
+            HashSet<object> selectedSet = null;
+            if (SelectedItems != null && SelectedItems.Count > 0)
+            {
+                selectedSet = new HashSet<object>(SelectedItems.Cast<object>());
+            }
+
+            bool ShouldIgnore(object item)
+            {
+                if (ReferenceEquals(item, movingItem))
+                    return true;
+
+                if (selectedSet != null && selectedSet.Count > 1 && selectedSet.Contains(item))
+                    return true;
+
+                return false;
+            }
+
+            // 计算移动节点的对齐参考（左/中/右、上/中/下）
+            var movingVerticals = new[]
+            {
+                movingBounds.Left,
+                movingBounds.Left + movingBounds.Width / 2,
+                movingBounds.Right
+            };
+            var movingHorizontals = new[]
+            {
+                movingBounds.Top,
+                movingBounds.Top + movingBounds.Height / 2,
+                movingBounds.Bottom
+            };
+
+            bool ExistsNear(List<double> list, double value) => list.Any(v => Math.Abs(v - value) < 0.5);
+
+            void MergeVerticalExtent(double x, double y1, double y2)
+            {
+                var idx = verticalExtents.FindIndex(v => Math.Abs(v.x - x) < 0.5);
+                if (idx >= 0)
+                {
+                    var existing = verticalExtents[idx];
+                    verticalExtents[idx] = (x, Math.Min(existing.y1, y1), Math.Max(existing.y2, y2));
+                }
+                else
+                {
+                    verticalExtents.Add((x, y1, y2));
+                }
+            }
+
+            void MergeHorizontalExtent(double y, double x1, double x2)
+            {
+                var idx = horizontalExtents.FindIndex(h => Math.Abs(h.y - y) < 0.5);
+                if (idx >= 0)
+                {
+                    var existing = horizontalExtents[idx];
+                    horizontalExtents[idx] = (y, Math.Min(existing.x1, x1), Math.Max(existing.x2, x2));
+                }
+                else
+                {
+                    horizontalExtents.Add((y, x1, x2));
+                }
+            }
+
+            void AddIfClose(double candidate, IEnumerable<double> movingValues, List<double> targetList, Action onMatch)
+            {
+                foreach (var mv in movingValues)
+                {
+                    if (Math.Abs(candidate - mv) <= tolerance)
+                    {
+                        if (!ExistsNear(targetList, candidate))
+                        {
+                            targetList.Add(candidate);
+                        }
+                        onMatch?.Invoke();
+                        break;
+                    }
+                }
+            }
+
+            foreach (var item in ItemsSource)
+            {
+                if (ShouldIgnore(item))
+                    continue;
+
+                var dims = GetItemDimensions(item, itemsControl);
+                if (!dims.HasValue)
+                    continue;
+
+                var (x, y, width, height) = dims.Value;
+
+                var otherVerticals = new[] { x, x + width / 2, x + width };
+                var otherHorizontals = new[] { y, y + height / 2, y + height };
+
+                foreach (var ov in otherVerticals)
+                {
+                    AddIfClose(ov, movingVerticals, verticals, () =>
+                    {
+                        var y1 = Math.Min(movingBounds.Top, y) - linePadding;
+                        var y2 = Math.Max(movingBounds.Bottom, y + height) + linePadding;
+                        MergeVerticalExtent(ov, y1, y2);
+                    });
+                }
+
+                foreach (var oh in otherHorizontals)
+                {
+                    AddIfClose(oh, movingHorizontals, horizontals, () =>
+                    {
+                        var x1 = Math.Min(movingBounds.Left, x) - linePadding;
+                        var x2 = Math.Max(movingBounds.Right, x + width) + linePadding;
+                        MergeHorizontalExtent(oh, x1, x2);
+                    });
+                }
+            }
+
+            if (verticals.Count == 0 && horizontals.Count == 0)
+            {
+                HideAlignmentLines();
+                return;
+            }
+
+            ShowAlignmentLines(verticals, horizontals, movingBounds, verticalExtents, horizontalExtents);
+        }
+
+        /// <summary>
+        /// 计算节点松开后的自动吸附偏移量（在容差内对齐左/中/右或上/中/下）
+        /// </summary>
+        internal (double dx, double dy)? CalculateAlignmentSnap(object movingItem, Rect movingBounds)
+        {
+            if (!EnableAlignment || ItemsSource == null || _contentCanvas == null)
+                return null;
+
+            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            var tolerance = AlignmentTolerance;
+
+            double? bestDx = null;
+            double? bestDy = null;
+
+            HashSet<object> selectedSet = null;
+            if (SelectedItems != null && SelectedItems.Count > 0)
+            {
+                selectedSet = new HashSet<object>(SelectedItems.Cast<object>());
+            }
+
+            bool ShouldIgnore(object item)
+            {
+                if (ReferenceEquals(item, movingItem))
+                    return true;
+
+                if (selectedSet != null && selectedSet.Count > 1 && selectedSet.Contains(item))
+                    return true;
+
+                return false;
+            }
+
+            var movingVerticals = new[]
+            {
+                movingBounds.Left,
+                movingBounds.Left + movingBounds.Width / 2,
+                movingBounds.Right
+            };
+            var movingHorizontals = new[]
+            {
+                movingBounds.Top,
+                movingBounds.Top + movingBounds.Height / 2,
+                movingBounds.Bottom
+            };
+
+            void TryUpdateDx(double diff)
+            {
+                if (Math.Abs(diff) <= tolerance && (bestDx == null || Math.Abs(diff) < Math.Abs(bestDx.Value)))
+                {
+                    bestDx = diff;
+                }
+            }
+
+            void TryUpdateDy(double diff)
+            {
+                if (Math.Abs(diff) <= tolerance && (bestDy == null || Math.Abs(diff) < Math.Abs(bestDy.Value)))
+                {
+                    bestDy = diff;
+                }
+            }
+
+            foreach (var item in ItemsSource)
+            {
+                if (ShouldIgnore(item))
+                    continue;
+
+                var dims = GetItemDimensions(item, itemsControl);
+                if (!dims.HasValue)
+                    continue;
+
+                var (x, y, width, height) = dims.Value;
+
+                var otherVerticals = new[] { x, x + width / 2, x + width };
+                var otherHorizontals = new[] { y, y + height / 2, y + height };
+
+                foreach (var ov in otherVerticals)
+                {
+                    foreach (var mv in movingVerticals)
+                    {
+                        TryUpdateDx(ov - mv);
+                    }
+                }
+
+                foreach (var oh in otherHorizontals)
+                {
+                    foreach (var mh in movingHorizontals)
+                    {
+                        TryUpdateDy(oh - mh);
+                    }
+                }
+            }
+
+            if (bestDx == null && bestDy == null)
+                return null;
+
+            return (bestDx ?? 0, bestDy ?? 0);
         }
 
         #endregion

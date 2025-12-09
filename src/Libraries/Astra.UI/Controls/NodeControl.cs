@@ -480,6 +480,11 @@ namespace Astra.UI.Controls
                     Canvas.SetLeft(_contentPresenter, newPos.X);
                     Canvas.SetTop(_contentPresenter, newPos.Y);
 
+                    // 实时显示对齐辅助线
+                    var nodeSize = GetNodeRenderSize(currentNode);
+                    var movingBounds = new Rect(newPos.X, newPos.Y, nodeSize.Width, nodeSize.Height);
+                    _parentCanvas?.UpdateAlignmentGuides(currentNode, movingBounds);
+
                     // 多选同步移动
                     if (_parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 1)
                     {
@@ -611,6 +616,9 @@ namespace Astra.UI.Controls
                 
                 Cursor = Cursors.Arrow;
                 e.Handled = true;
+
+                // 结束拖拽后隐藏对齐线
+                _parentCanvas?.HideAlignmentLines();
             }
         }
         
@@ -657,6 +665,19 @@ namespace Astra.UI.Controls
 
             // 获取当前节点
             var currentNode = DataContext as Astra.Core.Nodes.Models.Node;
+
+            // 对齐吸附（松开后自动对齐）
+            if (currentNode != null)
+            {
+                var nodeSize = GetNodeRenderSize(currentNode);
+                var snap = _parentCanvas?.CalculateAlignmentSnap(currentNode, new Rect(finalCanvasPosition.X, finalCanvasPosition.Y, nodeSize.Width, nodeSize.Height));
+                if (snap.HasValue)
+                {
+                    finalCanvasPosition = new Point2D(finalCanvasPosition.X + snap.Value.dx, finalCanvasPosition.Y + snap.Value.dy);
+                    canvasDeltaX += snap.Value.dx;
+                    canvasDeltaY += snap.Value.dy;
+                }
+            }
 
             // 计算画布坐标系中的偏移量（用于多选移动）
             var offsetX = canvasDeltaX;
@@ -717,6 +738,9 @@ namespace Astra.UI.Controls
 
             // 更新连线
             _parentCanvas?.RefreshEdges();
+
+            // 拖拽结束后隐藏对齐辅助线
+            _parentCanvas?.HideAlignmentLines();
         }
         
         /// <summary>
@@ -807,6 +831,33 @@ namespace Astra.UI.Controls
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 获取节点当前渲染尺寸，用于计算对齐辅助线的矩形
+        /// </summary>
+        private Size GetNodeRenderSize(Astra.Core.Nodes.Models.Node node)
+        {
+            double width = ActualWidth;
+            double height = ActualHeight;
+
+            if (_contentPresenter != null)
+            {
+                if (width <= 0) width = _contentPresenter.ActualWidth;
+                if (height <= 0) height = _contentPresenter.ActualHeight;
+            }
+
+            if (node != null && node.Size.IsEmpty == false)
+            {
+                if (width <= 0) width = node.Size.Width;
+                if (height <= 0) height = node.Size.Height;
+            }
+
+            // 兜底尺寸，避免零宽高导致的对齐计算异常
+            if (width <= 0) width = 220;
+            if (height <= 0) height = 40;
+
+            return new Size(width, height);
         }
 
         private void TitleTextBlock_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
