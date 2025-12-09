@@ -421,12 +421,94 @@ namespace Astra.UI.Controls
                 nameof(SelectedItems),
                 typeof(IList),
                 typeof(InfiniteCanvas),
-                new PropertyMetadata(null));
+                new PropertyMetadata(null, OnSelectedItemsChanged));
 
         public IList SelectedItems
         {
             get => (IList)GetValue(SelectedItemsProperty);
             set => SetValue(SelectedItemsProperty, value);
+        }
+
+        /// <summary>
+        /// 当前选中的节点数量（只读，用于状态栏显示）
+        /// </summary>
+        public static readonly DependencyProperty SelectedItemsCountProperty =
+            DependencyProperty.Register(
+                nameof(SelectedItemsCount),
+                typeof(int),
+                typeof(InfiniteCanvas),
+                new PropertyMetadata(0));
+
+        public int SelectedItemsCount
+        {
+            get => (int)GetValue(SelectedItemsCountProperty);
+            private set => SetValue(SelectedItemsCountProperty, value);
+        }
+
+        /// <summary>
+        /// 画布上所有节点的总数（只读，用于状态栏显示）
+        /// </summary>
+        public static readonly DependencyProperty TotalItemsCountProperty =
+            DependencyProperty.Register(
+                nameof(TotalItemsCount),
+                typeof(int),
+                typeof(InfiniteCanvas),
+                new PropertyMetadata(0));
+
+        public int TotalItemsCount
+        {
+            get => (int)GetValue(TotalItemsCountProperty);
+            private set => SetValue(TotalItemsCountProperty, value);
+        }
+
+        private static void OnSelectedItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            
+            // 取消订阅旧集合的变化事件
+            if (e.OldValue is INotifyCollectionChanged oldNotify)
+            {
+                oldNotify.CollectionChanged -= canvas.OnSelectedItemsCollectionChanged;
+            }
+            
+            // 订阅新集合的变化事件
+            if (e.NewValue is INotifyCollectionChanged newNotify)
+            {
+                newNotify.CollectionChanged += canvas.OnSelectedItemsCollectionChanged;
+            }
+            
+            // 立即更新数量
+            canvas.UpdateSelectedItemsCount();
+        }
+
+        private void OnSelectedItemsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            UpdateSelectedItemsCount();
+        }
+
+        private void UpdateSelectedItemsCount()
+        {
+            SelectedItemsCount = SelectedItems?.Count ?? 0;
+        }
+
+        /// <summary>
+        /// 更新节点总数
+        /// </summary>
+        private void UpdateTotalItemsCount()
+        {
+            if (ItemsSource == null)
+            {
+                TotalItemsCount = 0;
+                return;
+            }
+
+            // 计算集合中的项目数量
+            int count = 0;
+            foreach (var item in ItemsSource)
+            {
+                count++;
+            }
+            TotalItemsCount = count;
         }
 
         #endregion
@@ -2013,6 +2095,9 @@ namespace Astra.UI.Controls
                 // 无法获取被移除的项，只能在下次添加时重新订阅
             }
 
+            // 更新节点总数
+            UpdateTotalItemsCount();
+
             // 延迟更新以等待 UI 容器生成完成（ItemContainerGenerator 是异步的）
             // 使用 Loaded 优先级确保布局完成后再更新
             Dispatcher.BeginInvoke(new Action(() =>
@@ -2253,6 +2338,9 @@ namespace Astra.UI.Controls
                     }
                 }
             }
+
+            // 更新节点总数
+            canvas.UpdateTotalItemsCount();
 
             // 当内容变化时更新缩略图
             canvas.UpdateMinimap();

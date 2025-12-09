@@ -79,7 +79,24 @@ namespace Astra.UI.Controls
                 canvas._edgeCollectionNotify.CollectionChanged += canvas.OnEdgeCollectionChanged;
             }
 
-            canvas.RefreshEdges();
+            // 如果连线层还未创建，延迟到模板应用后刷新
+            if (canvas._edgeLayer == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[连线] EdgeItemsSource 变化但连线层未创建，延迟刷新");
+                canvas.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (canvas._edgeLayer != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[连线] 延迟刷新连线");
+                        canvas.RefreshEdgesImmediate();
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[连线] EdgeItemsSource 变化且连线层已创建，立即刷新");
+                canvas.RefreshEdgesImmediate();
+            }
         }
 
         #endregion
@@ -127,6 +144,9 @@ namespace Astra.UI.Controls
                 // 放在连线层上方，仍在节点下方
                 _contentCanvas.Children.Insert(1, _connectionPreviewLayer);
             }
+
+            // 首次创建图层后立即刷新，避免首次连线不显示
+            RefreshEdgesImmediate();
         }
 
         #endregion
@@ -135,14 +155,32 @@ namespace Astra.UI.Controls
 
         private void OnEdgeCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            RefreshEdges();
+            System.Diagnostics.Debug.WriteLine($"[连线] 集合变化 - Action: {e.Action}");
+            
+            // 集合变化时立即刷新（Add/Remove 操作应该立即可见）
+            RefreshEdgesImmediate();
         }
 
         /// <summary>
-        /// 刷新连线层
+        /// 刷新连线层（默认节流），拖动多节点时提升实时性
         /// </summary>
-        public void RefreshEdges()
+        public void RefreshEdges() => RefreshEdgesInternal(force: false);
+
+        /// <summary>
+        /// 强制立即刷新连线（忽略节流）
+        /// </summary>
+        public void RefreshEdgesImmediate() => RefreshEdgesInternal(force: true);
+
+        private DateTime _lastEdgeRefresh = DateTime.MinValue;
+        private const int EdgeRefreshThrottleMs = 16; // 约60fps
+
+        private void RefreshEdgesInternal(bool force)
         {
+            var now = DateTime.Now;
+            if (!force && (now - _lastEdgeRefresh).TotalMilliseconds < EdgeRefreshThrottleMs)
+                return;
+            _lastEdgeRefresh = now;
+
             if (_edgeLayer == null)
             {
                 System.Diagnostics.Debug.WriteLine("[连线刷新] 连线层为空");
@@ -562,7 +600,9 @@ namespace Astra.UI.Controls
             }
 
             System.Diagnostics.Debug.WriteLine($"[连线] 连线集合数量: {list.Count}");
-            RefreshEdges();
+            
+            // 创建连线后立即刷新（忽略节流），确保第一次连线立即显示
+            RefreshEdgesImmediate();
         }
 
         private bool HasEdgeBetween(string sourceId, string targetId)

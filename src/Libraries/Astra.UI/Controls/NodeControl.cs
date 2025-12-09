@@ -541,7 +541,7 @@ namespace Astra.UI.Controls
 
                     if (needRefresh)
                     {
-                        _parentCanvas.RefreshEdges();
+                    _parentCanvas.RefreshEdges();
                     }
                     
                     // 🗺️ 请求更新小地图（带节流，避免性能问题）
@@ -736,8 +736,8 @@ namespace Astra.UI.Controls
                 Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
             }
 
-            // 更新连线
-            _parentCanvas?.RefreshEdges();
+            // 更新连线（结束时强制刷新一次，确保最终路径准确）
+            _parentCanvas?.RefreshEdgesImmediate();
 
             // 拖拽结束后隐藏对齐辅助线
             _parentCanvas?.HideAlignmentLines();
