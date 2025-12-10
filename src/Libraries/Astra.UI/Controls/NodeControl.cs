@@ -1,6 +1,7 @@
 ﻿using Astra.Core.Nodes.Geometry;
 using Astra.Core.Nodes.Models;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,6 +20,15 @@ namespace Astra.UI.Controls
     {
         private TextBox _editTextBox;
         private TextBlock _titleTextBlock;
+        private PortControl _portTop;
+        private PortControl _portBottom;
+        private PortControl _portLeft;
+        private PortControl _portRight;
+        private ContextMenu _contextMenu;
+        private MenuItem _renameMenuItem;
+        private MenuItem _deleteMenuItem;
+        private MenuItem _toggleEnabledMenuItem;
+        private MenuItem _copyMenuItem;
         
         // 拖拽移动相关字段
         private bool _isDragging;
@@ -42,11 +52,13 @@ namespace Astra.UI.Controls
         {
             Loaded += NodeControl_Loaded;
             Unloaded += NodeControl_Unloaded;
+            DataContextChanged += OnDataContextChanged;
             
             // 只使用 Preview 事件，避免重复处理
             PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
             PreviewMouseMove += OnPreviewMouseMove;
             PreviewMouseLeftButtonUp += OnPreviewMouseLeftButtonUp;
+            PreviewMouseRightButtonDown += OnPreviewMouseRightButtonDown; // 拦截右键，避免冒泡到画布
             
             // 确保控件可以接收鼠标事件
             IsHitTestVisible = true;
@@ -59,6 +71,11 @@ namespace Astra.UI.Controls
             // 获取模板中的控件
             _editTextBox = GetTemplateChild("PART_EditTextBox") as TextBox;
             _titleTextBlock = GetTemplateChild("PART_TitleTextBlock") as TextBlock;
+            _portTop = GetTemplateChild("PortTop") as PortControl;
+            _portBottom = GetTemplateChild("PortBottom") as PortControl;
+            _portLeft = GetTemplateChild("PortLeft") as PortControl;
+            _portRight = GetTemplateChild("PortRight") as PortControl;
+            InitializeContextMenu();
 
             if (_editTextBox != null)
             {
@@ -70,6 +87,9 @@ namespace Astra.UI.Controls
             {
                 _titleTextBlock.MouseLeftButtonDown += TitleTextBlock_MouseLeftButtonDown;
             }
+
+            // 模板应用后，确保端口拥有稳定的 ID，便于连线复原
+            EnsurePortIds();
         }
 
         private void NodeControl_Loaded(object sender, RoutedEventArgs e)
@@ -77,20 +97,140 @@ namespace Astra.UI.Controls
             // 初始化时设置默认图标和颜色
             UpdateStatusColors();
             UpdateDefaultIcon();
-            
-            // 订阅应用程序级别的鼠标按下事件，用于检测点击节点外部
-            if (Application.Current?.MainWindow != null)
-            {
-                Application.Current.MainWindow.PreviewMouseLeftButtonDown += OnApplicationMouseDown;
-            }
         }
         
         private void NodeControl_Unloaded(object sender, RoutedEventArgs e)
         {
-            // 取消订阅应用程序级别事件，避免内存泄漏
-            if (Application.Current?.MainWindow != null)
+            // 目前不再使用应用程序级别的鼠标监听
+        }
+
+        private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            // 当节点数据切换时重新分配端口 ID，保证 Edge 可通过端口ID定位到正确端口
+            EnsurePortIds();
+        }
+
+        /// <summary>
+        /// 为模板端口分配稳定的 PortId（基于节点 Id + 方向），确保切换界面后连线还能找到原端口
+        /// </summary>
+        private void EnsurePortIds()
+        {
+            if (DataContext is not Node node)
+                return;
+
+            // 使用节点 Id + 方向构造稳定标识
+            TryAssignPortId(_portTop, $"{node.Id}:Top");
+            TryAssignPortId(_portBottom, $"{node.Id}:Bottom");
+            TryAssignPortId(_portLeft, $"{node.Id}:Left");
+            TryAssignPortId(_portRight, $"{node.Id}:Right");
+        }
+
+        /// <summary>
+        /// 初始化右键菜单，将重命名与删除放入同一菜单
+        /// </summary>
+        private void InitializeContextMenu()
+        {
+            // 统一使用主题菜单样式
+            var contextMenuStyle = TryFindResource("ThemedContextMenu") as Style;
+            var menuItemStyle = TryFindResource("ThemedMenuItem") as Style;
+
+            if (_contextMenu == null)
             {
-                Application.Current.MainWindow.PreviewMouseLeftButtonDown -= OnApplicationMouseDown;
+                _contextMenu = new ContextMenu();
+                if (contextMenuStyle != null)
+                    _contextMenu.Style = contextMenuStyle;
+
+                // 重命名
+                _renameMenuItem = new MenuItem
+                {
+                    Header = "重命名"
+                };
+                if (menuItemStyle != null)
+                    _renameMenuItem.Style = menuItemStyle;
+                _renameMenuItem.Click += (s, e) =>
+                {
+                    IsEditing = true;
+                };
+                _contextMenu.Items.Add(_renameMenuItem);
+
+                // 复制
+                _copyMenuItem = new MenuItem
+                {
+                    Header = "复制"
+                };
+                if (menuItemStyle != null)
+                    _copyMenuItem.Style = menuItemStyle;
+                _copyMenuItem.Click += OnCopyMenuItemClick;
+                _contextMenu.Items.Add(_copyMenuItem);
+
+                // 分隔符
+                _contextMenu.Items.Add(new Separator());
+
+                // 启用/禁用
+                _toggleEnabledMenuItem = new MenuItem
+                {
+                    Header = "禁用"
+                };
+                if (menuItemStyle != null)
+                    _toggleEnabledMenuItem.Style = menuItemStyle;
+                _toggleEnabledMenuItem.Click += OnToggleEnabledMenuItemClick;
+                _contextMenu.Items.Add(_toggleEnabledMenuItem);
+
+                // 分隔符
+                _contextMenu.Items.Add(new Separator());
+
+                // 删除
+                _deleteMenuItem = new MenuItem
+                {
+                    Header = "删除",
+                    Tag = "Danger"  // 标记为危险操作
+                };
+                if (menuItemStyle != null)
+                    _deleteMenuItem.Style = menuItemStyle;
+                _deleteMenuItem.Click += OnDeleteMenuItemClick;
+                _contextMenu.Items.Add(_deleteMenuItem);
+
+                // 在菜单打开时，自动选中当前节点并更新菜单项状态
+                _contextMenu.Opened += (s, e) =>
+                {
+                    EnsureSelectedForAction();
+                    UpdateContextMenuItems();
+                };
+            }
+
+        // 统一右键菜单，避免画布和节点出现不同菜单
+        if (_contextMenu != null)
+        {
+            _contextMenu.PlacementTarget = this;
+        }
+
+            // 确保控件绑定该菜单
+            ContextMenu = _contextMenu;
+        }
+
+        /// <summary>
+        /// 更新右键菜单项的状态（如启用/禁用文本）
+        /// </summary>
+        private void UpdateContextMenuItems()
+        {
+            if (DataContext is not Node node)
+                return;
+
+            // 更新启用/禁用菜单项文本
+            if (_toggleEnabledMenuItem != null)
+            {
+                _toggleEnabledMenuItem.Header = node.IsEnabled ? "禁用" : "启用";
+            }
+        }
+
+        private void TryAssignPortId(PortControl port, string id)
+        {
+            if (port == null || string.IsNullOrWhiteSpace(id))
+                return;
+
+            if (string.IsNullOrWhiteSpace(port.PortId))
+            {
+                port.PortId = id;
             }
         }
         
@@ -322,50 +462,34 @@ namespace Astra.UI.Controls
                 return;
             }
             
-            // 检查是否是双击（用于重命名）
-            if (e.ClickCount == 2)
+            // 如果当前处于编辑状态，直接交给 TextBox 处理，不在此结束编辑
+            // 结束编辑只依赖 LostFocus / Enter / Esc
+            if (IsEditing)
             {
-                var clickedElement = e.OriginalSource as DependencyObject;
-                bool isClickOnTitle = false;
-                var current = clickedElement;
-                while (current != null)
-                {
-                    if (current == _titleTextBlock)
-                    {
-                        isClickOnTitle = true;
-                        break;
-                    }
-                    current = VisualTreeHelper.GetParent(current);
-                }
-                
-                if (isClickOnTitle)
-                {
-                    IsEditing = true;
-                    e.Handled = true;
-                    return;
-                }
+                return;
             }
             
-            // 如果当前处于编辑状态
-            if (IsEditing && _editTextBox != null)
+            // 如果画布被锁定，仅允许选中，不允许拖拽
+            if (_parentCanvas != null && _parentCanvas.IsLocked)
             {
-                var clickedElement = e.OriginalSource as DependencyObject;
-                bool isClickOnTextBox = false;
-                var current = clickedElement;
-                while (current != null)
+                // 简单处理选中状态，其余交互（拖拽）由锁定禁止
+                var node = DataContext as Astra.Core.Nodes.Models.Node;
+                if (node != null)
                 {
-                    if (current == _editTextBox)
+                    if (!node.IsSelected)
                     {
-                        isClickOnTextBox = true;
-                        break;
-                    }
-                    current = VisualTreeHelper.GetParent(current);
-                }
+                        ClearOtherNodesSelection(node);
+                        node.IsSelected = true;
+                        IsSelected = true;
 
-                if (!isClickOnTextBox)
-                {
-                    ExitEditMode();
+                        if (_parentCanvas.SelectedItems != null)
+                        {
+                            _parentCanvas.SelectedItems.Clear();
+                            _parentCanvas.SelectedItems.Add(node);
+                        }
+                    }
                 }
+                e.Handled = true;
                 return;
             }
             
@@ -641,6 +765,14 @@ namespace Astra.UI.Controls
                         _selectedNodesInitialPositions[node.Id] = node.Position;
                     }
                 }
+
+                // 🔧 多节点拖拽时启用智能路径优化（避免重复计算A*）
+                if (_selectedNodesInitialPositions.Count > 1)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[批量拖拽] 开始拖拽 {_selectedNodesInitialPositions.Count} 个节点");
+                    var movedNodeIds = new HashSet<string>(_selectedNodesInitialPositions.Keys);
+                    _parentCanvas.EnableSmartEdgeUpdate(movedNodeIds);
+                }
             }
         }
         
@@ -736,8 +868,17 @@ namespace Astra.UI.Controls
                 Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
             }
 
-            // 更新连线（结束时强制刷新一次，确保最终路径准确）
-            _parentCanvas?.RefreshEdgesImmediate();
+            // 🔧 结束批量拖拽（禁用智能优化）
+            if (_selectedNodesInitialPositions != null && _selectedNodesInitialPositions.Count > 1)
+            {
+                _parentCanvas?.DisableSmartEdgeUpdate();
+                System.Diagnostics.Debug.WriteLine($"[批量拖拽] 完成");
+            }
+            else
+            {
+                // 单节点拖拽，立即刷新连线
+                _parentCanvas?.RefreshEdgesImmediate();
+            }
 
             // 拖拽结束后隐藏对齐辅助线
             _parentCanvas?.HideAlignmentLines();
@@ -862,13 +1003,35 @@ namespace Astra.UI.Controls
 
         private void TitleTextBlock_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.ClickCount == 2)
-            {
-                // 双击进入编辑模式
-                IsEditing = true;
-                e.Handled = true;
-            }
+            // 保持空实现，禁用双击重命名
         }
+
+    /// <summary>
+    /// 拦截右键，统一只弹出节点菜单，避免冒泡到画布菜单
+    /// </summary>
+    private void OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // 如果画布当前存在多选组框，则右键应由组框/画布处理，节点不再抢占
+        _parentCanvas ??= FindParentCanvas(this);
+        if (_parentCanvas != null && _parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 1)
+        {
+            // 允许事件继续冒泡到 InfiniteCanvas / FlowEditor，由组框菜单接管
+            return;
+        }
+
+        // 选中当前节点
+        EnsureSelectedForAction();
+
+        // 打开节点自己的菜单
+        if (_contextMenu != null)
+        {
+            _contextMenu.PlacementTarget = this;
+            _contextMenu.IsOpen = true;
+        }
+
+        // 阻止事件冒泡，防止触发画布右键菜单
+        e.Handled = true;
+    }
 
         private void EnterEditMode()
         {
@@ -902,10 +1065,7 @@ namespace Astra.UI.Controls
             if (_editTextBox != null && _titleTextBlock != null)
             {
                 // 自动保存更改（只要文本不为空）
-                if (!string.IsNullOrWhiteSpace(_editTextBox.Text))
-                {
-                    Title = _editTextBox.Text.Trim();
-                }
+                ApplyRenameWithUndo(_editTextBox.Text);
 
                 _editTextBox.Visibility = Visibility.Collapsed;
                 _titleTextBlock.Visibility = Visibility.Visible;
@@ -937,6 +1097,82 @@ namespace Astra.UI.Controls
                 }
                 ExitEditMode();
                 e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// 通过可撤销命令应用重命名
+        /// </summary>
+        /// <param name="newTitleRaw">用户输入的新标题</param>
+        private void ApplyRenameWithUndo(string newTitleRaw)
+        {
+            var newTitle = newTitleRaw?.Trim();
+            if (string.IsNullOrWhiteSpace(newTitle))
+                return;
+
+            var oldTitle = Title;
+            if (newTitle == oldTitle)
+            {
+                // 同步模型名称，防止两者不一致
+                if (DataContext is Node nodeSync)
+                {
+                    nodeSync.Name = newTitle;
+                }
+                return;
+            }
+
+            if (DataContext is not Node node)
+            {
+                Title = newTitle;
+                return;
+            }
+
+            _parentCanvas ??= FindParentCanvas(this);
+            var undoManager = _parentCanvas?.UndoRedoManager;
+
+            if (undoManager != null)
+            {
+                undoManager.Do(new RenameNodeCommand(node, this, oldTitle, newTitle));
+            }
+            else
+            {
+                // 无撤销管理器，直接应用
+                node.Name = newTitle;
+                Title = newTitle;
+            }
+        }
+
+        /// <summary>
+        /// 重命名命令，支持撤销/重做
+        /// </summary>
+        private class RenameNodeCommand : IUndoableCommand
+        {
+            private readonly Node _node;
+            private readonly NodeControl _control;
+            private readonly string _oldName;
+            private readonly string _newName;
+
+            public RenameNodeCommand(Node node, NodeControl control, string oldName, string newName)
+            {
+                _node = node;
+                _control = control;
+                _oldName = oldName;
+                _newName = newName;
+            }
+
+            public void Execute() => Apply(_newName);
+            public void Undo() => Apply(_oldName);
+
+            private void Apply(string value)
+            {
+                if (_node != null)
+                {
+                    _node.Name = value;
+                }
+                if (_control != null)
+                {
+                    _control.Title = value;
+                }
             }
         }
 
@@ -1094,6 +1330,32 @@ namespace Astra.UI.Controls
                 }
             }
         }
+
+        /// <summary>
+        /// 确保当前节点已选中；未选中则选中并直接返回 true
+        /// </summary>
+        private bool EnsureSelectedForAction()
+        {
+            _parentCanvas ??= FindParentCanvas(this);
+            if (_parentCanvas == null || DataContext is not Astra.Core.Nodes.Models.Node node)
+                return false;
+
+            if (!node.IsSelected)
+            {
+                // 先清除其他节点选中，再选中当前节点
+                ClearOtherNodesSelection(node);
+                node.IsSelected = true;
+                IsSelected = true;
+
+                if (_parentCanvas.SelectedItems != null)
+                {
+                    _parentCanvas.SelectedItems.Clear();
+                    _parentCanvas.SelectedItems.Add(node);
+                }
+            }
+
+            return true;
+        }
         
         /// <summary>
         /// 查找父 InfiniteCanvas
@@ -1246,6 +1508,131 @@ namespace Astra.UI.Controls
             }
             return null;
         }
+
+        /// <summary>
+        /// 右键菜单删除选中节点（委托给 InfiniteCanvas 统一处理）
+        /// </summary>
+        private void OnDeleteMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureSelectedForAction())
+                return;
+
+            _parentCanvas ??= FindParentCanvas(this);
+            if (_parentCanvas == null)
+                return;
+
+            // 委托给 InfiniteCanvas 的统一删除方法
+            _parentCanvas.DeleteSelectedItems();
+        }
+
+        /// <summary>
+        /// 右键菜单启用/禁用节点
+        /// </summary>
+        private void OnToggleEnabledMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureSelectedForAction())
+                return;
+
+            _parentCanvas ??= FindParentCanvas(this);
+            if (_parentCanvas == null)
+                return;
+
+            var node = DataContext as Node;
+            if (node == null)
+                return;
+
+            // 获取所有选中的节点
+            var selectedNodes = new List<Node>();
+            if (_parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 0)
+            {
+                foreach (var item in _parentCanvas.SelectedItems)
+                {
+                    if (item is Node n)
+                        selectedNodes.Add(n);
+                }
+            }
+            else
+            {
+                selectedNodes.Add(node);
+            }
+
+            // 判断新状态：如果当前节点已启用，则禁用；否则启用
+            var newState = !node.IsEnabled;
+
+            // 使用撤销/重做命令
+            var undoManager = _parentCanvas.UndoRedoManager;
+            if (undoManager != null)
+            {
+                var command = new ToggleNodeEnabledCommand(selectedNodes, newState);
+                undoManager.Do(command);
+            }
+            else
+            {
+                // 无撤销管理器，直接应用
+                foreach (var n in selectedNodes)
+                {
+                    n.IsEnabled = newState;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 右键菜单复制节点到剪贴板（不立即粘贴）
+        /// </summary>
+        private void OnCopyMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureSelectedForAction())
+                return;
+
+            _parentCanvas ??= FindParentCanvas(this);
+            if (_parentCanvas == null)
+                return;
+
+            // 获取所有选中的节点（保存原始节点，不克隆）
+            var selectedNodes = new List<Node>();
+            if (_parentCanvas.SelectedItems != null && _parentCanvas.SelectedItems.Count > 0)
+            {
+                foreach (var item in _parentCanvas.SelectedItems)
+                {
+                    if (item is Node n)
+                        selectedNodes.Add(n);
+                }
+            }
+            else if (DataContext is Node node)
+            {
+                selectedNodes.Add(node);
+            }
+
+            if (selectedNodes.Count == 0)
+                return;
+
+            // 保存到剪贴板（不克隆）
+            _parentCanvas.ClipboardNodes = selectedNodes;
+
+            // 计算并保存边界框（用于保持节点间的相对位置）
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
+
+            foreach (var node in selectedNodes)
+            {
+                if (node.Position != null)
+                {
+                    var nodeWidth = node.Size.IsEmpty ? 220 : node.Size.Width;
+                    var nodeHeight = node.Size.IsEmpty ? 40 : node.Size.Height;
+                    
+                    minX = Math.Min(minX, node.Position.X);
+                    minY = Math.Min(minY, node.Position.Y);
+                    maxX = Math.Max(maxX, node.Position.X + nodeWidth);
+                    maxY = Math.Max(maxY, node.Position.Y + nodeHeight);
+                }
+            }
+
+            if (minX != double.MaxValue)
+            {
+                _parentCanvas.ClipboardBounds = new Rect(minX, minY, maxX - minX, maxY - minY);
+            }
+        }
+
 
         
         #endregion

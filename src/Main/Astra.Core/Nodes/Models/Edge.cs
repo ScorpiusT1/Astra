@@ -52,6 +52,23 @@ namespace Astra.Core.Nodes.Models
         /// </summary>
         [JsonIgnore]
         public bool IsSelected { get; set; }
+
+        /// <summary>
+        /// 克隆连线（用于复制粘贴）
+        /// </summary>
+        public Edge Clone()
+        {
+            return new Edge
+            {
+                Id = Guid.NewGuid().ToString(), // 生成新的ID
+                SourceNodeId = this.SourceNodeId,
+                TargetNodeId = this.TargetNodeId,
+                SourcePortId = this.SourcePortId,
+                TargetPortId = this.TargetPortId,
+                Points = this.Points != null ? new List<Point2D>(this.Points) : new List<Point2D>(),
+                IsSelected = false // 克隆后默认不选中
+            };
+        }
     }
 }
 

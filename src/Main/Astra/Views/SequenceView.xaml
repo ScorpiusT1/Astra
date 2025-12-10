@@ -12,9 +12,16 @@
              Background="{DynamicResource SurfaceBrush}">
 
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
         <controls:FlowEditor x:Name="FlowEditor"
-                            ToolBoxItemsSource="{Binding ToolBoxItemsSource}"
-                            CanvasItemsSource="{Binding CanvasItemsSource}"
-                            ToolBoxWidth="90" />
+                             ClipToBounds="True"
+                             ToolBoxItemsSource="{Binding ToolBoxItemsSource}"
+                             CanvasItemsSource="{Binding CanvasItemsSource}"
+                             EdgeItemsSource="{Binding EdgeItemsSource}"
+                             ToolBoxWidth="90" />
     </Grid>
 </UserControl>

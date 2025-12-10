@@ -142,10 +142,11 @@ namespace Astra.UI.Controls
 
         private NodeToolBox _nodeToolBox;
         private InfiniteCanvas _infiniteCanvas;
-        private ContextMenu _canvasContextMenu;  // 画布右键菜单
+        private ContextMenu _canvasContextMenu;  // 选中项右键菜单（节点或框选组）
         private Window _hostWindow;
         private bool _windowEventsAttached;
         private readonly UndoRedoManager _undoRedoManager = new UndoRedoManager();
+        private System.Windows.Point? _lastRightClickPosition;  // 保存最后一次右键点击的位置（画布坐标系）
 
         #endregion
 
@@ -215,6 +216,7 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.DragLeave += OnCanvasDragLeave;
                 
                 // 订阅右键菜单事件
+                _infiniteCanvas.PreviewMouseRightButtonDown += OnCanvasPreviewRightMouseDown;
                 _infiniteCanvas.MouseRightButtonDown += OnCanvasRightMouseDown;
                 
                 // 初始化右键菜单
@@ -239,6 +241,7 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.DragLeave -= OnCanvasDragLeave;
                 
                 // 取消右键菜单事件
+                _infiniteCanvas.PreviewMouseRightButtonDown -= OnCanvasPreviewRightMouseDown;
                 _infiniteCanvas.MouseRightButtonDown -= OnCanvasRightMouseDown;
             }
         }
@@ -288,14 +291,52 @@ namespace Astra.UI.Controls
         #region 键盘事件
 
         /// <summary>
-        /// FlowEditor 键盘事件（支持 Delete 键删除）
+        /// FlowEditor 键盘事件（支持 Delete 键删除、撤销/重做、复制/粘贴）
         /// </summary>
         private void OnFlowEditorKeyDown(object sender, KeyEventArgs e)
         {
+            // Delete 键删除选中节点
             if (e.Key == Key.Delete)
             {
                 DeleteSelectedNodes();
                 e.Handled = true;
+            }
+
+            // Ctrl+C 复制
+            if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                OnCopyMenuItemClick(null, null);
+                e.Handled = true;
+            }
+
+            // Ctrl+V 粘贴
+            if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                OnPasteMenuItemClick(null, null);
+                e.Handled = true;
+            }
+
+            // Ctrl+Z 撤销
+            if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                if (_undoRedoManager.CanUndo)
+                {
+                    _undoRedoManager.Undo();
+                    _infiniteCanvas?.RefreshEdgesImmediate(); // 刷新连线显示
+                    e.Handled = true;
+                }
+            }
+
+            // Ctrl+Y 或 Ctrl+Shift+Z 重做
+            if ((e.Key == Key.Y && Keyboard.Modifiers == ModifierKeys.Control) ||
+                (e.Key == Key.Z && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)))
+            {
+                if (_undoRedoManager.CanRedo)
+                {
+                    _undoRedoManager.Redo();
+                    _infiniteCanvas?.RefreshEdgesImmediate(); // 刷新连线显示
+                    e.Handled = true;
+                }
             }
         }
 
@@ -345,90 +386,195 @@ namespace Astra.UI.Controls
         /// <summary>
         /// 初始化画布右键菜单
         /// </summary>
+     
+        private ContextMenu _canvasBackgroundContextMenu; // 画布右键菜单（锁定）
+        private MenuItem _lockCanvasMenuItem;
+
+        /// <summary>
+        /// 初始化画布右键菜单
+        /// </summary>
         private void InitializeContextMenu()
         {
-            _canvasContextMenu = new ContextMenu();
-            
-            // 应用主题样式
             var contextMenuStyle = TryFindResource("ThemedContextMenu") as Style;
+            var menuItemStyle = TryFindResource("ThemedMenuItem") as Style;
+
+            // 1) 选中项右键菜单（包含复制、粘贴、启用/禁用、删除）
+            // 如果菜单已存在，先清空避免重复添加
+            if (_canvasContextMenu != null)
+            {
+                _canvasContextMenu.Items.Clear();
+            }
+            else
+            {
+                _canvasContextMenu = new ContextMenu();
+            }
+            
             if (contextMenuStyle != null)
             {
                 _canvasContextMenu.Style = contextMenuStyle;
             }
 
+            // 复制菜单项
+            var copyMenuItem = new MenuItem()
+            {
+                Header = "复制",
+            };
+            if (menuItemStyle != null)
+                copyMenuItem.Style = menuItemStyle;
+            copyMenuItem.Click += OnCopyMenuItemClick;
+            _canvasContextMenu.Items.Add(copyMenuItem);
+
+            // 分隔符
+            _canvasContextMenu.Items.Add(new Separator());
+
+            // 启用/禁用菜单项
+            var toggleEnabledMenuItem = new MenuItem()
+            {
+                Header = "禁用",
+            };
+            if (menuItemStyle != null)
+                toggleEnabledMenuItem.Style = menuItemStyle;
+            toggleEnabledMenuItem.Click += OnToggleEnabledMenuItemClick;
+            _canvasContextMenu.Items.Add(toggleEnabledMenuItem);
+
+            // 分隔符
+            _canvasContextMenu.Items.Add(new Separator());
+
             // 删除菜单项
             var deleteMenuItem = new MenuItem()
             {
                 Header = "删除选中项",
-                InputGestureText = "Delete",  // 快捷键提示
-                Tag = "Danger"  // 标记为危险操作，用于应用危险色样式
+                Tag = "Danger"  // 标记为危险操作
             };
-            
-            // 应用主题样式
-            var menuItemStyle = TryFindResource("ThemedMenuItem") as Style;
+            if (menuItemStyle != null)
+                deleteMenuItem.Style = menuItemStyle;
+            deleteMenuItem.Click += OnDeleteMenuItemClick;
+            _canvasContextMenu.Items.Add(deleteMenuItem);
+
+            // 在菜单打开时更新启用/禁用文本
+            _canvasContextMenu.Opened += (s, e) =>
+            {
+                if (_infiniteCanvas?.SelectedItems != null && _infiniteCanvas.SelectedItems.Count > 0)
+                {
+                    // 检查是否所有选中的节点都已启用
+                    bool allEnabled = true;
+                    foreach (var item in _infiniteCanvas.SelectedItems)
+                    {
+                        if (item is Node node && !node.IsEnabled)
+                        {
+                            allEnabled = false;
+                            break;
+                        }
+                    }
+                    toggleEnabledMenuItem.Header = allEnabled ? "禁用" : "启用";
+                }
+            };
+
+            // 2) 画布右键菜单（锁定画布）
+            _canvasBackgroundContextMenu = new ContextMenu();
+            if (contextMenuStyle != null)
+            {
+                _canvasBackgroundContextMenu.Style = contextMenuStyle;
+            }
+
+            _lockCanvasMenuItem = new MenuItem()
+            {
+                Header = "锁定画布",
+                IsCheckable = true
+            };
             if (menuItemStyle != null)
             {
-                deleteMenuItem.Style = menuItemStyle;
+                _lockCanvasMenuItem.Style = menuItemStyle;
             }
-            
-            // 创建删除图标（使用 Viewbox 包裹 Canvas）
-            var iconViewbox = new Viewbox
+            _lockCanvasMenuItem.Click += (s, e) =>
             {
-                Width = 16,
-                Height = 16,
-                Stretch = Stretch.Uniform
+                if (_infiniteCanvas == null) return;
+                _infiniteCanvas.IsLocked = _lockCanvasMenuItem.IsChecked;
             };
-            
-            var iconCanvas = new Canvas
-            {
-                Width = 24,
-                Height = 24
-            };
-            
-            var iconPath = new System.Windows.Shapes.Path
-            {
-                Data = Geometry.Parse("M19 7L18.1327 19.1425C18.0579 20.1891 17.187 21 16.1378 21H7.86224C6.81296 21 5.94208 20.1891 5.86732 19.1425L5 7M10 11V17M14 11V17M15 7V4C15 3.44772 14.5523 3 14 3H10C9.44772 3 9 3.44772 9 4V7M4 7H20"),
-                Stroke = (System.Windows.Media.Brush)TryFindResource("DangerBrush") ?? System.Windows.Media.Brushes.Red,
-                StrokeThickness = 2,
-                StrokeLineJoin = PenLineJoin.Round,
-                StrokeStartLineCap = PenLineCap.Round,
-                StrokeEndLineCap = PenLineCap.Round
-            };
-            
-            iconCanvas.Children.Add(iconPath);
-            iconViewbox.Child = iconCanvas;
-            deleteMenuItem.Icon = iconViewbox;
-            
-            deleteMenuItem.Click += OnDeleteMenuItemClick;
 
-            _canvasContextMenu.Items.Add(deleteMenuItem);
+            _canvasBackgroundContextMenu.Items.Add(_lockCanvasMenuItem);
+
+            // 分隔符
+            _canvasBackgroundContextMenu.Items.Add(new Separator());
+
+            // 粘贴菜单项（画布空白区域右键菜单）
+            var pasteMenuItem = new MenuItem()
+            {
+                Header = "粘贴",
+            };
+            if (menuItemStyle != null)
+                pasteMenuItem.Style = menuItemStyle;
+            pasteMenuItem.Click += OnPasteMenuItemClick;
+            _canvasBackgroundContextMenu.Items.Add(pasteMenuItem);
+
+            // 在菜单打开时更新粘贴菜单项可用状态和锁定状态
+            _canvasBackgroundContextMenu.Opened += (s, e) =>
+            {
+                // 粘贴菜单项：只有剪贴板有内容时才可用
+                pasteMenuItem.IsEnabled = _infiniteCanvas?.ClipboardNodes != null && _infiniteCanvas.ClipboardNodes.Count > 0;
+                
+                // 更新锁定/解锁文本
+                if (_lockCanvasMenuItem != null && _infiniteCanvas != null)
+                {
+                    _lockCanvasMenuItem.IsChecked = _infiniteCanvas.IsLocked;
+                    _lockCanvasMenuItem.Header = _infiniteCanvas.IsLocked ? "解锁画布" : "锁定画布";
+                }
+            };
         }
 
         /// <summary>
-        /// 画布右键按下事件
+        /// 画布右键按下预览事件
+        /// 专门用于处理“框选组”的右键菜单，优先级高于节点右键菜单
+        /// </summary>
+        private void OnCanvasPreviewRightMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (_infiniteCanvas == null)
+                return;
+
+            var hit = e.OriginalSource as DependencyObject;
+
+            // 如果命中到框选虚线框本身或其子元素，则认为是“框选框右键”
+            if (IsHitOnSelectedGroupBox(hit))
+            {
+                // 直接显示“删除选中项”菜单，并阻止事件继续传递到节点
+                ShowSelectionContextMenu();
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// 画布右键按下事件（冒泡）
         /// </summary>
         private void OnCanvasRightMouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (_infiniteCanvas == null || _canvasContextMenu == null)
+            if (_infiniteCanvas == null)
                 return;
 
-            // 检查是否有选中项
             var selectedCount = _infiniteCanvas.SelectedItems?.Count ?? 0;
-            if (selectedCount == 0)
-            {
-                // 没有选中项，不显示菜单
-                return;
-            }
+            var hit = e.OriginalSource as DependencyObject;
+            bool isBackgroundClick = IsClickOnCanvasBackground(hit);
 
-            // 更新菜单项文本
-            if (_canvasContextMenu.Items[0] is MenuItem deleteItem)
+            if (!isBackgroundClick && selectedCount > 0 && _canvasContextMenu != null)
             {
-                deleteItem.Header = selectedCount > 1 ? $"删除 {selectedCount} 个选中项" : "删除选中项";
+                // 在选中节点或组上右键：显示选中项菜单
+                ShowSelectionContextMenu();
             }
+            else if (_canvasBackgroundContextMenu != null)
+            {
+                // 在画布空白区域右键：显示画布菜单（锁定/解锁、粘贴），与是否有选中项无关
+                // 保存鼠标位置（转换为画布坐标系），用于粘贴
+                var mousePos = e.GetPosition(_infiniteCanvas);
+                _lastRightClickPosition = _infiniteCanvas.ScreenToCanvas(mousePos);
 
-            // 显示菜单
-            _canvasContextMenu.PlacementTarget = _infiniteCanvas;
-            _canvasContextMenu.IsOpen = true;
+                if (_lockCanvasMenuItem != null)
+                {
+                    _lockCanvasMenuItem.IsChecked = _infiniteCanvas.IsLocked;
+                    _lockCanvasMenuItem.Header = _infiniteCanvas.IsLocked ? "解锁画布" : "锁定画布";
+                }
+
+                _canvasBackgroundContextMenu.PlacementTarget = _infiniteCanvas;
+                _canvasBackgroundContextMenu.IsOpen = true;
+            }
 
             e.Handled = true;
         }
@@ -442,81 +588,501 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
-        /// 删除选中的节点
+        /// 复制选中的节点到剪贴板（不立即粘贴）
         /// </summary>
-        private void DeleteSelectedNodes()
+        private void OnCopyMenuItemClick(object sender, RoutedEventArgs e)
         {
-            if (_infiniteCanvas?.SelectedItems == null || _infiniteCanvas.SelectedItems.Count == 0)
+            if (_infiniteCanvas == null || _infiniteCanvas.SelectedItems == null || _infiniteCanvas.SelectedItems.Count == 0)
                 return;
 
-            if (CanvasItemsSource == null)
-                return;
+            // 获取所有选中的节点（克隆后保存，避免后续修改影响粘贴）
+            _infiniteCanvas.ClipboardNodes = new List<Node>();
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
 
-            // 复制选中项列表（避免在迭代时修改集合）
-            var itemsToDelete = new List<object>(_infiniteCanvas.SelectedItems.Cast<object>());
+            // 收集选中节点的ID集合（用于复制连线）
+            var selectedNodeIds = new HashSet<string>();
+            // 旧节点ID到克隆节点的映射（用于更新连线引用）
+            var oldNodeIdToClonedNodeMap = new Dictionary<string, Node>();
 
-            // 从数据源中删除
-            if (CanvasItemsSource is IList list)
+            System.Diagnostics.Debug.WriteLine($"");
+            System.Diagnostics.Debug.WriteLine($"========== 开始复制节点 ==========");
+
+            foreach (var item in _infiniteCanvas.SelectedItems)
             {
-                foreach (var item in itemsToDelete)
+                if (item is Node node)
                 {
-                    list.Remove(item);
+                    System.Diagnostics.Debug.WriteLine($"复制节点: {node.Name} (ID: {node.Id}), 原始位置: ({node.Position.X:F2}, {node.Position.Y:F2})");
+                    
+                    // 保存原始属性（因为 Clone() 会丢失只读结构体）
+                    var originalPosition = node.Position;
+                    var originalSize = node.Size;
+                    
+                    // 克隆节点
+                    var clonedNode = node.Clone();
+                    
+                    System.Diagnostics.Debug.WriteLine($"  克隆后节点ID: {clonedNode.Id}");
+                    System.Diagnostics.Debug.WriteLine($"  克隆后 Position: ({clonedNode.Position.X:F2}, {clonedNode.Position.Y:F2})");
+                    
+                    // 🔧 手动恢复位置和尺寸
+                    clonedNode.Position = originalPosition;
+                    clonedNode.Size = originalSize;
+                    
+                    System.Diagnostics.Debug.WriteLine($"  恢复后 Position: ({clonedNode.Position.X:F2}, {clonedNode.Position.Y:F2})");
+                    System.Diagnostics.Debug.WriteLine($"  恢复后 Size: ({clonedNode.Size.Width:F2}, {clonedNode.Size.Height:F2})");
+                    
+                    _infiniteCanvas.ClipboardNodes.Add(clonedNode);
+                    
+                    // 记录原始ID和克隆节点的映射（用于更新连线的节点ID）
+                    selectedNodeIds.Add(node.Id);
+                    oldNodeIdToClonedNodeMap[node.Id] = clonedNode;
+                    
+                    System.Diagnostics.Debug.WriteLine($"  节点ID映射: {node.Id} -> {clonedNode.Id}");
+                    
+                    // 使用恢复后的位置计算边界框
+                    var nodeWidth = clonedNode.Size.IsEmpty ? 220 : clonedNode.Size.Width;
+                    var nodeHeight = clonedNode.Size.IsEmpty ? 40 : clonedNode.Size.Height;
+                    
+                    minX = Math.Min(minX, clonedNode.Position.X);
+                    minY = Math.Min(minY, clonedNode.Position.Y);
+                    maxX = Math.Max(maxX, clonedNode.Position.X + nodeWidth);
+                    maxY = Math.Max(maxY, clonedNode.Position.Y + nodeHeight);
+                }
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"========== 复制节点完成 ==========");
+            System.Diagnostics.Debug.WriteLine($"");
+
+            // 保存边界框
+            if (_infiniteCanvas.ClipboardNodes.Count > 0 && minX != double.MaxValue)
+            {
+                _infiniteCanvas.ClipboardBounds = new Rect(minX, minY, maxX - minX, maxY - minY);
+            }
+
+            // 复制选中节点之间的连线，并更新节点ID引用
+            // 注意：端口ID的格式是"节点ID:端口位置"（例如"8d7a0f62-1ae0-4802-bae8-b26805b83e66:Bottom"）
+            _infiniteCanvas.ClipboardEdges = new List<Astra.Core.Nodes.Models.Edge>();
+            if (EdgeItemsSource != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"========== 开始复制连线 ==========");
+                
+                foreach (var item in EdgeItemsSource)
+                {
+                    if (item is Astra.Core.Nodes.Models.Edge edge)
+                    {
+                        // 只复制两端都在选中节点集合中的连线
+                        if (selectedNodeIds.Contains(edge.SourceNodeId) && 
+                            selectedNodeIds.Contains(edge.TargetNodeId))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"复制连线: SourceNode={edge.SourceNodeId}, SourcePort={edge.SourcePortId}");
+                            System.Diagnostics.Debug.WriteLine($"         -> TargetNode={edge.TargetNodeId}, TargetPort={edge.TargetPortId}");
+                            
+                            // 克隆连线
+                            var clonedEdge = edge.Clone();
+                            
+                            // 更新连线的节点ID引用（指向剪贴板中的克隆节点）
+                            if (oldNodeIdToClonedNodeMap.ContainsKey(edge.SourceNodeId))
+                            {
+                                var newSourceNodeId = oldNodeIdToClonedNodeMap[edge.SourceNodeId].Id;
+                                clonedEdge.SourceNodeId = newSourceNodeId;
+                                
+                                // 🔧 更新端口ID中的节点ID部分（端口ID格式：节点ID:端口位置）
+                                if (!string.IsNullOrEmpty(edge.SourcePortId) && edge.SourcePortId.Contains(":"))
+                                {
+                                    var parts = edge.SourcePortId.Split(':');
+                                    if (parts.Length >= 2)
+                                    {
+                                        // 替换端口ID中的节点ID部分
+                                        clonedEdge.SourcePortId = $"{newSourceNodeId}:{parts[1]}";
+                                        System.Diagnostics.Debug.WriteLine($"  源端口ID更新: {edge.SourcePortId} -> {clonedEdge.SourcePortId}");
+                                    }
+                                }
+                            }
+                            
+                            if (oldNodeIdToClonedNodeMap.ContainsKey(edge.TargetNodeId))
+                            {
+                                var newTargetNodeId = oldNodeIdToClonedNodeMap[edge.TargetNodeId].Id;
+                                clonedEdge.TargetNodeId = newTargetNodeId;
+                                
+                                // 🔧 更新端口ID中的节点ID部分（端口ID格式：节点ID:端口位置）
+                                if (!string.IsNullOrEmpty(edge.TargetPortId) && edge.TargetPortId.Contains(":"))
+                                {
+                                    var parts = edge.TargetPortId.Split(':');
+                                    if (parts.Length >= 2)
+                                    {
+                                        // 替换端口ID中的节点ID部分
+                                        clonedEdge.TargetPortId = $"{newTargetNodeId}:{parts[1]}";
+                                        System.Diagnostics.Debug.WriteLine($"  目标端口ID更新: {edge.TargetPortId} -> {clonedEdge.TargetPortId}");
+                                    }
+                                }
+                            }
+                            
+                            System.Diagnostics.Debug.WriteLine($"  最终连线: SourceNode={clonedEdge.SourceNodeId}, SourcePort={clonedEdge.SourcePortId}");
+                            System.Diagnostics.Debug.WriteLine($"           -> TargetNode={clonedEdge.TargetNodeId}, TargetPort={clonedEdge.TargetPortId}");
+                            
+                            _infiniteCanvas.ClipboardEdges.Add(clonedEdge);
+                        }
+                    }
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"========== 复制连线完成 ==========");
+                System.Diagnostics.Debug.WriteLine($"");
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[复制] 节点数: {_infiniteCanvas.ClipboardNodes.Count}, 连线数: {_infiniteCanvas.ClipboardEdges.Count}");
+        }
+
+        /// <summary>
+        /// 粘贴剪贴板中的节点和连线（粘贴到鼠标位置，保持节点相对位置和连线关系）
+        /// </summary>
+        private void OnPasteMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (_infiniteCanvas == null || _infiniteCanvas.ClipboardNodes == null || _infiniteCanvas.ClipboardNodes.Count == 0)
+                return;
+
+            if (_infiniteCanvas.ItemsSource is not System.Collections.IList itemsList)
+            {
+                System.Diagnostics.Debug.WriteLine("警告：ItemsSource 不是 IList，无法粘贴节点");
+                return;
+            }
+
+            // 获取粘贴位置（画布坐标系，已考虑缩放）
+            System.Windows.Point pastePosition;
+            if (_lastRightClickPosition.HasValue)
+            {
+                // 使用保存的右键点击位置（右键菜单触发的粘贴）
+                // _lastRightClickPosition 已经是画布坐标系
+                pastePosition = _lastRightClickPosition.Value;
+                System.Diagnostics.Debug.WriteLine($"[粘贴-位置] 使用右键位置（画布坐标）: ({pastePosition.X:F2}, {pastePosition.Y:F2})");
+            }
+            else
+            {
+                // 使用当前鼠标位置（快捷键 Ctrl+V 触发的粘贴）
+                var mouseScreenPos = Mouse.GetPosition(_infiniteCanvas);
+                pastePosition = _infiniteCanvas.ScreenToCanvas(mouseScreenPos);
+                System.Diagnostics.Debug.WriteLine($"[粘贴-位置] Ctrl+V: 屏幕({mouseScreenPos.X:F2}, {mouseScreenPos.Y:F2}) -> 画布({pastePosition.X:F2}, {pastePosition.Y:F2})");
+                System.Diagnostics.Debug.WriteLine($"[粘贴-位置] 画布状态: Scale={_infiniteCanvas.Scale:F2}, Pan=({_infiniteCanvas.PanX:F2}, {_infiniteCanvas.PanY:F2})");
+            }
+
+            // 获取原始边界框的左上角作为参考点（与拖拽创建节点的行为一致）
+            // 这样粘贴时，节点组的左上角会对齐鼠标位置
+            Point2D? originalTopLeft = null;
+            if (_infiniteCanvas.ClipboardBounds.HasValue)
+            {
+                var bounds = _infiniteCanvas.ClipboardBounds.Value;
+                originalTopLeft = new Point2D(bounds.Left, bounds.Top);
+                System.Diagnostics.Debug.WriteLine($"[粘贴-边界框] Left={bounds.Left:F2}, Top={bounds.Top:F2}, Width={bounds.Width:F2}, Height={bounds.Height:F2}");
+                System.Diagnostics.Debug.WriteLine($"[粘贴-参考点] 使用边界框左上角: ({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
+            }
+            else if (_infiniteCanvas.ClipboardNodes.Count > 0 && _infiniteCanvas.ClipboardNodes[0].Position != null)
+            {
+                // 如果没有边界框，使用第一个节点的位置作为参考
+                originalTopLeft = _infiniteCanvas.ClipboardNodes[0].Position;
+                System.Diagnostics.Debug.WriteLine($"[粘贴-参考点] 使用第一个节点位置: ({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
+            }
+
+            if (!originalTopLeft.HasValue)
+            {
+                System.Diagnostics.Debug.WriteLine("❌ [粘贴] 错误：无法确定粘贴位置");
+                return;
+            }
+
+            // 计算偏移量（鼠标位置 - 原始左上角）
+            // 这样粘贴后，节点组的左上角会位于鼠标位置（与拖拽创建节点行为一致）
+            var offsetX = pastePosition.X - originalTopLeft.Value.X;
+            var offsetY = pastePosition.Y - originalTopLeft.Value.Y;
+            
+            System.Diagnostics.Debug.WriteLine($"[粘贴-偏移] 计算公式: 鼠标位置({pastePosition.X:F2}, {pastePosition.Y:F2}) - 原始左上角({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
+            System.Diagnostics.Debug.WriteLine($"[粘贴-偏移] 结果: offset=({offsetX:F2}, {offsetY:F2})");
+
+            // 再次克隆节点（支持多次粘贴）并应用偏移量
+            var clonedNodes = new List<Node>();
+            var clipboardNodeIdToNewNodeIdMap = new Dictionary<string, string>(); // 剪贴板节点ID -> 新节点ID 的映射
+
+            System.Diagnostics.Debug.WriteLine($"");
+            System.Diagnostics.Debug.WriteLine($"========== 开始粘贴克隆节点 ==========");
+            
+            foreach (var clipboardNode in _infiniteCanvas.ClipboardNodes)
+            {
+                System.Diagnostics.Debug.WriteLine($"");
+                System.Diagnostics.Debug.WriteLine($"粘贴克隆节点: {clipboardNode.Name} (剪贴板ID: {clipboardNode.Id})");
+                System.Diagnostics.Debug.WriteLine($"  剪贴板 Position: ({clipboardNode.Position.X:F2}, {clipboardNode.Position.Y:F2})");
+                
+                // 保存剪贴板节点的属性
+                var clipboardPosition = clipboardNode.Position;
+                var clipboardSize = clipboardNode.Size;
+                
+                // 再次克隆（因为剪贴板中的节点已经是克隆的，但需要支持多次粘贴）
+                var newNode = clipboardNode.Clone();
+                
+                System.Diagnostics.Debug.WriteLine($"  克隆后节点ID: {newNode.Id}");
+                System.Diagnostics.Debug.WriteLine($"  克隆后 Position: ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
+                
+                // 🔧 修复：手动恢复位置和尺寸（因为 Clone() 会丢失只读结构体）
+                newNode.Position = clipboardPosition;
+                newNode.Size = clipboardSize;
+                
+                System.Diagnostics.Debug.WriteLine($"  恢复后 Position: ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
+                
+                // 记录ID映射关系（用于更新连线）
+                clipboardNodeIdToNewNodeIdMap[clipboardNode.Id] = newNode.Id;
+                System.Diagnostics.Debug.WriteLine($"  节点ID映射: {clipboardNode.Id} -> {newNode.Id}");
+                
+                // 应用偏移量（将节点组的左上角移动到鼠标位置）
+                var beforeOffset = newNode.Position;
+                newNode.Position = new Point2D(
+                    newNode.Position.X + offsetX,
+                    newNode.Position.Y + offsetY
+                );
+                
+                System.Diagnostics.Debug.WriteLine($"  应用偏移: ({beforeOffset.X:F2}, {beforeOffset.Y:F2}) + ({offsetX:F2}, {offsetY:F2}) = ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
+                
+                // 🔧 粘贴后的节点不应该显示选中状态（虚线框）
+                newNode.IsSelected = false;
+                
+                clonedNodes.Add(newNode);
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"========== 粘贴克隆完成 ==========");
+            System.Diagnostics.Debug.WriteLine($"");
+
+            // 克隆连线并更新节点ID和端口ID引用
+            // 注意：端口ID的格式是"节点ID:端口位置"（例如"8d7a0f62-1ae0-4802-bae8-b26805b83e66:Bottom"）
+            var clonedEdges = new List<Astra.Core.Nodes.Models.Edge>();
+            if (_infiniteCanvas.ClipboardEdges != null && _infiniteCanvas.ClipboardEdges.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"========== 开始粘贴连线 ==========");
+                
+                foreach (var clipboardEdge in _infiniteCanvas.ClipboardEdges)
+                {
+                    System.Diagnostics.Debug.WriteLine($"粘贴连线: SourceNode={clipboardEdge.SourceNodeId}, SourcePort={clipboardEdge.SourcePortId}");
+                    System.Diagnostics.Debug.WriteLine($"         -> TargetNode={clipboardEdge.TargetNodeId}, TargetPort={clipboardEdge.TargetPortId}");
+                    
+                    // 检查连线的两端节点是否都在映射表中
+                    if (clipboardNodeIdToNewNodeIdMap.ContainsKey(clipboardEdge.SourceNodeId) && 
+                        clipboardNodeIdToNewNodeIdMap.ContainsKey(clipboardEdge.TargetNodeId))
+                    {
+                        var newEdge = clipboardEdge.Clone();
+                        
+                        // 更新节点ID引用（指向新粘贴的节点）
+                        var newSourceNodeId = clipboardNodeIdToNewNodeIdMap[clipboardEdge.SourceNodeId];
+                        var newTargetNodeId = clipboardNodeIdToNewNodeIdMap[clipboardEdge.TargetNodeId];
+                        
+                        newEdge.SourceNodeId = newSourceNodeId;
+                        newEdge.TargetNodeId = newTargetNodeId;
+                        
+                        System.Diagnostics.Debug.WriteLine($"  节点ID映射: {clipboardEdge.SourceNodeId} -> {newSourceNodeId}");
+                        System.Diagnostics.Debug.WriteLine($"  节点ID映射: {clipboardEdge.TargetNodeId} -> {newTargetNodeId}");
+                        
+                        // 🔧 更新端口ID中的节点ID部分（端口ID格式：节点ID:端口位置）
+                        if (!string.IsNullOrEmpty(clipboardEdge.SourcePortId) && clipboardEdge.SourcePortId.Contains(":"))
+                        {
+                            var parts = clipboardEdge.SourcePortId.Split(':');
+                            if (parts.Length >= 2)
+                            {
+                                // 替换端口ID中的节点ID部分
+                                newEdge.SourcePortId = $"{newSourceNodeId}:{parts[1]}";
+                                System.Diagnostics.Debug.WriteLine($"  源端口ID更新: {clipboardEdge.SourcePortId} -> {newEdge.SourcePortId}");
+                            }
+                        }
+                        else
+                        {
+                            // 如果端口ID不包含冒号，保持原值（可能是旧格式或空值）
+                            newEdge.SourcePortId = clipboardEdge.SourcePortId;
+                            System.Diagnostics.Debug.WriteLine($"  ⚠️ 源端口ID格式不包含':'，保持原值: {clipboardEdge.SourcePortId}");
+                        }
+                        
+                        if (!string.IsNullOrEmpty(clipboardEdge.TargetPortId) && clipboardEdge.TargetPortId.Contains(":"))
+                        {
+                            var parts = clipboardEdge.TargetPortId.Split(':');
+                            if (parts.Length >= 2)
+                            {
+                                // 替换端口ID中的节点ID部分
+                                newEdge.TargetPortId = $"{newTargetNodeId}:{parts[1]}";
+                                System.Diagnostics.Debug.WriteLine($"  目标端口ID更新: {clipboardEdge.TargetPortId} -> {newEdge.TargetPortId}");
+                            }
+                        }
+                        else
+                        {
+                            // 如果端口ID不包含冒号，保持原值（可能是旧格式或空值）
+                            newEdge.TargetPortId = clipboardEdge.TargetPortId;
+                            System.Diagnostics.Debug.WriteLine($"  ⚠️ 目标端口ID格式不包含':'，保持原值: {clipboardEdge.TargetPortId}");
+                        }
+                        
+                        System.Diagnostics.Debug.WriteLine($"  最终连线: SourceNode={newEdge.SourceNodeId}, SourcePort={newEdge.SourcePortId}");
+                        System.Diagnostics.Debug.WriteLine($"           -> TargetNode={newEdge.TargetNodeId}, TargetPort={newEdge.TargetPortId}");
+                        
+                        clonedEdges.Add(newEdge);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  ⚠️ 跳过：节点不在选区中");
+                    }
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"========== 粘贴连线完成 ==========");
+                System.Diagnostics.Debug.WriteLine($"");
+            }
+
+            // 🔧 使用撤销/重做命令（支持批量操作优化）
+            // 注意：不再区分同步/异步添加，因为批量操作已经优化了性能
+            // 使用撤销/重做命令添加克隆的节点和连线
+            if (EdgeItemsSource is System.Collections.IList edgesList)
+            {
+                if (_undoRedoManager != null)
+                {
+                    var command = new PasteNodesWithEdgesCommand(itemsList, edgesList, clonedNodes, clonedEdges);
+                    _undoRedoManager.Do(command);
+                }
+                else
+                {
+                    // 无撤销管理器，直接添加
+                    foreach (var clonedNode in clonedNodes)
+                    {
+                        itemsList.Add(clonedNode);
+                    }
+                    foreach (var clonedEdge in clonedEdges)
+                    {
+                        edgesList.Add(clonedEdge);
+                    }
                 }
             }
             else
             {
-                // 尝试通过反射调用 Remove 方法
-                var removeMethod = CanvasItemsSource.GetType().GetMethod("Remove");
-                if (removeMethod != null)
+                // 只有节点列表，没有连线列表
+                if (_undoRedoManager != null)
                 {
-                    foreach (var item in itemsToDelete)
+                    var command = new PasteNodesCommand(itemsList, clonedNodes);
+                    _undoRedoManager.Do(command);
+                }
+                else
+                {
+                    foreach (var clonedNode in clonedNodes)
                     {
-                        try
-                        {
-                            removeMethod.Invoke(CanvasItemsSource, new[] { item });
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"删除节点时发生错误: {ex.Message}");
-                        }
+                        itemsList.Add(clonedNode);
                     }
                 }
             }
 
-            // 同步删除关联的连线
-            if (EdgeItemsSource is IList edgeList)
-            {
-                var removeIds = new HashSet<string>(
-                    itemsToDelete.OfType<Node>().Select(n => n.Id));
-
-                if (removeIds.Count > 0)
-                {
-                    var edgesToDelete = edgeList
-                        .Cast<object>()
-                        .OfType<Edge>()
-                        .Where(e => removeIds.Contains(e.SourceNodeId) || removeIds.Contains(e.TargetNodeId))
-                        .Cast<object>()
-                        .ToList();
-
-                    if (edgesToDelete.Count > 0)
-                    {
-                        if (_undoRedoManager != null)
-                        {
-                            _undoRedoManager.Do(new DeleteEdgeCommand(edgeList, edgesToDelete));
-                        }
-                        else
-                        {
-                            foreach (var edge in edgesToDelete)
-                            {
-                                edgeList.Remove(edge);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 清除选中状态
+            // 🔧 粘贴后清除选中状态（不显示虚线框）
             _infiniteCanvas.ClearSelection();
+
+            // ========== 粘贴完成后的详细验证 ==========
+            System.Diagnostics.Debug.WriteLine($"");
+            System.Diagnostics.Debug.WriteLine($"========== 粘贴结果验证 ==========");
+            System.Diagnostics.Debug.WriteLine($"✅ 成功粘贴 {clonedNodes.Count} 个节点，{clonedEdges.Count} 条连线");
+            System.Diagnostics.Debug.WriteLine($"");
+            
+            // 输出每个节点的详细信息
+            for (int i = 0; i < _infiniteCanvas.ClipboardNodes.Count && i < clonedNodes.Count; i++)
+            {
+                var clipboardNode = _infiniteCanvas.ClipboardNodes[i];
+                var newNode = clonedNodes[i];
+                
+                System.Diagnostics.Debug.WriteLine($"节点 #{i + 1}: {clipboardNode.Name}");
+                System.Diagnostics.Debug.WriteLine($"  剪贴板位置: ({clipboardNode.Position.X:F2}, {clipboardNode.Position.Y:F2})");
+                System.Diagnostics.Debug.WriteLine($"  应用偏移后: ({clipboardNode.Position.X:F2} + {offsetX:F2}, {clipboardNode.Position.Y:F2} + {offsetY:F2})");
+                System.Diagnostics.Debug.WriteLine($"  实际粘贴位置: ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
+                System.Diagnostics.Debug.WriteLine($"  理论应该是: ({clipboardNode.Position.X + offsetX:F2}, {clipboardNode.Position.Y + offsetY:F2})");
+                
+                // 验证计算是否正确
+                var expectedX = clipboardNode.Position.X + offsetX;
+                var expectedY = clipboardNode.Position.Y + offsetY;
+                var diffX = Math.Abs(newNode.Position.X - expectedX);
+                var diffY = Math.Abs(newNode.Position.Y - expectedY);
+                
+                if (diffX > 0.01 || diffY > 0.01)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  ⚠️ 位置计算有误！差异: ({diffX:F2}, {diffY:F2})");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"  ✓ 位置计算正确");
+                }
+                System.Diagnostics.Debug.WriteLine($"");
+            }
+            
+            // 验证相对位置关系
+            if (clonedNodes.Count > 1)
+            {
+                System.Diagnostics.Debug.WriteLine($"--- 相对位置关系验证 ---");
+                for (int i = 1; i < clonedNodes.Count; i++)
+                {
+                    var prevClipboard = _infiniteCanvas.ClipboardNodes[i - 1];
+                    var currClipboard = _infiniteCanvas.ClipboardNodes[i];
+                    var prevNew = clonedNodes[i - 1];
+                    var currNew = clonedNodes[i];
+                    
+                    var originalDelta = (currClipboard.Position.X - prevClipboard.Position.X, 
+                                       currClipboard.Position.Y - prevClipboard.Position.Y);
+                    var newDelta = (currNew.Position.X - prevNew.Position.X, 
+                                  currNew.Position.Y - prevNew.Position.Y);
+                    
+                    System.Diagnostics.Debug.WriteLine($"节点 #{i} 与节点 #{i + 1}:");
+                    System.Diagnostics.Debug.WriteLine($"  原始相对位置: ({originalDelta.Item1:F2}, {originalDelta.Item2:F2})");
+                    System.Diagnostics.Debug.WriteLine($"  粘贴后相对位置: ({newDelta.Item1:F2}, {newDelta.Item2:F2})");
+                    
+                    if (Math.Abs(originalDelta.Item1 - newDelta.Item1) < 0.01 && 
+                        Math.Abs(originalDelta.Item2 - newDelta.Item2) < 0.01)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  ✓ 相对位置保持正确");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  ❌ 相对位置丢失！");
+                    }
+                }
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"=================================");
+        }
+
+        /// <summary>
+        /// 启用/禁用选中的节点
+        /// </summary>
+        private void OnToggleEnabledMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (_infiniteCanvas == null || _infiniteCanvas.SelectedItems == null || _infiniteCanvas.SelectedItems.Count == 0)
+                return;
+
+            // 获取所有选中的节点
+            var selectedNodes = new List<Node>();
+            foreach (var item in _infiniteCanvas.SelectedItems)
+            {
+                if (item is Node node)
+                    selectedNodes.Add(node);
+            }
+
+            if (selectedNodes.Count == 0)
+                return;
+
+            // 判断新状态：如果所有节点都已启用，则禁用；否则启用
+            bool allEnabled = selectedNodes.All(n => n.IsEnabled);
+            var newState = !allEnabled;
+
+            // 使用撤销/重做命令
+            if (_undoRedoManager != null)
+            {
+                var command = new ToggleNodeEnabledCommand(selectedNodes, newState);
+                _undoRedoManager.Do(command);
+            }
+            else
+            {
+                // 无撤销管理器，直接应用
+                foreach (var node in selectedNodes)
+                {
+                    node.IsEnabled = newState;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 删除选中的节点（委托给 InfiniteCanvas 统一处理）
+        /// </summary>
+        private void DeleteSelectedNodes()
+        {
+            // 委托给 InfiniteCanvas 的统一删除方法
+            _infiniteCanvas?.DeleteSelectedItems();
         }
 
         #endregion
@@ -560,6 +1126,82 @@ namespace Astra.UI.Controls
 
             return pointOnCanvasControl.X >= -safeMargin && pointOnCanvasControl.X <= _infiniteCanvas.ActualWidth + safeMargin &&
                    pointOnCanvasControl.Y >= -safeMargin && pointOnCanvasControl.Y <= _infiniteCanvas.ActualHeight + safeMargin;
+        }
+
+        /// <summary>
+        /// 判断一次右键是否点击在画布空白区域（非节点、非内容元素）
+        /// 用于区分“删除选中项”和“画布锁定”菜单
+        /// </summary>
+        private bool IsClickOnCanvasBackground(DependencyObject hitElement)
+        {
+            if (hitElement == null || _infiniteCanvas == null)
+                return true;
+
+            var current = hitElement;
+            while (current != null && current != _infiniteCanvas)
+            {
+                // 如果命中到节点或常见交互控件，则认为不是空白区域
+                if (current is NodeControl ||
+                    current is TextBox ||
+                    current is System.Windows.Controls.Primitives.ButtonBase ||
+                    current is ContentPresenter)
+                {
+                    return false;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            // 走到这里说明中间没有遇到节点等控件，视为画布空白
+            return true;
+        }
+
+        /// <summary>
+        /// 判断是否命中到 InfiniteCanvas 的“框选组虚线框”
+        /// </summary>
+        private bool IsHitOnSelectedGroupBox(DependencyObject hitElement)
+        {
+            if (hitElement == null || _infiniteCanvas == null)
+                return false;
+
+            var current = hitElement;
+            while (current != null && current != _infiniteCanvas)
+            {
+                if (current is FrameworkElement fe && fe.Name == "PART_SelectedGroupBox")
+                {
+                    return true;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 显示选中项的右键菜单（节点或框选组通用，包含复制、粘贴、启用/禁用、删除）
+        /// </summary>
+        private void ShowSelectionContextMenu()
+        {
+            if (_infiniteCanvas == null || _canvasContextMenu == null)
+                return;
+
+            var selectedCount = _infiniteCanvas.SelectedItems?.Count ?? 0;
+            if (selectedCount <= 0)
+                return;
+
+            // 查找删除菜单项并更新标题
+            foreach (var item in _canvasContextMenu.Items)
+            {
+                if (item is MenuItem menuItem && menuItem.Tag?.ToString() == "Danger")
+                {
+                    menuItem.Header = selectedCount > 1 ? $"删除 {selectedCount} 个选中项" : "删除选中项";
+                    break;
+                }
+            }
+
+            _canvasContextMenu.PlacementTarget = _infiniteCanvas;
+            _canvasContextMenu.IsOpen = true;
         }
 
         /// <summary>
@@ -760,7 +1402,7 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
-        /// 添加节点到画布数据源
+        /// 添加节点到画布数据源（使用撤销/重做命令）
         /// 要求：节点必须是 Node 的子类
         /// </summary>
         private void AddNodeToCanvas(Node node, System.Windows.Point position)
@@ -784,10 +1426,18 @@ namespace Astra.UI.Controls
                 node.Position = new Point2D(position.X, position.Y);
             }
 
-            // 添加到集合
+            // 使用撤销/重做命令添加节点
             if (CanvasItemsSource is IList list)
             {
-                list.Add(node);
+                if (_undoRedoManager != null)
+                {
+                    _undoRedoManager.Do(new AddNodeCommand(list, node));
+                }
+                else
+                {
+                    // 回退：直接添加
+                    list.Add(node);
+                }
             }
             else
             {
@@ -797,7 +1447,9 @@ namespace Astra.UI.Controls
                 {
                     try
                     {
+                        // 注意：如果不是 IList，无法使用撤销/重做
                         addMethod.Invoke(CanvasItemsSource, new[] { node });
+                        System.Diagnostics.Debug.WriteLine("警告：CanvasItemsSource 不是 IList，无法使用撤销/重做功能");
                     }
                     catch (Exception ex)
                     {
@@ -996,6 +1648,7 @@ namespace Astra.UI.Controls
             var bounds = new Rect(topLeft, new System.Windows.Size(ActualWidth, ActualHeight));
             return bounds.Contains(screenPoint);
         }
+
 
         /// <summary>
         /// 获取当前鼠标的屏幕坐标

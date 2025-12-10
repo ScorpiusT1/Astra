@@ -184,32 +184,36 @@
                                     <Canvas x:Name="PART_MinimapCanvas"
                                             Background="{DynamicResource BackgroundBrush}"
                                             ClipToBounds="True"
+                                            Margin="5"
                                             IsHitTestVisible="True"
                                             FocusVisualStyle="{x:Null}"
                                             Focusable="True">
                                         <!-- 右键菜单 -->
                                         <Canvas.ContextMenu>
-                                            <ContextMenu>
-                                                <MenuItem Header="适应画布 (_F)"
-                                                          InputGestureText="Ctrl+0"
-                                                          x:Name="PART_MinimapContextFit">
-                                                    <MenuItem.Icon>
-                                                        <Path Data="M4 4h4v4M20 4h-4v4M20 20h-4v-4M4 20h4v-4"
-                                                              Stroke="{DynamicResource PrimaryTextBrush}"
-                                                              StrokeThickness="1.5"
-                                                              Stretch="Uniform"
-                                                              Width="14"
-                                                              Height="14" />
-                                                    </MenuItem.Icon>
-                                                </MenuItem>
-                                                <Separator />
-                                                <MenuItem Header="自动适应内容 (_A)"
-                                                          IsCheckable="True"
-                                                          IsChecked="{Binding PlacementTarget.DataContext.MinimapAutoFit, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay, FallbackValue=True}" />
-                                                <MenuItem Header="边界约束 (_B)"
-                                                          IsCheckable="True"
-                                                          IsChecked="{Binding PlacementTarget.DataContext.MinimapBoundaryConstraint, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay, FallbackValue=True}" />
-                                            </ContextMenu>
+                                        <ContextMenu Style="{DynamicResource ThemedContextMenu}">
+                                            <MenuItem Header="适应画布 (_F)"
+                                                      InputGestureText="Ctrl+0"
+                                                      x:Name="PART_MinimapContextFit"
+                                                      Style="{DynamicResource ThemedMenuItem}">
+                                                <MenuItem.Icon>
+                                                    <Path Data="M4 4h4v4M20 4h-4v4M20 20h-4v-4M4 20h4v-4"
+                                                          Stroke="{DynamicResource PrimaryTextBrush}"
+                                                          StrokeThickness="1.5"
+                                                          Stretch="Uniform"
+                                                          Width="14"
+                                                          Height="14" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator />
+                                            <MenuItem Header="自动适应内容 (_A)"
+                                                      Style="{DynamicResource ThemedMenuItem}"
+                                                      IsCheckable="True"
+                                                      IsChecked="{Binding PlacementTarget.DataContext.MinimapAutoFit, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay, FallbackValue=True}" />
+                                            <MenuItem Header="边界约束 (_B)"
+                                                      Style="{DynamicResource ThemedMenuItem}"
+                                                      IsCheckable="True"
+                                                      IsChecked="{Binding PlacementTarget.DataContext.MinimapBoundaryConstraint, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay, FallbackValue=True}" />
+                                        </ContextMenu>
                                         </Canvas.ContextMenu>
                                         
                                         <!-- 视口指示器 - 使用 Thumb 控件实现拖拽 -->
@@ -299,14 +303,27 @@
 
                         <!-- 选择框层：使用 Canvas 使 Canvas.SetLeft/Top 生效 -->
                         <Canvas Panel.ZIndex="5"
-                                IsHitTestVisible="False">
+                                IsHitTestVisible="True">
+                            <!-- 框选进行中的橡皮筋 -->
                             <Rectangle x:Name="PART_SelectionBox"
                                        Stroke="{DynamicResource PrimaryBrush}"
                                        StrokeThickness="1.5"
                                        StrokeDashArray="4 2"
                                        Fill="{DynamicResource LightPrimaryBrush}"
                                        Opacity="0.25"
-                                       Visibility="Collapsed" />
+                                       Visibility="Collapsed"
+                                       IsHitTestVisible="False" />
+                            <!-- 框选完成后选中范围高亮 -->
+                            <Rectangle x:Name="PART_SelectedGroupBox"
+                                       Stroke="{DynamicResource PrimaryBrush}"
+                                       StrokeThickness="2.2"
+                                       StrokeDashArray="6 4"
+                                       Fill="{DynamicResource LightPrimaryBrush}"
+                                       Opacity="0.18"
+                                       RadiusX="4"
+                                       RadiusY="4"
+                                       Visibility="Collapsed"
+                                       IsHitTestVisible="True" />
                         </Canvas>
 
                         <!-- 状态栏 -->
@@ -345,8 +362,20 @@
                                 <TextBlock Text="节点: "
                                            Foreground="{DynamicResource SecondaryTextBrush}"
                                            FontSize="11" />
-                                <TextBlock x:Name="PART_NodeCountText"
-                                           Text="0"
+                                <TextBlock Text="{Binding TotalItemsCount, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           FontSize="11"
+                                           FontWeight="Medium" />
+
+                                <Rectangle Width="1"
+                                           Height="12"
+                                           Fill="{DynamicResource BorderBrush}"
+                                           Margin="8,0" />
+
+                                <TextBlock Text="已选中: "
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           FontSize="11" />
+                                <TextBlock Text="{Binding SelectedItemsCount, RelativeSource={RelativeSource TemplatedParent}}"
                                            Foreground="{DynamicResource PrimaryTextBrush}"
                                            FontSize="11"
                                            FontWeight="Medium" />

@@ -1,13 +1,15 @@
 using System;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Controls;
+using System.Windows.Media;
 using Astra.UI.Interaction;
 
 namespace Astra.UI.Controls
 {
-    /// <summary>
-    /// InfiniteCanvas 鼠标交互部分（重构版）
-    /// </summary>
+        /// <summary>
+        /// InfiniteCanvas 鼠标交互部分（重构版）
+        /// </summary>
     public partial class InfiniteCanvas
     {
         #region 私有字段
@@ -20,6 +22,7 @@ namespace Astra.UI.Controls
             None,           // 空闲
             Panning,        // 平移画布
             BoxSelecting,   // 框选
+            GroupDragging,  // 框选后的选中组拖动
             Connecting,     // 连线中（保留原有逻辑）
             MinimapNavigating  // 小地图导航（保留原有逻辑）
         }
@@ -33,6 +36,10 @@ namespace Astra.UI.Controls
         
         // 框选状态
         private Point _boxSelectionStartPoint;
+
+        // 组拖动状态
+        private Point _groupDragStartPointCanvas; // 画布坐标
+        private System.Collections.Generic.Dictionary<string, Astra.Core.Nodes.Geometry.Point2D> _groupInitialPositions;
         
         #endregion
         
@@ -63,12 +70,17 @@ namespace Astra.UI.Controls
             System.Diagnostics.Debug.WriteLine(
                 $"🖱️ [MouseDown] 按钮:{e.ChangedButton} 修饰键:{Keyboard.Modifiers} Source:{e.Source?.GetType().Name} OriginalSource:{e.OriginalSource?.GetType().Name}");
             
+            // 如果点击在文本框（如重命名 TextBox）上，不要抢焦点，也不做其他处理
+            var hitElement = e.OriginalSource as DependencyObject;
+            if (IsTextBoxHit(hitElement))
+            {
+                return;
+            }
+
             // 🎯 优先级0：检查是否点击在小地图区域（最高优先级）
             // 如果点击在小地图上，完全不处理，让小地图的事件处理器处理
             if (_minimapCanvas != null && e.ChangedButton == MouseButton.Left)
             {
-                var hitElement = e.OriginalSource as DependencyObject;
-                
                 // 检查是否点击在小地图或视口指示器上
                 bool isMinimapClick = IsDescendantOrSelf(_minimapCanvas, hitElement);
                 System.Diagnostics.Debug.WriteLine(
@@ -94,6 +106,16 @@ namespace Astra.UI.Controls
                     $"⚠️ [MouseDown] 当前模式:{_currentInteractionMode}，忽略新交互");
                 return;
             }
+
+            // 优先级0.5：左键点击选中组边框 -> 组拖动
+            if (e.ChangedButton == MouseButton.Left &&
+                Keyboard.Modifiers == ModifierKeys.None &&
+                IsPointInSelectedGroupBox(e.GetPosition(this)))
+            {
+                StartGroupDrag(e);
+                e.Handled = true;
+                return;
+            }
             
             // 优先级1：Ctrl + 左键 = 平移
             if (e.ChangedButton == MouseButton.Left && 
@@ -114,7 +136,6 @@ namespace Astra.UI.Controls
                 Keyboard.Modifiers == ModifierKeys.None &&
                 EnableBoxSelection)
             {
-                var hitElement = e.OriginalSource as DependencyObject;
                 if (IsClickOnCanvasBackground(hitElement))
                 {
                     StartBoxSelectionUnified(e);
@@ -150,6 +171,11 @@ namespace Astra.UI.Controls
                     UpdateBoxSelection(e.GetPosition(this));
                     e.Handled = true;
                     break;
+
+                case InteractionMode.GroupDragging:
+                    UpdateGroupDrag(e);
+                    e.Handled = true;
+                    break;
             }
         }
         
@@ -177,6 +203,11 @@ namespace Astra.UI.Controls
                     
                 case InteractionMode.BoxSelecting:
                     EndBoxSelectionUnified();
+                    e.Handled = true;
+                    break;
+
+                case InteractionMode.GroupDragging:
+                    EndGroupDrag();
                     e.Handled = true;
                     break;
             }
@@ -301,8 +332,122 @@ namespace Astra.UI.Controls
             
             System.Diagnostics.Debug.WriteLine("✅ [框选] 结束（统一管理）");
         }
+
+        #endregion
+
+        #region 组拖动交互
+
+        private void StartGroupDrag(MouseButtonEventArgs e)
+        {
+            // 需要有选中项且组框可见
+            if (SelectedItems == null || SelectedItems.Count == 0)
+                return;
+
+            // 记录起点（画布坐标）
+            var controlPoint = e.GetPosition(this);
+            var screenPoint = PointToScreen(controlPoint);
+            _groupDragStartPointCanvas = ScreenToCanvas(screenPoint);
+
+            // 记录初始位置
+            _groupInitialPositions = new System.Collections.Generic.Dictionary<string, Astra.Core.Nodes.Geometry.Point2D>();
+            foreach (var item in SelectedItems)
+            {
+                if (item is Astra.Core.Nodes.Models.Node node)
+                {
+                    _groupInitialPositions[node.Id] = node.Position;
+                }
+            }
+
+            if (_mouseCaptureManager.TryCapture(this, "组拖动"))
+            {
+                _currentInteractionMode = InteractionMode.GroupDragging;
+                Cursor = Cursors.Hand;
+                System.Diagnostics.Debug.WriteLine("✅ [组拖动] 开始");
+                
+                // 🔧 启用智能连线更新（实时平移路径，避免重复计算A*）
+                if (_groupInitialPositions.Count > 1)
+                {
+                    var movedNodeIds = new System.Collections.Generic.HashSet<string>(_groupInitialPositions.Keys);
+                    EnableSmartEdgeUpdate(movedNodeIds);
+                }
+            }
+        }
+
+        private void UpdateGroupDrag(MouseEventArgs e)
+        {
+            if (_groupInitialPositions == null || _groupInitialPositions.Count == 0)
+                return;
+
+            var controlPoint = e.GetPosition(this);
+            var screenPoint = PointToScreen(controlPoint);
+            var currentCanvasPoint = ScreenToCanvas(screenPoint);
+
+            var delta = currentCanvasPoint - _groupDragStartPointCanvas;
+
+            // 移动所有选中节点
+            var itemsControl = _contentCanvas?.Children.OfType<System.Windows.Controls.ItemsControl>().FirstOrDefault();
+            foreach (var item in SelectedItems)
+            {
+                if (item is Astra.Core.Nodes.Models.Node node && _groupInitialPositions.TryGetValue(node.Id, out var startPos))
+                {
+                    var newPos = new Astra.Core.Nodes.Geometry.Point2D(startPos.X + delta.X, startPos.Y + delta.Y);
+                    node.Position = newPos;
+
+                    if (itemsControl != null)
+                    {
+                        var container = itemsControl.ItemContainerGenerator.ContainerFromItem(node) as System.Windows.Controls.ContentPresenter;
+                        if (container != null)
+                        {
+                            System.Windows.Controls.Canvas.SetLeft(container, newPos.X);
+                            System.Windows.Controls.Canvas.SetTop(container, newPos.Y);
+                        }
+                    }
+                }
+            }
+
+            // 实时刷新连线、选中框
+            RefreshEdges();
+            UpdateSelectedGroupBox();
+        }
+
+        private void EndGroupDrag()
+        {
+            _currentInteractionMode = InteractionMode.None;
+            _mouseCaptureManager.Release();
+            Cursor = Cursors.Arrow;
+
+            // 🔧 禁用智能连线更新
+            if (_groupInitialPositions != null && _groupInitialPositions.Count > 1)
+            {
+                DisableSmartEdgeUpdate();
+            }
+
+            RefreshEdgesImmediate();
+            UpdateSelectedGroupBox();
+            RequestMinimapUpdate();
+
+            System.Diagnostics.Debug.WriteLine("✅ [组拖动] 结束");
+        }
         
+        #endregion
+
+        #region 辅助方法
+
+        /// <summary>
+        /// 判断命中是否在 TextBox 内
+        /// </summary>
+        private bool IsTextBoxHit(DependencyObject element)
+        {
+            var current = element;
+            while (current != null)
+            {
+                if (current is TextBox)
+                    return true;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return false;
+        }
+
         #endregion
     }
 }
-

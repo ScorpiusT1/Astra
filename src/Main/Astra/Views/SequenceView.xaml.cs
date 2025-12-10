@@ -24,6 +24,7 @@ namespace Astra.Views
             {
                 Debug.WriteLine($"[SequenceView] ToolBoxItemsSource: {viewModel.ToolBoxItemsSource?.Count ?? 0} 个类别");
                 Debug.WriteLine($"[SequenceView] CanvasItemsSource: {viewModel.CanvasItemsSource?.Count ?? 0} 个节点");
+                Debug.WriteLine($"[SequenceView] EdgeItemsSource: {viewModel.EdgeItemsSource?.Count ?? 0} 条连线");
             }
         }
 

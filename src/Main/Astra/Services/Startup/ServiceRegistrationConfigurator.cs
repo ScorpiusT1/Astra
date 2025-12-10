@@ -484,6 +484,8 @@ namespace Astra.Services.Startup
             services.AddSingleton<ViewModels.MainViewViewModel>();
             services.AddTransient<ViewModels.ConfigViewModel>();
             services.AddTransient<ViewModels.DebugViewModel>();
+            // ⭐ SequenceViewModel 注册为单例，确保切换界面时画布数据不丢失
+            services.AddSingleton<ViewModels.SequenceViewModel>();
 
             Debug.WriteLine("✅ 重构后的 ViewModels 注册完成");
         }

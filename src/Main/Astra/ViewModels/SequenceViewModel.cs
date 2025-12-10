@@ -36,6 +36,12 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private ObservableCollection<Node> _canvasItemsSource;
 
+        /// <summary>
+        /// 连线数据源 - 连线集合（使用 Edge 类）
+        /// </summary>
+        [ObservableProperty]
+        private ObservableCollection<Edge> _edgeItemsSource;
+
         public SequenceViewModel(IFrameNavigationService navigationService)
         {
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
@@ -94,11 +100,27 @@ namespace Astra.ViewModels
         /// </summary>
         private void InitializeDataSources()
         {
+            // ⭐ 如果数据源已存在且不为空，则不重新初始化（单例模式下保持数据）
+            if (ToolBoxItemsSource != null && ToolBoxItemsSource.Count > 0)
+            {
+                Debug.WriteLine("[SequenceViewModel] 数据源已存在，跳过初始化");
+                return;
+            }
+
             // 初始化工具箱数据源
             ToolBoxItemsSource = new ObservableCollection<ToolCategory>();
             
-            // 初始化画布数据源
-            CanvasItemsSource = new ObservableCollection<Node>();
+            // 初始化画布数据源（如果为空则创建新集合，否则保持现有数据）
+            if (CanvasItemsSource == null)
+            {
+                CanvasItemsSource = new ObservableCollection<Node>();
+            }
+
+            // 初始化连线数据源（如果为空则创建新集合，否则保持现有数据）
+            if (EdgeItemsSource == null)
+            {
+                EdgeItemsSource = new ObservableCollection<Edge>();
+            }
 
             // 创建示例工具类别
             CreateSampleToolCategories();
@@ -360,10 +382,26 @@ namespace Astra.ViewModels
         {
             Debug.WriteLine("[SequenceViewModel] 开始初始化序列页面");
             
-            // 这里可以添加页面初始化逻辑
-            // 例如：加载数据、设置UI状态等
+            // ⭐ 确保数据源已初始化（单例模式下，数据应该已存在）
+            if (ToolBoxItemsSource == null || ToolBoxItemsSource.Count == 0)
+            {
+                Debug.WriteLine("[SequenceViewModel] 检测到数据源为空，重新初始化");
+                InitializeDataSources();
+            }
             
-            Debug.WriteLine("[SequenceViewModel] 序列页面初始化完成");
+            if (CanvasItemsSource == null)
+            {
+                Debug.WriteLine("[SequenceViewModel] 检测到画布数据源为空，重新初始化");
+                CanvasItemsSource = new ObservableCollection<Node>();
+            }
+
+            if (EdgeItemsSource == null)
+            {
+                Debug.WriteLine("[SequenceViewModel] 检测到连线数据源为空，重新初始化");
+                EdgeItemsSource = new ObservableCollection<Edge>();
+            }
+            
+            Debug.WriteLine($"[SequenceViewModel] 序列页面初始化完成 - 工具箱: {ToolBoxItemsSource?.Count ?? 0} 个类别, 画布: {CanvasItemsSource?.Count ?? 0} 个节点, 连线: {EdgeItemsSource?.Count ?? 0} 条");
         }
 
         /// <summary>

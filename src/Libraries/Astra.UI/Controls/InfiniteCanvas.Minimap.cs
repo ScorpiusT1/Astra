@@ -25,28 +25,17 @@ namespace Astra.UI.Controls
         private void OnMinimapMouseDownSimplified(object sender, MouseButtonEventArgs e)
         {
             if (_minimapCanvas == null || !ShowMinimap)
-            {
-                System.Diagnostics.Debug.WriteLine("🗺️ ❌ [小地图] 初始检查失败");
                 return;
-            }
             
             var clickPoint = e.GetPosition(_minimapCanvas);
-            
-            System.Diagnostics.Debug.WriteLine(
-                $"🗺️ [小地图] 鼠标按下 - 位置: ({clickPoint.X:F0}, {clickPoint.Y:F0})");
             
             // 判断是否点击在视口指示器上
             var hitElement = e.OriginalSource as DependencyObject;
             
-            System.Diagnostics.Debug.WriteLine(
-                $"🗺️ [小地图] OriginalSource 类型: {e.OriginalSource?.GetType().Name}");
-            System.Diagnostics.Debug.WriteLine(
-                $"🗺️ [小地图] _viewportIndicator 类型: {_viewportIndicator?.GetType().Name}");
-            
-            // 🔍 方法1：检查是否为后代
+            // 方法1：检查是否为后代
             var isClickOnIndicator = IsDescendantOrSelf(_viewportIndicator, hitElement);
             
-            // 🔍 方法2：检查鼠标位置是否在指示器的边界内
+            // 方法2：检查鼠标位置是否在指示器的边界内
             var isInBounds = false;
             if (_viewportIndicator != null)
             {
@@ -62,37 +51,26 @@ namespace Astra.UI.Controls
                 }
             }
             
-            System.Diagnostics.Debug.WriteLine(
-                $"🗺️ [小地图] IsDescendantOrSelf 结果: {isClickOnIndicator}");
-            System.Diagnostics.Debug.WriteLine(
-                $"🗺️ [小地图] 位置检测结果: {isInBounds}");
-            
             // 优先使用位置检测（更可靠）
             if (!isClickOnIndicator && isInBounds)
             {
-                System.Diagnostics.Debug.WriteLine("🗺️ ⚠️ [小地图] IsDescendantOrSelf 失败，但位置检测成功，使用位置检测结果");
                 isClickOnIndicator = true;
             }
             
             if (isClickOnIndicator)
             {
-                // 🆕 直接开始拖动视口指示器（不依赖 Thumb 的 DragStarted）
+                // 直接开始拖动视口指示器
                 _isMinimapDragging = true;
-                _isDraggingViewportIndicator = true; // ✅ 同步旧字段，防止 UpdateViewportIndicator 覆盖位置
-                // ✅ 使用小地图画布坐标系（保持一致）
+                _isDraggingViewportIndicator = true;
                 _minimapDragStartPoint = e.GetPosition(_minimapCanvas);
                 _minimapCanvas.CaptureMouse();
                 _viewportIndicator.Cursor = Cursors.SizeAll;
-                
-                System.Diagnostics.Debug.WriteLine(
-                    $"🗺️ ✅ [小地图] 开始拖动视口指示器 - 起始点（画布坐标）: ({_minimapDragStartPoint.X:F1}, {_minimapDragStartPoint.Y:F1})");
                 e.Handled = true;
             }
             else
             {
                 // 点击空白区域，快速跳转
                 NavigateToMinimapPoint(clickPoint);
-                System.Diagnostics.Debug.WriteLine("🗺️ ✅ [小地图] 快速跳转到空白区域");
                 e.Handled = true;
             }
         }
@@ -103,15 +81,7 @@ namespace Astra.UI.Controls
         private void OnMinimapMouseMoveSimplified(object sender, MouseEventArgs e)
         {
             if (!_isMinimapDragging || _minimapCanvas == null || _viewportIndicator == null)
-            {
-                if (e.LeftButton == MouseButtonState.Pressed)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"🗺️ ⚠️ [小地图移动] 跳过 - _isMinimapDragging={_isMinimapDragging}, " +
-                        $"_minimapCanvas={_minimapCanvas != null}, _viewportIndicator={_viewportIndicator != null}");
-                }
                 return;
-            }
             
             // 获取鼠标在小地图画布上的当前位置
             var currentMousePos = e.GetPosition(_minimapCanvas);
@@ -231,9 +201,6 @@ namespace Astra.UI.Controls
             _lastGridUpdateTime = DateTime.MinValue;
             UpdateGrid();
             UpdateViewportIndicator();
-            
-            System.Diagnostics.Debug.WriteLine(
-                $"🗺️ [小地图] 拖动结束 - 最终 Pan: ({finalPanX:F2}, {finalPanY:F2})");
         }
         
         /// <summary>

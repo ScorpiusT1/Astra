@@ -2,25 +2,9 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:helpers="clr-namespace:Astra.UI.Helpers">
 
-    <!-- ==================== ContextMenu 样式 ==================== -->
+    <!-- ==================== ContextMenu 统一主题样式 ==================== -->
     
-    <!-- MenuItem 分隔线样式 -->
-    <Style x:Key="MenuSeparatorStyle" TargetType="{x:Type Separator}">
-        <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="Height" Value="1" />
-        <Setter Property="Margin" Value="8,4" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="{x:Type Separator}">
-                    <Border Background="{TemplateBinding Background}"
-                            Height="{TemplateBinding Height}"
-                            Margin="{TemplateBinding Margin}" />
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- MenuItem 样式 -->
+    <!-- MenuItem 主题样式（带 x:Key，供代码引用） -->
     <Style x:Key="ThemedMenuItem" TargetType="{x:Type MenuItem}">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
@@ -34,6 +18,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
+                            helpers:BorderClipHelper.ClipToBounds="True"
                             CornerRadius="4"
                             Margin="1,0.5">
                         <Grid>
@@ -102,39 +87,12 @@
                                 </BeginStoryboard>
                             </MultiTrigger.EnterActions>
                         </MultiTrigger>
-                        <!-- 危险操作：按下 -->
-                        <MultiTrigger>
-                            <MultiTrigger.Conditions>
-                                <Condition Property="IsPressed" Value="True" />
-                                <Condition Property="Tag" Value="Danger" />
-                            </MultiTrigger.Conditions>
-                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource DangerBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource ReverseTextBrush}" />
-                            <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
-                            <Setter TargetName="Border" Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                                    Opacity="0.2"
-                                                    BlurRadius="2"
-                                                    ShadowDepth="1"
-                                                    Direction="270" />
-                                </Setter.Value>
-                            </Setter>
-                        </MultiTrigger>
-                        <!-- 普通操作：鼠标悬停（使用主题颜色） -->
+
+                        <!-- 普通操作：鼠标悬停 -->
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Border" Property="Background" Value="{DynamicResource LightPrimaryBrush}" />
                             <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
                             <Setter TargetName="Border" Property="BorderThickness" Value="1" />
-                            <Setter TargetName="Border" Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                                    Opacity="0.15"
-                                                    BlurRadius="3"
-                                                    ShadowDepth="1"
-                                                    Direction="270" />
-                                </Setter.Value>
-                            </Setter>
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
@@ -147,22 +105,8 @@
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                         </Trigger>
-                        <!-- 普通操作：按下 -->
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource PrimaryBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource ReverseTextBrush}" />
-                            <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
-                            <Setter TargetName="Border" Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                                    Opacity="0.2"
-                                                    BlurRadius="2"
-                                                    ShadowDepth="1"
-                                                    Direction="270" />
-                                </Setter.Value>
-                            </Setter>
-                        </Trigger>
-                        <!-- 禁用 -->
+
+                        <!-- 禁用状态 -->
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource ThirdlyTextBrush}" />
                             <Setter Property="Opacity" Value="0.5" />
@@ -173,103 +117,60 @@
         </Setter>
     </Style>
 
-    <!-- ContextMenu 样式 -->
+    <!-- ContextMenu 主题样式（带 x:Key，供代码引用） -->
     <Style x:Key="ThemedContextMenu" TargetType="{x:Type ContextMenu}">
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="MinWidth" Value="140" />
-        <Setter Property="HasDropShadow" Value="True" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinWidth" Value="160" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Grid.IsSharedSizeScope" Value="True" />
+        <Setter Property="HasDropShadow" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ContextMenu}">
-                    <!-- 外层容器：用于承载阴影和3D效果 -->
-                    <Grid>
-                        <!-- 主阴影层（外阴影，增强深度感） -->
-                        <Border x:Name="OuterShadowBorder"
-                                Background="Transparent"
-                                CornerRadius="6"
-                                Margin="0,0,0,0">
-                            <Border.Effect>
-                                <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                                Opacity="0.35"
-                                                BlurRadius="12"
-                                                ShadowDepth="4"
-                                                Direction="270" />
-                            </Border.Effect>
-                        </Border>
-                        
-                        <!-- 内阴影层（增强立体感） -->
-                        <Border x:Name="InnerShadowBorder"
-                                Background="Transparent"
-                                CornerRadius="6"
-                                Margin="0,0,0,0">
-                            <Border.Effect>
-                                <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                                Opacity="0.12"
-                                                BlurRadius="6"
-                                                ShadowDepth="1.5"
-                                                Direction="90" />
-                            </Border.Effect>
-                        </Border>
-                        
-                        <!-- 主容器：渐变背景 + 3D边框 -->
-                        <Border x:Name="MainBorder"
-                                CornerRadius="6"
-                                Padding="4"
-                                BorderThickness="1"
-                                RenderTransformOrigin="0.5,0.5"
-                                helpers:BorderClipHelper.ClipToBounds="True">
-                            <Border.RenderTransform>
-                                <ScaleTransform x:Name="ScaleTransform" ScaleX="0.95" ScaleY="0.95" />
-                            </Border.RenderTransform>
-                            
-                            <!-- 背景使用主题颜色（纯色） -->
-                            <Border.Background>
-                                <SolidColorBrush Color="{DynamicResource SurfaceColor}" />
-                            </Border.Background>
-                            
-                            <!-- 边框使用主题边框颜色（纯色） -->
-                            <Border.BorderBrush>
-                                <SolidColorBrush Color="{DynamicResource BorderColor}" />
-                            </Border.BorderBrush>
-                           
-                            <!-- 内容区域 -->
-                            <StackPanel IsItemsHost="True"
-                                       KeyboardNavigation.DirectionalNavigation="Cycle" />
-                        </Border>
-                    </Grid>
-                    
+                    <Border x:Name="Border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            helpers:BorderClipHelper.ClipToBounds="True"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="4">
+                        <Border.Effect>
+                            <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                                            Opacity="0.2"
+                                            BlurRadius="16"
+                                            ShadowDepth="4"
+                                            Direction="270" />
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True"
+                                   KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
                     <ControlTemplate.Triggers>
-                        <!-- 打开动画 -->
                         <EventTrigger RoutedEvent="Loaded">
                             <BeginStoryboard>
                                 <Storyboard>
-                                    <DoubleAnimation Storyboard.TargetName="ScaleTransform"
-                                                   Storyboard.TargetProperty="ScaleX"
-                                                   From="0.92"
-                                                   To="1.0"
-                                                   Duration="0:0:0.2">
-                                        <DoubleAnimation.EasingFunction>
-                                            <CubicEase EasingMode="EaseOut" />
-                                        </DoubleAnimation.EasingFunction>
-                                    </DoubleAnimation>
-                                    <DoubleAnimation Storyboard.TargetName="ScaleTransform"
-                                                   Storyboard.TargetProperty="ScaleY"
-                                                   From="0.92"
-                                                   To="1.0"
-                                                   Duration="0:0:0.2">
-                                        <DoubleAnimation.EasingFunction>
-                                            <CubicEase EasingMode="EaseOut" />
-                                        </DoubleAnimation.EasingFunction>
-                                    </DoubleAnimation>
-                                    <DoubleAnimation Storyboard.TargetName="MainBorder"
+                                    <DoubleAnimation Storyboard.TargetName="Border"
                                                    Storyboard.TargetProperty="Opacity"
                                                    From="0"
                                                    To="1"
-                                                   Duration="0:0:0.2" />
+                                                   Duration="0:0:0.15">
+                                        <DoubleAnimation.EasingFunction>
+                                            <QuadraticEase EasingMode="EaseOut" />
+                                        </DoubleAnimation.EasingFunction>
+                                    </DoubleAnimation>
+                                    <ThicknessAnimation Storyboard.TargetName="Border"
+                                                      Storyboard.TargetProperty="Margin"
+                                                      From="0,4,0,0"
+                                                      To="0,0,0,0"
+                                                      Duration="0:0:0.15">
+                                        <ThicknessAnimation.EasingFunction>
+                                            <QuadraticEase EasingMode="EaseOut" />
+                                        </ThicknessAnimation.EasingFunction>
+                                    </ThicknessAnimation>
                                 </Storyboard>
                             </BeginStoryboard>
                         </EventTrigger>
@@ -279,8 +180,26 @@
         </Setter>
     </Style>
 
-    <!-- 默认样式（可选） -->
-    <Style TargetType="{x:Type ContextMenu}" BasedOn="{StaticResource ThemedContextMenu}" />
+    <!-- MenuItem 默认样式：继承主题样式 -->
     <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource ThemedMenuItem}" />
 
+    <!-- ContextMenu 默认样式：继承主题样式 -->
+    <Style TargetType="{x:Type ContextMenu}" BasedOn="{StaticResource ThemedContextMenu}" />
+
+    <!-- Separator 默认样式 -->
+    <Style TargetType="{x:Type Separator}">
+        <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="8,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Border Background="{TemplateBinding Background}"
+                            Height="{TemplateBinding Height}"
+                            Margin="{TemplateBinding Margin}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    
 </ResourceDictionary>

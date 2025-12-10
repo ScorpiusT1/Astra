@@ -352,8 +352,33 @@ namespace Astra.UI.Controls
         public UndoRedoManager UndoRedoManager
         {
             get => _undoRedoManager;
-            set => _undoRedoManager = value;
+            set
+            {
+                _undoRedoManager = value;
+                
+                // 🔧 设置批量操作回调
+                if (_undoRedoManager != null)
+                {
+                    _undoRedoManager.OnBatchOperationBegin = () => BeginBatchUpdate();
+                    _undoRedoManager.OnBatchOperationEnd = () => EndBatchUpdate();
+                }
+            }
         }
+
+        /// <summary>
+        /// 剪贴板：存储复制的节点（原始节点，未克隆）
+        /// </summary>
+        public List<Astra.Core.Nodes.Models.Node> ClipboardNodes { get; set; }
+
+        /// <summary>
+        /// 剪贴板：存储复制的连线（原始连线，未克隆）
+        /// </summary>
+        public List<Astra.Core.Nodes.Models.Edge> ClipboardEdges { get; set; }
+
+        /// <summary>
+        /// 复制时节点的边界框（用于保持相对位置）
+        /// </summary>
+        public Rect? ClipboardBounds { get; set; }
 
         public static readonly DependencyProperty ItemTemplateProperty =
             DependencyProperty.Register(nameof(ItemTemplate), typeof(DataTemplate), typeof(InfiniteCanvas),
@@ -461,6 +486,22 @@ namespace Astra.UI.Controls
             private set => SetValue(TotalItemsCountProperty, value);
         }
 
+        /// <summary>
+        /// 是否锁定画布（锁定后禁止拖拽节点和框选）
+        /// </summary>
+        public static readonly DependencyProperty IsLockedProperty =
+            DependencyProperty.Register(
+                nameof(IsLocked),
+                typeof(bool),
+                typeof(InfiniteCanvas),
+                new PropertyMetadata(false));
+
+        public bool IsLocked
+        {
+            get => (bool)GetValue(IsLockedProperty);
+            set => SetValue(IsLockedProperty, value);
+        }
+
         private static void OnSelectedItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var canvas = (InfiniteCanvas)d;
@@ -479,11 +520,13 @@ namespace Astra.UI.Controls
             
             // 立即更新数量
             canvas.UpdateSelectedItemsCount();
+            canvas.UpdateSelectedGroupBox();
         }
 
         private void OnSelectedItemsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
             UpdateSelectedItemsCount();
+            UpdateSelectedGroupBox();
         }
 
         private void UpdateSelectedItemsCount()
@@ -555,6 +598,7 @@ namespace Astra.UI.Controls
         private bool _isBoxSelecting;
         private Point _selectionStartPoint;
         private Rectangle _selectionBox;
+        private Rectangle _selectedGroupBox;
         private List<object> _selectedItems = new List<object>();
 
         // 性能优化：节流控制
@@ -576,8 +620,6 @@ namespace Astra.UI.Controls
         {
             base.OnApplyTemplate();
 
-            System.Diagnostics.Debug.WriteLine("=== [InfiniteCanvas] OnApplyTemplate 开始 ===");
-
             _contentCanvas = GetTemplateChild(PART_ContentCanvas) as Canvas;
             _gridLayer = GetTemplateChild(PART_GridLayer) as Canvas;
             _alignmentLayer = GetTemplateChild(PART_AlignmentLayer) as Canvas;
@@ -587,14 +629,6 @@ namespace Astra.UI.Controls
             _minimapCollapseButton = GetTemplateChild(PART_MinimapCollapseButton) as Button;
             _minimapExpandButton = GetTemplateChild(PART_MinimapExpandButton) as Button;
             _minimapFitButton = GetTemplateChild(PART_MinimapFitButton) as Button;
-
-            System.Diagnostics.Debug.WriteLine($"[InfiniteCanvas] 模板控件获取结果:");
-            System.Diagnostics.Debug.WriteLine($"  - _contentCanvas: {_contentCanvas != null}");
-            System.Diagnostics.Debug.WriteLine($"  - _minimapContainer: {_minimapContainer != null}");
-            System.Diagnostics.Debug.WriteLine($"  - _minimapCanvas: {_minimapCanvas != null}");
-            System.Diagnostics.Debug.WriteLine($"  - _viewportIndicator: {_viewportIndicator != null}");
-            System.Diagnostics.Debug.WriteLine($"  - ShowMinimap: {ShowMinimap}");
-            System.Diagnostics.Debug.WriteLine($"  - IsMinimapCollapsed: {IsMinimapCollapsed}");
 
             // 清除 XAML 中可能存在的 Visibility 绑定，由代码完全接管控制权
             // 避免 Binding 和 Code Behind 冲突导致的状态不一致（如缩小后无法还原）
@@ -610,6 +644,14 @@ namespace Astra.UI.Controls
             if (_selectionBox != null)
             {
                 _selectionBox.Visibility = Visibility.Collapsed;
+            }
+
+            _selectedGroupBox = GetTemplateChild("PART_SelectedGroupBox") as Rectangle;
+            if (_selectedGroupBox != null)
+            {
+                _selectedGroupBox.Visibility = Visibility.Collapsed;
+                // 保持命中检测开启，让右键点在虚线框区域时不会触发节点级右键菜单
+                // 左键拖动与判断仍由代码逻辑控制
             }
 
             // 启用拖放功能
@@ -645,17 +687,10 @@ namespace Astra.UI.Controls
 
             if (_minimapCanvas != null && _viewportIndicator != null)
             {
-                System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 准备初始化小地图...");
                 InitializeMinimap();
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[InfiniteCanvas] ⚠️ 无法初始化小地图: _minimapCanvas={_minimapCanvas != null}, _viewportIndicator={_viewportIndicator != null}");
             }
 
             InitializeMinimapButtons();
-
-            System.Diagnostics.Debug.WriteLine("=== [InfiniteCanvas] OnApplyTemplate 完成 ===");
 
             // 延迟更新网格和缩略图，等待布局完成后再绘制
             Dispatcher.BeginInvoke(new Action(() =>
@@ -735,15 +770,13 @@ namespace Astra.UI.Controls
         {
             if (_minimapCanvas == null || _viewportIndicator == null) return;
 
-            System.Diagnostics.Debug.WriteLine("✅ [小地图] 初始化（简化版）");
-
             // 设置视口指示器基本属性
             _viewportIndicator.IsHitTestVisible = true;
             _viewportIndicator.Focusable = true;
             _viewportIndicator.Cursor = Cursors.Hand;
             Panel.SetZIndex(_viewportIndicator, 1000);
             
-            // ✅ 使用新的简化事件处理（直接拖动，无需 Shift）
+            // 使用新的简化事件处理（直接拖动，无需 Shift）
             _minimapCanvas.PreviewMouseLeftButtonDown += OnMinimapMouseDownSimplified;
             _minimapCanvas.PreviewMouseMove += OnMinimapMouseMoveSimplified;
             _minimapCanvas.PreviewMouseLeftButtonUp += OnMinimapMouseUpSimplified;
@@ -764,8 +797,6 @@ namespace Astra.UI.Controls
                     fitMenuItem.Click += (s, e) => FitToScreen();
                 }
             }
-            
-            System.Diagnostics.Debug.WriteLine("✅ [小地图] 初始化完成");
         }
 
         private void InitializeMinimapButtons()
@@ -1551,15 +1582,13 @@ namespace Astra.UI.Controls
             // 拖拽后的一次性抑制：避免拖拽刚结束时定时器/布局触发的重新计算导致跳回
             if (_suppressMinimapUpdateAfterDrag)
             {
-                System.Diagnostics.Debug.WriteLine("⏸️ [UpdateMinimap] 拖拽结束后抑制一次更新");
                 _suppressMinimapUpdateAfterDrag = false;
                 return;
             }
 
-            // 🔒 拖动视口指示器期间，禁止更新小地图（避免 contentBounds/scale 被重新计算导致位置跳动）
+            // 拖动视口指示器期间，禁止更新小地图（避免 contentBounds/scale 被重新计算导致位置跳动）
             if (_isDraggingViewportIndicator)
             {
-                System.Diagnostics.Debug.WriteLine("⏸️ [UpdateMinimap] 拖动期间跳过更新");
                 return;
             }
 
@@ -1885,8 +1914,6 @@ namespace Astra.UI.Controls
             _viewportIndicator.Width = minimapWidth;
             _viewportIndicator.Height = minimapHeight;
 
-            System.Diagnostics.Debug.WriteLine($"🔄 [反向计算] Pan: ({PanX:F2}, {PanY:F2}) → 画布视口: ({viewportLeft:F2}, {viewportTop:F2}) → 小地图位置: ({minimapLeft:F2}, {minimapTop:F2})");
-
             // 确保指示器可见（最后设置，确保所有属性都已设置）
             _viewportIndicator.Visibility = Visibility.Visible;
         }
@@ -2125,13 +2152,20 @@ namespace Astra.UI.Controls
                 _suppressMinimapUpdateAfterDrag = false;
                 _minimapNeedsRecalc = true;
 
+                // 🔧 使用 Render 优先级保证拖动时连线实时刷新
                 // 延迟更新以避免频繁刷新（使用 Dispatcher 合并多个属性变化）
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     UpdateMinimap();
                     UpdateViewportIndicator();
-                    RefreshEdges();
-                }), System.Windows.Threading.DispatcherPriority.Background);
+                    
+                    // 🔧 批量操作时跳过刷新（粘贴、删除等），但智能拖动时允许刷新
+                    // 智能拖动模式：允许刷新，但使用路径平移优化而非重新计算A*
+                    if (!_isBatchUpdating || _smartEdgeUpdateEnabled)
+                    {
+                        RefreshEdges();
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Render);
             }
         }
 
@@ -2216,6 +2250,29 @@ namespace Astra.UI.Controls
                 e.Handled = true;
             }
 
+            // Ctrl+Z 撤销
+            if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                if (_undoRedoManager != null && _undoRedoManager.CanUndo)
+                {
+                    _undoRedoManager.Undo();
+                    RefreshEdgesImmediate(); // 刷新连线显示
+                    e.Handled = true;
+                }
+            }
+
+            // Ctrl+Y 或 Ctrl+Shift+Z 重做
+            if ((e.Key == Key.Y && Keyboard.Modifiers == ModifierKeys.Control) ||
+                (e.Key == Key.Z && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)))
+            {
+                if (_undoRedoManager != null && _undoRedoManager.CanRedo)
+                {
+                    _undoRedoManager.Redo();
+                    RefreshEdgesImmediate(); // 刷新连线显示
+                    e.Handled = true;
+                }
+            }
+
             // Ctrl+0 适应画布
             if (e.Key == Key.D0 && Keyboard.Modifiers == ModifierKeys.Control)
             {
@@ -2259,6 +2316,7 @@ namespace Astra.UI.Controls
             {
                 canvas.UpdateGrid();
                 canvas.UpdateViewportIndicator();
+                canvas.UpdateSelectedGroupBox();
             }), System.Windows.Threading.DispatcherPriority.Render);
 
             canvas.RaiseViewTransformChanged();
@@ -2285,6 +2343,7 @@ namespace Astra.UI.Controls
                 {
                     canvas.UpdateGrid();
                     canvas.UpdateViewportIndicator();
+                    canvas.UpdateSelectedGroupBox();
                 }), System.Windows.Threading.DispatcherPriority.Render);
             }
             // 如果正在拖动画布或视口指示器，只在拖动结束时更新（在 OnPreviewMouseUp 或 OnViewportIndicatorDragCompleted 中处理）
@@ -2375,11 +2434,8 @@ namespace Astra.UI.Controls
         /// </summary>
         private void UpdateMinimapVisibility()
         {
-            System.Diagnostics.Debug.WriteLine($"[小地图可见性] ShowMinimap={ShowMinimap}, IsMinimapCollapsed={IsMinimapCollapsed}");
-
             if (!ShowMinimap)
             {
-                System.Diagnostics.Debug.WriteLine("[小地图可见性] ShowMinimap=false，隐藏所有小地图控件");
                 if (_minimapContainer != null) _minimapContainer.Visibility = Visibility.Collapsed;
                 if (_minimapCollapseButton != null) _minimapCollapseButton.Visibility = Visibility.Collapsed;
                 if (_minimapExpandButton != null) _minimapExpandButton.Visibility = Visibility.Collapsed;
@@ -2388,7 +2444,6 @@ namespace Astra.UI.Controls
 
             if (IsMinimapCollapsed)
             {
-                System.Diagnostics.Debug.WriteLine("[小地图可见性] 折叠状态");
                 // 折叠状态：隐藏容器（包含画布），隐藏折叠按钮，显示展开按钮
                 if (_minimapContainer != null) _minimapContainer.Visibility = Visibility.Collapsed;
                 if (_minimapCollapseButton != null) _minimapCollapseButton.Visibility = Visibility.Collapsed;
@@ -2396,12 +2451,10 @@ namespace Astra.UI.Controls
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine("[小地图可见性] 展开状态 - 小地图应该可见");
                 // 展开状态：显示容器，显示折叠按钮，隐藏展开按钮
                 if (_minimapContainer != null) 
                 {
                     _minimapContainer.Visibility = Visibility.Visible;
-                    System.Diagnostics.Debug.WriteLine($"[小地图可见性] _minimapContainer 设置为 Visible");
                 }
                 if (_minimapCollapseButton != null) _minimapCollapseButton.Visibility = Visibility.Visible;
                 if (_minimapExpandButton != null) _minimapExpandButton.Visibility = Visibility.Collapsed;
@@ -2458,7 +2511,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void StartBoxSelection(Point startPoint)
         {
-            if (!EnableBoxSelection || _selectionBox == null)
+            if (!EnableBoxSelection || _selectionBox == null || IsLocked)
                 return;
 
             // 清除之前的选中状态（除非按住 Ctrl 键）
@@ -2541,6 +2594,9 @@ namespace Astra.UI.Controls
             {
                 ReleaseMouseCapture();
             }
+
+            // 更新选中范围显示
+            UpdateSelectedGroupBox();
         }
 
         /// <summary>
@@ -2623,6 +2679,8 @@ namespace Astra.UI.Controls
                     SelectedItems.Add(item);
                 }
             }
+
+            UpdateSelectedGroupBox();
         }
 
         /// <summary>
@@ -2735,46 +2793,244 @@ namespace Astra.UI.Controls
             {
                 SelectedItems = new ObservableCollection<object>();
             }
+
+            UpdateSelectedGroupBox();
         }
 
         /// <summary>
-        /// 删除选中的项（仅从 ItemsSource 中移除）
+        /// 删除选中的项（使用撤销/重做命令）
+        /// 这是删除节点的统一入口，所有删除操作都应该调用此方法
         /// </summary>
         public void DeleteSelectedItems()
         {
-            if (_selectedItems.Count == 0 || ItemsSource == null)
+            if (ItemsSource == null)
                 return;
 
-            var itemsToDelete = new List<object>(_selectedItems);
-
-            if (ItemsSource is IList list)
+            // 优先使用框选维护的 _selectedItems；如果为空，则回退到 SelectedItems 集合
+            List<object> itemsToDelete;
+            if (_selectedItems.Count > 0)
             {
-                foreach (var item in itemsToDelete)
-                {
-                    list.Remove(item);
-                }
+                itemsToDelete = new List<object>(_selectedItems);
+            }
+            else if (SelectedItems != null && SelectedItems.Count > 0)
+            {
+                itemsToDelete = new List<object>(SelectedItems.Cast<object>());
             }
             else
             {
-                // 尝试通过反射调用 Remove 方法
-                var removeMethod = ItemsSource.GetType().GetMethod("Remove");
-                if (removeMethod != null)
+                return;
+            }
+
+            // 🔧 批量删除时使用批量操作（避免多次刷新连线）
+            bool useBatchUpdate = itemsToDelete.Count > 1;
+            if (useBatchUpdate)
+            {
+                System.Diagnostics.Debug.WriteLine($"[批量删除] 开始删除 {itemsToDelete.Count} 个节点");
+                BeginBatchUpdate();
+            }
+
+            try
+            {
+                // 使用撤销/重做命令删除节点（同时会删除相关连线）
+                if (ItemsSource is IList nodeList && EdgeItemsSource is IList edgeList)
                 {
-                    foreach (var item in itemsToDelete)
+                    if (_undoRedoManager != null)
                     {
-                        try
+                        _undoRedoManager.Do(new DeleteNodeCommand(nodeList, edgeList, itemsToDelete));
+                    }
+                    else
+                    {
+                        // 回退：直接删除（不支持撤销）
+                        DeleteItemsDirectly(nodeList, edgeList, itemsToDelete);
+                    }
+                }
+                else if (ItemsSource is IList list)
+                {
+                    // 只有节点列表，没有连线列表
+                    if (_undoRedoManager != null)
+                    {
+                        _undoRedoManager.Do(new DeleteNodeCommand(list, null, itemsToDelete));
+                    }
+                    else
+                    {
+                        foreach (var item in itemsToDelete)
                         {
-                            removeMethod.Invoke(ItemsSource, new[] { item });
+                            list.Remove(item);
                         }
-                        catch (Exception ex)
+                    }
+                }
+                else
+                {
+                    // 回退到旧逻辑（不支持撤销）
+                    System.Diagnostics.Debug.WriteLine("警告：ItemsSource 不是 IList，无法使用撤销/重做功能");
+                    var removeMethod = ItemsSource.GetType().GetMethod("Remove");
+                    if (removeMethod != null)
+                    {
+                        foreach (var item in itemsToDelete)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[删除项时发生错误]: {ex.Message}");
+                            try
+                            {
+                                removeMethod.Invoke(ItemsSource, new[] { item });
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"[删除项时发生错误]: {ex.Message}");
+                            }
                         }
                     }
                 }
             }
+            finally
+            {
+                if (useBatchUpdate)
+                {
+                    EndBatchUpdate();
+                    System.Diagnostics.Debug.WriteLine($"[批量删除] 完成");
+                }
+            }
 
+            // 清除选中状态
             ClearSelection();
+            
+            // 刷新连线显示
+            RefreshEdgesImmediate();
+        }
+
+        /// <summary>
+        /// 直接删除节点和相关连线（不使用撤销/重做）
+        /// </summary>
+        private void DeleteItemsDirectly(IList nodeList, IList edgeList, List<object> itemsToDelete)
+        {
+            // 先删除相关连线
+            if (edgeList != null)
+            {
+                var removeIds = new HashSet<string>(itemsToDelete.OfType<Node>().Select(n => n.Id));
+                if (removeIds.Count > 0)
+                {
+                    var edgesToDelete = edgeList
+                        .Cast<object>()
+                        .OfType<Edge>()
+                        .Where(e => removeIds.Contains(e.SourceNodeId) || removeIds.Contains(e.TargetNodeId))
+                        .Cast<object>()
+                        .ToList();
+                    foreach (var edge in edgesToDelete)
+                    {
+                        edgeList.Remove(edge);
+                    }
+                }
+            }
+
+            // 再删除节点
+            foreach (var item in itemsToDelete)
+            {
+                nodeList.Remove(item);
+            }
+
+            UpdateSelectedGroupBox();
+        }
+
+        /// <summary>
+        /// 更新选中范围高亮框（框选完成后保留）
+        /// </summary>
+        private void UpdateSelectedGroupBox()
+        {
+            if (_selectedGroupBox == null)
+                return;
+
+            // 框选进行中时不显示（只显示橡皮筋框）
+            if (_isBoxSelecting)
+            {
+                _selectedGroupBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // 仅在有多个选中节点时显示组框；单个节点选中时不显示，避免挡住节点自身右键菜单
+            if (SelectedItems == null || SelectedItems.Count < 2 || _contentCanvas == null)
+            {
+                _selectedGroupBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            if (itemsControl == null)
+            {
+                _selectedGroupBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
+            int validCount = 0;
+
+            foreach (var item in SelectedItems)
+            {
+                var dims = GetItemDimensions(item, itemsControl);
+                if (!dims.HasValue) continue;
+                validCount++;
+
+                var (x, y, w, h) = dims.Value;
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x + w);
+                maxY = Math.Max(maxY, y + h);
+            }
+
+            if (validCount == 0 || double.IsInfinity(minX) || double.IsInfinity(minY) ||
+                double.IsInfinity(maxX) || double.IsInfinity(maxY))
+            {
+                _selectedGroupBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // 将画布坐标转换为控件坐标：x' = x * Scale + PanX
+            var leftLogical = minX;
+            var topLogical = minY;
+            var rightLogical = maxX;
+            var bottomLogical = maxY;
+
+            var left = leftLogical * Scale + PanX;
+            var top = topLogical * Scale + PanY;
+            var right = rightLogical * Scale + PanX;
+            var bottom = bottomLogical * Scale + PanY;
+
+            // 水平方向统一 padding；垂直方向略微向上扩一点，使视觉上上下间距更接近
+            const double paddingX = 6;
+            const double paddingY = 6;
+            const double topBias = 8; // 顶部额外向上偏移，补偿节点视觉重心偏上的效果
+
+            left  -= paddingX;
+            right += paddingX;
+            top   -= (paddingY + topBias);
+            bottom += paddingY;
+
+            var width = Math.Max(0, right - left);
+            var height = Math.Max(0, bottom - top);
+
+            Canvas.SetLeft(_selectedGroupBox, left);
+            Canvas.SetTop(_selectedGroupBox, top);
+            _selectedGroupBox.Width = width;
+            _selectedGroupBox.Height = height;
+            _selectedGroupBox.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// 判断点是否落在选中组框内（用于组拖动或右键菜单）
+        /// </summary>
+        internal bool IsPointInSelectedGroupBox(Point pointInControl)
+        {
+            if (_selectedGroupBox == null || _selectedGroupBox.Visibility != Visibility.Visible)
+                return false;
+
+            try
+            {
+                var topLeft = _selectedGroupBox.TransformToAncestor(this).Transform(new Point(0, 0));
+                var rect = new Rect(topLeft, new Size(_selectedGroupBox.Width, _selectedGroupBox.Height));
+                return rect.Contains(pointInControl);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         // 注意：FindPathAStar 方法已移至 InfiniteCanvas.Connections.cs

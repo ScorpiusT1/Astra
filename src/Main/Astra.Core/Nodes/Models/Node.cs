@@ -231,9 +231,17 @@ namespace Astra.Core.Nodes.Models
         /// </summary>
         public virtual Node Clone()
         {
+            // 保存只读结构体属性（JSON 反序列化无法设置只读属性）
+            var originalPosition = this.Position;
+            var originalSize = this.Size;
+            
             var json = JsonSerializer.Serialize(this, GetType(), jsonCloneOptions);
             var cloned = (Node)JsonSerializer.Deserialize(json, GetType(), jsonCloneOptions);
             cloned.Id = Guid.NewGuid().ToString();
+            
+            // 手动恢复只读结构体属性
+            cloned.Position = originalPosition;
+            cloned.Size = originalSize;
             
             RebuildPortRelationships(cloned);
             
