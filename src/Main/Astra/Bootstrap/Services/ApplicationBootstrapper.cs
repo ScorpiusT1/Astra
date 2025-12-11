@@ -74,6 +74,7 @@ namespace Astra.Bootstrap.Services
         {
             var stopwatch = Stopwatch.StartNew();
             var result = new BootstrapResult();
+            var cancellationToken = _cancellationTokenSource.Token;
 
             try
             {
@@ -84,29 +85,79 @@ namespace Astra.Bootstrap.Services
 
                 // ⭐ 等待启动画面完全加载后再继续（确保窗口渲染完成，进度条可以正确计算宽度）
                 UpdateSplashScreen(0, "正在启动...", null);
-                await Task.Delay(100);
+                await Task.Delay(100, cancellationToken);
+
+                // ⭐ 检查是否已取消
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _context.Logger?.LogWarning("启动流程已被用户取消");
+                    result.IsCancelled = true;
+                    result.TotalTime = stopwatch.Elapsed;
+                    stopwatch.Stop();
+                    return result;
+                }
 
                 // ⭐ 2. 构建服务提供者（不再需要执行任务）
                 // 进度分配：5% ~ 40%（服务注册和构建占 35%）
                 if (_context.Services != null)
                 {
                     UpdateSplashScreen(5, "正在初始化服务...", null);
-                    await Task.Delay(50); // 短暂延迟，确保 UI 更新可见
+                    await Task.Delay(50, cancellationToken); // 短暂延迟，确保 UI 更新可见
+                    
+                    // ⭐ 检查是否已取消
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        _context.Logger?.LogWarning("启动流程已被用户取消");
+                        result.IsCancelled = true;
+                        result.TotalTime = stopwatch.Elapsed;
+                        stopwatch.Stop();
+                        return result;
+                    }
                     
                     UpdateSplashScreen(15, "正在注册服务...", null);
-                    await Task.Delay(50);
+                    await Task.Delay(50, cancellationToken);
+                    
+                    // ⭐ 检查是否已取消
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        _context.Logger?.LogWarning("启动流程已被用户取消");
+                        result.IsCancelled = true;
+                        result.TotalTime = stopwatch.Elapsed;
+                        stopwatch.Stop();
+                        return result;
+                    }
                     
                     // 在构建服务提供者之前，将 BootstrapContext 注册到服务集合中
                     // 这样其他组件可以通过 DI 容器访问 BootstrapContext 和其中的数据（如 PluginHost）
                     _context.Services.AddSingleton(_context);
                     
                     UpdateSplashScreen(30, "正在构建服务容器...", null);
-                    await Task.Delay(50);
+                    await Task.Delay(50, cancellationToken);
+                   
+                    // ⭐ 检查是否已取消
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        _context.Logger?.LogWarning("启动流程已被用户取消");
+                        result.IsCancelled = true;
+                        result.TotalTime = stopwatch.Elapsed;
+                        stopwatch.Stop();
+                        return result;
+                    }
                    
                     _context.ServiceProvider = _context.Services.BuildServiceProvider();
                     
                     UpdateSplashScreen(40, "服务构建完成", null);
-                    await Task.Delay(50);
+                    await Task.Delay(50, cancellationToken);
+                  
+                    // ⭐ 检查是否已取消
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        _context.Logger?.LogWarning("启动流程已被用户取消");
+                        result.IsCancelled = true;
+                        result.TotalTime = stopwatch.Elapsed;
+                        stopwatch.Stop();
+                        return result;
+                    }
                   
                     // ⭐ 获取 IPluginHost（通过工厂方法创建，会自动使用主应用的 ServiceProvider）
                     // 工厂方法在第一次解析时执行，此时 ServiceProvider 已经构建完成
@@ -120,7 +171,17 @@ namespace Astra.Bootstrap.Services
                             _context.Logger?.LogInfo("插件系统已创建并使用主程序的全局 ServiceProvider，开始加载插件");
                             
                             // ⭐ 在所有服务构建完成后，加载插件
-                            await LoadPluginsAfterServiceProviderBuilt(pluginHost);
+                            await LoadPluginsAfterServiceProviderBuilt(pluginHost, cancellationToken);
+                            
+                            // ⭐ 检查是否已取消（插件加载过程中可能被取消）
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                _context.Logger?.LogWarning("启动流程已被用户取消");
+                                result.IsCancelled = true;
+                                result.TotalTime = stopwatch.Elapsed;
+                                stopwatch.Stop();
+                                return result;
+                            }
                         }
                         else
                         {
@@ -134,6 +195,16 @@ namespace Astra.Bootstrap.Services
                     }
                 }
 
+                // ⭐ 最终检查是否已取消
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _context.Logger?.LogWarning("启动流程已被用户取消");
+                    result.IsCancelled = true;
+                    result.TotalTime = stopwatch.Elapsed;
+                    stopwatch.Stop();
+                    return result;
+                }
+
                 stopwatch.Stop();
                 result.IsSuccess = true;
                 result.TotalTime = stopwatch.Elapsed;
@@ -142,12 +213,29 @@ namespace Astra.Bootstrap.Services
 
                 // 6. 显示完成状态（90% ~ 100%，占 10%）
                 UpdateSplashScreen(95, "正在完成启动...", null);
-                await Task.Delay(100);
+                await Task.Delay(100, cancellationToken);
+                
+                // ⭐ 检查是否已取消
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _context.Logger?.LogWarning("启动流程已被用户取消");
+                    result.IsCancelled = true;
+                    result.TotalTime = stopwatch.Elapsed;
+                    return result;
+                }
                 
                 // ⭐ 更新到100%，确保进度条完全填满
                 UpdateSplashScreen(100, "启动完成", null);
                 // ⭐ 等待动画完成（进度条动画300ms + 额外缓冲时间）
-                await Task.Delay(350);
+                await Task.Delay(350, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // ⭐ 捕获取消异常，设置取消标志
+                stopwatch.Stop();
+                result.IsCancelled = true;
+                result.TotalTime = stopwatch.Elapsed;
+                _context.Logger?.LogWarning("启动流程已被用户取消（OperationCanceledException）");
             }
             catch (Exception ex)
             {
@@ -160,7 +248,15 @@ namespace Astra.Bootstrap.Services
 
                 // 显示错误
                 _splashScreen?.ShowError(ex.Message);
-                await Task.Delay(3000); // 让用户看到错误
+                try
+                {
+                    await Task.Delay(3000, cancellationToken); // 让用户看到错误
+                }
+                catch (OperationCanceledException)
+                {
+                    // 如果取消，直接返回
+                    result.IsCancelled = true;
+                }
 
                 // ⭐ 不再需要回滚任务（因为没有任务系统）
             }
@@ -247,7 +343,7 @@ namespace Astra.Bootstrap.Services
         /// ⭐ 这样可以确保插件系统使用主程序构建的全局 ServiceProvider
         /// 流程：注册服务 → 构建 ServiceProvider → 创建 IPluginHost → 加载插件
         /// </summary>
-        private async Task LoadPluginsAfterServiceProviderBuilt(IPluginHost pluginHost)
+        private async Task LoadPluginsAfterServiceProviderBuilt(IPluginHost pluginHost, CancellationToken cancellationToken)
         {
             try
             {
@@ -287,7 +383,10 @@ namespace Astra.Bootstrap.Services
                 // 90%: 插件加载完成
                 
                 UpdateSplashScreen(40, "正在扫描插件目录...", null);
-                await Task.Delay(50); // 短暂延迟，确保 UI 更新可见
+                await Task.Delay(50, cancellationToken); // 短暂延迟，确保 UI 更新可见
+                
+                // ⭐ 检查是否已取消
+                cancellationToken.ThrowIfCancellationRequested();
                 
                 _context.Logger?.LogInfo($"开始扫描插件目录: {pluginDirectory}");
 
@@ -302,19 +401,26 @@ namespace Astra.Bootstrap.Services
                     _context.Logger?.LogWarning("IPluginDiscovery 服务未找到，使用自动加载方式");
                     UpdateSplashScreen(45, "正在发现并加载插件...", null);
                     await pluginHost.DiscoverAndLoadPluginsAsync(pluginDirectory);
+                    cancellationToken.ThrowIfCancellationRequested();
                     UpdateSplashScreen(90, "插件加载完成", null);
                 }
                 else
                 {
                     // 2. 发现插件（40% ~ 45%，占 5%）
                     UpdateSplashScreen(42, "正在发现插件...", null);
-                    await Task.Delay(50);
+                    await Task.Delay(50, cancellationToken);
+                    
+                    // ⭐ 检查是否已取消
+                    cancellationToken.ThrowIfCancellationRequested();
                     
                     var descriptors = (await pluginDiscovery.DiscoverAsync(pluginDirectory)).ToList();
                     var totalCount = descriptors.Count;
                     
                     UpdateSplashScreen(45, $"已发现 {totalCount} 个插件", null);
-                    await Task.Delay(50);
+                    await Task.Delay(50, cancellationToken);
+                    
+                    // ⭐ 检查是否已取消
+                    cancellationToken.ThrowIfCancellationRequested();
                     
                     _context.Logger?.LogInfo($"发现 {totalCount} 个插件");
                     
@@ -326,7 +432,10 @@ namespace Astra.Bootstrap.Services
                     {
                         // 3. 验证插件（45% ~ 65%，占 20%，根据插件数量分配）
                         UpdateSplashScreen(45, "正在验证插件...", null);
-                        await Task.Delay(50);
+                        await Task.Delay(50, cancellationToken);
+                        
+                        // ⭐ 检查是否已取消
+                        cancellationToken.ThrowIfCancellationRequested();
                         
                         var validDescriptors = new List<PluginDescriptor>();
                         var validatedCount = 0;
@@ -335,13 +444,16 @@ namespace Astra.Bootstrap.Services
                         {
                             foreach (var descriptor in descriptors)
                             {
+                                // ⭐ 在循环中检查取消
+                                cancellationToken.ThrowIfCancellationRequested();
+                                
                                 var validationResult = await pluginValidator.ValidateAsync(descriptor);
                                 validatedCount++;
                                 
                                 // 更新验证进度：45% ~ 65%
                                 var validateProgress = 45 + (validatedCount * 20.0 / totalCount);
                                 UpdateSplashScreen(validateProgress, $"正在验证插件 ({validatedCount}/{totalCount})...", $"插件: {descriptor.Name ?? descriptor.Id}");
-                                await Task.Delay(20); // 短暂延迟，确保 UI 更新可见
+                                await Task.Delay(20, cancellationToken); // 短暂延迟，确保 UI 更新可见
                                 
                                 if (validationResult.IsValid)
                                 {
@@ -363,15 +475,24 @@ namespace Astra.Bootstrap.Services
                             validDescriptors = descriptors;
                         }
                         
+                        // ⭐ 检查是否已取消
+                        cancellationToken.ThrowIfCancellationRequested();
+                        
                         var validCount = validDescriptors.Count;
                         _context.Logger?.LogInfo($"验证完成，有效插件: {validCount}/{totalCount}");
                         
                         UpdateSplashScreen(65, $"验证完成，有效插件: {validCount}/{totalCount}", null);
-                        await Task.Delay(50);
+                        await Task.Delay(50, cancellationToken);
+                        
+                        // ⭐ 检查是否已取消
+                        cancellationToken.ThrowIfCancellationRequested();
                         
                         // 4. 构建依赖图并排序（65% ~ 70%，占 5%）
                         UpdateSplashScreen(65, "正在分析插件依赖...", null);
-                        await Task.Delay(50);
+                        await Task.Delay(50, cancellationToken);
+                        
+                        // ⭐ 检查是否已取消
+                        cancellationToken.ThrowIfCancellationRequested();
                         
                         var graph = new DependencyGraph();
                         foreach (var descriptor in validDescriptors)
@@ -410,7 +531,10 @@ namespace Astra.Bootstrap.Services
                         _context.Logger?.LogInfo($"依赖分析完成，将按顺序加载 {sortedCount} 个插件");
                         
                         UpdateSplashScreen(70, $"依赖分析完成，准备加载 {sortedCount} 个插件...", null);
-                        await Task.Delay(50);
+                        await Task.Delay(50, cancellationToken);
+                        
+                        // ⭐ 检查是否已取消
+                        cancellationToken.ThrowIfCancellationRequested();
                         
                         // 5. 按依赖顺序加载插件（70% ~ 90%，占 20%，根据插件数量分配）
                         var loadedCount = 0;
@@ -420,13 +544,16 @@ namespace Astra.Bootstrap.Services
                             // 逐个加载插件，这样可以报告详细进度
                             for (int i = 0; i < sortedDescriptors.Count; i++)
                             {
+                                // ⭐ 在循环中检查取消
+                                cancellationToken.ThrowIfCancellationRequested();
+                                
                                 var descriptor = sortedDescriptors[i];
                                 var currentIndex = i + 1;
                                 
                                 // 计算加载进度：70% ~ 90%
                                 var loadProgress = 70 + (currentIndex * 20.0 / sortedCount);
                                 UpdateSplashScreen(loadProgress, $"正在加载插件 ({currentIndex}/{sortedCount})...", $"插件: {descriptor.Name ?? descriptor.Id}");
-                                await Task.Delay(30); // 短暂延迟，确保 UI 更新可见
+                                await Task.Delay(30, cancellationToken); // 短暂延迟，确保 UI 更新可见
                                 
                                 try
                                 {
@@ -457,7 +584,7 @@ namespace Astra.Bootstrap.Services
                         _context.Logger?.LogInfo($"插件加载完成，成功加载: {loadedCount}/{sortedCount}");
                         
                         UpdateSplashScreen(90, $"插件加载完成，已加载 {loadedCount}/{sortedCount} 个插件", null);
-                        await Task.Delay(50);
+                        await Task.Delay(50, cancellationToken);
                     }
                 }
 

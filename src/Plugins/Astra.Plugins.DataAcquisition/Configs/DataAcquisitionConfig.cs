@@ -11,7 +11,6 @@ using System.Collections.Generic;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
-    [DeviceConfigUI(typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
     [TreeNodeConfig("采集卡", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
     public class DataAcquisitionConfig : DeviceConfig
     {
@@ -19,11 +18,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public DataAcquisitionConfig() : base()
         {
-            // 注意：不在这里设置 ConfigId，让 JSON 反序列化器或基类处理
-            // 如果反序列化时 JSON 中没有 ConfigId，会在反序列化完成后由其他机制设置
-            // 这样确保反序列化时 ConfigId 不会被覆盖
             InitializeDeviceInfo(DeviceType.DataAcquisition);
-           
         }
 
         public DataAcquisitionConfig(string configId) : this()

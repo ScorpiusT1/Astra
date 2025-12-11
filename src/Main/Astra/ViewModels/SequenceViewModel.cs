@@ -175,8 +175,8 @@ namespace Astra.ViewModels
                 Name = "逻辑节点",
                 IconCode = FlowEditorIcons.LogicCategory,
                 Description = "逻辑控制节点",
-                CategoryColor = Application.Current?.FindResource("InfoBrush") as Brush,
-                CategoryLightColor = Application.Current?.FindResource("LightInfoBrush") as Brush
+                CategoryColor = Application.Current?.FindResource("PrimaryBrush") as Brush,
+                CategoryLightColor = Application.Current?.FindResource("LightPrimaryBrush") as Brush
             };
 
             logicCategory.Tools.Add(new ToolItem 
@@ -209,8 +209,8 @@ namespace Astra.ViewModels
                 Name = "设备节点",
                 IconCode = FlowEditorIcons.DeviceCategory,
                 Description = "设备操作节点",
-                CategoryColor = Application.Current?.FindResource("SuccessBrush") as Brush,
-                CategoryLightColor = Application.Current?.FindResource("LightSuccessBrush") as Brush
+                CategoryColor = Application.Current?.FindResource("PrimaryBrush") as Brush,
+                CategoryLightColor = Application.Current?.FindResource("LightPrimaryBrush") as Brush
             };
             deviceCategory.Tools.Add(new ToolItem 
             { 

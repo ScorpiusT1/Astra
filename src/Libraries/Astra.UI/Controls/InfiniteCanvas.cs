@@ -230,7 +230,7 @@ namespace Astra.UI.Controls
 
         public static readonly DependencyProperty GridSpacingProperty =
             DependencyProperty.Register(nameof(GridSpacing), typeof(double), typeof(InfiniteCanvas),
-                new PropertyMetadata(56.0, OnGridSettingsChanged));
+                new PropertyMetadata(40.0, OnGridSettingsChanged));
 
         public double GridSpacing
         {
@@ -252,7 +252,7 @@ namespace Astra.UI.Controls
 
         public static readonly DependencyProperty AlignmentToleranceProperty =
             DependencyProperty.Register(nameof(AlignmentTolerance), typeof(double), typeof(InfiniteCanvas),
-                new PropertyMetadata(20.0));
+                new PropertyMetadata(20.0));  // 对齐辅助线触发范围（屏幕px，默认 5）
 
         public double AlignmentTolerance
         {
@@ -588,6 +588,10 @@ namespace Astra.UI.Controls
         private Button _minimapExpandButton;
         private Button _minimapFitButton;
         private bool _isNavigatingMinimap;
+        
+        // 🔧 当前显示的对齐线坐标（用于松开鼠标时的精确对齐）
+        private List<double> _currentAlignmentVerticals = null;  // 垂直对齐线的X坐标
+        private List<double> _currentAlignmentHorizontals = null;  // 水平对齐线的Y坐标
         private bool _isDraggingViewportIndicator;  // 是否正在拖拽视口指示器
         private Point _viewportIndicatorDragStart;  // 视口指示器拖拽起始点（小地图坐标）
         private FrameworkElement _transformTarget; // 专门用于承载缩放/平移变换的视觉元素
@@ -1172,7 +1176,8 @@ namespace Astra.UI.Controls
 
             _gridLayer.Children.Clear();
 
-            var spacing = GridSpacing * Scale;
+            // 🔧 网格间距固定（屏幕像素），不随画布缩放变化
+            var spacing = GridSpacing;
 
             if (spacing < 5) return;
 
@@ -1231,10 +1236,12 @@ namespace Astra.UI.Controls
             var width = ActualWidth;
             var height = ActualHeight;
 
-            // 默认长度（全屏），如提供精确范围则使用
-            const double linePadding = 30;
-            double defaultVTop = 0, defaultVBottom = height;
-            double defaultHLeft = 0, defaultHRight = width;
+            // 默认长度（缩短显示范围，避免对齐线过长干扰）
+            const double linePadding = 6;
+            double defaultVTop = 0, 
+            defaultVBottom = height;
+            double defaultHLeft = 0, 
+            defaultHRight = width;
 
             if (movingBounds.HasValue && movingBounds.Value.Width > 0 && movingBounds.Value.Height > 0)
             {
@@ -1245,12 +1252,11 @@ namespace Astra.UI.Controls
                 defaultHRight = Math.Min(width, CanvasToScreen(new Point(mb.Right + linePadding, 0)).X);
             }
 
-            // 绘制垂直对齐线
-            if (verticalPositions != null)
+            // 🔧 绘制垂直对齐线（在节点区域的左右两侧各显示一条）
+            if (verticalPositions != null && movingBounds.HasValue)
             {
                 foreach (var x in verticalPositions)
                 {
-                    var screenX = CanvasToScreen(new Point(x, 0)).X;
                     double y1 = defaultVTop;
                     double y2 = defaultVBottom;
 
@@ -1267,11 +1273,29 @@ namespace Astra.UI.Controls
                     y1 = Math.Max(0, Math.Min(y1, height));
                     y2 = Math.Max(0, Math.Min(y2, height));
 
+                    var mb = movingBounds.Value;
+                    // 计算节点区域的左右边界
+                    var leftX = CanvasToScreen(new Point(Math.Min(x, mb.Left) - 5, 0)).X;
+                    var rightX = CanvasToScreen(new Point(Math.Max(x, mb.Right) + 5, 0)).X;
+
+                    // 左侧对齐线
                     _alignmentLayer.Children.Add(new Line
                     {
-                        X1 = screenX,
+                        X1 = leftX,
                         Y1 = y1,
-                        X2 = screenX,
+                        X2 = leftX,
+                        Y2 = y2,
+                        Stroke = lineBrush,
+                        StrokeThickness = 1.5,
+                        StrokeDashArray = new DoubleCollection { 4, 4 }
+                    });
+
+                    // 右侧对齐线
+                    _alignmentLayer.Children.Add(new Line
+                    {
+                        X1 = rightX,
+                        Y1 = y1,
+                        X2 = rightX,
                         Y2 = y2,
                         Stroke = lineBrush,
                         StrokeThickness = 1.5,
@@ -1280,12 +1304,11 @@ namespace Astra.UI.Controls
                 }
             }
 
-            // 绘制水平对齐线
-            if (horizontalPositions != null)
+            // 🔧 绘制水平对齐线（在节点区域的上下两侧各显示一条）
+            if (horizontalPositions != null && movingBounds.HasValue)
             {
                 foreach (var y in horizontalPositions)
                 {
-                    var screenY = CanvasToScreen(new Point(0, y)).Y;
                     double x1 = defaultHLeft;
                     double x2 = defaultHRight;
 
@@ -1302,12 +1325,30 @@ namespace Astra.UI.Controls
                     x1 = Math.Max(0, Math.Min(x1, width));
                     x2 = Math.Max(0, Math.Min(x2, width));
 
+                    var mb = movingBounds.Value;
+                    // 计算节点区域的上下边界
+                    var topY = CanvasToScreen(new Point(0, Math.Min(y, mb.Top) - 5)).Y;
+                    var bottomY = CanvasToScreen(new Point(0, Math.Max(y, mb.Bottom) + 5)).Y;
+
+                    // 上方对齐线
                     _alignmentLayer.Children.Add(new Line
                     {
                         X1 = x1,
-                        Y1 = screenY,
+                        Y1 = topY,
                         X2 = x2,
-                        Y2 = screenY,
+                        Y2 = topY,
+                        Stroke = lineBrush,
+                        StrokeThickness = 1.5,
+                        StrokeDashArray = new DoubleCollection { 4, 4 }
+                    });
+
+                    // 下方对齐线
+                    _alignmentLayer.Children.Add(new Line
+                    {
+                        X1 = x1,
+                        Y1 = bottomY,
+                        X2 = x2,
+                        Y2 = bottomY,
                         Stroke = lineBrush,
                         StrokeThickness = 1.5,
                         StrokeDashArray = new DoubleCollection { 4, 4 }
@@ -1319,6 +1360,9 @@ namespace Astra.UI.Controls
         public void HideAlignmentLines()
         {
             _alignmentLayer?.Children.Clear();
+            // 🔧 清空保存的对齐线坐标
+            _currentAlignmentVerticals = null;
+            _currentAlignmentHorizontals = null;
         }
 
         /// <summary>
@@ -1341,12 +1385,18 @@ namespace Astra.UI.Controls
             }
 
             var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
-            var tolerance = AlignmentTolerance;
-            var verticals = new List<double>();
-            var horizontals = new List<double>();
-            var verticalExtents = new List<(double x, double y1, double y2)>();
-            var horizontalExtents = new List<(double y, double x1, double x2)>();
-            const double linePadding = 30;
+            // 以屏幕像素为准的对齐触发范围，检测时将距离转换为屏幕尺度再比较
+            var tolerancePx = AlignmentTolerance;
+            const double linePadding = 12;
+
+            // 🔧 只保留最近的一条对齐线（两两对齐）
+            double? closestVerticalX = null;
+            double closestVerticalDistance = double.MaxValue;
+            (double y1, double y2)? closestVerticalExtent = null;
+
+            double? closestHorizontalY = null;
+            double closestHorizontalDistance = double.MaxValue;
+            (double x1, double x2)? closestHorizontalExtent = null;
 
             // 多选拖动时，忽略所有已选中的节点作为对齐参考，避免自对齐
             HashSet<object> selectedSet = null;
@@ -1373,59 +1423,13 @@ namespace Astra.UI.Controls
                 movingBounds.Left + movingBounds.Width / 2,
                 movingBounds.Right
             };
+            // 水平对齐使用节点顶部作为参考，满足“Y 等于参考节点 Y”需求
             var movingHorizontals = new[]
             {
-                movingBounds.Top,
-                movingBounds.Top + movingBounds.Height / 2,
-                movingBounds.Bottom
+                movingBounds.Top
             };
 
-            bool ExistsNear(List<double> list, double value) => list.Any(v => Math.Abs(v - value) < 0.5);
-
-            void MergeVerticalExtent(double x, double y1, double y2)
-            {
-                var idx = verticalExtents.FindIndex(v => Math.Abs(v.x - x) < 0.5);
-                if (idx >= 0)
-                {
-                    var existing = verticalExtents[idx];
-                    verticalExtents[idx] = (x, Math.Min(existing.y1, y1), Math.Max(existing.y2, y2));
-                }
-                else
-                {
-                    verticalExtents.Add((x, y1, y2));
-                }
-            }
-
-            void MergeHorizontalExtent(double y, double x1, double x2)
-            {
-                var idx = horizontalExtents.FindIndex(h => Math.Abs(h.y - y) < 0.5);
-                if (idx >= 0)
-                {
-                    var existing = horizontalExtents[idx];
-                    horizontalExtents[idx] = (y, Math.Min(existing.x1, x1), Math.Max(existing.x2, x2));
-                }
-                else
-                {
-                    horizontalExtents.Add((y, x1, x2));
-                }
-            }
-
-            void AddIfClose(double candidate, IEnumerable<double> movingValues, List<double> targetList, Action onMatch)
-            {
-                foreach (var mv in movingValues)
-                {
-                    if (Math.Abs(candidate - mv) <= tolerance)
-                    {
-                        if (!ExistsNear(targetList, candidate))
-                        {
-                            targetList.Add(candidate);
-                        }
-                        onMatch?.Invoke();
-                        break;
-                    }
-                }
-            }
-
+            // 🔧 遍历所有参考节点，找到最近的对齐线
             foreach (var item in ItemsSource)
             {
                 if (ShouldIgnore(item))
@@ -1438,131 +1442,151 @@ namespace Astra.UI.Controls
                 var (x, y, width, height) = dims.Value;
 
                 var otherVerticals = new[] { x, x + width / 2, x + width };
-                var otherHorizontals = new[] { y, y + height / 2, y + height };
+                // 使用顶部线进行垂直方向比对，便于将 Y 吸附到参考节点的 Y
+                var otherHorizontals = new[] { y };
 
+                // 检查垂直对齐（X坐标）
                 foreach (var ov in otherVerticals)
                 {
-                    AddIfClose(ov, movingVerticals, verticals, () =>
+                    foreach (var mv in movingVerticals)
                     {
-                        var y1 = Math.Min(movingBounds.Top, y) - linePadding;
-                        var y2 = Math.Max(movingBounds.Bottom, y + height) + linePadding;
-                        MergeVerticalExtent(ov, y1, y2);
-                    });
+                        // 使用屏幕像素距离判断触发
+                        double distance = Math.Abs(ov - mv) * Math.Max(Scale, 0.01);
+                        if (distance <= tolerancePx && distance < closestVerticalDistance)
+                        {
+                            closestVerticalX = ov;
+                            closestVerticalDistance = distance;
+                            // 🔧 对齐线范围：在拖动节点和参考节点之间
+                            var y1 = Math.Min(movingBounds.Top, y);
+                            var y2 = Math.Max(movingBounds.Bottom, y + height);
+                            closestVerticalExtent = (y1, y2);
+                        }
+                    }
                 }
 
+                // 检查水平对齐（Y坐标）
                 foreach (var oh in otherHorizontals)
                 {
-                    AddIfClose(oh, movingHorizontals, horizontals, () =>
+                    foreach (var mh in movingHorizontals)
                     {
-                        var x1 = Math.Min(movingBounds.Left, x) - linePadding;
-                        var x2 = Math.Max(movingBounds.Right, x + width) + linePadding;
-                        MergeHorizontalExtent(oh, x1, x2);
-                    });
+                        // 使用屏幕像素距离判断触发
+                        double distance = Math.Abs(oh - mh) * Math.Max(Scale, 0.01);
+                        if (distance <= tolerancePx && distance < closestHorizontalDistance)
+                        {
+                            closestHorizontalY = oh;
+                            closestHorizontalDistance = distance;
+                            // 🔧 对齐线范围：在拖动节点和参考节点之间
+                            var x1 = Math.Min(movingBounds.Left, x);
+                            var x2 = Math.Max(movingBounds.Right, x + width);
+                            closestHorizontalExtent = (x1, x2);
+                        }
+                    }
                 }
+            }
+
+            // 🔧 构建对齐线列表（最多只有一条垂直线和一条水平线）
+            var verticals = new List<double>();
+            var horizontals = new List<double>();
+            var verticalExtents = new List<(double x, double y1, double y2)>();
+            var horizontalExtents = new List<(double y, double x1, double x2)>();
+
+            if (closestVerticalX.HasValue && closestVerticalExtent.HasValue)
+            {
+                verticals.Add(closestVerticalX.Value);
+                verticalExtents.Add((closestVerticalX.Value, closestVerticalExtent.Value.y1, closestVerticalExtent.Value.y2));
+            }
+
+            if (closestHorizontalY.HasValue && closestHorizontalExtent.HasValue)
+            {
+                horizontals.Add(closestHorizontalY.Value);
+                horizontalExtents.Add((closestHorizontalY.Value, closestHorizontalExtent.Value.x1, closestHorizontalExtent.Value.x2));
             }
 
             if (verticals.Count == 0 && horizontals.Count == 0)
             {
                 HideAlignmentLines();
+                // 🔧 清空保存的对齐线坐标
+                _currentAlignmentVerticals = null;
+                _currentAlignmentHorizontals = null;
                 return;
             }
+
+            // 🔧 保存当前的对齐线坐标（用于松开鼠标时的精确对齐）
+            _currentAlignmentVerticals = new List<double>(verticals);
+            _currentAlignmentHorizontals = new List<double>(horizontals);
 
             ShowAlignmentLines(verticals, horizontals, movingBounds, verticalExtents, horizontalExtents);
         }
 
         /// <summary>
-        /// 计算节点松开后的自动吸附偏移量（在容差内对齐左/中/右或上/中/下）
+        /// 计算节点松开后的自动吸附偏移量（使用拖动时显示的对齐线坐标进行精确对齐）
         /// </summary>
         internal (double dx, double dy)? CalculateAlignmentSnap(object movingItem, Rect movingBounds)
         {
-            if (!EnableAlignment || ItemsSource == null || _contentCanvas == null)
+            if (!EnableAlignment)
                 return null;
 
-            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
-            var tolerance = AlignmentTolerance;
+            // 🔧 使用拖动时保存的对齐线坐标进行精确对齐
+            if (_currentAlignmentVerticals == null && _currentAlignmentHorizontals == null)
+                return null;
+
+            var tolerancePx = Math.Max(AlignmentTolerance, 1.0);
+            var toleranceCanvas = tolerancePx / Math.Max(Scale, 0.01);
 
             double? bestDx = null;
             double? bestDy = null;
 
-            HashSet<object> selectedSet = null;
-            if (SelectedItems != null && SelectedItems.Count > 0)
-            {
-                selectedSet = new HashSet<object>(SelectedItems.Cast<object>());
-            }
-
-            bool ShouldIgnore(object item)
-            {
-                if (ReferenceEquals(item, movingItem))
-                    return true;
-
-                if (selectedSet != null && selectedSet.Count > 1 && selectedSet.Contains(item))
-                    return true;
-
-                return false;
-            }
-
+            // 计算移动节点的对齐参考点（左/中/右、上/中/下）
             var movingVerticals = new[]
             {
-                movingBounds.Left,
-                movingBounds.Left + movingBounds.Width / 2,
-                movingBounds.Right
+                (pos: movingBounds.Left, type: "Left"),
+                (pos: movingBounds.Left + movingBounds.Width / 2, type: "Center"),
+                (pos: movingBounds.Right, type: "Right")
             };
+            // 水平对齐使用节点顶部作为参考，满足“Y 等于参考节点 Y”需求
             var movingHorizontals = new[]
             {
-                movingBounds.Top,
-                movingBounds.Top + movingBounds.Height / 2,
-                movingBounds.Bottom
+                (pos: movingBounds.Top, type: "Top")
             };
 
-            void TryUpdateDx(double diff)
+            // 🔧 垂直对齐线（X坐标对齐）- 找到最近的对齐线
+            if (_currentAlignmentVerticals != null && _currentAlignmentVerticals.Count > 0)
             {
-                if (Math.Abs(diff) <= tolerance && (bestDx == null || Math.Abs(diff) < Math.Abs(bestDx.Value)))
-                {
-                    bestDx = diff;
-                }
-            }
-
-            void TryUpdateDy(double diff)
-            {
-                if (Math.Abs(diff) <= tolerance && (bestDy == null || Math.Abs(diff) < Math.Abs(bestDy.Value)))
-                {
-                    bestDy = diff;
-                }
-            }
-
-            foreach (var item in ItemsSource)
-            {
-                if (ShouldIgnore(item))
-                    continue;
-
-                var dims = GetItemDimensions(item, itemsControl);
-                if (!dims.HasValue)
-                    continue;
-
-                var (x, y, width, height) = dims.Value;
-
-                var otherVerticals = new[] { x, x + width / 2, x + width };
-                var otherHorizontals = new[] { y, y + height / 2, y + height };
-
-                foreach (var ov in otherVerticals)
+                foreach (var alignX in _currentAlignmentVerticals)
                 {
                     foreach (var mv in movingVerticals)
                     {
-                        TryUpdateDx(ov - mv);
+                        double diff = alignX - mv.pos;
+                        if (Math.Abs(diff) <= toleranceCanvas &&
+                            (bestDx == null || Math.Abs(diff) < Math.Abs(bestDx.Value)))
+                        {
+                            bestDx = diff;
+                        }
                     }
                 }
+            }
 
-                foreach (var oh in otherHorizontals)
+            // 🔧 水平对齐线（Y坐标对齐）- 找到最近的对齐线
+            if (_currentAlignmentHorizontals != null && _currentAlignmentHorizontals.Count > 0)
+            {
+                foreach (var alignY in _currentAlignmentHorizontals)
                 {
                     foreach (var mh in movingHorizontals)
                     {
-                        TryUpdateDy(oh - mh);
+                        double diff = alignY - mh.pos;
+                        if (Math.Abs(diff) <= toleranceCanvas &&
+                            (bestDy == null || Math.Abs(diff) < Math.Abs(bestDy.Value)))
+                        {
+                            bestDy = diff;
+                        }
                     }
                 }
             }
 
             if (bestDx == null && bestDy == null)
                 return null;
+
+            System.Diagnostics.Debug.WriteLine($"[对齐吸附] 偏移: dx={bestDx ?? 0:F2}, dy={bestDy ?? 0:F2}");
 
             return (bestDx ?? 0, bestDy ?? 0);
         }
@@ -1864,6 +1888,10 @@ namespace Astra.UI.Controls
                     _minimapScale = Math.Min(scaleX, scaleY);
                 }
             }
+            
+            // 🔧 如果视口在初始位置（PanX/PanY 接近 0），将视口指示器放在小地图中心
+            const double initialTolerance = 1.0; // 容差
+            bool isInitialPosition = Math.Abs(PanX) < initialTolerance && Math.Abs(PanY) < initialTolerance;
 
             if (_minimapScale <= 0 || double.IsNaN(_minimapScale) || double.IsInfinity(_minimapScale))
             {
@@ -1871,33 +1899,52 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            // 计算当前视口在画布坐标系中的位置和大小
-            // 视口在画布坐标系中的位置 = (屏幕坐标 - 平移) / 缩放
-            // 【关键修复】使用 ScaleTransform 的实际值而不是依赖属性
-            var currentScale = _scaleTransform?.ScaleX ?? Scale;
-            if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+            // 🔧 视口指示器使用固定大小（横着的长方形），不随画布缩放变化
+            const double fixedIndicatorWidth = 60.0;  // 固定宽度
+            const double fixedIndicatorHeight = 40.0; // 固定高度
+            
+            double minimapCenterX, minimapCenterY;
+            
+            // 🔧 如果视口在初始位置，将视口指示器放在小地图中心
+            if (isInitialPosition)
             {
-                currentScale = 1.0; // 回退到默认值
+                minimapCenterX = canvasWidth / 2;
+                minimapCenterY = canvasHeight / 2;
             }
-
-            var viewportLeft = -PanX / currentScale;
-            var viewportTop = -PanY / currentScale;
-            var viewportWidth = ActualWidth / currentScale;
-            var viewportHeight = ActualHeight / currentScale;
-
-            // 转换为缩略图坐标系
-            var contentBounds = _minimapContentBounds;
-            var minimapLeft = (viewportLeft - contentBounds.Left) * _minimapScale;
-            var minimapTop = (viewportTop - contentBounds.Top) * _minimapScale;
-            var minimapWidth = viewportWidth * _minimapScale;
-            var minimapHeight = viewportHeight * _minimapScale;
+            else
+            {
+                // 计算当前视口在画布坐标系中的位置和大小
+                // 视口在画布坐标系中的位置 = (屏幕坐标 - 平移) / 缩放
+                // 【关键修复】使用 ScaleTransform 的实际值而不是依赖属性
+                var currentScale = _scaleTransform?.ScaleX ?? Scale;
+                if (currentScale <= 0 || double.IsNaN(currentScale) || double.IsInfinity(currentScale))
+                {
+                    currentScale = 1.0; // 回退到默认值
+                }
+                
+                var viewportLeft = -PanX / currentScale;
+                var viewportTop = -PanY / currentScale;
+                var viewportWidth = ActualWidth / currentScale;
+                var viewportHeight = ActualHeight / currentScale;
+                
+                // 计算视口中心在小地图中的位置
+                var contentBounds = _minimapContentBounds;
+                var viewportCenterX = viewportLeft + viewportWidth / 2;
+                var viewportCenterY = viewportTop + viewportHeight / 2;
+                minimapCenterX = (viewportCenterX - contentBounds.Left) * _minimapScale;
+                minimapCenterY = (viewportCenterY - contentBounds.Top) * _minimapScale;
+            }
+            
+            // 以中心为基准计算左上角位置
+            var minimapWidth = fixedIndicatorWidth;
+            var minimapHeight = fixedIndicatorHeight;
+            var minimapLeft = minimapCenterX - minimapWidth / 2;
+            var minimapTop = minimapCenterY - minimapHeight / 2;
 
             // 确保指示器在缩略图范围内
             // 限制在画布范围内
-            minimapLeft = Math.Max(0, Math.Min(minimapLeft, canvasWidth));
-            minimapTop = Math.Max(0, Math.Min(minimapTop, canvasHeight));
-            minimapWidth = Math.Max(8, Math.Min(minimapWidth, canvasWidth - minimapLeft));
-            minimapHeight = Math.Max(8, Math.Min(minimapHeight, canvasHeight - minimapTop));
+            minimapLeft = Math.Max(0, Math.Min(minimapLeft, canvasWidth - minimapWidth));
+            minimapTop = Math.Max(0, Math.Min(minimapTop, canvasHeight - minimapHeight));
 
             // 确保值有效
             if (double.IsNaN(minimapLeft) || double.IsNaN(minimapTop) ||
@@ -2031,6 +2078,9 @@ namespace Astra.UI.Controls
 
             PanX = newPanX;
             PanY = newPanY;
+            
+            // 🔧 更新框选框位置（点击小地图跳转后确保位置正确）
+            UpdateSelectedGroupBox();
         }
 
         private double _minimapScale = 1.0;
@@ -2163,7 +2213,7 @@ namespace Astra.UI.Controls
                     // 智能拖动模式：允许刷新，但使用路径平移优化而非重新计算A*
                     if (!_isBatchUpdating || _smartEdgeUpdateEnabled)
                     {
-                        RefreshEdges();
+                    RefreshEdges();
                     }
                 }), System.Windows.Threading.DispatcherPriority.Render);
             }
@@ -2831,52 +2881,52 @@ namespace Astra.UI.Controls
 
             try
             {
-                // 使用撤销/重做命令删除节点（同时会删除相关连线）
-                if (ItemsSource is IList nodeList && EdgeItemsSource is IList edgeList)
+            // 使用撤销/重做命令删除节点（同时会删除相关连线）
+            if (ItemsSource is IList nodeList && EdgeItemsSource is IList edgeList)
+            {
+                if (_undoRedoManager != null)
                 {
-                    if (_undoRedoManager != null)
-                    {
-                        _undoRedoManager.Do(new DeleteNodeCommand(nodeList, edgeList, itemsToDelete));
-                    }
-                    else
-                    {
-                        // 回退：直接删除（不支持撤销）
-                        DeleteItemsDirectly(nodeList, edgeList, itemsToDelete);
-                    }
-                }
-                else if (ItemsSource is IList list)
-                {
-                    // 只有节点列表，没有连线列表
-                    if (_undoRedoManager != null)
-                    {
-                        _undoRedoManager.Do(new DeleteNodeCommand(list, null, itemsToDelete));
-                    }
-                    else
-                    {
-                        foreach (var item in itemsToDelete)
-                        {
-                            list.Remove(item);
-                        }
-                    }
+                    _undoRedoManager.Do(new DeleteNodeCommand(nodeList, edgeList, itemsToDelete));
                 }
                 else
                 {
-                    // 回退到旧逻辑（不支持撤销）
-                    System.Diagnostics.Debug.WriteLine("警告：ItemsSource 不是 IList，无法使用撤销/重做功能");
-                    var removeMethod = ItemsSource.GetType().GetMethod("Remove");
-                    if (removeMethod != null)
+                    // 回退：直接删除（不支持撤销）
+                    DeleteItemsDirectly(nodeList, edgeList, itemsToDelete);
+                }
+            }
+            else if (ItemsSource is IList list)
+            {
+                // 只有节点列表，没有连线列表
+                if (_undoRedoManager != null)
+                {
+                    _undoRedoManager.Do(new DeleteNodeCommand(list, null, itemsToDelete));
+                }
+                else
+                {
+                    foreach (var item in itemsToDelete)
                     {
-                        foreach (var item in itemsToDelete)
+                        list.Remove(item);
+                    }
+                }
+            }
+            else
+            {
+                // 回退到旧逻辑（不支持撤销）
+                System.Diagnostics.Debug.WriteLine("警告：ItemsSource 不是 IList，无法使用撤销/重做功能");
+                var removeMethod = ItemsSource.GetType().GetMethod("Remove");
+                if (removeMethod != null)
+                {
+                    foreach (var item in itemsToDelete)
+                    {
+                        try
                         {
-                            try
-                            {
-                                removeMethod.Invoke(ItemsSource, new[] { item });
-                            }
-                            catch (Exception ex)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[删除项时发生错误]: {ex.Message}");
-                            }
+                            removeMethod.Invoke(ItemsSource, new[] { item });
                         }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[删除项时发生错误]: {ex.Message}");
+                        }
+                    }
                     }
                 }
             }

@@ -100,8 +100,16 @@ namespace Astra.Core.Configuration
 
                 return ConfigStorageFormat.Auto;
             }
-            catch
+            catch (JsonException jsonEx)
             {
+                // JSON 格式错误，记录详细错误信息
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] JSON 格式检测失败: {filePath}, 错误: {jsonEx.Message}");
+                return ConfigStorageFormat.Auto;
+            }
+            catch (Exception ex)
+            {
+                // 其他错误（如文件读取失败）
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] 文件格式检测失败: {filePath}, 错误: {ex.Message}");
                 return ConfigStorageFormat.Auto;
             }
         }
@@ -111,6 +119,19 @@ namespace Astra.Core.Configuration
         /// </summary>
         private async Task<List<T>?> LoadConfigsFromFileAsync(string filePath, ConfigStorageFormat format)
         {
+            // 如果格式为 Auto，先自动检测实际格式
+            if (format == ConfigStorageFormat.Auto)
+            {
+                format = await DetectFileFormatAsync(filePath);
+                
+                // 如果检测失败，记录错误并返回 null
+                if (format == ConfigStorageFormat.Auto)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] 无法自动检测配置文件格式: {filePath}，请检查 JSON 语法是否正确");
+                    return null;
+                }
+            }
+
             var json = await File.ReadAllTextAsync(filePath);
             List<T>? configs = null;
 
@@ -128,7 +149,13 @@ namespace Astra.Core.Configuration
                     configs = LoadFromContainer(json);
                     break;
 
+                case ConfigStorageFormat.Auto:
+                    // 理论上不应该到达这里（已在上面处理过）
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] 配置格式仍为 Auto，无法加载: {filePath}");
+                    return null;
+
                 default:
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] 不支持的配置格式: {format}，文件: {filePath}");
                     return null;
             }
 

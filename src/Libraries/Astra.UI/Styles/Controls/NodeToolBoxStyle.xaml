@@ -13,6 +13,10 @@
 
     <!-- 图标代码转换器 -->
     <converters:IconConverter x:Key="IconConverter" />
+    
+    <!-- Brush 转 Color 转换器 -->
+    <converters:BrushToColorConverter x:Key="BrushToColorConverter" />
+    
     <!-- ==================== 工具箱字体资源 ==================== -->
     <FontFamily x:Key="ToolboxFontFamily">Segoe UI</FontFamily>
     <System:Double x:Key="ToolboxFontSizeSmall">10</System:Double>
@@ -411,7 +415,7 @@
                                                         </ItemsControl.ItemsPanel>
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
-                                                                <Button Style="{DynamicResource ToolboxPanelItemStyle}"
+                                                                        <Button Style="{DynamicResource ToolboxPanelItemStyle}"
                                                                         Tag="{Binding CurrentCategory.Name, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
                                                                         ToolTip="{Binding Name}">
                                                                     <StackPanel Orientation="Vertical"
@@ -430,22 +434,34 @@
                                                                                 <LinearGradientBrush StartPoint="0,0"
                                                                                                      EndPoint="1,1">
                                                                                     <!-- 左上角：深色 -->
-                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor.Color, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
+                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
                                                                                                   Offset="0" />
                                                                                     <!-- 中间：深色为主 -->
-                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor.Color, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
+                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
                                                                                                   Offset="0.7" />
                                                                                     <!-- 右下角：保持深色（不使用浅色）-->
-                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor.Color, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
+                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
                                                                                                   Offset="1" />
                                                                                 </LinearGradientBrush>
                                                                             </Border.Background>
                                                                             <Border.Effect>
-                                                                                <DropShadowEffect Color="{Binding CurrentCategory.CategoryColor.Color, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
-                                                                                                  Opacity="0.6"
+                                                                                <DropShadowEffect Opacity="0.6"
                                                                                                   BlurRadius="16"
                                                                                                   ShadowDepth="6"
-                                                                                                  Direction="270" />
+                                                                                                  Direction="270">
+                                                                                    <DropShadowEffect.Color>
+                                                                                        <Binding Path="CurrentCategory.CategoryColor" 
+                                                                                                 RelativeSource="{RelativeSource AncestorType=controls:NodeToolBox}"
+                                                                                                 Converter="{StaticResource BrushToColorConverter}">
+                                                                                            <Binding.FallbackValue>
+                                                                                                <StaticResource ResourceKey="SecondaryTextColor" />
+                                                                                            </Binding.FallbackValue>
+                                                                                            <Binding.TargetNullValue>
+                                                                                                <StaticResource ResourceKey="SecondaryTextColor" />
+                                                                                            </Binding.TargetNullValue>
+                                                                                        </Binding>
+                                                                                    </DropShadowEffect.Color>
+                                                                                </DropShadowEffect>
                                                                             </Border.Effect>
 
                                                                             <fa:IconBlock Icon="{Binding IconCode, Converter={StaticResource IconConverter}}"

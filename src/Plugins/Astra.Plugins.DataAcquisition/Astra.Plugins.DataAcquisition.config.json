@@ -1,6 +1,7 @@
 {
   "Configs": [
     {
+      "ConfigId": "G1_S1",
       "ConfigName": "采集卡设备1",
       "DeviceName": "采集卡设备1",
       "SerialNumber": "DLXX5P10",
@@ -12,6 +13,7 @@
       "SlotId": "S1"
     },
     {
+      "ConfigId": "G1_S2",
       "ConfigName": "采集卡设备2",
       "DeviceName": "采集卡设备2",
       "SerialNumber": "DLXX5P11",

@@ -43,6 +43,22 @@ namespace Astra.Utilities
             return $"{BASE_NAME}{availableNumber}";
         }
 
+        /// <summary>
+        /// 基于已存在的名称列表生成唯一名称
+        /// </summary>
+        public string GenerateUniqueNameFromList(IEnumerable<string> existingNames)
+        {
+            if (existingNames == null || !existingNames.Any())
+            {
+                return $"{BASE_NAME}1";
+            }
+
+            var usedNumbers = ExtractUsedNumbers(existingNames);
+            int availableNumber = FindSmallestAvailableNumber(usedNumbers);
+
+            return $"{BASE_NAME}{availableNumber}";
+        }
+
         // 提取已使用的编号
         private HashSet<int> ExtractUsedNumbers(IEnumerable<string> names)
         {
@@ -50,6 +66,11 @@ namespace Astra.Utilities
 
             foreach (var name in names)
             {
+                if (string.IsNullOrEmpty(name))
+                {
+                    continue;
+                }
+
                 if (name.StartsWith(BASE_NAME))
                 {
                     string numberPart = name.Substring(BASE_NAME.Length);

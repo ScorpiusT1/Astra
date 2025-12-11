@@ -211,6 +211,9 @@ namespace Astra.UI.Controls
         /// </summary>
         public void EnableSmartEdgeUpdate(HashSet<string> movingNodeIds)
         {
+            // 🔧 如果已经启用，只更新节点集合和初始位置，不重新保存原始路径（避免快速拖动时累积误差）
+            bool isAlreadyEnabled = _smartEdgeUpdateEnabled;
+            
             _smartEdgeUpdateEnabled = true;
             _movingNodeIds = movingNodeIds;
             
@@ -228,24 +231,32 @@ namespace Astra.UI.Controls
                 }
             }
             
-            // 🔧 保存原始连线路径，避免累积偏移
-            _edgeOriginalPaths = new Dictionary<string, List<Point2D>>();
-            if (EdgeItemsSource is System.Collections.IEnumerable edgesEnumerable && movingNodeIds != null)
+            // 🔧 只在第一次启用时保存原始路径，避免快速拖动时多次保存导致累积误差
+            if (!isAlreadyEnabled || _edgeOriginalPaths == null)
             {
-                foreach (var item in edgesEnumerable)
+                _edgeOriginalPaths = new Dictionary<string, List<Point2D>>();
+                if (EdgeItemsSource is System.Collections.IEnumerable edgesEnumerable && movingNodeIds != null)
                 {
-                    if (item is Edge edge && edge.Points != null)
+                    foreach (var item in edgesEnumerable)
                     {
-                        // 如果连线的任意一端在移动集合中，保存其原始路径
-                        if (movingNodeIds.Contains(edge.SourceNodeId) || movingNodeIds.Contains(edge.TargetNodeId))
+                        if (item is Edge edge && edge.Points != null)
                         {
-                            _edgeOriginalPaths[edge.Id] = new List<Point2D>(edge.Points);
+                            // 如果连线的任意一端在移动集合中，保存其原始路径
+                            if (movingNodeIds.Contains(edge.SourceNodeId) || movingNodeIds.Contains(edge.TargetNodeId))
+                            {
+                                _edgeOriginalPaths[edge.Id] = new List<Point2D>(edge.Points);
+                            }
                         }
                     }
                 }
+                System.Diagnostics.Debug.WriteLine($"[智能连线] ✅ 首次启用 - 保存原始路径: {_edgeOriginalPaths.Count} 条");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[智能连线] ⚠️ 已启用，跳过原始路径保存（避免累积误差）");
             }
             
-            System.Diagnostics.Debug.WriteLine($"[智能连线] 启用 - 拖动节点数: {movingNodeIds?.Count ?? 0}, 记录位置数: {_nodeInitialPositions.Count}, 保存路径数: {_edgeOriginalPaths.Count}");
+            System.Diagnostics.Debug.WriteLine($"[智能连线] 启用 - 拖动节点数: {movingNodeIds?.Count ?? 0}, 记录位置数: {_nodeInitialPositions.Count}, 原始路径数: {_edgeOriginalPaths?.Count ?? 0}");
         }
         
         /// <summary>
@@ -385,7 +396,18 @@ namespace Astra.UI.Controls
                     // 🔧 同步更新 edge.Points，保持拖动后的路径形状
                     edge.Points = points.Select(p => new Point2D(p.X, p.Y)).ToList();
                     
-                    System.Diagnostics.Debug.WriteLine($"[智能连线] ✅ 平移路径（基于原始） - 点数: {savedOriginalPath.Count}, 偏移: ({smartOffsetX:F2}, {smartOffsetY:F2})");
+                    // 如果两端已经水平或垂直对齐（例如通过对齐线贴齐），但当前路径仍有折线，
+                    // 触发一次重算以尝试生成直线/更简洁路径，避免保留旧的“狗腿”形态。
+                    if (ShouldStraightenEdge(source, target, edge, points, nodeBounds))
+                    {
+                        System.Diagnostics.Debug.WriteLine("[智能连线] 检测到端点对齐且存在折线，强制重算路径以拉直");
+                        forceRecalculate = true;
+                        points.Clear();
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[智能连线] ✅ 平移路径（基于原始） - 点数: {savedOriginalPath.Count}, 偏移: ({smartOffsetX:F2}, {smartOffsetY:F2})");
+                    }
                 }
                 else if (!forceRecalculate && edge.Points != null && edge.Points.Count > 2)
                 {
@@ -412,9 +434,18 @@ namespace Astra.UI.Controls
                     
                     if (pathIsValid)
                     {
-                        // 路径端点匹配，直接使用（粘贴、加载、撤销等场景）
-                        points = new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y)));
-                        System.Diagnostics.Debug.WriteLine($"[连线优化] 直接使用已有路径 - 点数: {edge.Points.Count}");
+                        // 若端点已对齐且路径中仍有折线，则强制重算以拉直
+                        if (ShouldStraightenEdge(source, target, edge, new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y))), nodeBounds))
+                        {
+                            System.Diagnostics.Debug.WriteLine("[连线优化] 端点对齐但存在折线，强制重算路径以拉直");
+                            forceRecalculate = true;
+                        }
+                        else
+                        {
+                            // 路径端点匹配，直接使用（粘贴、加载、撤销等场景）
+                            points = new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y)));
+                            System.Diagnostics.Debug.WriteLine($"[连线优化] 直接使用已有路径 - 点数: {edge.Points.Count}");
+                        }
                     }
                     else
                     {
@@ -428,50 +459,50 @@ namespace Astra.UI.Controls
                 {
                     // 需要计算新路径（新建连线、一端拖动、或无有效路径）
                     System.Diagnostics.Debug.WriteLine($"[连线优化] 需要计算路径 - Points: {edge.Points?.Count ?? 0}, 强制重算: {forceRecalculate}");
-                    // 优先使用端口ID查找，如果没有ID则使用坐标作为提示
-                    var startHint = edge.Points != null && edge.Points.Count > 0
-                        ? new Point(edge.Points.First().X, edge.Points.First().Y)
-                        : (Point?)null;
-                    var endHint = edge.Points != null && edge.Points.Count > 0
-                        ? new Point(edge.Points.Last().X, edge.Points.Last().Y)
-                        : (Point?)null;
+                // 优先使用端口ID查找，如果没有ID则使用坐标作为提示
+                var startHint = edge.Points != null && edge.Points.Count > 0
+                    ? new Point(edge.Points.First().X, edge.Points.First().Y)
+                    : (Point?)null;
+                var endHint = edge.Points != null && edge.Points.Count > 0
+                    ? new Point(edge.Points.Last().X, edge.Points.Last().Y)
+                    : (Point?)null;
 
-                    // 使用端口ID查找端口，如果没有ID则回退到hint查找
-                    var startPort = GetPortPoint(source, edge.SourcePortId, startHint);
-                    var endPort = GetPortPoint(target, edge.TargetPortId, endHint);
+                // 使用端口ID查找端口，如果没有ID则回退到hint查找
+                var startPort = GetPortPoint(source, edge.SourcePortId, startHint);
+                var endPort = GetPortPoint(target, edge.TargetPortId, endHint);
 
-                    // 如果端口尚未生成（比如页面刚切换回来还未完成布局），先使用节点中心并标记稍后重刷
-                    if (startPort == null)
+                // 如果端口尚未生成（比如页面刚切换回来还未完成布局），先使用节点中心并标记稍后重刷
+                if (startPort == null)
+                {
+                    missingPorts = true;
+                    startPort = GetNodeCenter(source);
+                }
+                if (endPort == null)
+                {
+                    missingPorts = true;
+                    endPort = GetNodeCenter(target);
+                }
+
+                // 端口点在后续计算中必须为非空 Point
+                var startPortPoint = startPort ?? GetNodeCenter(source);
+                var endPortPoint = endPort ?? GetNodeCenter(target);
+
+                // 准备障碍物列表（排除源节点和目标节点）
+                var obstacles = new List<Rect>();
+                foreach (var kvp in nodeBounds)
+                {
+                    // 排除源和目标节点，且必须是有效的矩形
+                    if (kvp.Key != source.Id && kvp.Key != target.Id && !kvp.Value.IsEmpty && kvp.Value.Width > 1 && kvp.Value.Height > 1)
                     {
-                        missingPorts = true;
-                        startPort = GetNodeCenter(source);
+                        obstacles.Add(kvp.Value);
                     }
-                    if (endPort == null)
-                    {
-                        missingPorts = true;
-                        endPort = GetNodeCenter(target);
-                    }
+                }
 
-                    // 端口点在后续计算中必须为非空 Point
-                    var startPortPoint = startPort ?? GetNodeCenter(source);
-                    var endPortPoint = endPort ?? GetNodeCenter(target);
+                var routed = BuildOrthogonalRoute(startPortPoint, source, endPortPoint, target, obstacles);
+                points = new PointCollection(routed);
 
-                    // 准备障碍物列表（排除源节点和目标节点）
-                    var obstacles = new List<Rect>();
-                    foreach (var kvp in nodeBounds)
-                    {
-                        // 排除源和目标节点，且必须是有效的矩形
-                        if (kvp.Key != source.Id && kvp.Key != target.Id && !kvp.Value.IsEmpty && kvp.Value.Width > 1 && kvp.Value.Height > 1)
-                        {
-                            obstacles.Add(kvp.Value);
-                        }
-                    }
-
-                    var routed = BuildOrthogonalRoute(startPortPoint, source, endPortPoint, target, obstacles);
-                    points = new PointCollection(routed);
-
-                    // 覆盖 Edge.Points 为最新路径，便于序列化/后续刷新
-                    edge.Points = routed.Select(p => new Point2D(p.X, p.Y)).ToList();
+                // 覆盖 Edge.Points 为最新路径，便于序列化/后续刷新
+                edge.Points = routed.Select(p => new Point2D(p.X, p.Y)).ToList();
                 }
 
                 var polyline = new Polyline
@@ -1193,6 +1224,55 @@ namespace Astra.UI.Controls
             var height = node.Size.IsEmpty ? 40 : node.Size.Height;
 
             return new Rect(x, y, width, height);
+        }
+
+        /// <summary>
+        /// 判断两端已对齐但路径仍存在折线时，是否需要强制重算以拉直。
+        /// </summary>
+        private bool ShouldStraightenEdge(
+            Node source,
+            Node target,
+            Edge edge,
+            PointCollection currentPoints,
+            Dictionary<string, Rect> nodeBounds)
+        {
+            if (source == null || target == null || edge == null || currentPoints == null)
+                return false;
+
+            // 没有折线，无需处理
+            if (currentPoints.Count <= 2)
+                return false;
+
+            var startHint = currentPoints.Count > 0 ? currentPoints[0] : (Point?)null;
+            var endHint = currentPoints.Count > 0 ? currentPoints[currentPoints.Count - 1] : (Point?)null;
+
+            var startPort = GetPortPoint(source, edge.SourcePortId, startHint) ?? GetNodeCenter(source);
+            var endPort = GetPortPoint(target, edge.TargetPortId, endHint) ?? GetNodeCenter(target);
+
+            // 使用屏幕像素容差判断对齐
+            var tolerancePx = Math.Max(AlignmentTolerance, 1.0);
+            var dxScreen = Math.Abs(startPort.X - endPort.X) * Math.Max(Scale, 0.01);
+            var dyScreen = Math.Abs(startPort.Y - endPort.Y) * Math.Max(Scale, 0.01);
+            bool aligned = dxScreen <= tolerancePx || dyScreen <= tolerancePx;
+
+            if (!aligned)
+                return false;
+
+            // 若直线被其他节点遮挡，不强制拉直，避免穿模
+            if (nodeBounds != null)
+            {
+                foreach (var kvp in nodeBounds)
+                {
+                    if (kvp.Key == source.Id || kvp.Key == target.Id)
+                        continue;
+
+                    var inflated = InflateObstacle(kvp.Value);
+                    if (SegmentIntersectsRectClosed(startPort, endPort, inflated))
+                        return false;
+                }
+            }
+
+            return true;
         }
 
         #endregion

@@ -829,10 +829,10 @@ namespace Astra.UI.Controls
                     {
                         if (selectedNode == currentNode)
                         {
-                            // 当前节点：使用精确计算的最终位置
-                            UpdateNodePosition(finalCanvasPosition);
+                            // 🔧 当前节点：先更新视觉位置，再更新数据位置（避免端口位置计算时序错误）
                             Canvas.SetLeft(_contentPresenter, finalCanvasPosition.X);
                             Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
+                            UpdateNodePosition(finalCanvasPosition);
                         }
                         else
                         {
@@ -843,18 +843,19 @@ namespace Astra.UI.Controls
                                     initialPos.X + offsetX,
                                     initialPos.Y + offsetY
                                 );
-                                selectedNode.Position = newPosition;
 
                                 if (itemsControl != null)
                                 {
                                     var container = itemsControl.ItemContainerGenerator.ContainerFromItem(selectedNode) as ContentPresenter;
                                     if (container != null)
                                     {
-                                        // 更新最终位置
+                                        // 🔧 先更新视觉位置，再更新数据位置
                                         Canvas.SetLeft(container, newPosition.X);
                                         Canvas.SetTop(container, newPosition.Y);
                                     }
                                 }
+                                
+                                selectedNode.Position = newPosition;
                             }
                         }
                     }
@@ -862,22 +863,24 @@ namespace Astra.UI.Controls
             }
             else if (currentNode != null)
             {
-                // 单个节点拖动
-                UpdateNodePosition(finalCanvasPosition);
+                // 🔧 单个节点拖动：先更新视觉位置，再更新数据位置
                 Canvas.SetLeft(_contentPresenter, finalCanvasPosition.X);
                 Canvas.SetTop(_contentPresenter, finalCanvasPosition.Y);
+                UpdateNodePosition(finalCanvasPosition);
             }
 
             // 🔧 结束批量拖拽（禁用智能优化）
             if (_selectedNodesInitialPositions != null && _selectedNodesInitialPositions.Count > 1)
             {
                 _parentCanvas?.DisableSmartEdgeUpdate();
-                System.Diagnostics.Debug.WriteLine($"[批量拖拽] 完成");
+                // 🔧 对齐吸附后立即刷新连线，确保连线重新计算（避免对齐时连线保持折线形状）
+                _parentCanvas?.RefreshEdgesImmediate();
+                System.Diagnostics.Debug.WriteLine($"[批量拖拽] 完成，强制刷新连线");
             }
             else
             {
                 // 单节点拖拽，立即刷新连线
-                _parentCanvas?.RefreshEdgesImmediate();
+            _parentCanvas?.RefreshEdgesImmediate();
             }
 
             // 拖拽结束后隐藏对齐辅助线

@@ -1,39 +1,28 @@
 ﻿using Astra.Core.Configuration;
 using Astra.Core.Devices.Attributes;
-using Astra.Core.Devices.Configuration;
 using Astra.Core.Devices.Interfaces;
-using Astra.Core.Devices.Management;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Plugins.Abstractions;
-using Astra.Core.Plugins.Messaging;
-using Astra.Core.Logs;
 using Astra.UI.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using Astra.Models;
 using Astra.UI.Abstractions.Attributes;
 using Astra.Utilities;
 using System.Threading.Tasks;
+using System.Reflection;
 
 namespace Astra.ViewModels
 {
     public partial class ConfigViewModel : ObservableObject
     {
         private readonly IServiceProvider _serviceProvider;
-        private string _defaultIcon = "📁";
-
-        private readonly IDeviceManager _deviceManager;
-        private readonly IPluginHost _pluginHost;
-
+        private readonly string _defaultIcon = "📁";
         private readonly IConfigurationManager? _configManager;
 
         [ObservableProperty]
@@ -45,12 +34,24 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private TreeNode _selectedNode;
 
-        // 待删除的设备ID列表（点击保存时才从设备管理器注销）
-        private readonly HashSet<string> _pendingDeviceUnregisters = new HashSet<string>();
-
-
         public event EventHandler<Control?>? ContentControlChanged;
 
+        public ConfigViewModel()
+        {
+            _serviceProvider = App.ServiceProvider;
+            _configManager = _serviceProvider?.GetService<IConfigurationManager>();
+
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+            {
+                InitializeConfigTree();
+            });
+        }
+
+        // 防止配置树刷新时的递归调用标志
+        private bool _isRefreshingTree = false;
+
+        // 防止节点选择时的递归调用标志
+        private bool _isSelectingNode = false;
 
         /// <summary>
         /// 递归清除节点的选中状态
@@ -71,38 +72,16 @@ namespace Astra.ViewModels
             }
         }
 
-        public ConfigViewModel()
+        /// <summary>
+        /// 清除所有节点的选中状态
+        /// </summary>
+        private void ClearAllSelection()
         {
-            // 从服务提供者获取依赖
-            _serviceProvider = App.ServiceProvider;
-
-            _deviceManager = _serviceProvider?.GetService<IDeviceManager>();
-
-            _configManager = _serviceProvider?.GetService<IConfigurationManager>();
-
-            // 从服务提供者获取 PluginHost（已由 PluginLoadTask 注册为单例）
-            _pluginHost = _serviceProvider?.GetService<IPluginHost>();
-
-            // 如果获取不到，记录警告（但不影响功能，因为可以扫描所有已加载的程序集）
-            if (_pluginHost == null)
+            foreach (var rootNode in TreeNodes)
             {
-                System.Diagnostics.Debug.WriteLine("[ConfigViewModel] 警告：无法从服务提供者获取 IPluginHost，将扫描所有已加载的程序集");
+                ClearNodeSelection(rootNode);
             }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] PluginHost 已获取，已加载插件数量: {_pluginHost.LoadedPlugins.Count}");
-            }
-
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-            {
-                InitializeConfigTree();
-            });
         }
-
-        // 防止配置树刷新时的递归调用标志
-        private bool _isRefreshingTree = false;
-
-
 
         /// <summary>
         /// 初始化配置树
@@ -139,75 +118,159 @@ namespace Astra.ViewModels
 
 
         /// <summary>
+        /// 获取所有带有 TreeNodeConfigAttribute 的配置类型
+        /// </summary>
+        private List<(Type ConfigType, TreeNodeConfigAttribute Attribute)> GetAllConfigTypes()
+        {
+            var configTypes = new List<(Type, TreeNodeConfigAttribute)>();
+
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var types = assembly.GetTypes()
+                        .Where(t => !t.IsAbstract &&
+                                   !t.IsInterface &&
+                                   typeof(IConfig).IsAssignableFrom(t))
+                        .Select(t => new { Type = t, Attr = t.GetCustomAttribute<TreeNodeConfigAttribute>() })
+                        .Where(x => x.Attr != null)
+                        .Select(x => (x.Type, x.Attr!))
+                        .ToList();
+
+                    configTypes.AddRange(types);
+                }
+                catch (Exception ex)
+                {
+                    // 忽略无法加载类型的程序集
+                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 扫描程序集 {assembly.FullName} 时出错: {ex.Message}");
+                }
+            }
+
+            return configTypes;
+        }
+
+        /// <summary>
+        /// 为没有实例的配置类型创建默认配置节点（仅内存，不持久化）
+        /// </summary>
+        private IConfig? CreateDefaultConfig(Type configType, TreeNodeConfigAttribute attr, List<IConfig> existingConfigsOfSameType)
+        {
+            try
+            {
+                // 创建默认配置实例
+                var defaultConfig = Activator.CreateInstance(configType, Guid.NewGuid().ToString()) as IConfig;
+
+                if (defaultConfig != null)
+                {
+                    // 使用 NodeAutoNaming 生成唯一名称
+                    var existingNames = existingConfigsOfSameType.Select(c => c.ConfigName).ToList();
+
+                    NodeAutoNaming nodeAutoNaming = new NodeAutoNaming();
+                    defaultConfig.ConfigName = nodeAutoNaming.GenerateUniqueNameFromList(existingNames);
+
+                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 已创建默认配置（内存）: {defaultConfig.ConfigName} ({configType.Name})");
+                }
+
+                return defaultConfig;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 为类型 {configType.Name} 创建默认配置时出错: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// 构建配置树（基于 ConfigurationManager 中的配置）
         /// </summary>
         private async Task BuildConfigTree()
         {
             var result = await _configManager?.GetAllConfigsAsync();
 
-            if (result == null || result.Data == null)
-            {
-                return;
-            }
+            var existingConfigs = result?.Data?.ToList() ?? new List<IConfig>();
 
             TreeNodes?.Clear();
 
             // 使用字典跟踪所有根节点，避免重复处理
             Dictionary<string, TreeNode> rootNodes = new Dictionary<string, TreeNode>();
 
-            foreach (var config in result.Data)
+            // 获取所有配置类型
+            var allConfigTypes = GetAllConfigTypes();
+
+            // 按配置类型分组（确保每个类型至少有一个配置）
+            var configTypeGroups = allConfigTypes.GroupBy(x => x.ConfigType);
+
+            foreach (var typeGroup in configTypeGroups)
             {
-                Type cfgType = config.GetType();
+                var configType = typeGroup.Key;
+                var attr = typeGroup.First().Attribute;
 
-                TreeNodeConfigAttribute? attr = cfgType.GetCustomAttribute<TreeNodeConfigAttribute>();
+                // 查找该类型的现有配置实例
+                var configsOfType = existingConfigs.Where(c => c.GetType() == configType).ToList();
 
-                if (attr == null)
+                // 如果没有现有配置，创建一个默认配置（仅内存）
+                if (configsOfType.Count == 0)
                 {
-                    continue;
+                    var defaultConfig = CreateDefaultConfig(configType, attr, configsOfType);
+                    if (defaultConfig != null)
+                    {
+                        configsOfType.Add(defaultConfig);
+                    }
                 }
 
-                // 获取或创建根节点
-                if (!rootNodes.TryGetValue(attr.Category, out TreeNode? rootNode))
+                // 按照 UpdatedAt 排序（保持保存时的顺序）
+                // UpdatedAt 为 null 的配置排在最后
+                configsOfType = configsOfType
+                    .OrderBy(c => c.UpdatedAt ?? DateTime.MaxValue)
+                    .ThenBy(c => c.CreatedAt) // 如果 UpdatedAt 相同，按创建时间排序
+                    .ToList();
+
+                // 为该类型的所有配置创建树节点
+                foreach (var config in configsOfType)
                 {
-                    rootNode = GetTreeNode(attr.Category);
+                    // 获取或创建根节点
+                    if (!rootNodes.TryGetValue(attr.Category, out TreeNode? rootNode))
+                    {
+                        rootNode = GetTreeNode(attr.Category);
 
-                    // 首次创建时设置根节点属性
-                    rootNode.ShowAddButton = true;
-                    rootNode.ShowDeleteButton = false;
-                    rootNode.Config = null;
+                        // 首次创建时设置根节点属性
+                        rootNode.ShowAddButton = true;
+                        rootNode.ShowDeleteButton = false;
+                        rootNode.Config = null;
 
-                    rootNodes[attr.Category] = rootNode;
+                        rootNodes[attr.Category] = rootNode;
+                    }
+
+                    // 创建子节点
+                    TreeNode childNode = new TreeNode
+                    {
+                        Header = config.ConfigName,
+                        Icon = attr.Icon ?? _defaultIcon,
+                        ViewModelType = attr.ViewModelType,
+                        ViewType = attr.ViewType,
+                        ShowAddButton = false,
+                        ShowDeleteButton = true,
+                        Config = config,
+                        Order = attr.Order,
+                        ConfigType = configType,
+                        Parent = rootNode,
+                    };
+
+                    // 如果根节点还没有图标，使用第一个子节点的图标
+                    if (rootNode.Icon == null || rootNode.Icon == _defaultIcon)
+                    {
+                        rootNode.Icon = childNode.Icon;
+                    }
+
+                    // 如果根节点还没有ConfigType，使用第一个子节点的类型
+                    if (rootNode.ConfigType == null)
+                    {
+                        rootNode.ConfigType = configType;
+                    }
+
+                    rootNode.Children.Add(childNode);
                 }
-
-                // 创建子节点
-                TreeNode childNode = new TreeNode
-                {
-                    Header = config.ConfigName,
-                    Icon = attr.Icon ?? _defaultIcon,
-                    ViewModelType = attr.ViewModelType,
-                    ViewType = attr.ViewType,
-                    ShowAddButton = false,
-                    ShowDeleteButton = true,
-                    Config = config,
-                    Order = attr.Order,
-                    ConfigType = cfgType,
-                    Parent = rootNode,
-                };
-
-                // 如果根节点还没有图标，使用第一个子节点的图标
-                if (rootNode.Icon == null || rootNode.Icon == _defaultIcon)
-                {
-                    rootNode.Icon = childNode.Icon;
-                }
-
-                // 如果根节点还没有ConfigType，使用第一个子节点的类型
-                if (rootNode.ConfigType == null)
-                {
-                    rootNode.ConfigType = cfgType;
-                }
-
-                rootNode.Children.Add(childNode);
             }
+
 
             // 添加所有非空的根节点
             foreach (var rootNode in rootNodes.Values)
@@ -278,9 +341,26 @@ namespace Astra.ViewModels
             if (node == null)
                 return;
 
-            SelectedNode = node;
+            // 防止递归调用（TreeView 的 Selected 事件会触发此命令）
+            if (_isSelectingNode)
+                return;
 
-            LoadConfigView(node);
+            _isSelectingNode = true;
+            try
+            {
+                // 清除所有节点的选中状态
+                ClearAllSelection();
+
+                // 设置新节点为选中状态
+                SelectedNode = node;
+                node.IsSelected = true;
+
+                LoadConfigView(node);
+            }
+            finally
+            {
+                _isSelectingNode = false;
+            }
         }
 
         /// <summary>
@@ -313,26 +393,11 @@ namespace Astra.ViewModels
                 }
 
                 configView.DataContext = viewModel;
-
-                if (configView == null)
-                {
-                    return;
-                }
-
                 ContentControlChanged?.Invoke(this, configView);
             }
             catch (Exception ex)
             {
                 ToastHelper.ShowError($"加载配置界面时发生错误: {ex.Message}");
-
-                ContentControl control = new ContentControl()
-                {
-                    Content = new TextBlock
-                    {
-                        Text = $"无法加载配置界面: {ex.Message}",
-                        Margin = new Thickness(20)
-                    }
-                };
             }
         }
 
@@ -416,26 +481,8 @@ namespace Astra.ViewModels
                 parentChildren.RemoveAt(sourceIndex);
 
                 // 重新计算目标索引（因为已经移除了源节点）
-                // 拖拽行为：
-                // - 从上往下拖：源节点出现在目标节点之后
-                // - 从下往上拖：源节点出现在目标节点之前
-                int newTargetIndex;
-                if (sourceIndex < targetIndex)
-                {
-                    // 如果源节点在目标节点之前（从上往下拖）
-                    // 例如：原始列表 [A(source=0), B(1), C(target=2), D(3)]
-                    // 移除A后变成 [B(0), C(1), D(2)]，C的原位置是索引2，现在在索引1
-                    // 要在C之后插入A，应该插入到索引2（即原targetIndex位置）
-                    newTargetIndex = targetIndex;
-                }
-                else
-                {
-                    // 如果源节点在目标节点之后（从下往上拖）
-                    // 例如：原始列表 [A(0), B(target=1), C(source=2)]
-                    // 移除C后变成 [A(0), B(1)]，targetIndex不变还是1
-                    // 要在B之前插入C，应该插入到targetIndex位置
-                    newTargetIndex = targetIndex;
-                }
+                // 无论从上往下拖还是从下往上拖，目标索引保持不变
+                int newTargetIndex = targetIndex;
 
                 // 确保索引有效
                 if (newTargetIndex < 0)
@@ -588,37 +635,41 @@ namespace Astra.ViewModels
 
                 if (isSelectedNode && parent != null && index >= 0)
                 {
-                    // 在删除前，尝试选择相邻节点
+                    // 在删除前，尝试选择相邻兄弟节点
                     var children = parent.Children;
 
-                    // 优先选择上一个节点（向上移动）
+                    // 优先选择上一个兄弟节点（向上移动）
                     if (index > 0)
                     {
                         nextSelectedNode = children[index - 1];
                     }
-                    // 如果没有上一个节点，选择下一个节点（向下移动）
+                    // 如果没有上一个节点，选择下一个兄弟节点（向下移动）
                     else if (index < children.Count - 1)
                     {
                         // 注意：删除后，index+1 位置的节点会移动到 index 位置
                         nextSelectedNode = children[index + 1];
                     }
-                    // 如果上下都没有节点，nextSelectedNode 保持为 null
+                    else
+                    {
+                        // 如果没有兄弟节点（是唯一的子节点），选择父节点
+                        nextSelectedNode = parent;
+                    }
                 }
                 else if (isSelectedNode && index >= 0)
                 {
                     // 删除的是根节点
-                    // 优先选择上一个节点（向上移动）
+                    // 优先选择上一个根节点（向上移动）
                     if (index > 0)
                     {
                         nextSelectedNode = TreeNodes[index - 1];
                     }
-                    // 如果没有上一个节点，选择下一个节点（向下移动）
+                    // 如果没有上一个节点，选择下一个根节点（向下移动）
                     else if (index < TreeNodes.Count - 1)
                     {
                         // 注意：删除后，index+1 位置的节点会移动到 index 位置
                         nextSelectedNode = TreeNodes[index + 1];
                     }
-                    // 如果上下都没有节点，nextSelectedNode 保持为 null
+                    // 如果是最后一个根节点，nextSelectedNode 保持为 null（清空选中）
                 }
 
                 // 执行删除操作
@@ -661,536 +712,134 @@ namespace Astra.ViewModels
         }
 
         /// <summary>
-        /// 保存配置命令
+        /// 保存单个配置命令（右键菜单使用）
         /// </summary>
         [RelayCommand]
-        private async Task SaveConfigurations()
+        private async Task SaveSingleConfiguration(TreeNode? node)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] SaveSingleConfiguration 被调用, node: {node?.Header}");
+            
+            try
+            {
+                if (_configManager == null)
+                {
+                    ToastHelper.ShowError("配置管理器未初始化");
+                    return;
+                }
+
+                // 如果没有传入节点，使用当前选中的节点
+                var targetNode = node ?? SelectedNode;
+
+                if (targetNode == null || targetNode.Config == null)
+                {
+                    ToastHelper.ShowError("未选择有效的配置节点");
+                    return;
+                }
+
+                // 通过 IConfigurationManager 的非泛型入口更新当前配置
+                OperationResult rlt = await _configManager.UpdateConfigAsync(targetNode.Config);
+
+                if (rlt == null || !rlt.Success)
+                {
+                    ToastHelper.ShowError($"保存配置失败: {rlt?.Message}");
+                    return;
+                }
+
+                targetNode.Header = targetNode.Config.ConfigName;
+                ToastHelper.ShowSuccess($"已保存: {targetNode.Config.ConfigName}");
+
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"保存单个配置时发生错误: {ex.Message}");
+                ToastHelper.ShowError($"保存配置失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 保存所有配置命令（保存按钮使用）
+        /// </summary>
+        [RelayCommand]
+        private async Task SaveAllConfigurations()
         {
             try
             {
                 if (_configManager == null)
                 {
-                    ToastHelper.ShowError("配置管理器未初始化", "错误");
+                    ToastHelper.ShowError("配置管理器未初始化");
                     return;
                 }
 
-                if (SelectedNode == null || SelectedNode.Config == null)
+                var successCount = 0;
+                var errorCount = 0;
+                var errors = new List<string>();
+
+                // 获取基准时间（用于按顺序设置 UpdatedAt）
+                var baseTime = DateTime.Now;
+                var timeOffset = 0;
+
+                // 遍历所有根节点（按树中的顺序）
+                foreach (var rootNode in TreeNodes)
                 {
-                    ToastHelper.ShowError("未选择有效的配置节点", "错误");
-                    return;
-                }
-
-                // 通过 IConfigurationManager 的非泛型入口更新当前配置
-                OperationResult rlt = await _configManager.UpdateConfigAsync(SelectedNode.Config);
-
-                if (rlt == null || !rlt.Success)
-                {
-                    ToastHelper.ShowError("保存配置失败", "错误");
-                    return;
-                }
-
-                SelectedNode.Header = SelectedNode.Config.ConfigName;
-                ToastHelper.ShowSuccess("保存配置成功");
-                //var successCount = 0;
-                //var errorCount = 0;
-                //var errors = new List<string>();
-
-                //// 1. 处理待删除的设备（从设备管理器注销）
-                //foreach (var deviceId in _pendingDeviceUnregisters.ToList())
-                //{
-                //    if (_deviceManager != null)
-                //    {
-                //        var result = _deviceManager.UnregisterDevice(deviceId);
-                //        if (result.Success)
-                //        {
-                //            successCount++;
-                //            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备 {deviceId} 已从设备管理器注销");
-                //        }
-                //        else
-                //        {
-                //            errorCount++;
-                //            errors.Add($"注销设备 {deviceId} 失败: {result.ErrorMessage}");
-                //            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 注销设备 {deviceId} 失败: {result.ErrorMessage}");
-                //        }
-                //    }
-                //}
-
-                //// 清空待删除列表
-                //_pendingDeviceUnregisters.Clear();
-
-                //// 2. 将 ConfigurationManager 中的配置应用到已注册的设备（如果设备存在）
-                //// 按照树节点的顺序获取配置（保持子节点顺序）
-                //var allDeviceConfigs = GetDeviceConfigsInTreeOrder();
-
-                //foreach (var config in allDeviceConfigs)
-                //{
-                //    if (_deviceManager == null)
-                //        continue;
-
-                //    // 检查设备是否已注册
-                //    if (_deviceManager.DeviceExists(config.DeviceId))
-                //    {
-                //        // 设备已存在，检查是否需要更新配置
-                //        var deviceResult = _deviceManager.GetDevice(config.DeviceId);
-                //        if (deviceResult.Success && deviceResult.Data != null)
-                //        {
-                //            // 尝试应用配置到设备
-                //            var device = deviceResult.Data;
-
-                //            // 使用反射查找 IConfigurable<TConfig> 接口
-                //            var configurableInterface = device.GetType().GetInterfaces()
-                //                .FirstOrDefault(i => i.IsGenericType &&
-                //                                     i.GetGenericTypeDefinition() == typeof(IConfigurable<>));
-
-                //            if (configurableInterface != null)
-                //            {
-                //                try
-                //                {
-                //                    // 通过反射调用 ApplyConfig 方法
-                //                    var applyConfigMethod = configurableInterface.GetMethod("ApplyConfig");
-
-                //                    if (applyConfigMethod != null)
-                //                    {
-                //                        var applyResult = applyConfigMethod.Invoke(device, new object[] { config }) as OperationResult;
-                //                        if (applyResult != null && !applyResult.Success)
-                //                        {
-                //                            errorCount++;
-                //                            errors.Add($"应用配置到设备 {config.DeviceId} 失败: {applyResult.ErrorMessage}");
-                //                        }
-                //                        else
-                //                        {
-                //                            successCount++;
-                //                            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备 {config.DeviceId} 配置已应用");
-                //                        }
-                //                    }
-                //                }
-                //                catch (Exception ex)
-                //                {
-                //                    errorCount++;
-                //                    errors.Add($"应用配置到设备 {config.DeviceId} 时发生异常: {ex.Message}");
-                //                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 应用配置到设备 {config.DeviceId} 时发生异常: {ex.Message}");
-                //                }
-                //            }
-                //            else
-                //            {
-                //                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备 {config.DeviceId} 不支持配置接口，跳过配置应用");
-                //            }
-                //        }
-                //    }
-                //    else
-                //    {
-                //        // 设备不存在，需要根据配置创建设备
-                //        try
-                //        {
-                //            var device = CreateDeviceFromConfig(config);
-                //            if (device != null)
-                //            {
-                //                // 注册设备到设备管理器
-                //                var registerResult = _deviceManager.RegisterDevice(device);
-                //                if (registerResult.Success)
-                //                {
-                //                    successCount++;
-                //                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 设备 {config.DeviceId} 已创建并注册");
-                //                }
-                //                else
-                //                {
-                //                    errorCount++;
-                //                    errors.Add($"创建设备 {config.DeviceId} 失败: {registerResult.ErrorMessage}");
-                //                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 创建设备 {config.DeviceId} 失败: {registerResult.ErrorMessage}");
-                //                }
-                //            }
-                //            else
-                //            {
-                //                errorCount++;
-                //                errors.Add($"无法为配置 {config.DeviceId} 创建设备：找不到对应的设备类");
-                //                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法为配置 {config.DeviceId} 创建设备：找不到对应的设备类");
-                //            }
-                //        }
-                //        catch (Exception ex)
-                //        {
-                //            errorCount++;
-                //            errors.Add($"创建设备 {config.DeviceId} 时发生异常: {ex.Message}");
-                //            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 创建设备 {config.DeviceId} 时发生异常: {ex.Message}");
-                //        }
-                //    }
-                //}
-
-                //// 3. 保存配置文件（按设备类型分组保存）
-                //try
-                //{
-                //    SaveConfigFiles(allDeviceConfigs);
-                //}
-                //catch (Exception ex)
-                //{
-                //    errorCount++;
-                //    errors.Add($"保存配置文件失败: {ex.Message}");
-                //    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 保存配置文件失败: {ex.Message}");
-                //}
-
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"保存配置时发生错误: {ex.Message}");
-                ToastHelper.ShowError($"保存配置失败: {ex.Message}", "错误");
-            }
-        }
-
-        /// <summary>
-        /// 保存配置文件（按设备类型分组保存）
-        /// </summary>
-        private void SaveConfigFiles(List<DeviceConfig> allDeviceConfigs)
-        {
-            if (allDeviceConfigs == null || allDeviceConfigs.Count == 0)
-                return;
-
-            //// 按设备类型分组
-            //var configsByType = allDeviceConfigs.GroupBy(c => c.Type).ToList();
-
-            //foreach (var group in configsByType)
-            //{
-            //    var deviceType = group.Key;
-            //    // 按创建时间排序，确保保存顺序稳定（与树节点顺序一致）
-            //    var configs = group.OrderBy(c => c.CreatedAt).ThenBy(c => c.DeviceName).ToList();
-
-            //    try
-            //    {
-            //        // 优先从 ConfigurationManager 获取配置文件路径
-            //        string configFilePath = null;
-
-            //        // 尝试从第一个配置获取已注册的路径
-            //        var firstConfig = configs.First();
-            //        if (_configurationManager != null)
-            //        {
-            //            // 先尝试根据配置类型获取路径
-            //            configFilePath = _configurationManager.GetConfigFilePathByType(firstConfig.ConfigType.ToString());
-
-            //            // 如果根据类型没找到，尝试根据 ConfigId 获取（同一类型配置应该使用同一个文件）
-            //            if (string.IsNullOrEmpty(configFilePath))
-            //            {
-            //                configFilePath = _configurationManager.GetConfigFilePath(firstConfig.ConfigId);
-            //            }
-            //        }
-
-            //        // 如果没有找到已注册的路径，使用查找逻辑
-            //        if (string.IsNullOrEmpty(configFilePath))
-            //        {
-            //            configFilePath = GetConfigFilePath(deviceType, configs.First().GetType());
-
-            //            // 如果找到了路径，将路径注册到 ConfigurationManager（方便下次使用）
-            //            if (!string.IsNullOrEmpty(configFilePath) && _configurationManager != null)
-            //            {
-            //                // 为该类型的所有配置注册路径
-            //                foreach (var config in configs)
-            //                {
-            //                    _configurationManager.SetConfigFilePath(config.ConfigId, configFilePath);
-            //                }
-            //            }
-            //        }
-
-            //        if (string.IsNullOrEmpty(configFilePath))
-            //        {
-            //            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法确定设备类型 {deviceType} 的配置文件路径，跳过保存");
-            //            continue;
-            //        }
-
-            //        // 确保目录存在
-            //        var configDir = Path.GetDirectoryName(configFilePath);
-            //        if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
-            //        {
-            //            Directory.CreateDirectory(configDir);
-            //        }
-
-            //        // 获取具体的配置类型
-            //        var concreteConfigType = configs.First().GetType();
-
-            //        // 使用反射创建泛型类型 DeviceConfigData<TConfig>
-            //        var configDataGenericType = typeof(DeviceConfigData<>).MakeGenericType(concreteConfigType);
-            //        var configData = Activator.CreateInstance(configDataGenericType);
-            //        var configsProperty = configDataGenericType.GetProperty("Configs");
-
-            //        // 创建具体类型的列表，并将配置转换为具体类型
-            //        var concreteListType = typeof(List<>).MakeGenericType(concreteConfigType);
-            //        var concreteList = Activator.CreateInstance(concreteListType);
-            //        var addMethod = concreteListType.GetMethod("Add");
-
-            //        foreach (var config in configs)
-            //        {
-            //            // 将 DeviceConfig 转换为具体类型并添加到列表
-            //            addMethod?.Invoke(concreteList, new[] { config });
-            //        }
-
-            //        // 设置配置列表属性
-            //        configsProperty?.SetValue(configData, concreteList);
-
-            //        // 序列化为 JSON 并保存
-            //        var jsonOptions = new JsonSerializerOptions
-            //        {
-            //            WriteIndented = true,
-            //            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // 不转义中文字符，直接显示中文
-            //        };
-            //        var json = JsonSerializer.Serialize(configData, configDataGenericType, jsonOptions);
-            //        File.WriteAllText(configFilePath, json, System.Text.Encoding.UTF8);
-
-            //        System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 配置文件已保存: {configFilePath}，包含 {configs.Count} 个配置");
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 保存设备类型 {deviceType} 的配置文件失败: {ex.Message}");
-            //        throw;
-            //    }
-            //}
-        }
-
-        /// <summary>
-        /// 获取配置文件路径（根据设备类型）
-        /// 配置文件路径：Bin/Debug/Configs/Devices/{插件名}.config.json
-        /// </summary>
-        private string GetConfigFilePath(Astra.Core.Devices.DeviceType deviceType, Type configType)
-        {
-            // 获取插件名称（从配置类型的程序集获取）
-            var assembly = configType.Assembly;
-            var assemblyName = assembly.GetName().Name;
-            var configFileName = $"{assemblyName}.config.json";
-
-            // 配置文件路径：Bin/Debug/Configs/Devices/{插件名}.config.json
-            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var configsDevicesDir = Path.Combine(baseDir, "Configs", "Devices");
-            var configPath = Path.Combine(configsDevicesDir, configFileName);
-
-            // 如果从插件宿主中找到了对应插件，也可以使用插件名称
-            if (_pluginHost != null)
-            {
-                foreach (var plugin in _pluginHost.LoadedPlugins)
-                {
-                    var pluginType = plugin.GetType();
-                    var pluginAssembly = pluginType.Assembly;
-
-                    // 检查插件是否包含该配置类型
-                    var configTypes = pluginAssembly.GetTypes()
-                        .Where(t => !t.IsAbstract && !t.IsInterface && typeof(DeviceConfig).IsAssignableFrom(t))
-                        .ToList();
-
-                    if (configTypes.Contains(configType))
+                    // 遍历所有子节点（实际配置，按树中的顺序）
+                    foreach (var childNode in rootNode.Children)
                     {
-                        var pluginName = pluginAssembly.GetName().Name;
-                        configFileName = $"{pluginName}.config.json";
-                        configPath = Path.Combine(configsDevicesDir, configFileName);
-                        break;
-                    }
-                }
-            }
-
-            return configPath;
-        }
-
-        /// <summary>
-        /// 根据配置创建设备实例
-        /// </summary>
-        private IDevice CreateDeviceFromConfig(DeviceConfig config)
-        {
-            if (config == null)
-                return null;
-
-            try
-            {
-                // 根据配置类型找到对应的设备类
-                var configType = config.GetType();
-                var deviceType = FindDeviceTypeForConfig(configType);
-
-                if (deviceType == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法找到配置类型 {configType.Name} 对应的设备类");
-                    return null;
-                }
-
-                // 获取必要的服务
-                var messageBus = _serviceProvider?.GetService<IMessageBus>();
-                var logger = _serviceProvider?.GetService<ILogger>();
-
-                // 使用反射创建设备实例
-                IDevice device = null;
-
-                // 尝试不同的构造函数签名
-                var constructors = deviceType.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-
-                foreach (var ctor in constructors)
-                {
-                    var parameters = ctor.GetParameters();
-                    var paramValues = new List<object>();
-
-                    if (parameters.Length == 0)
-                    {
-                        // 无参构造函数
-                        device = (IDevice)Activator.CreateInstance(deviceType);
-                        break;
-                    }
-                    else if (parameters.Length == 1 && parameters[0].ParameterType.IsAssignableFrom(configType))
-                    {
-                        // 单参数：config
-                        device = (IDevice)Activator.CreateInstance(deviceType, config);
-                        break;
-                    }
-                    else if (parameters.Length == 2 &&
-                             parameters[0].ParameterType.IsAssignableFrom(configType) &&
-                             parameters[1].ParameterType == typeof(IMessageBus))
-                    {
-                        // 双参数：config, messageBus
-                        device = (IDevice)Activator.CreateInstance(deviceType, config, messageBus);
-                        break;
-                    }
-                    else if (parameters.Length == 3 &&
-                             parameters[0].ParameterType.IsAssignableFrom(configType) &&
-                             parameters[1].ParameterType == typeof(IMessageBus) &&
-                             parameters[2].ParameterType == typeof(ILogger))
-                    {
-                        // 三参数：config, messageBus, logger
-                        device = (IDevice)Activator.CreateInstance(deviceType, config, messageBus, logger);
-                        break;
-                    }
-                }
-
-                if (device == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 无法为设备类型 {deviceType.Name} 找到合适的构造函数");
-                }
-
-                return device;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 创建设备实例时发生异常: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// 根据配置类型找到对应的设备类
-        /// </summary>
-        private Type FindDeviceTypeForConfig(Type configType)
-        {
-            // 命名约定：DataAcquisitionConfig -> DataAcquisitionDevice
-            var configName = configType.Name;
-            if (configName.EndsWith("Config"))
-            {
-                var deviceName = configName.Substring(0, configName.Length - 6) + "Device";
-
-                // 在配置类型的程序集中查找设备类
-                var assembly = configType.Assembly;
-                var deviceType = assembly.GetType($"{configType.Namespace}.{deviceName}");
-
-                if (deviceType != null && typeof(IDevice).IsAssignableFrom(deviceType))
-                {
-                    return deviceType;
-                }
-
-                // 如果在同一命名空间找不到，尝试在整个程序集中查找
-                deviceType = assembly.GetTypes()
-                    .FirstOrDefault(t => !t.IsAbstract &&
-                                        !t.IsInterface &&
-                                        t.Name == deviceName &&
-                                        typeof(IDevice).IsAssignableFrom(t));
-
-                if (deviceType != null)
-                {
-                    return deviceType;
-                }
-            }
-
-            // 如果命名约定不匹配，尝试扫描所有已加载的程序集
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    var deviceType = assembly.GetTypes()
-                        .FirstOrDefault(t => !t.IsAbstract &&
-                                            !t.IsInterface &&
-                                            typeof(IDevice).IsAssignableFrom(t) &&
-                                            IsDeviceForConfig(t, configType));
-
-                    if (deviceType != null)
-                    {
-                        return deviceType;
-                    }
-                }
-                catch
-                {
-                    // 忽略无法加载的程序集
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// 检查设备类型是否对应指定的配置类型
-        /// </summary>
-        private bool IsDeviceForConfig(Type deviceType, Type configType)
-        {
-            // 检查设备类型是否实现了 DeviceBase<TConfig>，其中 TConfig 是指定的配置类型
-            var baseType = deviceType.BaseType;
-            while (baseType != null && baseType != typeof(object))
-            {
-                if (baseType.IsGenericType)
-                {
-                    var genericTypeDef = baseType.GetGenericTypeDefinition();
-                    if (genericTypeDef.Name == "DeviceBase`1")
-                    {
-                        var genericArgs = baseType.GetGenericArguments();
-                        if (genericArgs.Length == 1 && genericArgs[0] == configType)
+                        if (childNode.Config != null)
                         {
-                            return true;
+                            try
+                            {
+                                // 根据节点在树中的位置设置 UpdatedAt（保持顺序）
+                                // 使用递增的时间偏移量，确保顺序正确
+                                childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
+                                timeOffset++;
+
+                                var result = await _configManager.UpdateConfigAsync(childNode.Config);
+
+                                if (result != null && result.Success)
+                                {
+                                    childNode.Header = string.IsNullOrEmpty(childNode.Config.ConfigName) ? childNode.Header : childNode.Config.ConfigName;
+                                    successCount++;
+                                }
+                                else
+                                {
+                                    errorCount++;
+                                    errors.Add($"{childNode.Config.ConfigName}: {result?.Message ?? "未知错误"}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                errorCount++;
+                                errors.Add($"{childNode.Config.ConfigName}: {ex.Message}");
+                            }
                         }
                     }
                 }
-                baseType = baseType.BaseType;
+
+                // 显示结果
+                if (errorCount == 0)
+                {
+                    ToastHelper.ShowSuccess($"已成功保存 {successCount} 个配置");
+                }
+                else
+                {
+                    var errorMessage = $"保存完成：成功 {successCount} 个，失败 {errorCount} 个";
+                    if (errors.Count > 0)
+                    {
+                        errorMessage += $"\n失败原因：\n{string.Join("\n", errors.Take(5))}";
+                        if (errors.Count > 5)
+                        {
+                            errorMessage += $"\n... 还有 {errors.Count - 5} 个错误";
+                        }
+                    }
+                    MessageBoxHelper.ShowWarning(errorMessage, "保存结果");
+                }
             }
-
-            return false;
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"保存所有配置时发生错误: {ex.Message}");
+                ToastHelper.ShowError($"保存配置失败: {ex.Message}");
+            }
         }
 
-        /// <summary>
-        /// 配置文件数据包装类（用于 JSON 序列化）
-        /// </summary>
-        private class DeviceConfigData<TConfig> where TConfig : DeviceConfig
-        {
-            public List<TConfig> Configs { get; set; } = new List<TConfig>();
-        }
-
-        /// <summary>
-        /// 设备配置信息
-        /// </summary>
-        private class DeviceConfigInfo
-        {
-            public Type ConfigType { get; set; }
-            public Type ViewType { get; set; }
-            public Type ViewModelType { get; set; }
-            public Astra.Core.Devices.DeviceType DeviceType { get; set; }
-        }
-
-        /// <summary>
-        /// 设备实例信息
-        /// </summary>
-        private class DeviceInstanceInfo
-        {
-            public Astra.Core.Devices.Interfaces.IDevice Device { get; set; }
-            public DeviceConfig Config { get; set; }
-            public DeviceConfigInfo ConfigInfo { get; set; }
-        }
-
-        /// <summary>
-        /// 传感器管理节点标识
-        /// </summary>
-        private class SensorManagementNodeInfo
-        {
-            public static SensorManagementNodeInfo Instance { get; } = new SensorManagementNodeInfo();
-        }
-
-        /// <summary>
-        /// 传感器实例信息
-        /// </summary>
-        private class SensorInstanceInfo
-        {
-            public object SensorConfig { get; set; }
-        }
     }
 }

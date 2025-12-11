@@ -152,6 +152,14 @@ namespace Astra.UI.Controls
                 _translateTransform.X = newPanX;
                 _translateTransform.Y = newPanY;
             }
+            
+            // 🔧 同步更新 PanX/PanY 属性（使用 SetCurrentValue 不触发变更回调，避免循环更新）
+            // 这样 UpdateSelectedGroupBox() 才能读取到正确的值
+            SetCurrentValue(PanXProperty, newPanX);
+            SetCurrentValue(PanYProperty, newPanY);
+            
+            // 🔧 实时更新框选框位置（跟随视口平移）
+            UpdateSelectedGroupBox();
         }
         
         /// <summary>
@@ -201,6 +209,9 @@ namespace Astra.UI.Controls
             _lastGridUpdateTime = DateTime.MinValue;
             UpdateGrid();
             UpdateViewportIndicator();
+            
+            // 🔧 更新框选框位置（拖动结束后确保位置正确）
+            UpdateSelectedGroupBox();
         }
         
         /// <summary>

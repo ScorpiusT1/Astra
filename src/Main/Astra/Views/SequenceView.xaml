@@ -13,8 +13,8 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition />
+            <ColumnDefinition Width="0.15*" />
         </Grid.ColumnDefinitions>
 
         <controls:FlowEditor x:Name="FlowEditor"

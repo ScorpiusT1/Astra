@@ -7,12 +7,14 @@
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
              xmlns:models="clr-namespace:Astra.Models"
              xmlns:behaviors="clr-namespace:Astra.Behaviors"
+             xmlns:converters="clr-namespace:Astra.Converters"
              d:DataContext="{d:DesignInstance Type=viewmodels:ConfigViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     </UserControl.Resources>
     <Grid>
         <!-- 主内容区域 -->
@@ -68,6 +70,18 @@
                                             Value="{Binding}" />
                                     <Setter Property="behaviors:TreeViewItemBehaviors.DragDropCommand"
                                             Value="{Binding DataContext.DragDropNodeCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" />
+                                    <Setter Property="ContextMenu">
+                                        <Setter.Value>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem Header="💾 保存此配置"
+                                                          Command="{Binding SaveSingleConfigurationCommand}"
+                                                          CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"
+                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}}" />
+                                            </ContextMenu>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter Property="Tag"
+                                            Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=TreeView}}" />
                                 </Style>
                             </TreeView.ItemContainerStyle>
 
@@ -116,14 +130,15 @@
                             Padding="16,12,16,16"
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="0,1,0,0">
-                        <Button Content="💾 保存配置"
+                        <Button Content="💾 保存所有配置"
                                 Padding="16,8"
                                 MinWidth="120"
                                 Height="36"
                                 FontSize="13"
-                                Command="{Binding SaveConfigurationsCommand}"
+                                Command="{Binding SaveAllConfigurationsCommand}"
                                 Style="{StaticResource PrimaryButtonStyle}"
-                                HorizontalAlignment="Stretch" />
+                                HorizontalAlignment="Stretch"
+                                ToolTip="保存树中所有配置" />
                     </Border>
                 </Grid>
             </Border>

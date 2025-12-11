@@ -642,13 +642,13 @@ namespace Astra.UI.Controls
                     // 使用恢复后的位置计算边界框
                     var nodeWidth = clonedNode.Size.IsEmpty ? 220 : clonedNode.Size.Width;
                     var nodeHeight = clonedNode.Size.IsEmpty ? 40 : clonedNode.Size.Height;
-                    
+                        
                     minX = Math.Min(minX, clonedNode.Position.X);
                     minY = Math.Min(minY, clonedNode.Position.Y);
                     maxX = Math.Max(maxX, clonedNode.Position.X + nodeWidth);
                     maxY = Math.Max(maxY, clonedNode.Position.Y + nodeHeight);
+                    }
                 }
-            }
             
             System.Diagnostics.Debug.WriteLine($"========== 复制节点完成 ==========");
             System.Diagnostics.Debug.WriteLine($"");
@@ -791,7 +791,7 @@ namespace Astra.UI.Controls
             // 这样粘贴后，节点组的左上角会位于鼠标位置（与拖拽创建节点行为一致）
             var offsetX = pastePosition.X - originalTopLeft.Value.X;
             var offsetY = pastePosition.Y - originalTopLeft.Value.Y;
-            
+
             System.Diagnostics.Debug.WriteLine($"[粘贴-偏移] 计算公式: 鼠标位置({pastePosition.X:F2}, {pastePosition.Y:F2}) - 原始左上角({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
             System.Diagnostics.Debug.WriteLine($"[粘贴-偏移] 结果: offset=({offsetX:F2}, {offsetY:F2})");
 
@@ -883,7 +883,7 @@ namespace Astra.UI.Controls
                                 // 替换端口ID中的节点ID部分
                                 newEdge.SourcePortId = $"{newSourceNodeId}:{parts[1]}";
                                 System.Diagnostics.Debug.WriteLine($"  源端口ID更新: {clipboardEdge.SourcePortId} -> {newEdge.SourcePortId}");
-                            }
+                }
                         }
                         else
                         {
@@ -929,18 +929,18 @@ namespace Astra.UI.Controls
             // 使用撤销/重做命令添加克隆的节点和连线
             if (EdgeItemsSource is System.Collections.IList edgesList)
             {
-                if (_undoRedoManager != null)
-                {
+            if (_undoRedoManager != null)
+            {
                     var command = new PasteNodesWithEdgesCommand(itemsList, edgesList, clonedNodes, clonedEdges);
-                    _undoRedoManager.Do(command);
-                }
-                else
+                _undoRedoManager.Do(command);
+            }
+            else
+            {
+                // 无撤销管理器，直接添加
+                foreach (var clonedNode in clonedNodes)
                 {
-                    // 无撤销管理器，直接添加
-                    foreach (var clonedNode in clonedNodes)
-                    {
-                        itemsList.Add(clonedNode);
-                    }
+                    itemsList.Add(clonedNode);
+                }
                     foreach (var clonedEdge in clonedEdges)
                     {
                         edgesList.Add(clonedEdge);
@@ -1026,7 +1026,7 @@ namespace Astra.UI.Controls
                         Math.Abs(originalDelta.Item2 - newDelta.Item2) < 0.01)
                     {
                         System.Diagnostics.Debug.WriteLine($"  ✓ 相对位置保持正确");
-                    }
+                }
                     else
                     {
                         System.Diagnostics.Debug.WriteLine($"  ❌ 相对位置丢失！");

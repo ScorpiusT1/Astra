@@ -207,6 +207,10 @@
                 Value="Transparent" />
         <Setter Property="Foreground"
                 Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="VerticalContentAlignment"
+                Value="Center" />
+        <Setter Property="HorizontalContentAlignment"
+                Value="Left" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
@@ -215,7 +219,8 @@
                             Padding="{TemplateBinding Padding}"
                             CornerRadius="6"
                             Margin="4,2">
-                        <ContentPresenter />
+                        <ContentPresenter VerticalAlignment="{TemplateBinding VerticalAlignment}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted"
