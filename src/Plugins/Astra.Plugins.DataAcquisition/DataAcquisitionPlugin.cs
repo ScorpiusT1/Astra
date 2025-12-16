@@ -70,9 +70,13 @@ namespace Astra.Plugins.DataAcquisition
 
             _logger?.Info($"[{Name}] 开始初始化插件", LogCategory.System);
 
-            // 从配置文件加载设备配置（配置会先注册到 ConfigurationManager，然后根据配置创建设备）
-            await LoadDeviceConfigurationsAsync(cancellationToken).ConfigureAwait(false);
+            // 先加载传感器配置（需要在设备配置加载前完成，以便恢复传感器引用）
             await LoadSensorConfig(cancellationToken).ConfigureAwait(false);
+            
+            // 从配置文件加载设备配置（配置会先注册到 ConfigurationManager，然后根据配置创建设备）
+            // 加载设备配置时会自动恢复传感器引用
+            await LoadDeviceConfigurationsAsync(cancellationToken).ConfigureAwait(false);
+            
             _logger?.Info($"[{Name}] 插件初始化完成，已加载 {_devices.Count} 个设备", LogCategory.System);
         }
 
@@ -306,10 +310,17 @@ namespace Astra.Plugins.DataAcquisition
                     return;
                 }
 
+                // 先加载所有传感器配置，用于恢复传感器引用
+                var sensorResult = await _configuManager?.GetAllConfigsAsync<Astra.Plugins.DataAcquisition.Configs.SensorConfig>();
+                var availableSensors = sensorResult?.Data?.ToList() ?? new List<Astra.Plugins.DataAcquisition.Configs.SensorConfig>();
+
                 foreach (var config in result.Data)
                 {
                     try
                     {
+                        // 恢复配置中所有通道的传感器引用
+                        config.RestoreSensorReferences(availableSensors);
+
                         var device = new DataAcquisitionDevice(config, _messageBus, _logger);
                         _devices?.Add(device);
                         _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);

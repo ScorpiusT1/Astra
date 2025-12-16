@@ -88,7 +88,7 @@ namespace Astra.Core.Devices.Configuration
 
         public event EventHandler<PropertyChangedEventArgs> PropertyChanged;
 
-        protected virtual void SetProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string propertyName = null)
+        protected virtual bool SetProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string propertyName = null)
         {
             if (!EqualityComparer<T>.Default.Equals(field, value))
             {
@@ -100,7 +100,11 @@ namespace Astra.Core.Devices.Configuration
                     OldValue = oldValue,
                     NewValue = value
                 });
+
+                return true;
             }
+
+            return false;
         }
 
         protected virtual void OnPropertyChanged(PropertyChangedEventArgs e)

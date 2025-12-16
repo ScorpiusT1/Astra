@@ -1,9 +1,21 @@
 ﻿using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
 namespace Astra.Plugins.DataAcquisition.Configs
 {
+    /// <summary>
+    /// 传感器轴选择（用于三轴加速度传感器）
+    /// </summary>
+    public enum SensorAxis
+    {
+        None,   // 无（单轴传感器或未选择）
+        X,      // X轴
+        Y,      // Y轴
+        Z       // Z轴
+    }
+
     /// <summary>
     /// 采集卡通道配置（集成硬件参数和传感器配置）
     /// </summary>
@@ -14,7 +26,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private bool _enabled;
         private double _sampleRate;
         private CouplingMode _couplingMode;
-        private double _voltageRange;
         private double _gain;
         private double _offset;
         private double _icpCurrent;
@@ -36,6 +47,12 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         // 传感器配置模式
         private SensorConfigMode _sensorConfigMode;
+
+        // 选中的传感器轴（用于三轴加速度传感器）
+        private SensorAxis _selectedAxis = SensorAxis.None;
+
+        // 保存的传感器ID（用于反序列化后恢复引用）
+        private string _savedSensorId;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -73,12 +90,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
         {
             get => _couplingMode;
             set => SetProperty(ref _couplingMode, value);
-        }
-
-        public double VoltageRange
-        {
-            get => _voltageRange;
-            set => SetProperty(ref _voltageRange, value);
         }
 
         public double Gain
@@ -143,19 +154,58 @@ namespace Astra.Plugins.DataAcquisition.Configs
                 if (_sensor != null)
                 {
                     _sensor.PropertyChanged += Sensor_PropertyChanged;
+
+                    // 如果新传感器不是三轴加速度传感器，重置轴选择
+                    if (!(_sensor.SensorType == SensorType.Accelerometer && _sensor.IsThreeAxis))
+                    {
+                        SelectedAxis = SensorAxis.None;
+                    }
+                    // 如果是三轴加速度传感器但未选择轴，默认选择X轴
+                    else if (_selectedAxis == SensorAxis.None)
+                    {
+                        SelectedAxis = SensorAxis.X;
+                    }
+
                     OnPropertyChanged(nameof(HasSensor));
+                    OnPropertyChanged(nameof(HasAxisSelection));
+                    OnPropertyChanged(nameof(SensorDisplayText));
+                }
+                else
+                {
+                    SelectedAxis = SensorAxis.None;
+                    OnPropertyChanged(nameof(HasSensor));
+                    OnPropertyChanged(nameof(HasAxisSelection));
                     OnPropertyChanged(nameof(SensorDisplayText));
                 }
             }
         }
 
         /// <summary>
-        /// 用于JSON序列化的传感器ID
+        /// 用于JSON序列化的传感器配置ID
+        /// 始终使用 Sensor.ConfigId 作为唯一标识符（ConfigId 是 IConfig 的标准唯一标识符）
+        /// 保存时：返回 Sensor.ConfigId
+        /// 加载时：通过 setter 保存到 _savedSensorId，后续通过 RestoreSensorReference 方法从传感器库中查找并绑定
         /// </summary>
         public string SensorId
         {
-            get => _sensor?.SensorId;
-            set { } // 由加载时设置
+            get
+            {
+                if (_sensor != null)
+                {
+                    // 始终使用 ConfigId 作为唯一标识符（ConfigId 是 IConfig 的标准唯一标识符）
+                    if (!string.IsNullOrEmpty(_sensor.ConfigId))
+                    {
+                        return _sensor.ConfigId;
+                    }
+                }
+                // 如果传感器对象不存在，返回保存的传感器ID（用于反序列化后的恢复）
+                return _savedSensorId;
+            }
+            set
+            {
+                // 在反序列化时保存传感器ID，后续通过 RestoreSensorReference 方法从传感器库中查找并绑定
+                _savedSensorId = value;
+            }
         }
 
         /// <summary>
@@ -165,15 +215,96 @@ namespace Astra.Plugins.DataAcquisition.Configs
         public bool HasSensor => _sensor != null;
 
         /// <summary>
-        /// 传感器显示文本（用于UI）
+        /// 选中的传感器轴（用于三轴加速度传感器）
+        /// </summary>
+        public SensorAxis SelectedAxis
+        {
+            get => _selectedAxis;
+            set
+            {
+                if (!EqualityComparer<SensorAxis>.Default.Equals(_selectedAxis, value))
+                {
+                    _selectedAxis = value;
+                    OnPropertyChanged(nameof(SelectedAxis));
+                    OnPropertyChanged(nameof(HasAxisSelection));
+                    OnPropertyChanged(nameof(SensorDisplayText));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否需要显示轴选择（当传感器是三轴加速度传感器时）
         /// </summary>
         [JsonIgnore]
-        public string SensorDisplayText => _sensor?.DisplayText ?? "未选择传感器";
+        public bool HasAxisSelection => _sensor != null &&
+                                        _sensor.SensorType == SensorType.Accelerometer &&
+                                        _sensor.IsThreeAxis;
+
+        /// <summary>
+        /// 传感器显示文本（包含轴信息）
+        /// </summary>
+        [JsonIgnore]
+        public string SensorDisplayText
+        {
+            get
+            {
+                if (_sensor == null)
+                    return "未选择传感器";
+
+                var displayText = _sensor.DisplayText;
+
+                // 如果是三轴加速度传感器且已选择轴，显示轴信息
+                if (HasAxisSelection && _selectedAxis != SensorAxis.None)
+                {
+                    displayText += $" ({_selectedAxis}轴)";
+                }
+
+                return displayText;
+            }
+        }
 
         private void Sensor_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            // 传感器属性变化时通知UI更新
-            OnPropertyChanged(nameof(SensorDisplayText));
+            // 在引用模式下，传感器配置的修改需要同步更新到通道配置
+            // 由于是对象引用，数据已经同步，但需要通知UI刷新
+            if (_sensorConfigMode == SensorConfigMode.Reference)
+            {
+                OnPropertyChanged(nameof(SensorDisplayText));
+
+                // 如果传感器类型或三轴属性改变，更新轴选择状态
+                if (e.PropertyName == nameof(SensorConfig.SensorType) ||
+                    e.PropertyName == nameof(SensorConfig.IsThreeAxis))
+                {
+                    if (!(_sensor.SensorType == SensorType.Accelerometer && _sensor.IsThreeAxis))
+                    {
+                        SelectedAxis = SensorAxis.None;
+                    }
+                    else if (_selectedAxis == SensorAxis.None)
+                    {
+                        SelectedAxis = SensorAxis.X;
+                    }
+                    OnPropertyChanged(nameof(HasAxisSelection));
+                }
+            }
+            else
+            {
+                OnPropertyChanged(nameof(SensorDisplayText));
+
+                // 独立模式下也需要处理轴选择
+                if (e.PropertyName == nameof(SensorConfig.SensorType) ||
+                    e.PropertyName == nameof(SensorConfig.IsThreeAxis))
+                {
+                    if (!(_sensor.SensorType == SensorType.Accelerometer && _sensor.IsThreeAxis))
+                    {
+                        SelectedAxis = SensorAxis.None;
+                    }
+                    else if (_selectedAxis == SensorAxis.None)
+                    {
+                        SelectedAxis = SensorAxis.X;
+                    }
+                    OnPropertyChanged(nameof(HasAxisSelection));
+                }
+            }
         }
 
         #endregion
@@ -256,7 +387,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
             _enabled = true;
             _sampleRate = 51200;
             _couplingMode = CouplingMode.AC;
-            _voltageRange = 10.0;
             _gain = 1.0;
             _offset = 0.0;
             _icpCurrent = 4.0;
@@ -267,6 +397,31 @@ namespace Astra.Plugins.DataAcquisition.Configs
             _displayColor = "#FF0000";
             _displayOrder = 0;
             _sensorConfigMode = SensorConfigMode.Reference;
+            _savedSensorId = null;
+        }
+
+        /// <summary>
+        /// 恢复传感器引用（根据保存的传感器ID从传感器库中查找并绑定）
+        /// 查找方式：通过 ConfigId 查找（SensorId 属性保存的就是 Sensor.ConfigId）
+        /// </summary>
+        public void RestoreSensorReference(IEnumerable<SensorConfig> availableSensors, string sensorId)
+        {
+            if (availableSensors == null)
+                return;
+
+            // 通过 ConfigId 查找（SensorId 属性始终保存的是 Sensor.ConfigId）
+            var sensor = availableSensors.FirstOrDefault(s => s.ConfigId == sensorId);
+
+            // 如果找到了传感器，绑定到通道
+            if (sensor != null)
+            {
+                Sensor = sensor;
+                System.Diagnostics.Debug.WriteLine($"[DAQChannelConfig] 通道 {ChannelId} 已恢复传感器引用: {sensor.ConfigName} (ConfigId: {_savedSensorId})");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[DAQChannelConfig] 通道 {ChannelId} 无法找到传感器 (ConfigId: {_savedSensorId})，可能已被删除");
+            }
         }
 
         #region 传感器操作
@@ -315,7 +470,7 @@ namespace Astra.Plugins.DataAcquisition.Configs
                 Sensor = new SensorConfig();
             }
 
-            Sensor.SensorName = name;
+            Sensor.ConfigName = name;
             Sensor.SensorType = type;
             Sensor.Sensitivity = sensitivity;
             Sensor.SensitivityUnit = unit;
@@ -355,9 +510,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
             if (SampleRate <= 0)
                 result.AddError("采样率必须大于0");
-
-            if (VoltageRange <= 0)
-                result.AddError("电压量程必须大于0");
 
             if (EnableAntiAliasingFilter && AntiAliasingCutoff >= SampleRate / 2)
                 result.AddWarning($"抗混叠滤波器截止频率应小于奈奎斯特频率({SampleRate / 2} Hz)");

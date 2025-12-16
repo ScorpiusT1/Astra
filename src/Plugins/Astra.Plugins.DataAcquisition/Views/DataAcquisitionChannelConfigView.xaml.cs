@@ -23,6 +23,38 @@ namespace Astra.Plugins.DataAcquisition.Views
         public DataAcquisitionChannelConfigView()
         {
             InitializeComponent();
+            this.Loaded += DataAcquisitionChannelConfigView_Loaded;
+            
+            // 如果 DataContext 还没有设置，尝试从父级获取并设置
+            // 使用 Dispatcher 确保在控件完全初始化后执行
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                EnsureDataContext();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void DataAcquisitionChannelConfigView_Loaded(object sender, System.Windows.RoutedEventArgs e)
+        {
+            // 确保 DataContext 已设置
+            EnsureDataContext();
+        }
+
+        private void EnsureDataContext()
+        {
+            // 如果 DataContext 还没有设置，尝试从父级获取
+            if (this.DataContext == null)
+            {
+                var parent = this.Parent;
+                while (parent != null)
+                {
+                    if (parent is DataAcquisitionDeviceConfigView parentView)
+                    {
+                        // 父级视图会在适当的时候设置我们的 DataContext
+                        break;
+                    }
+                    parent = LogicalTreeHelper.GetParent(parent) ?? VisualTreeHelper.GetParent(parent);
+                }
+            }
         }
     }
 }

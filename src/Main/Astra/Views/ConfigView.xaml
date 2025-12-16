@@ -73,6 +73,17 @@
                                     <Setter Property="ContextMenu">
                                         <Setter.Value>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                                <!-- 根节点菜单：导入/导出 -->
+                                                <MenuItem Header="📥 导入配置"
+                                                          Command="{Binding ImportConfigurationsCommand}"
+                                                          CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"
+                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}" />
+                                                <MenuItem Header="📤 导出配置"
+                                                          Command="{Binding ExportConfigurationsCommand}"
+                                                          CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"
+                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}" />
+                                                <Separator Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}" />
+                                                <!-- 子节点菜单：保存 -->
                                                 <MenuItem Header="💾 保存此配置"
                                                           Command="{Binding SaveSingleConfigurationCommand}"
                                                           CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"

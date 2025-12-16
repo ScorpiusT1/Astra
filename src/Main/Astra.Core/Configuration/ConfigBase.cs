@@ -84,6 +84,34 @@ namespace Astra.Core.Configuration
             }
         }
 
+        private string _configTypeName;
+
+        /// <summary>
+        /// 配置类型（只读，返回配置的实际类型）
+        /// 用于快速识别配置类型，避免使用反射获取类型
+        /// 注意：此属性不应被序列化，因为 System.Text.Json 不支持序列化 Type 对象
+        /// </summary>
+        [JsonIgnore]
+        public Type ConfigType => GetType();
+
+        /// <summary>
+        /// 配置类型名称（可读写，用于序列化到配置文件）
+        /// 序列化时自动存储类型名称，反序列化时可用于验证类型
+        /// </summary>
+        public string ConfigTypeName
+        {
+            get
+            {
+                // 如果未设置，返回当前类型的完整名称
+                if (string.IsNullOrWhiteSpace(_configTypeName))
+                {
+                    return GetType().AssemblyQualifiedName ?? GetType().FullName ?? GetType().Name;
+                }
+                return _configTypeName;
+            }
+            set => _configTypeName = value;
+        }
+
         /// <summary>
         /// 配置变更事件
         /// </summary>
@@ -99,6 +127,7 @@ namespace Astra.Core.Configuration
         {
             // JSON反序列化时使用，不初始化 ConfigId
             // JSON 反序列化器会通过 protected setter 设置 ConfigId
+            // ConfigTypeName 会在反序列化时自动设置
         }
 
         /// <summary>

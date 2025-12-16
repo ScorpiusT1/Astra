@@ -16,7 +16,8 @@
 
         <TabControl Grid.Row="1"
                     BorderThickness="0"
-                    Margin="0,0,0,10">
+                    Margin="0,0,0,10"
+                    SelectionChanged="TabControl_SelectionChanged">
             <TabItem Header="基本配置"
                      FontSize="14">
                 <views:DataAcquisitionBaseConfigView  x:Name="baseConfig" />

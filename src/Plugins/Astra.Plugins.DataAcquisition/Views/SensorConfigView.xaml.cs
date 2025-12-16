@@ -1,16 +1,39 @@
 using System.Windows;
 using System.Windows.Controls;
+using Astra.Plugins.DataAcquisition.Configs;
+using Astra.Plugins.DataAcquisition.ViewModels;
 
 namespace Astra.Plugins.DataAcquisition.Views
 {
     /// <summary>
-    /// SensorManagementView.xaml 的交互逻辑
+    /// SensorConfigView.xaml 的交互逻辑
     /// </summary>
-    public partial class SensorManagementView : UserControl
+    public partial class SensorConfigView : UserControl
     {
-        public SensorManagementView()
+        public SensorConfigView()
         {
             InitializeComponent();
+        }
+
+        private void SingleAxisRadioButton_Checked(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is SensorConfigViewModel viewModel && viewModel.SelectedSensor != null)
+            {
+                viewModel.SelectedSensor.IsThreeAxis = false;
+            }
+        }
+
+        private void SingleAxisRadioButton_Unchecked(object sender, RoutedEventArgs e)
+        {
+            // 当单轴取消选中时，不需要处理（三轴会自动选中）
+        }
+
+        private void ThreeAxisRadioButton_Checked(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is SensorConfigViewModel viewModel && viewModel.SelectedSensor != null)
+            {
+                viewModel.SelectedSensor.IsThreeAxis = true;
+            }
         }
 
         private void PhysicalUnitComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

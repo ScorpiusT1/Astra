@@ -16,6 +16,9 @@ using Astra.UI.Abstractions.Attributes;
 using Astra.Utilities;
 using System.Threading.Tasks;
 using System.Reflection;
+using Microsoft.Win32;
+using System.IO;
+using System.Text.Json;
 
 namespace Astra.ViewModels
 {
@@ -118,14 +121,182 @@ namespace Astra.ViewModels
 
 
         /// <summary>
-        /// 获取所有带有 TreeNodeConfigAttribute 的配置类型
+        /// 从类型名称字符串获取类型（支持所有已加载的程序集和插件程序集）
+        /// </summary>
+        private Type? GetTypeFromName(string typeName)
+        {
+            if (string.IsNullOrWhiteSpace(typeName))
+                return null;
+
+            // 首先尝试 Type.GetType()（最快，适用于当前程序集和 mscorlib）
+            var type = Type.GetType(typeName);
+            if (type != null)
+                return type;
+
+            // 第二步：从插件程序集中查找类型
+            try
+            {
+                var pluginHost = _serviceProvider?.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
+                if (pluginHost != null)
+                {
+                    // 遍历所有已加载的插件
+                    foreach (var plugin in pluginHost.LoadedPlugins)
+                    {
+                        try
+                        {
+                            // 获取插件类型所在的程序集
+                            var pluginAssembly = plugin.GetType().Assembly;
+                            
+                            // 尝试完整类型名称
+                            type = pluginAssembly.GetType(typeName);
+                            if (type != null)
+                                return type;
+
+                            // 尝试匹配完整名称（忽略程序集信息）
+                            if (typeName.Contains(','))
+                            {
+                                var typeNameWithoutAssembly = typeName.Split(',')[0].Trim();
+                                type = pluginAssembly.GetType(typeNameWithoutAssembly);
+                                if (type != null)
+                                    return type;
+                            }
+
+                            // 尝试简单类型名称匹配
+                            if (!typeName.Contains('.'))
+                            {
+                                type = pluginAssembly.GetTypes()
+                                    .FirstOrDefault(t => t.Name == typeName);
+                                if (type != null)
+                                    return type;
+                            }
+                            else
+                            {
+                                // 尝试匹配命名空间和类型名
+                                var parts = typeName.Split('.');
+                                if (parts.Length > 0)
+                                {
+                                    var simpleName = parts[parts.Length - 1];
+                                    type = pluginAssembly.GetTypes()
+                                        .FirstOrDefault(t => t.Name == simpleName && 
+                                                           (t.FullName == typeName || t.FullName?.EndsWith("." + typeName) == true));
+                                    if (type != null)
+                                        return type;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // 忽略插件程序集中的错误
+                            continue;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略插件系统访问错误
+            }
+
+            // 第三步：遍历所有已加载的程序集查找类型（包括非插件程序集）
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    // 跳过已经检查过的插件程序集
+                    var pluginHost = _serviceProvider?.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
+                    if (pluginHost != null && pluginHost.LoadedPlugins.Any(p => p.GetType().Assembly == assembly))
+                    {
+                        continue; // 已经在插件检查中处理过了
+                    }
+
+                    // 尝试完整类型名称
+                    type = assembly.GetType(typeName);
+                    if (type != null)
+                        return type;
+
+                    // 尝试简单类型名称匹配（如果类型名称不包含命名空间）
+                    if (!typeName.Contains('.'))
+                    {
+                        type = assembly.GetTypes()
+                            .FirstOrDefault(t => t.Name == typeName);
+                        if (type != null)
+                            return type;
+                    }
+                    else
+                    {
+                        // 尝试匹配完整名称（忽略程序集信息）
+                        var typeNameWithoutAssembly = typeName.Split(',')[0].Trim();
+                        type = assembly.GetType(typeNameWithoutAssembly);
+                        if (type != null)
+                            return type;
+                    }
+                }
+                catch
+                {
+                    // 忽略无法加载类型的程序集
+                    continue;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 获取所有带有 TreeNodeConfigAttribute 的配置类型（包括插件中的配置类型）
         /// </summary>
         private List<(Type ConfigType, TreeNodeConfigAttribute Attribute)> GetAllConfigTypes()
         {
             var configTypes = new List<(Type, TreeNodeConfigAttribute)>();
+            var processedAssemblies = new HashSet<Assembly>();
 
+            // 第一步：从插件程序集中获取配置类型
+            try
+            {
+                var pluginHost = _serviceProvider?.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
+                if (pluginHost != null)
+                {
+                    foreach (var plugin in pluginHost.LoadedPlugins)
+                    {
+                        try
+                        {
+                            var pluginAssembly = plugin.GetType().Assembly;
+                            if (processedAssemblies.Contains(pluginAssembly))
+                                continue;
+
+                            processedAssemblies.Add(pluginAssembly);
+
+                            var types = pluginAssembly.GetTypes()
+                                .Where(t => !t.IsAbstract &&
+                                           !t.IsInterface &&
+                                           typeof(IConfig).IsAssignableFrom(t))
+                                .Select(t => new { Type = t, Attr = t.GetCustomAttribute<TreeNodeConfigAttribute>() })
+                                .Where(x => x.Attr != null)
+                                .Select(x => (x.Type, x.Attr!))
+                                .ToList();
+
+                            configTypes.AddRange(types);
+                        }
+                        catch (Exception ex)
+                        {
+                            // 忽略插件程序集中的错误
+                            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 扫描插件程序集 {plugin.GetType().Assembly.FullName} 时出错: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // 忽略插件系统访问错误
+                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 访问插件系统时出错: {ex.Message}");
+            }
+
+            // 第二步：从其他程序集中获取配置类型
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
+                // 跳过已经处理过的插件程序集
+                if (processedAssemblies.Contains(assembly))
+                    continue;
+
                 try
                 {
                     var types = assembly.GetTypes()
@@ -187,6 +358,9 @@ namespace Astra.ViewModels
             var result = await _configManager?.GetAllConfigsAsync();
 
             var existingConfigs = result?.Data?.ToList() ?? new List<IConfig>();
+
+            // 对于实现了 IPostLoadConfig 接口的配置，执行加载后处理
+            await PostLoadConfigurations(existingConfigs);
 
             TreeNodes?.Clear();
 
@@ -736,6 +910,17 @@ namespace Astra.ViewModels
                     return;
                 }
 
+                // 如果配置实现了 IPreSaveConfig 接口，执行预保存逻辑
+                if (targetNode.Config is Astra.Core.Configuration.IPreSaveConfig preSaveConfig)
+                {
+                    var preSaveResult = await preSaveConfig.PreSaveAsync(_configManager);
+                    if (preSaveResult != null && !preSaveResult.Success)
+                    {
+                        ToastHelper.ShowError($"预保存配置失败: {preSaveResult.Message}");
+                        return;
+                    }
+                }
+
                 // 通过 IConfigurationManager 的非泛型入口更新当前配置
                 OperationResult rlt = await _configManager.UpdateConfigAsync(targetNode.Config);
 
@@ -755,6 +940,7 @@ namespace Astra.ViewModels
                 ToastHelper.ShowError($"保存配置失败: {ex.Message}");
             }
         }
+
 
         /// <summary>
         /// 保存所有配置命令（保存按钮使用）
@@ -788,6 +974,18 @@ namespace Astra.ViewModels
                         {
                             try
                             {
+                                // 如果配置实现了 IPreSaveConfig 接口，执行预保存逻辑
+                                if (childNode.Config is Astra.Core.Configuration.IPreSaveConfig preSaveConfig)
+                                {
+                                    var preSaveResult = await preSaveConfig.PreSaveAsync(_configManager);
+                                    if (preSaveResult != null && !preSaveResult.Success)
+                                    {
+                                        errorCount++;
+                                        errors.Add($"{childNode.Config.ConfigName}: 预保存失败 - {preSaveResult.Message}");
+                                        continue; // 跳过保存主配置
+                                    }
+                                }
+
                                 // 根据节点在树中的位置设置 UpdatedAt（保持顺序）
                                 // 使用递增的时间偏移量，确保顺序正确
                                 childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
@@ -838,6 +1036,572 @@ namespace Astra.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"保存所有配置时发生错误: {ex.Message}");
                 ToastHelper.ShowError($"保存配置失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 导入配置命令（根节点右键菜单使用）
+        /// </summary>
+        [RelayCommand]
+        private async Task ImportConfigurations(TreeNode? node)
+        {
+            try
+            {
+                if (_configManager == null)
+                {
+                    ToastHelper.ShowError("配置管理器未初始化");
+                    return;
+                }
+
+                // 如果没有传入节点，使用当前选中的节点
+                var targetNode = node ?? SelectedNode;
+
+                // 验证是否为根节点（Config == null）
+                if (targetNode == null || targetNode.Config != null)
+                {
+                    ToastHelper.ShowError("请选择根节点进行导入");
+                    return;
+                }
+
+                // 检查根节点是否有配置类型
+                if (targetNode.ConfigType == null)
+                {
+                    ToastHelper.ShowError("根节点未指定配置类型");
+                    return;
+                }
+
+                // 打开文件选择对话框
+                var openFileDialog = new OpenFileDialog
+                {
+                    Title = "选择要导入的配置文件",
+                    Filter = "JSON文件 (*.json)|*.json|所有文件 (*.*)|*.*",
+                    Multiselect = true,
+                    CheckFileExists = true
+                };
+
+                if (openFileDialog.ShowDialog() != true)
+                {
+                    return; // 用户取消
+                }
+
+                var filePaths = openFileDialog.FileNames;
+                if (filePaths.Length == 0)
+                {
+                    return;
+                }
+
+                var successCount = 0;
+                var failureCount = 0;
+                var errors = new List<string>();
+
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNameCaseInsensitive = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+
+                // 处理每个文件
+                foreach (var filePath in filePaths)
+                {
+                    try
+                    {
+                        var jsonContent = await File.ReadAllTextAsync(filePath);
+                        
+                        var configsToImport = new List<IConfig>();
+
+                        // 尝试解析JSON文档并提取所有配置的JSON字符串
+                        List<string> configJsonStrings = new List<string>();
+                        
+                        using (var doc = JsonDocument.Parse(jsonContent))
+                        {
+                            var rootElement = doc.RootElement;
+
+                            if (rootElement.ValueKind == JsonValueKind.Array)
+                            {
+                                // 数组格式：包含多个配置
+                                foreach (var element in rootElement.EnumerateArray())
+                                {
+                                    // 在 using 块内提取 JSON 字符串（字符串不依赖于 JsonDocument）
+                                    configJsonStrings.Add(element.GetRawText());
+                                }
+                            }
+                            else
+                            {
+                                // 单个配置对象
+                                configJsonStrings.Add(rootElement.GetRawText());
+                            }
+                        } // using 块结束，JsonDocument 被释放，但字符串仍然有效
+
+                        // 在 using 块外反序列化所有配置，并严格验证类型
+                        // 充分利用 ConfigTypeName 和 ConfigType 属性来确保类型安全
+                        var allConfigTypes = GetAllConfigTypes();
+                        var targetTypeName = targetNode.ConfigType.AssemblyQualifiedName ?? targetNode.ConfigType.FullName ?? targetNode.ConfigType.Name;
+                        
+                        foreach (var configJson in configJsonStrings)
+                        {
+                            try
+                            {
+                                IConfig? config = null;
+                                
+                                // 第一步：先检查 JSON 中的 ConfigTypeName，提前过滤类型不匹配的配置
+                                string? jsonTypeName = null;
+                                try
+                                {
+                                    using var tempDoc = JsonDocument.Parse(configJson);
+                                    var element = tempDoc.RootElement;
+                                    
+                                    // 优先检查 ConfigTypeName 字段
+                                    if (element.TryGetProperty("ConfigTypeName", out var configTypeNameProp))
+                                    {
+                                        jsonTypeName = configTypeNameProp.GetString();
+                                    }
+                                    // 如果没有 ConfigTypeName，检查 $type 或 @type 字段
+                                    else if (element.TryGetProperty("$type", out var typeProp) || 
+                                             element.TryGetProperty("@type", out typeProp))
+                                    {
+                                        jsonTypeName = typeProp.GetString();
+                                    }
+                                    
+                                    // 如果找到了类型名称，先验证是否匹配目标类型
+                                    if (!string.IsNullOrWhiteSpace(jsonTypeName))
+                                    {
+                                        // 使用辅助方法从所有程序集中查找类型
+                                        var jsonType = GetTypeFromName(jsonTypeName);
+                                        
+                                        if (jsonType != null)
+                                        {
+                                            // 类型存在，检查是否匹配目标类型
+                                            if (jsonType != targetNode.ConfigType)
+                                            {
+                                                // 类型不匹配，直接跳过
+                                                var configName = element.TryGetProperty("ConfigName", out var nameProp) 
+                                                    ? nameProp.GetString() 
+                                                    : "未命名配置";
+                                                var rootNodeName = targetNode.Header ?? "未知节点";
+                                                var actualTypeName = jsonType.Name;
+                                                var expectedTypeName = targetNode.ConfigType?.Name ?? "未知类型";
+                                                
+                                                errors.Add($"{Path.GetFileName(filePath)}: 配置类型不匹配 - {configName}（实际类型：{actualTypeName}，期望类型：{expectedTypeName}），不能导入到 {rootNodeName} 节点");
+                                                failureCount++;
+                                                continue; // 跳过这个配置
+                                            }
+                                            // 如果类型匹配，继续反序列化
+                                        }
+                                        // 如果类型不存在，继续尝试反序列化（可能是旧格式的配置文件）
+                                    }
+                                }
+                                catch
+                                {
+                                    // JSON 解析失败，继续尝试反序列化
+                                }
+                                
+                                // 第二步：只尝试反序列化为目标类型（如果 JSON 中没有类型信息或类型匹配）
+                                // 这样可以避免 System.Text.Json 强制转换导致的问题
+                                try
+                                {
+                                    var testObj = JsonSerializer.Deserialize(configJson, targetNode.ConfigType, jsonOptions) as IConfig;
+                                    if (testObj != null)
+                                    {
+                                        // 验证反序列化是否真正成功（检查关键属性）
+                                        if (!string.IsNullOrEmpty(testObj.ConfigId) || !string.IsNullOrEmpty(testObj.ConfigName))
+                                        {
+                                            // 使用 ConfigType 属性严格检查类型是否匹配
+                                            if (testObj.ConfigType == targetNode.ConfigType)
+                                            {
+                                                config = testObj;
+                                            }
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                    // 反序列化失败，继续尝试其他类型
+                                }
+                                
+                                // 第三步：如果目标类型反序列化失败，尝试所有已知类型（但只接受匹配的类型）
+                                if (config == null)
+                                {
+                                    IConfig? foundConfig = null;
+                                    Type? foundType = null;
+                                    
+                                    foreach (var (configType, _) in allConfigTypes)
+                                    {
+                                        // 跳过目标类型，因为已经尝试过了
+                                        if (configType == targetNode.ConfigType)
+                                            continue;
+                                            
+                                        try
+                                        {
+                                            var testObj = JsonSerializer.Deserialize(configJson, configType, jsonOptions) as IConfig;
+                                            if (testObj != null)
+                                            {
+                                                // 验证反序列化是否真正成功
+                                                if (!string.IsNullOrEmpty(testObj.ConfigId) || !string.IsNullOrEmpty(testObj.ConfigName))
+                                                {
+                                                    // 记录找到的配置和类型（用于后续错误提示）
+                                                    if (foundConfig == null)
+                                                    {
+                                                        foundConfig = testObj;
+                                                        foundType = testObj.ConfigType;
+                                                    }
+                                                    
+                                                    // 严格检查类型是否匹配目标类型
+                                                    if (testObj.ConfigType == targetNode.ConfigType)
+                                                    {
+                                                        config = testObj;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        catch
+                                        {
+                                            // 继续尝试下一个类型
+                                            continue;
+                                        }
+                                    }
+                                    
+                                    // 如果找到了配置但类型不匹配，记录错误
+                                    if (config == null && foundConfig != null && foundType != null)
+                                    {
+                                        var configName = foundConfig.ConfigName ?? "未命名配置";
+                                        var rootNodeName = targetNode.Header ?? "未知节点";
+                                        var actualTypeName = foundType.Name;
+                                        var expectedTypeName = targetNode.ConfigType?.Name ?? "未知类型";
+                                        
+                                        errors.Add($"{Path.GetFileName(filePath)}: 配置类型不匹配 - {configName}（实际类型：{actualTypeName}，期望类型：{expectedTypeName}），不能导入到 {rootNodeName} 节点");
+                                        failureCount++;
+                                        continue; // 跳过这个配置
+                                    }
+                                }
+
+                                // 验证是否成功反序列化
+                                if (config == null)
+                                {
+                                    errors.Add($"{Path.GetFileName(filePath)}: 无法反序列化配置或配置类型不匹配目标节点类型");
+                                    failureCount++;
+                                    continue;
+                                }
+
+                                // 验证 ConfigTypeName（如果存在）是否与实际类型匹配
+                                if (!string.IsNullOrWhiteSpace(config.ConfigTypeName))
+                                {
+                                    var expectedTypeName = config.ConfigType.AssemblyQualifiedName ?? config.ConfigType.FullName ?? config.ConfigType.Name;
+                                    if (config.ConfigTypeName != expectedTypeName)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"警告：配置 {config.ConfigName} 的 ConfigTypeName ({config.ConfigTypeName}) 与实际类型 ({expectedTypeName}) 不匹配，将使用实际类型");
+                                        // 更新 ConfigTypeName 以匹配实际类型
+                                        config.ConfigTypeName = expectedTypeName;
+                                    }
+                                }
+                                else
+                                {
+                                    // 如果 ConfigTypeName 为空，自动设置
+                                    config.ConfigTypeName = config.ConfigType.AssemblyQualifiedName ?? config.ConfigType.FullName ?? config.ConfigType.Name;
+                                }
+
+                                // 最终验证：使用 ConfigType 属性确保类型完全匹配
+                                // 这是双重检查，确保类型安全
+                                if (config.ConfigType != targetNode.ConfigType)
+                                {
+                                    var configName = config.ConfigName ?? "未命名配置";
+                                    var rootNodeName = targetNode.Header ?? "未知节点";
+                                    var actualTypeName = config.ConfigType.Name;
+                                    var expectedTypeName = targetNode.ConfigType?.Name ?? "未知类型";
+                                    
+                                    errors.Add($"{Path.GetFileName(filePath)}: 配置类型不匹配 - {configName}（实际类型：{actualTypeName}，期望类型：{expectedTypeName}），不能导入到 {rootNodeName} 节点");
+                                    failureCount++;
+                                    continue;
+                                }
+
+                                // 生成新的 ConfigId 避免冲突（使用反射直接设置字段）
+                                if (config is ConfigBase configBase)
+                                {
+                                    var configIdField = typeof(ConfigBase).GetField("_configId", 
+                                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                                    configIdField?.SetValue(configBase, Guid.NewGuid().ToString());
+                                }
+                                
+                                configsToImport.Add(config);
+                            }
+                            catch (JsonException jsonEx)
+                            {
+                                errors.Add($"{Path.GetFileName(filePath)}: JSON 格式错误 - {jsonEx.Message}");
+                                failureCount++;
+                            }
+                            catch (Exception ex)
+                            {
+                                errors.Add($"{Path.GetFileName(filePath)}: 反序列化配置失败 - {ex.Message}");
+                                failureCount++;
+                            }
+                        }
+
+                        // 获取配置类型的属性信息（用于创建树节点）
+                        var attr = targetNode.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>();
+                        if (attr == null)
+                        {
+                            errors.Add($"{Path.GetFileName(filePath)}: 配置类型缺少 TreeNodeConfigAttribute");
+                            failureCount++;
+                            continue;
+                        }
+
+                        // 直接将配置添加到树节点（不保存到数据库，不修改配置属性）
+                        // 注意：类型检查已在反序列化阶段完成，这里直接添加
+                        foreach (var config in configsToImport)
+                        {
+                            try
+                            {
+                                // 使用配置的原始名称，不修改任何属性
+                                var displayName = string.IsNullOrWhiteSpace(config.ConfigName) 
+                                    ? "未命名配置" 
+                                    : config.ConfigName;
+
+                                // 创建子节点
+                                TreeNode childNode = new TreeNode
+                                {
+                                    Header = displayName,
+                                    Icon = attr.Icon ?? _defaultIcon,
+                                    ViewModelType = attr.ViewModelType,
+                                    ViewType = attr.ViewType,
+                                    ShowAddButton = false,
+                                    ShowDeleteButton = true,
+                                    Config = config, // 保持配置对象的所有原始属性不变
+                                    Order = attr.Order,
+                                    ConfigType = config.ConfigType, // 使用配置的实际类型，而不是目标节点类型
+                                    Parent = targetNode,
+                                };
+
+                                // 添加到根节点的子节点集合
+                                targetNode.Children.Add(childNode);
+                                
+                                // 确保根节点展开，以便用户能看到导入的配置
+                                targetNode.IsExpanded = true;
+                                
+                                successCount++;
+                            }
+                            catch (Exception ex)
+                            {
+                                failureCount++;
+                                errors.Add($"{config.ConfigName ?? "未知配置"}: {ex.Message}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failureCount++;
+                        errors.Add($"{Path.GetFileName(filePath)}: {ex.Message}");
+                    }
+                }
+
+                // 不需要刷新整个配置树，因为已经直接添加到树节点了
+
+                // 显示结果
+                if (failureCount == 0)
+                {
+                    ToastHelper.ShowSuccess($"已成功导入 {successCount} 个配置");
+                }
+                else
+                {
+                    var errorMessage = $"导入完成：成功 {successCount} 个，失败 {failureCount} 个";
+                    if (errors.Count > 0)
+                    {
+                        var errorDetails = errors.Take(5);
+                        errorMessage += $"\n失败详情：\n{string.Join("\n", errorDetails)}";
+                        if (errors.Count > 5)
+                        {
+                            errorMessage += $"\n... 还有 {errors.Count - 5} 个错误";
+                        }
+                    }
+                    MessageBoxHelper.ShowWarning(errorMessage, "导入结果");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"导入配置时发生错误: {ex.Message}");
+                ToastHelper.ShowError($"导入配置失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 导出配置命令（根节点右键菜单使用）
+        /// </summary>
+        [RelayCommand]
+        private async Task ExportConfigurations(TreeNode? node)
+        {
+            try
+            {
+                if (_configManager == null)
+                {
+                    ToastHelper.ShowError("配置管理器未初始化");
+                    return;
+                }
+
+                // 如果没有传入节点，使用当前选中的节点
+                var targetNode = node ?? SelectedNode;
+
+                // 验证是否为根节点（Config == null）
+                if (targetNode == null || targetNode.Config != null)
+                {
+                    ToastHelper.ShowError("请选择根节点进行导出");
+                    return;
+                }
+
+                // 检查根节点是否有子配置
+                if (targetNode.Children == null || targetNode.Children.Count == 0)
+                {
+                    ToastHelper.ShowWarning("该根节点下没有可导出的配置");
+                    return;
+                }
+
+                // 检查根节点是否有配置类型
+                if (targetNode.ConfigType == null)
+                {
+                    ToastHelper.ShowError("根节点未指定配置类型");
+                    return;
+                }
+
+                // 打开文件夹选择对话框（使用 SaveFileDialog 作为替代方案，选择目录）
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Title = "选择导出目录和文件名",
+                    Filter = "JSON文件 (*.json)|*.json|所有文件 (*.*)|*.*",
+                    FileName = $"{targetNode.Header}_导出_{DateTime.Now:yyyyMMdd_HHmmss}.json"
+                };
+
+                if (saveFileDialog.ShowDialog() != true)
+                {
+                    return; // 用户取消
+                }
+
+                var exportFilePath = saveFileDialog.FileName;
+                var exportDirectory = Path.GetDirectoryName(exportFilePath);
+
+                // 获取所有子节点的配置
+                var configs = targetNode.Children
+                    .Where(child => child.Config != null)
+                    .Select(child => child.Config)
+                    .ToList();
+
+                if (configs.Count == 0)
+                {
+                    ToastHelper.ShowWarning("没有可导出的配置");
+                    return;
+                }
+
+                // 导出方式：将所有配置序列化为一个JSON数组
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNameCaseInsensitive = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+
+                // 使用 ConfigType 属性获取配置的JSON表示
+                var configsJson = new List<string>();
+                var successCount = 0;
+                var failCount = 0;
+                
+                foreach (var config in configs)
+                {
+                    try
+                    {
+                        // 使用 ConfigType 属性而不是 GetType()，保持一致性
+                        var json = JsonSerializer.Serialize(config, config.ConfigType, jsonOptions);
+                        if (!string.IsNullOrWhiteSpace(json))
+                        {
+                            configsJson.Add(json);
+                            successCount++;
+                        }
+                        else
+                        {
+                            failCount++;
+                            System.Diagnostics.Debug.WriteLine($"序列化配置 {config.ConfigName} 返回空字符串");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failCount++;
+                        System.Diagnostics.Debug.WriteLine($"序列化配置 {config.ConfigName} 时出错: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"异常详情: {ex}");
+                    }
+                }
+
+                // 检查是否有成功序列化的配置
+                if (configsJson.Count == 0)
+                {
+                    ToastHelper.ShowError($"导出失败：所有配置序列化都失败了（共 {configs.Count} 个配置）");
+                    return;
+                }
+
+                // 将所有配置合并为一个JSON数组
+                var combinedJson = $"[{string.Join(",\n", configsJson)}]";
+                
+                // 确保目录存在
+                var directory = Path.GetDirectoryName(exportFilePath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                
+                // 写入文件
+                await File.WriteAllTextAsync(exportFilePath, combinedJson, System.Text.Encoding.UTF8);
+
+                // 显示导出结果
+                if (failCount == 0)
+                {
+                    ToastHelper.ShowSuccess($"已成功导出 {successCount} 个配置到: {Path.GetFileName(exportFilePath)}");
+                }
+                else
+                {
+                    ToastHelper.ShowWarning($"导出完成：成功 {successCount} 个，失败 {failCount} 个");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"导出配置时发生错误: {ex.Message}");
+                ToastHelper.ShowError($"导出配置失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 对实现了 IPostLoadConfig 接口的配置执行加载后处理
+        /// 使用接口而非具体类型，避免主应用依赖插件实现
+        /// </summary>
+        private async Task PostLoadConfigurations(List<IConfig> configs)
+        {
+            if (_configManager == null)
+                return;
+
+            // 查找所有实现了 IPostLoadConfig 接口的配置
+            var postLoadConfigs = configs.OfType<Astra.Core.Configuration.IPostLoadConfig>().ToList();
+            if (postLoadConfigs.Count == 0)
+                return;
+
+            try
+            {
+                // 对每个配置执行加载后处理
+                foreach (var config in postLoadConfigs)
+                {
+                    try
+                    {
+                        var result = await config.PostLoadAsync(_configManager);
+                        if (result != null && !result.Success)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 配置 {config.ConfigName} 的加载后处理失败: {result.Message}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 配置 {config.ConfigName} 的加载后处理异常: {ex.Message}");
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 已完成 {postLoadConfigs.Count} 个配置的加载后处理");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConfigViewModel] 执行配置加载后处理失败: {ex.Message}");
             }
         }
 
