@@ -1,6 +1,7 @@
 ﻿using Astra.UI.Services;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
+using Astra.UI.Commands;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,6 +13,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Drawing;
 using System.Windows.Media;
+using CommandManager = Astra.UI.Commands.CommandManager;
 
 namespace Astra.UI.Controls
 {
@@ -87,6 +89,26 @@ namespace Astra.UI.Controls
                 typeof(FlowEditor),
                 new PropertyMetadata(80.0));
 
+        /// <summary>
+        /// 节点模板选择器 - 用于根据节点类型选择不同的 DataTemplate
+        /// </summary>
+        public static readonly DependencyProperty ItemTemplateSelectorProperty =
+            DependencyProperty.Register(
+                nameof(ItemTemplateSelector),
+                typeof(System.Windows.Controls.DataTemplateSelector),
+                typeof(FlowEditor),
+                new PropertyMetadata(null, OnItemTemplateSelectorChanged));
+
+        /// <summary>
+        /// 是否显示工具箱
+        /// </summary>
+        public static readonly DependencyProperty IsToolBoxVisibleProperty =
+            DependencyProperty.Register(
+                nameof(IsToolBoxVisible),
+                typeof(bool),
+                typeof(FlowEditor),
+                new PropertyMetadata(true, OnIsToolBoxVisibleChanged));
+
         #endregion
 
         #region 属性访问器
@@ -128,6 +150,24 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
+        /// 节点模板选择器 - 用于根据节点类型选择不同的 DataTemplate
+        /// </summary>
+        public System.Windows.Controls.DataTemplateSelector ItemTemplateSelector
+        {
+            get => (System.Windows.Controls.DataTemplateSelector)GetValue(ItemTemplateSelectorProperty);
+            set => SetValue(ItemTemplateSelectorProperty, value);
+        }
+
+        /// <summary>
+        /// 是否显示工具箱
+        /// </summary>
+        public bool IsToolBoxVisible
+        {
+            get => (bool)GetValue(IsToolBoxVisibleProperty);
+            set => SetValue(IsToolBoxVisibleProperty, value);
+        }
+
+        /// <summary>
         /// 是否可撤销/重做（连线相关）
         /// </summary>
         public bool CanUndo => _undoRedoManager.CanUndo;
@@ -136,16 +176,37 @@ namespace Astra.UI.Controls
         public void Undo() => _undoRedoManager.Undo();
         public void Redo() => _undoRedoManager.Redo();
 
+        /// <summary>
+        /// 命令管理器（用于撤销/重做）
+        /// </summary>
+        public CommandManager CommandManager
+        {
+            get => _undoRedoManager;
+            set
+            {
+                if (_undoRedoManager != value)
+                {
+                    _undoRedoManager = value;
+                    // 更新 InfiniteCanvas 的 CommandManager
+                    if (_infiniteCanvas != null)
+                    {
+                        _infiniteCanvas.UndoRedoManager = _undoRedoManager;
+                    }
+                }
+            }
+        }
+
         #endregion
 
         #region 私有字段
 
         private NodeToolBox _nodeToolBox;
         private InfiniteCanvas _infiniteCanvas;
+        private Border _toolBoxSeparator;  // 工具箱分割线
         private ContextMenu _canvasContextMenu;  // 选中项右键菜单（节点或框选组）
         private Window _hostWindow;
         private bool _windowEventsAttached;
-        private readonly UndoRedoManager _undoRedoManager = new UndoRedoManager();
+        private CommandManager _undoRedoManager = new CommandManager();
         private System.Windows.Point? _lastRightClickPosition;  // 保存最后一次右键点击的位置（画布坐标系）
 
         #endregion
@@ -183,12 +244,33 @@ namespace Astra.UI.Controls
             // 获取模板部件
             _nodeToolBox = GetTemplateChild(PART_NodeToolBox) as NodeToolBox;
             _infiniteCanvas = GetTemplateChild(PART_InfiniteCanvas) as InfiniteCanvas;
+            
+            // 查找分割线（在 Grid.Column="1" 的 Border）
+            if (_infiniteCanvas != null)
+            {
+                var parent = VisualTreeHelper.GetParent(_infiniteCanvas) as FrameworkElement;
+                if (parent is Grid grid && grid.Children.Count > 1)
+                {
+                    // 分割线应该在 Grid.Column="1" 的位置
+                    foreach (var child in grid.Children)
+                    {
+                        if (child is Border border && Grid.GetColumn(border) == 1)
+                        {
+                            _toolBoxSeparator = border;
+                            break;
+                        }
+                    }
+                }
+            }
 
             // 订阅事件
             SubscribeToEvents();
 
             // 应用数据源
             ApplyDataSources();
+            
+            // 应用工具箱可见性
+            ApplyToolBoxVisibility();
         }
 
         #endregion
@@ -199,8 +281,8 @@ namespace Astra.UI.Controls
         {
             if (_infiniteCanvas != null)
             {
-                // 确保 InfiniteCanvas 启用拖放功能
-                _infiniteCanvas.AllowDrop = true;
+                // 确保 InfiniteCanvas 的拖放状态与 FlowEditor 一致
+                _infiniteCanvas.AllowDrop = AllowDrop;
                 _infiniteCanvas.IsHitTestVisible = true;
                 
                 // 订阅拖放事件（使用预览事件确保能捕获到）
@@ -316,28 +398,9 @@ namespace Astra.UI.Controls
                 e.Handled = true;
             }
 
-            // Ctrl+Z 撤销
-            if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
-            {
-                if (_undoRedoManager.CanUndo)
-                {
-                    _undoRedoManager.Undo();
-                    _infiniteCanvas?.RefreshEdgesImmediate(); // 刷新连线显示
-                    e.Handled = true;
-                }
-            }
-
-            // Ctrl+Y 或 Ctrl+Shift+Z 重做
-            if ((e.Key == Key.Y && Keyboard.Modifiers == ModifierKeys.Control) ||
-                (e.Key == Key.Z && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)))
-            {
-                if (_undoRedoManager.CanRedo)
-                {
-                    _undoRedoManager.Redo();
-                    _infiniteCanvas?.RefreshEdgesImmediate(); // 刷新连线显示
-                    e.Handled = true;
-                }
-            }
+            // 注意：Ctrl+Z 和 Ctrl+R 的撤销/重做由 MultiFlowEditor 的 InputBindings 处理
+            // 这里不再处理，让事件冒泡到父级，以便触发 ViewModel 的 UndoCommand/RedoCommand
+            // 这样可以确保撤销/重做时能够切换到对应的 TabItem
         }
 
         #endregion
@@ -753,15 +816,12 @@ namespace Astra.UI.Controls
                 // 使用保存的右键点击位置（右键菜单触发的粘贴）
                 // _lastRightClickPosition 已经是画布坐标系
                 pastePosition = _lastRightClickPosition.Value;
-                System.Diagnostics.Debug.WriteLine($"[粘贴-位置] 使用右键位置（画布坐标）: ({pastePosition.X:F2}, {pastePosition.Y:F2})");
-            }
+                }
             else
             {
                 // 使用当前鼠标位置（快捷键 Ctrl+V 触发的粘贴）
                 var mouseScreenPos = Mouse.GetPosition(_infiniteCanvas);
                 pastePosition = _infiniteCanvas.ScreenToCanvas(mouseScreenPos);
-                System.Diagnostics.Debug.WriteLine($"[粘贴-位置] Ctrl+V: 屏幕({mouseScreenPos.X:F2}, {mouseScreenPos.Y:F2}) -> 画布({pastePosition.X:F2}, {pastePosition.Y:F2})");
-                System.Diagnostics.Debug.WriteLine($"[粘贴-位置] 画布状态: Scale={_infiniteCanvas.Scale:F2}, Pan=({_infiniteCanvas.PanX:F2}, {_infiniteCanvas.PanY:F2})");
             }
 
             // 获取原始边界框的左上角作为参考点（与拖拽创建节点的行为一致）
@@ -771,14 +831,11 @@ namespace Astra.UI.Controls
             {
                 var bounds = _infiniteCanvas.ClipboardBounds.Value;
                 originalTopLeft = new Point2D(bounds.Left, bounds.Top);
-                System.Diagnostics.Debug.WriteLine($"[粘贴-边界框] Left={bounds.Left:F2}, Top={bounds.Top:F2}, Width={bounds.Width:F2}, Height={bounds.Height:F2}");
-                System.Diagnostics.Debug.WriteLine($"[粘贴-参考点] 使用边界框左上角: ({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
             }
             else if (_infiniteCanvas.ClipboardNodes.Count > 0 && _infiniteCanvas.ClipboardNodes[0].Position != null)
             {
                 // 如果没有边界框，使用第一个节点的位置作为参考
                 originalTopLeft = _infiniteCanvas.ClipboardNodes[0].Position;
-                System.Diagnostics.Debug.WriteLine($"[粘贴-参考点] 使用第一个节点位置: ({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
             }
 
             if (!originalTopLeft.HasValue)
@@ -792,22 +849,21 @@ namespace Astra.UI.Controls
             var offsetX = pastePosition.X - originalTopLeft.Value.X;
             var offsetY = pastePosition.Y - originalTopLeft.Value.Y;
 
-            System.Diagnostics.Debug.WriteLine($"[粘贴-偏移] 计算公式: 鼠标位置({pastePosition.X:F2}, {pastePosition.Y:F2}) - 原始左上角({originalTopLeft.Value.X:F2}, {originalTopLeft.Value.Y:F2})");
-            System.Diagnostics.Debug.WriteLine($"[粘贴-偏移] 结果: offset=({offsetX:F2}, {offsetY:F2})");
-
+            // 🔧 性能优化：减少调试日志输出（特别是在粘贴多个节点时）
+            int nodeCount = _infiniteCanvas.ClipboardNodes.Count;
+            bool verboseLogging = nodeCount < 10; // 只有节点数少于10时才输出详细日志
+            
             // 再次克隆节点（支持多次粘贴）并应用偏移量
             var clonedNodes = new List<Node>();
             var clipboardNodeIdToNewNodeIdMap = new Dictionary<string, string>(); // 剪贴板节点ID -> 新节点ID 的映射
 
-            System.Diagnostics.Debug.WriteLine($"");
-            System.Diagnostics.Debug.WriteLine($"========== 开始粘贴克隆节点 ==========");
+            if (verboseLogging)
+            {
+                System.Diagnostics.Debug.WriteLine($"========== 开始粘贴克隆节点 ==========");
+            }
             
             foreach (var clipboardNode in _infiniteCanvas.ClipboardNodes)
             {
-                System.Diagnostics.Debug.WriteLine($"");
-                System.Diagnostics.Debug.WriteLine($"粘贴克隆节点: {clipboardNode.Name} (剪贴板ID: {clipboardNode.Id})");
-                System.Diagnostics.Debug.WriteLine($"  剪贴板 Position: ({clipboardNode.Position.X:F2}, {clipboardNode.Position.Y:F2})");
-                
                 // 保存剪贴板节点的属性
                 var clipboardPosition = clipboardNode.Position;
                 var clipboardSize = clipboardNode.Size;
@@ -815,27 +871,18 @@ namespace Astra.UI.Controls
                 // 再次克隆（因为剪贴板中的节点已经是克隆的，但需要支持多次粘贴）
                 var newNode = clipboardNode.Clone();
                 
-                System.Diagnostics.Debug.WriteLine($"  克隆后节点ID: {newNode.Id}");
-                System.Diagnostics.Debug.WriteLine($"  克隆后 Position: ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
-                
                 // 🔧 修复：手动恢复位置和尺寸（因为 Clone() 会丢失只读结构体）
                 newNode.Position = clipboardPosition;
                 newNode.Size = clipboardSize;
                 
-                System.Diagnostics.Debug.WriteLine($"  恢复后 Position: ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
-                
                 // 记录ID映射关系（用于更新连线）
                 clipboardNodeIdToNewNodeIdMap[clipboardNode.Id] = newNode.Id;
-                System.Diagnostics.Debug.WriteLine($"  节点ID映射: {clipboardNode.Id} -> {newNode.Id}");
                 
                 // 应用偏移量（将节点组的左上角移动到鼠标位置）
-                var beforeOffset = newNode.Position;
                 newNode.Position = new Point2D(
                     newNode.Position.X + offsetX,
                     newNode.Position.Y + offsetY
                 );
-                
-                System.Diagnostics.Debug.WriteLine($"  应用偏移: ({beforeOffset.X:F2}, {beforeOffset.Y:F2}) + ({offsetX:F2}, {offsetY:F2}) = ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
                 
                 // 🔧 粘贴后的节点不应该显示选中状态（虚线框）
                 newNode.IsSelected = false;
@@ -843,21 +890,23 @@ namespace Astra.UI.Controls
                 clonedNodes.Add(newNode);
             }
             
-            System.Diagnostics.Debug.WriteLine($"========== 粘贴克隆完成 ==========");
-            System.Diagnostics.Debug.WriteLine($"");
+            if (verboseLogging)
+            {
+                System.Diagnostics.Debug.WriteLine($"========== 粘贴克隆完成 ==========");
+            }
 
             // 克隆连线并更新节点ID和端口ID引用
             // 注意：端口ID的格式是"节点ID:端口位置"（例如"8d7a0f62-1ae0-4802-bae8-b26805b83e66:Bottom"）
             var clonedEdges = new List<Astra.Core.Nodes.Models.Edge>();
             if (_infiniteCanvas.ClipboardEdges != null && _infiniteCanvas.ClipboardEdges.Count > 0)
             {
-                System.Diagnostics.Debug.WriteLine($"========== 开始粘贴连线 ==========");
+                if (verboseLogging)
+                {
+                    System.Diagnostics.Debug.WriteLine($"========== 开始粘贴连线 ==========");
+                }
                 
                 foreach (var clipboardEdge in _infiniteCanvas.ClipboardEdges)
                 {
-                    System.Diagnostics.Debug.WriteLine($"粘贴连线: SourceNode={clipboardEdge.SourceNodeId}, SourcePort={clipboardEdge.SourcePortId}");
-                    System.Diagnostics.Debug.WriteLine($"         -> TargetNode={clipboardEdge.TargetNodeId}, TargetPort={clipboardEdge.TargetPortId}");
-                    
                     // 检查连线的两端节点是否都在映射表中
                     if (clipboardNodeIdToNewNodeIdMap.ContainsKey(clipboardEdge.SourceNodeId) && 
                         clipboardNodeIdToNewNodeIdMap.ContainsKey(clipboardEdge.TargetNodeId))
@@ -871,9 +920,6 @@ namespace Astra.UI.Controls
                         newEdge.SourceNodeId = newSourceNodeId;
                         newEdge.TargetNodeId = newTargetNodeId;
                         
-                        System.Diagnostics.Debug.WriteLine($"  节点ID映射: {clipboardEdge.SourceNodeId} -> {newSourceNodeId}");
-                        System.Diagnostics.Debug.WriteLine($"  节点ID映射: {clipboardEdge.TargetNodeId} -> {newTargetNodeId}");
-                        
                         // 🔧 更新端口ID中的节点ID部分（端口ID格式：节点ID:端口位置）
                         if (!string.IsNullOrEmpty(clipboardEdge.SourcePortId) && clipboardEdge.SourcePortId.Contains(":"))
                         {
@@ -882,14 +928,12 @@ namespace Astra.UI.Controls
                             {
                                 // 替换端口ID中的节点ID部分
                                 newEdge.SourcePortId = $"{newSourceNodeId}:{parts[1]}";
-                                System.Diagnostics.Debug.WriteLine($"  源端口ID更新: {clipboardEdge.SourcePortId} -> {newEdge.SourcePortId}");
-                }
+                            }
                         }
                         else
                         {
                             // 如果端口ID不包含冒号，保持原值（可能是旧格式或空值）
                             newEdge.SourcePortId = clipboardEdge.SourcePortId;
-                            System.Diagnostics.Debug.WriteLine($"  ⚠️ 源端口ID格式不包含':'，保持原值: {clipboardEdge.SourcePortId}");
                         }
                         
                         if (!string.IsNullOrEmpty(clipboardEdge.TargetPortId) && clipboardEdge.TargetPortId.Contains(":"))
@@ -899,29 +943,22 @@ namespace Astra.UI.Controls
                             {
                                 // 替换端口ID中的节点ID部分
                                 newEdge.TargetPortId = $"{newTargetNodeId}:{parts[1]}";
-                                System.Diagnostics.Debug.WriteLine($"  目标端口ID更新: {clipboardEdge.TargetPortId} -> {newEdge.TargetPortId}");
                             }
                         }
                         else
                         {
                             // 如果端口ID不包含冒号，保持原值（可能是旧格式或空值）
                             newEdge.TargetPortId = clipboardEdge.TargetPortId;
-                            System.Diagnostics.Debug.WriteLine($"  ⚠️ 目标端口ID格式不包含':'，保持原值: {clipboardEdge.TargetPortId}");
                         }
-                        
-                        System.Diagnostics.Debug.WriteLine($"  最终连线: SourceNode={newEdge.SourceNodeId}, SourcePort={newEdge.SourcePortId}");
-                        System.Diagnostics.Debug.WriteLine($"           -> TargetNode={newEdge.TargetNodeId}, TargetPort={newEdge.TargetPortId}");
                         
                         clonedEdges.Add(newEdge);
                     }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  ⚠️ 跳过：节点不在选区中");
-                    }
                 }
                 
-                System.Diagnostics.Debug.WriteLine($"========== 粘贴连线完成 ==========");
-                System.Diagnostics.Debug.WriteLine($"");
+                if (verboseLogging)
+                {
+                    System.Diagnostics.Debug.WriteLine($"========== 粘贴连线完成 ==========");
+                }
             }
 
             // 🔧 使用撤销/重做命令（支持批量操作优化）
@@ -932,7 +969,7 @@ namespace Astra.UI.Controls
             if (_undoRedoManager != null)
             {
                     var command = new PasteNodesWithEdgesCommand(itemsList, edgesList, clonedNodes, clonedEdges);
-                _undoRedoManager.Do(command);
+                _undoRedoManager.Execute(command);
             }
             else
             {
@@ -953,7 +990,7 @@ namespace Astra.UI.Controls
                 if (_undoRedoManager != null)
                 {
                     var command = new PasteNodesCommand(itemsList, clonedNodes);
-                    _undoRedoManager.Do(command);
+                    _undoRedoManager.Execute(command);
                 }
                 else
                 {
@@ -967,74 +1004,11 @@ namespace Astra.UI.Controls
             // 🔧 粘贴后清除选中状态（不显示虚线框）
             _infiniteCanvas.ClearSelection();
 
-            // ========== 粘贴完成后的详细验证 ==========
-            System.Diagnostics.Debug.WriteLine($"");
-            System.Diagnostics.Debug.WriteLine($"========== 粘贴结果验证 ==========");
-            System.Diagnostics.Debug.WriteLine($"✅ 成功粘贴 {clonedNodes.Count} 个节点，{clonedEdges.Count} 条连线");
-            System.Diagnostics.Debug.WriteLine($"");
-            
-            // 输出每个节点的详细信息
-            for (int i = 0; i < _infiniteCanvas.ClipboardNodes.Count && i < clonedNodes.Count; i++)
+            // 🔧 性能优化：减少调试日志输出（特别是在粘贴多个节点时）
+            if (verboseLogging)
             {
-                var clipboardNode = _infiniteCanvas.ClipboardNodes[i];
-                var newNode = clonedNodes[i];
-                
-                System.Diagnostics.Debug.WriteLine($"节点 #{i + 1}: {clipboardNode.Name}");
-                System.Diagnostics.Debug.WriteLine($"  剪贴板位置: ({clipboardNode.Position.X:F2}, {clipboardNode.Position.Y:F2})");
-                System.Diagnostics.Debug.WriteLine($"  应用偏移后: ({clipboardNode.Position.X:F2} + {offsetX:F2}, {clipboardNode.Position.Y:F2} + {offsetY:F2})");
-                System.Diagnostics.Debug.WriteLine($"  实际粘贴位置: ({newNode.Position.X:F2}, {newNode.Position.Y:F2})");
-                System.Diagnostics.Debug.WriteLine($"  理论应该是: ({clipboardNode.Position.X + offsetX:F2}, {clipboardNode.Position.Y + offsetY:F2})");
-                
-                // 验证计算是否正确
-                var expectedX = clipboardNode.Position.X + offsetX;
-                var expectedY = clipboardNode.Position.Y + offsetY;
-                var diffX = Math.Abs(newNode.Position.X - expectedX);
-                var diffY = Math.Abs(newNode.Position.Y - expectedY);
-                
-                if (diffX > 0.01 || diffY > 0.01)
-                {
-                    System.Diagnostics.Debug.WriteLine($"  ⚠️ 位置计算有误！差异: ({diffX:F2}, {diffY:F2})");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"  ✓ 位置计算正确");
-                }
-                System.Diagnostics.Debug.WriteLine($"");
+                System.Diagnostics.Debug.WriteLine($"✅ 成功粘贴 {clonedNodes.Count} 个节点，{clonedEdges.Count} 条连线");
             }
-            
-            // 验证相对位置关系
-            if (clonedNodes.Count > 1)
-            {
-                System.Diagnostics.Debug.WriteLine($"--- 相对位置关系验证 ---");
-                for (int i = 1; i < clonedNodes.Count; i++)
-                {
-                    var prevClipboard = _infiniteCanvas.ClipboardNodes[i - 1];
-                    var currClipboard = _infiniteCanvas.ClipboardNodes[i];
-                    var prevNew = clonedNodes[i - 1];
-                    var currNew = clonedNodes[i];
-                    
-                    var originalDelta = (currClipboard.Position.X - prevClipboard.Position.X, 
-                                       currClipboard.Position.Y - prevClipboard.Position.Y);
-                    var newDelta = (currNew.Position.X - prevNew.Position.X, 
-                                  currNew.Position.Y - prevNew.Position.Y);
-                    
-                    System.Diagnostics.Debug.WriteLine($"节点 #{i} 与节点 #{i + 1}:");
-                    System.Diagnostics.Debug.WriteLine($"  原始相对位置: ({originalDelta.Item1:F2}, {originalDelta.Item2:F2})");
-                    System.Diagnostics.Debug.WriteLine($"  粘贴后相对位置: ({newDelta.Item1:F2}, {newDelta.Item2:F2})");
-                    
-                    if (Math.Abs(originalDelta.Item1 - newDelta.Item1) < 0.01 && 
-                        Math.Abs(originalDelta.Item2 - newDelta.Item2) < 0.01)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  ✓ 相对位置保持正确");
-                }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  ❌ 相对位置丢失！");
-                    }
-                }
-            }
-            
-            System.Diagnostics.Debug.WriteLine($"=================================");
         }
 
         /// <summary>
@@ -1064,7 +1038,7 @@ namespace Astra.UI.Controls
             if (_undoRedoManager != null)
             {
                 var command = new ToggleNodeEnabledCommand(selectedNodes, newState);
-                _undoRedoManager.Do(command);
+                _undoRedoManager.Execute(command);
             }
             else
             {
@@ -1431,7 +1405,13 @@ namespace Astra.UI.Controls
             {
                 if (_undoRedoManager != null)
                 {
-                    _undoRedoManager.Do(new AddNodeCommand(list, node));
+                    var command = new AddNodeCommand(list, node);
+                    // 设置命令的 WorkflowTab
+                    if (DataContext is Models.WorkflowTab workflowTab)
+                    {
+                        command.WorkflowTab = workflowTab;
+                    }
+                    _undoRedoManager.Execute(command);
                 }
                 else
                 {
@@ -1485,7 +1465,58 @@ namespace Astra.UI.Controls
 
                 _infiniteCanvas.EdgeItemsSource = EdgeItemsSource;
                 _infiniteCanvas.UndoRedoManager = _undoRedoManager;
+
+                // 应用 ItemTemplateSelector 到内部的 ItemsControl
+                ApplyItemTemplateSelector();
             }
+        }
+
+        /// <summary>
+        /// 应用 ItemTemplateSelector 到 InfiniteCanvas
+        /// </summary>
+        private void ApplyItemTemplateSelector()
+        {
+            if (_infiniteCanvas == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[FlowEditor] InfiniteCanvas 为 null，无法应用 ItemTemplateSelector");
+                return;
+            }
+
+            // 直接设置 InfiniteCanvas 的 ItemTemplateSelector，模板会自动绑定到内部的 ItemsControl
+            _infiniteCanvas.ItemTemplateSelector = ItemTemplateSelector;
+            
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor] 已为 InfiniteCanvas 设置 ItemTemplateSelector: {ItemTemplateSelector?.GetType().Name ?? "null"}");
+            
+            // 如果 ItemTemplateSelector 不为 null，清除 ItemTemplate（让 ItemTemplateSelector 生效）
+            if (ItemTemplateSelector != null && _infiniteCanvas.ItemTemplate != null)
+            {
+                System.Diagnostics.Debug.WriteLine("[FlowEditor] 清除 InfiniteCanvas 的 ItemTemplate，让 ItemTemplateSelector 生效");
+                _infiniteCanvas.ItemTemplate = null;
+            }
+        }
+
+        /// <summary>
+        /// 在可视化树中查找指定类型的子元素
+        /// </summary>
+        private static T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            if (parent == null)
+                return null;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T result)
+                {
+                    return result;
+                }
+                var childOfChild = FindVisualChild<T>(child);
+                if (childOfChild != null)
+                {
+                    return childOfChild;
+                }
+            }
+            return null;
         }
 
         #endregion
@@ -1554,6 +1585,49 @@ namespace Astra.UI.Controls
             }
         }
 
+        private static void OnItemTemplateSelectorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var editor = (FlowEditor)d;
+            var oldSelector = e.OldValue as System.Windows.Controls.DataTemplateSelector;
+            var newSelector = e.NewValue as System.Windows.Controls.DataTemplateSelector;
+            
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor] ItemTemplateSelector 变更: {oldSelector?.GetType().Name ?? "null"} -> {newSelector?.GetType().Name ?? "null"}");
+            
+            // 如果 InfiniteCanvas 已加载，立即应用
+            if (editor._infiniteCanvas != null)
+            {
+                editor.ApplyItemTemplateSelector();
+            }
+            // 否则会在 ApplyDataSources 中应用
+        }
+
+        private static void OnIsToolBoxVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var editor = (FlowEditor)d;
+            editor.ApplyToolBoxVisibility();
+        }
+
+        /// <summary>
+        /// 应用工具箱可见性
+        /// </summary>
+        private void ApplyToolBoxVisibility()
+        {
+            var visibility = IsToolBoxVisible ? Visibility.Visible : Visibility.Collapsed;
+            
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor] 应用工具箱可见性: IsToolBoxVisible={IsToolBoxVisible}, Visibility={visibility}, _nodeToolBox={(_nodeToolBox != null ? "已找到" : "未找到")}");
+            
+            if (_nodeToolBox != null)
+            {
+                _nodeToolBox.Visibility = visibility;
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor] NodeToolBox.Visibility 已设置为: {visibility}");
+            }
+            
+            if (_toolBoxSeparator != null)
+            {
+                _toolBoxSeparator.Visibility = visibility;
+            }
+        }
+
         #endregion
 
         #region 生命周期
@@ -1565,11 +1639,16 @@ namespace Astra.UI.Controls
             // 确保在加载后 InfiniteCanvas 的 AllowDrop 已设置
             if (_infiniteCanvas != null)
             {
-                _infiniteCanvas.AllowDrop = true;
+                // 如果 FlowEditor 禁用了拖放，InfiniteCanvas 也应该禁用
+                _infiniteCanvas.AllowDrop = AllowDrop;
                 _infiniteCanvas.IsHitTestVisible = true;
             }
 
-            AttachWindowDragHandlers();
+            // 只有允许拖放的 FlowEditor 才注册窗口级别的拖放处理器
+            if (AllowDrop)
+            {
+                AttachWindowDragHandlers();
+            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -1612,6 +1691,10 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnWindowPreviewDragOver(object sender, DragEventArgs e)
         {
+            // 如果 FlowEditor 禁用了拖放，不处理
+            if (!AllowDrop)
+                return;
+                
             if (_infiniteCanvas == null || !IsValidDragData(e.Data))
                 return;
 
@@ -1628,6 +1711,10 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnWindowPreviewDrop(object sender, DragEventArgs e)
         {
+            // 如果 FlowEditor 禁用了拖放，不处理
+            if (!AllowDrop)
+                return;
+                
             if (_infiniteCanvas == null)
                 return;
 

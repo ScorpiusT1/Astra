@@ -243,6 +243,14 @@ namespace Astra.UI.Controls
             {
                 _currentInteractionMode = InteractionMode.Panning;
                 Cursor = Cursors.Hand;
+                
+                // 🔧 性能优化：标记正在平移（用于跳过连线刷新）
+                int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+                if (nodeCount > PerformanceNodeThreshold)
+                {
+                    _isZooming = true; // 复用缩放标志（平移和缩放都是视图变换）
+                }
+                
                 System.Diagnostics.Debug.WriteLine("✅ [平移] 开始");
             }
         }
@@ -289,10 +297,21 @@ namespace Astra.UI.Controls
             _mouseCaptureManager.Release();
             Cursor = Cursors.Arrow;
             
+            // 🔧 性能优化：恢复连线刷新（平移结束后）
+            _isZooming = false;
+            
             // 重置节流时间，确保更新网格
             _lastGridUpdateTime = DateTime.MinValue;
             UpdateGrid();
             UpdateViewportIndicator();
+            
+            // 🔧 平移结束后刷新连线和小地图
+            int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+            if (nodeCount > PerformanceNodeThreshold)
+            {
+                UpdateMinimap();
+                RefreshEdgesImmediate();
+            }
             
             System.Diagnostics.Debug.WriteLine($"✅ [平移] 结束 - 最终位置: ({finalPanX:F2}, {finalPanY:F2})");
         }
@@ -365,7 +384,8 @@ namespace Astra.UI.Controls
                 System.Diagnostics.Debug.WriteLine("✅ [组拖动] 开始");
                 
                 // 🔧 启用智能连线更新（实时平移路径，避免重复计算A*）
-                if (_groupInitialPositions.Count > 1)
+                // 优化：即使只拖动一个节点，也启用智能连线更新，因为可能有多条连线
+                if (_groupInitialPositions.Count > 0)
                 {
                     var movedNodeIds = new System.Collections.Generic.HashSet<string>(_groupInitialPositions.Keys);
                     EnableSmartEdgeUpdate(movedNodeIds);
@@ -422,9 +442,29 @@ namespace Astra.UI.Controls
                 DisableSmartEdgeUpdate();
             }
 
-            RefreshEdgesImmediate();
-            UpdateSelectedGroupBox();
-            RequestMinimapUpdate();
+            // 🔧 紧急优化：拖动结束后，使用异步刷新避免阻塞
+            int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+            int edgeCount = EdgeItemsSource?.Cast<object>().Count() ?? 0;
+            
+            if (edgeCount > 15)
+            {
+                // 连线多时，使用异步刷新
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    RefreshEdgesImmediate();
+                    UpdateSelectedGroupBox();
+                    UpdateMinimap();
+                    UpdateViewportIndicator();
+                    System.Diagnostics.Debug.WriteLine("✅ [组拖动] 异步刷新完成");
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+            else
+            {
+                // 连线少时，立即刷新
+                RefreshEdgesImmediate();
+                UpdateSelectedGroupBox();
+                RequestMinimapUpdate();
+            }
 
             System.Diagnostics.Debug.WriteLine("✅ [组拖动] 结束");
         }

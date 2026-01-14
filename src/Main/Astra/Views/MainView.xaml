@@ -1096,6 +1096,8 @@
         <!-- 内容框架 -->
         <Frame x:Name="MainFrame"
                NavigationUIVisibility="Hidden"
+               HorizontalAlignment="Stretch"
+               VerticalAlignment="Stretch"
                Margin="0" />
 
         <!-- 空状态提示 -->

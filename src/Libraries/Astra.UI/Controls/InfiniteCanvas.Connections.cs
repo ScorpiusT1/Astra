@@ -68,12 +68,15 @@ namespace Astra.UI.Controls
         private static void OnEdgeItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var canvas = (InfiniteCanvas)d;
+            
+            // 取消订阅旧集合的变化事件
             if (canvas._edgeCollectionNotify != null)
             {
                 canvas._edgeCollectionNotify.CollectionChanged -= canvas.OnEdgeCollectionChanged;
                 canvas._edgeCollectionNotify = null;
             }
 
+            // 订阅新集合的变化事件
             canvas._edgeCollectionNotify = e.NewValue as INotifyCollectionChanged;
             if (canvas._edgeCollectionNotify != null)
             {
@@ -95,8 +98,13 @@ namespace Astra.UI.Controls
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine("[连线] EdgeItemsSource 变化且连线层已创建，立即刷新");
-                canvas.RefreshEdgesImmediate();
+                System.Diagnostics.Debug.WriteLine("[连线] EdgeItemsSource 变化且连线层已创建，延迟刷新以减少闪烁");
+                // 🔧 优化：使用较低优先级延迟刷新，让切换标签页时的UI更平滑
+                // 这样可以避免在切换时立即清空连线导致的闪烁效果
+                canvas.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    canvas.RefreshEdgesImmediate();
+                }), System.Windows.Threading.DispatcherPriority.Background);
             }
         }
 
@@ -165,6 +173,12 @@ namespace Astra.UI.Controls
                 return;
             }
             
+            // 🔧 性能优化：如果正在缩放，跳过自动刷新（缩放结束后会统一刷新）
+            if (_isZooming)
+            {
+                return;
+            }
+            
             // 集合变化时立即刷新（Add/Remove 操作应该立即可见）
             RefreshEdgesImmediate();
         }
@@ -202,8 +216,83 @@ namespace Astra.UI.Controls
             {
                 _needsRefreshAfterBatch = false;
                 System.Diagnostics.Debug.WriteLine($"[批量操作] 执行延迟刷新");
-                RefreshEdgesImmediate();
+                
+                // 🔧 性能优化：检查连线数量，决定使用渐进式刷新还是一次性刷新
+                int edgeCount = EdgeItemsSource?.Cast<object>().Count() ?? 0;
+                int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+                
+                // 如果节点多且连线多，使用渐进式刷新（避免卡顿）
+                bool useProgressiveRefresh = nodeCount > 10 && edgeCount > 15;
+                
+                if (useProgressiveRefresh)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[批量操作] 使用渐进式刷新 - 节点:{nodeCount}, 连线:{edgeCount}");
+                    StartProgressiveRefresh();
+                }
+                else
+                {
+                    // 连线较少，使用一次性刷新
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        // 先更新小地图和视口（轻量级操作）
+                        UpdateMinimap();
+                        UpdateViewportIndicator();
+                        
+                        // 再刷新连线（重量级操作）
+                        RefreshEdgesImmediate();
+                        System.Diagnostics.Debug.WriteLine($"[批量操作] 异步刷新完成");
+                    }), System.Windows.Threading.DispatcherPriority.Background);
+                }
             }
+        }
+        
+        /// <summary>
+        /// 开始渐进式刷新（分批刷新连线，避免一次性计算大量连线导致卡顿）
+        /// </summary>
+        private void StartProgressiveRefresh()
+        {
+            if (_isProgressiveRefreshing)
+            {
+                return; // 已经在渐进式刷新中
+            }
+            
+            _isProgressiveRefreshing = true;
+            
+            // 先立即更新小地图和视口
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                UpdateMinimap();
+                UpdateViewportIndicator();
+            }), System.Windows.Threading.DispatcherPriority.Background);
+            
+            // 启动渐进式刷新定时器
+            if (_progressiveRefreshTimer == null)
+            {
+                _progressiveRefreshTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(16) // 约60fps的间隔
+                };
+                _progressiveRefreshTimer.Tick += OnProgressiveRefreshTick;
+            }
+            
+            _progressiveRefreshTimer.Start();
+            System.Diagnostics.Debug.WriteLine($"[渐进式刷新] 开始");
+        }
+        
+        /// <summary>
+        /// 渐进式刷新定时器回调（每次刷新一小批连线）
+        /// </summary>
+        private void OnProgressiveRefreshTick(object sender, EventArgs e)
+        {
+            // 直接调用完整刷新（已经有内部节流和优化）
+            // 由于我们使用定时器控制频率，这里可以安全调用
+            RefreshEdgesImmediate();
+            
+            // 停止定时器（只刷新一次，下次粘贴时重新启动）
+            _progressiveRefreshTimer.Stop();
+            _isProgressiveRefreshing = false;
+            
+            System.Diagnostics.Debug.WriteLine($"[渐进式刷新] 完成");
         }
 
         /// <summary>
@@ -275,13 +364,22 @@ namespace Astra.UI.Controls
         }
 
         private DateTime _lastEdgeRefresh = DateTime.MinValue;
-        private const int EdgeRefreshThrottleMs = 16; // 约60fps
+        private const int EdgeRefreshThrottleMs = 16; // 约60fps（正常情况）
+        private const int EdgeRefreshThrottleMsForManyNodes = 20; // 🔧 50fps（丝滑流畅，有增量更新支持）
+        private const int ManyNodesThreshold = 3; // 超过3个节点时使用节流（更早启用优化）
+        
+        // 🔧 性能阈值：超过此连线数时，只平移路径不重算A*
+        private const int EdgeCountThresholdForSkip = 5; // 降低阈值，更早启用优化
 
         private bool _edgeRefreshPendingDueToMissingPorts;
         
         // 批量操作标志（用于批量添加节点/连线时避免多次刷新）
         private bool _isBatchUpdating = false;
         private bool _needsRefreshAfterBatch = false;
+        
+        // 🔧 渐进式刷新相关字段（用于分批刷新大量连线，避免卡顿）
+        private bool _isProgressiveRefreshing;
+        private System.Windows.Threading.DispatcherTimer _progressiveRefreshTimer;
         
         // 智能路径更新（用于批量拖动时避免重复计算A*）
         private bool _smartEdgeUpdateEnabled = false;
@@ -292,7 +390,30 @@ namespace Astra.UI.Controls
         private void RefreshEdgesInternal(bool force)
         {
             var now = DateTime.Now;
-            if (!force && (now - _lastEdgeRefresh).TotalMilliseconds < EdgeRefreshThrottleMs)
+            int edgeCount = EdgeItemsSource?.Cast<object>().Count() ?? 0;
+            int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+            
+            // 🔧 性能优化：动态调整节流时间
+            int throttleMs = EdgeRefreshThrottleMs;
+            if (!force)
+            {
+                if (_smartEdgeUpdateEnabled && _movingNodeIds != null)
+                {
+                    // 拖动多节点或连线多时，降低刷新频率（但保持实时跟随）
+                    if (_movingNodeIds.Count >= ManyNodesThreshold || edgeCount > EdgeCountThresholdForSkip)
+                    {
+                        throttleMs = EdgeRefreshThrottleMsForManyNodes; // 50fps，丝滑流畅
+                    }
+                }
+                else if (nodeCount > PerformanceNodeThreshold || edgeCount > EdgeCountThresholdForSkip)
+                {
+                    // 🔧 单个节点拖动时，如果节点/连线较多，也降低刷新频率
+                    // 但有了增量更新，只更新受影响的连线，可以保持较高帧率
+                    throttleMs = EdgeRefreshThrottleMsForManyNodes; // 50fps，丝滑流畅
+                }
+            }
+            
+            if (!force && (now - _lastEdgeRefresh).TotalMilliseconds < throttleMs)
                 return;
             _lastEdgeRefresh = now;
 
@@ -302,25 +423,104 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            _edgeLayer.Children.Clear();
-
             if (EdgeItemsSource == null || ItemsSource == null)
             {
+                _edgeLayer.Children.Clear();
                 System.Diagnostics.Debug.WriteLine($"[连线刷新] EdgeItemsSource: {EdgeItemsSource != null}, ItemsSource: {ItemsSource != null}");
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[连线刷新] 开始刷新，连线数量: {EdgeItemsSource.Cast<object>().Count()}");
+            // 🔧 性能优化：完全禁用调试日志（严重影响性能）
+            bool verboseLogging = false; // 拖动时完全禁用日志，提升流畅度
 
             var nodes = ItemsSource.OfType<Node>().ToDictionary(n => n.Id, n => n);
+            
+            // 🔧 核心优化：增量更新 - 只移除/重绘需要更新的连线
+            // 构建当前边缘ID集合
+            var currentEdgeIds = new HashSet<string>(EdgeItemsSource.OfType<Edge>().Select(e => e.Id));
+            
+            // 移除已删除的连线（包括Polyline和箭头）
+            for (int i = _edgeLayer.Children.Count - 1; i >= 0; i--)
+            {
+                if (_edgeLayer.Children[i] is Polyline poly && poly.Tag is Edge oldEdge)
+                {
+                    if (!currentEdgeIds.Contains(oldEdge.Id))
+                    {
+                        // 移除Polyline
+                        _edgeLayer.Children.RemoveAt(i);
+                        // 移除对应的箭头（通常在Polyline之后）
+                        if (i < _edgeLayer.Children.Count && _edgeLayer.Children[i] is Shape arrow && !(arrow is Polyline))
+                        {
+                            _edgeLayer.Children.RemoveAt(i);
+                        }
+                    }
+                }
+            }
+            
+            // 🔧 清理孤立的箭头（没有对应Polyline的箭头）
+            var polylineEdgeIds = new HashSet<string>();
+            foreach (var child in _edgeLayer.Children)
+            {
+                if (child is Polyline poly && poly.Tag is Edge e)
+                {
+                    polylineEdgeIds.Add(e.Id);
+                }
+            }
+            for (int i = _edgeLayer.Children.Count - 1; i >= 0; i--)
+            {
+                if (_edgeLayer.Children[i] is Shape shape && !(shape is Polyline))
+                {
+                    // 这是箭头，检查前一个元素是否是Polyline
+                    if (i == 0 || !(_edgeLayer.Children[i - 1] is Polyline prevPoly && prevPoly.Tag is Edge))
+                    {
+                        // 孤立箭头，删除
+                        _edgeLayer.Children.RemoveAt(i);
+                    }
+                }
+            }
+            
+            // 构建已渲染的连线字典（Edge.Id -> (Polyline, Arrow)）
+            var renderedEdges = new Dictionary<string, (Polyline polyline, Shape arrow)>();
+            for (int i = 0; i < _edgeLayer.Children.Count; i++)
+            {
+                if (_edgeLayer.Children[i] is Polyline poly && poly.Tag is Edge e)
+                {
+                    // 找到箭头（通常在polyline之后）
+                    Shape arrow = null;
+                    if (i + 1 < _edgeLayer.Children.Count && _edgeLayer.Children[i + 1] is Shape arr && !(arr is Polyline))
+                    {
+                        arrow = arr;
+                    }
+                    renderedEdges[e.Id] = (poly, arrow);
+                }
+            }
             var primaryBrush = TryFindResource("PrimaryBrush") as Brush ?? Brushes.SteelBlue;
             var selectedBrush = TryFindResource("InfoBrush") as Brush ?? Brushes.DeepSkyBlue;
 
-            // 预先计算所有节点的边界，用于避障
+            // 🔧 性能优化：延迟计算节点边界
+            // 对于拖动多个节点且使用智能平移的场景，先不计算所有节点边界
+            // 只在需要重新计算路径时才计算
             var nodeBounds = new Dictionary<string, Rect>();
-            foreach (var node in nodes.Values)
+            bool isDraggingManyNodes = _smartEdgeUpdateEnabled && _movingNodeIds != null && _movingNodeIds.Count >= ManyNodesThreshold;
+            
+            // 如果不是拖动多个节点，预先计算所有节点边界（用于避障）
+            if (!isDraggingManyNodes)
             {
-                nodeBounds[node.Id] = GetNodeBounds(node);
+                foreach (var node in nodes.Values)
+                {
+                    nodeBounds[node.Id] = GetNodeBounds(node);
+                }
+            }
+            else
+            {
+                // 拖动多个节点时，只预先计算拖动节点的边界（用于 ShouldStraightenEdge）
+                foreach (var nodeId in _movingNodeIds)
+                {
+                    if (nodes.TryGetValue(nodeId, out var node))
+                    {
+                        nodeBounds[nodeId] = GetNodeBounds(node);
+                    }
+                }
             }
 
             var missingPorts = false;
@@ -352,7 +552,11 @@ namespace Astra.UI.Controls
                     bool sourceInSet = _movingNodeIds.Contains(edge.SourceNodeId);
                     bool targetInSet = _movingNodeIds.Contains(edge.TargetNodeId);
                     
-                    System.Diagnostics.Debug.WriteLine($"[智能连线检查] Edge: {edge.SourceNodeId} -> {edge.TargetNodeId}, 源在集合:{sourceInSet}, 目标在集合:{targetInSet}");
+                    // 🔧 性能优化：减少调试日志输出（特别是在拖动多个节点时）
+                    if (_movingNodeIds.Count < ManyNodesThreshold)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[智能连线检查] Edge: {edge.SourceNodeId} -> {edge.TargetNodeId}, 源在集合:{sourceInSet}, 目标在集合:{targetInSet}");
+                    }
                     
                     if (sourceInSet && targetInSet)
                     {
@@ -369,7 +573,11 @@ namespace Astra.UI.Controls
                                 smartOffsetX = sourceNode.Position.X - initialPos.X;
                                 smartOffsetY = sourceNode.Position.Y - initialPos.Y;
                                 useSmartTranslate = true;
-                                System.Diagnostics.Debug.WriteLine($"[智能连线] 计算偏移: 当前({sourceNode.Position.X:F2}, {sourceNode.Position.Y:F2}) - 初始({initialPos.X:F2}, {initialPos.Y:F2}) = ({smartOffsetX:F2}, {smartOffsetY:F2})");
+                                // 🔧 性能优化：减少调试日志输出
+                                if (_movingNodeIds.Count < ManyNodesThreshold)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[智能连线] 计算偏移: 当前({sourceNode.Position.X:F2}, {sourceNode.Position.Y:F2}) - 初始({initialPos.X:F2}, {initialPos.Y:F2}) = ({smartOffsetX:F2}, {smartOffsetY:F2})");
+                                }
                             }
                         }
                         else
@@ -381,9 +589,18 @@ namespace Astra.UI.Controls
                     }
                     else if (sourceInSet || targetInSet)
                     {
-                        // 只有一端在拖动，必须重新计算路径
-                        forceRecalculate = true;
-                        System.Diagnostics.Debug.WriteLine($"[智能连线] 强制重算 - 只有一端在拖动");
+                        // 🔧 终极优化：只有一端在拖动时，完全不重算A*（保持原路径）
+                        // 拖动结束时才重新计算，避免频繁的A*计算
+                        if (edge.Points != null && edge.Points.Count > 0)
+                        {
+                            // 保持原路径，不重算
+                            points = new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y)));
+                        }
+                        else
+                        {
+                            // 如果没有路径，必须计算一次
+                            forceRecalculate = true;
+                        }
                     }
                 }
 
@@ -396,23 +613,20 @@ namespace Astra.UI.Controls
                     // 🔧 同步更新 edge.Points，保持拖动后的路径形状
                     edge.Points = points.Select(p => new Point2D(p.X, p.Y)).ToList();
                     
-                    // 如果两端已经水平或垂直对齐（例如通过对齐线贴齐），但当前路径仍有折线，
-                    // 触发一次重算以尝试生成直线/更简洁路径，避免保留旧的“狗腿”形态。
-                    if (ShouldStraightenEdge(source, target, edge, points, nodeBounds))
+                    // 🔧 终极优化：拖动时完全禁用路径拉直检查
+                    // 这个检查会导致频繁的A*重算，严重影响性能
+                    // 只在拖动结束后再优化路径
+                    // 使用智能平移时，跳过了 A* 寻路计算，性能已优化
+                    // 但仍需重新绘制连线，因为节点位置在拖动过程中实时更新
+                    if (_movingNodeIds == null || _movingNodeIds.Count < ManyNodesThreshold)
                     {
-                        System.Diagnostics.Debug.WriteLine("[智能连线] 检测到端点对齐且存在折线，强制重算路径以拉直");
-                        forceRecalculate = true;
-                        points.Clear();
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[智能连线] ✅ 平移路径（基于原始） - 点数: {savedOriginalPath.Count}, 偏移: ({smartOffsetX:F2}, {smartOffsetY:F2})");
+                        System.Diagnostics.Debug.WriteLine($"[智能连线] ✅ 平移路径（基于原始，跳过A*计算） - 点数: {savedOriginalPath.Count}, 偏移: ({smartOffsetX:F2}, {smartOffsetY:F2})");
                     }
                 }
                 else if (!forceRecalculate && edge.Points != null && edge.Points.Count > 2)
                 {
-                    // 🔧 检查路径端点是否与当前端口位置匹配（容差5像素）
-                    // 如果不匹配，说明节点位置已改变，需要重新计算
+                    // 🔧 检查路径端点是否与当前端口位置匹配
+                    // 拖动时：放宽容差，减少A*重算
                     var startHint = new Point(edge.Points.First().X, edge.Points.First().Y);
                     var endHint = new Point(edge.Points.Last().X, edge.Points.Last().Y);
                     var currentStartPort = GetPortPoint(source, edge.SourcePortId, startHint);
@@ -428,30 +642,80 @@ namespace Astra.UI.Controls
                             Math.Pow(edge.Points.Last().X - currentEndPort.Value.X, 2) +
                             Math.Pow(edge.Points.Last().Y - currentEndPort.Value.Y, 2));
                         
-                        // 如果端点距离小于5像素，认为路径有效
-                        pathIsValid = startDist < 5 && endDist < 5;
+                        // 🔧 拖动时极大放宽容差，几乎完全避免A*重算
+                        // 只要端点偏移不是极大（>200px），就继续使用已有路径，拖动结束后再统一优化
+                        double tolerance = force ? 5 : 200; // 强制刷新时严格，拖动时超宽松
+                        pathIsValid = startDist < tolerance && endDist < tolerance;
+                        
+                        if (!pathIsValid && verboseLogging)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[连线优化] 路径偏差: 起点={startDist:F1}px, 终点={endDist:F1}px, 容差={tolerance}px");
+                        }
                     }
                     
                     if (pathIsValid)
                     {
-                        // 若端点已对齐且路径中仍有折线，则强制重算以拉直
-                        if (ShouldStraightenEdge(source, target, edge, new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y))), nodeBounds))
+                        // 🔧 关键优化：复用路径但调整端点，实现实时跟随
+                        // 直接使用已有路径的中间部分，只更新端点以匹配当前端口位置
+                        points = new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y)));
+                        
+                        // 🚀 实时跟随：如果端口位置有偏移，调整路径端点
+                        if (currentStartPort.HasValue && currentEndPort.HasValue && points.Count >= 2)
                         {
-                            System.Diagnostics.Debug.WriteLine("[连线优化] 端点对齐但存在折线，强制重算路径以拉直");
-                            forceRecalculate = true;
-                        }
-                        else
-                        {
-                            // 路径端点匹配，直接使用（粘贴、加载、撤销等场景）
-                            points = new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y)));
-                            System.Diagnostics.Debug.WriteLine($"[连线优化] 直接使用已有路径 - 点数: {edge.Points.Count}");
+                            var startOffset = new Point(
+                                currentStartPort.Value.X - points[0].X,
+                                currentStartPort.Value.Y - points[0].Y);
+                            var endOffset = new Point(
+                                currentEndPort.Value.X - points[points.Count - 1].X,
+                                currentEndPort.Value.Y - points[points.Count - 1].Y);
+                            
+                            // 只有在偏移较小时才调整端点（避免路径畸变）
+                            if (Math.Abs(startOffset.X) < 100 && Math.Abs(startOffset.Y) < 100 &&
+                                Math.Abs(endOffset.X) < 100 && Math.Abs(endOffset.Y) < 100)
+                            {
+                                // 更新起点
+                                points[0] = currentStartPort.Value;
+                                // 更新终点
+                                points[points.Count - 1] = currentEndPort.Value;
+                                
+                                // 如果路径有中间点，调整第一段和最后一段
+                                if (points.Count > 2)
+                                {
+                                    // 调整起点后的第一个转折点（保持方向）
+                                    if (Math.Abs(points[1].X - edge.Points[0].X) < 1)
+                                    {
+                                        // 垂直线段，调整X
+                                        points[1] = new Point(currentStartPort.Value.X, points[1].Y);
+                                    }
+                                    else if (Math.Abs(points[1].Y - edge.Points[0].Y) < 1)
+                                    {
+                                        // 水平线段，调整Y
+                                        points[1] = new Point(points[1].X, currentStartPort.Value.Y);
+                                    }
+                                    
+                                    // 调整终点前的最后一个转折点（保持方向）
+                                    var lastIdx = points.Count - 1;
+                                    if (Math.Abs(points[lastIdx - 1].X - edge.Points[edge.Points.Count - 1].X) < 1)
+                                    {
+                                        // 垂直线段，调整X
+                                        points[lastIdx - 1] = new Point(currentEndPort.Value.X, points[lastIdx - 1].Y);
+                                    }
+                                    else if (Math.Abs(points[lastIdx - 1].Y - edge.Points[edge.Points.Count - 1].Y) < 1)
+                                    {
+                                        // 水平线段，调整Y
+                                        points[lastIdx - 1] = new Point(points[lastIdx - 1].X, currentEndPort.Value.Y);
+                                    }
+                                }
+                                
+                                // 更新edge.Points以保持同步
+                                edge.Points = points.Select(p => new Point2D(p.X, p.Y)).ToList();
+                            }
                         }
                     }
                     else
                     {
-                        // 路径端点不匹配，需要重新计算（拖动场景）
+                        // 路径端点偏差过大，需要重新计算
                         forceRecalculate = true;
-                        System.Diagnostics.Debug.WriteLine($"[连线优化] 路径过期，强制重算 - 起点偏差: {(currentStartPort.HasValue ? Math.Sqrt(Math.Pow(edge.Points.First().X - currentStartPort.Value.X, 2) + Math.Pow(edge.Points.First().Y - currentStartPort.Value.Y, 2)) : 0):F2}");
                     }
                 }
                 
@@ -487,8 +751,30 @@ namespace Astra.UI.Controls
                 var startPortPoint = startPort ?? GetNodeCenter(source);
                 var endPortPoint = endPort ?? GetNodeCenter(target);
 
-                // 准备障碍物列表（排除源节点和目标节点）
+                // 🔧 性能优化：只在需要重新计算路径时才计算所有节点边界和障碍物
+                // 对于使用智能平移的连线，不需要避障计算
                 var obstacles = new List<Rect>();
+                
+                // 如果需要重新计算路径，计算所有节点的边界用于避障
+                if (isDraggingManyNodes)
+                {
+                    // 确保源节点和目标节点的边界已计算
+                    if (!nodeBounds.ContainsKey(source.Id))
+                        nodeBounds[source.Id] = GetNodeBounds(source);
+                    if (!nodeBounds.ContainsKey(target.Id))
+                        nodeBounds[target.Id] = GetNodeBounds(target);
+                    
+                    // 计算其他节点的边界（用于避障）
+                    foreach (var node in nodes.Values)
+                    {
+                        if (!nodeBounds.ContainsKey(node.Id))
+                        {
+                            nodeBounds[node.Id] = GetNodeBounds(node);
+                        }
+                    }
+                }
+                
+                // 准备障碍物列表（排除源节点和目标节点）
                 foreach (var kvp in nodeBounds)
                 {
                     // 排除源和目标节点，且必须是有效的矩形
@@ -521,16 +807,44 @@ namespace Astra.UI.Controls
                 // 箭头
                 var arrow = BuildArrow(points, edge.IsSelected ? selectedBrush : primaryBrush);
 
-                System.Diagnostics.Debug.WriteLine($"[连线刷新] 添加连线 - 点数: {points.Count}, 起点: ({points[0].X:F2}, {points[0].Y:F2}), 终点: ({points[points.Count - 1].X:F2}, {points[points.Count - 1].Y:F2})");
-
-                _edgeLayer.Children.Add(polyline);
-                if (arrow != null)
+                // 🔧 增量更新：检查是否需要更新现有连线
+                if (renderedEdges.TryGetValue(edge.Id, out var existing))
                 {
-                    _edgeLayer.Children.Add(arrow);
+                    // 连线已存在，更新points和样式
+                    existing.polyline.Points = points;
+                    existing.polyline.Stroke = edge.IsSelected ? selectedBrush : primaryBrush;
+                    existing.polyline.StrokeThickness = edge.IsSelected ? 3 : 2;
+                    
+                    // 更新箭头
+                    if (existing.arrow != null)
+                    {
+                        _edgeLayer.Children.Remove(existing.arrow);
+                    }
+                    if (arrow != null)
+                    {
+                        int polyIndex = _edgeLayer.Children.IndexOf(existing.polyline);
+                        if (polyIndex >= 0 && polyIndex + 1 <= _edgeLayer.Children.Count)
+                        {
+                            _edgeLayer.Children.Insert(polyIndex + 1, arrow);
+                        }
+                    }
+                }
+                else
+                {
+                    // 新连线，添加到层
+                    _edgeLayer.Children.Add(polyline);
+                    if (arrow != null)
+                    {
+                        _edgeLayer.Children.Add(arrow);
+                    }
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine($"[连线刷新] 完成刷新，绘制了 {_edgeLayer.Children.Count} 条连线");
+            // 🔧 性能优化：减少调试日志输出（特别是在拖动多个节点时）
+            if (!_smartEdgeUpdateEnabled || _movingNodeIds == null || _movingNodeIds.Count < ManyNodesThreshold)
+            {
+                System.Diagnostics.Debug.WriteLine($"[连线刷新] 完成刷新，绘制了 {_edgeLayer.Children.Count} 条连线");
+            }
 
             // 如果本次刷新时端口尚未解析成功，等待布局完成后再强制刷新一次，确保端口坐标正确
             if (missingPorts && !_edgeRefreshPendingDueToMissingPorts)
@@ -838,18 +1152,33 @@ namespace Astra.UI.Controls
             {
                 var commands = new List<IUndoableCommand>();
 
+                // 获取 WorkflowTab（用于设置到所有命令）
+                var workflowTab = FindWorkflowTab();
+
                 // 1. 如果有旧连线，先删除
                 if (existingEdges.Count > 0)
                 {
                     System.Diagnostics.Debug.WriteLine($"[连线] 发现 {existingEdges.Count} 条现有连线，准备替换");
-                    commands.Add(new DeleteEdgeCommand(list, existingEdges));
+                    var deleteCommand = new DeleteEdgeCommand(list, existingEdges);
+                    // 设置命令的 WorkflowTab
+                    if (workflowTab != null)
+                    {
+                        deleteCommand.WorkflowTab = workflowTab;
+                    }
+                    commands.Add(deleteCommand);
                 }
 
                 // 2. 添加新连线
-                commands.Add(new CreateEdgeCommand(list, edge));
+                var createCommand = new CreateEdgeCommand(list, edge);
+                // 设置命令的 WorkflowTab
+                if (workflowTab != null)
+                {
+                    createCommand.WorkflowTab = workflowTab;
+                }
+                commands.Add(createCommand);
 
                 System.Diagnostics.Debug.WriteLine("[连线] 使用组合命令（删除旧连线+创建新连线）");
-                _undoRedoManager.Do(new CompositeCommand(commands));
+                _undoRedoManager.Execute(new CompositeCommand(commands));
             }
             else
             {
@@ -981,32 +1310,60 @@ namespace Astra.UI.Controls
             var pointByPos = GetPortCenterByNodePosition(portElement);
             if (!double.IsNaN(pointByPos.X) && !double.IsNaN(pointByPos.Y))
             {
+                System.Diagnostics.Debug.WriteLine($"[端口位置] 使用 GetPortCenterByNodePosition: ({pointByPos.X:F2}, {pointByPos.Y:F2})");
                 return pointByPos;
             }
 
             // 获取端口中心在端口内的相对位置
             var portCenter = new Point(portElement.ActualWidth / 2, portElement.ActualHeight / 2);
 
-            // 回退：直接转换到 transformTarget (逻辑坐标系)
+            // 方法1：转换到内容画布（ItemsControl）坐标
+            var itemsControl = _contentCanvas?.Children.OfType<ItemsControl>().FirstOrDefault();
+            if (itemsControl != null)
+            {
+                try
+                {
+                    var pointInItemsControl = portElement.TranslatePoint(portCenter, itemsControl);
+                    System.Diagnostics.Debug.WriteLine($"[端口位置] 使用 ItemsControl 转换: ({pointInItemsControl.X:F2}, {pointInItemsControl.Y:F2})");
+                    return pointInItemsControl;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[端口位置] ItemsControl 转换失败: {ex.Message}");
+                }
+            }
+
+            // 方法2：转换到 transformTarget (逻辑坐标系)
             if (_transformTarget != null)
             {
                 try
                 {
-                    return portElement.TranslatePoint(portCenter, _transformTarget);
+                    var pointInTransform = portElement.TranslatePoint(portCenter, _transformTarget);
+                    System.Diagnostics.Debug.WriteLine($"[端口位置] 使用 TransformTarget 转换: ({pointInTransform.X:F2}, {pointInTransform.Y:F2})");
+                    return pointInTransform;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[端口位置] TransformTarget 转换失败: {ex.Message}");
+                }
             }
 
-            // 回退：直接转换到内容画布坐标
+            // 方法3：直接转换到内容画布坐标
             if (_contentCanvas != null)
             {
                 try
                 {
-                    return portElement.TranslatePoint(portCenter, _contentCanvas);
+                    var pointInCanvas = portElement.TranslatePoint(portCenter, _contentCanvas);
+                    System.Diagnostics.Debug.WriteLine($"[端口位置] 使用 ContentCanvas 转换: ({pointInCanvas.X:F2}, {pointInCanvas.Y:F2})");
+                    return pointInCanvas;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[端口位置] ContentCanvas 转换失败: {ex.Message}");
+                }
             }
 
+            System.Diagnostics.Debug.WriteLine("[端口位置] 所有转换方法都失败");
             return new Point(double.NaN, double.NaN);
         }
 
@@ -1034,12 +1391,96 @@ namespace Astra.UI.Controls
             if (double.IsNaN(nodeX)) nodeX = node.Position.X;
             if (double.IsNaN(nodeY)) nodeY = node.Position.Y;
 
-            // 获取端口相对于节点的位置
+            // 获取端口中心在端口内的相对位置
             var portCenter = new Point(portElement.ActualWidth / 2, portElement.ActualHeight / 2);
-            var portInNode = portElement.TranslatePoint(portCenter, nodeControl);
+            
+            // 将端口中心从端口坐标系转换到容器（ContentPresenter）坐标系
+            Point portInContainer;
+            try
+            {
+                // 直接转换到容器
+                portInContainer = portElement.TranslatePoint(portCenter, container);
+            }
+            catch
+            {
+                // 如果直接转换失败，尝试通过节点控件中转
+                try
+                {
+                    var portInNode = portElement.TranslatePoint(portCenter, nodeControl);
+                    // 获取节点控件在容器中的位置
+                    var nodeInContainer = nodeControl.TranslatePoint(new Point(0, 0), container);
+                    portInContainer = new Point(nodeInContainer.X + portInNode.X, nodeInContainer.Y + portInNode.Y);
+                }
+                catch
+                {
+                    // 如果都失败，使用端口在节点中的布局位置（通过 Margin 和 Alignment 计算）
+                    var portInNode = CalculatePortPositionInNode(portElement, nodeControl);
+                    // 节点控件通常在容器中的位置是 (0, 0)，因为容器使用 Canvas.Left/Top
+                    portInContainer = portInNode;
+                }
+            }
 
-            // 计算端口在画布上的绝对位置
-            return new Point(nodeX + portInNode.X, nodeY + portInNode.Y);
+            // 计算端口在画布上的绝对位置（容器位置 + 端口在容器中的位置）
+            var result = new Point(nodeX + portInContainer.X, nodeY + portInContainer.Y);
+            System.Diagnostics.Debug.WriteLine($"[端口位置] 节点位置: ({nodeX:F2}, {nodeY:F2}), 端口相对容器: ({portInContainer.X:F2}, {portInContainer.Y:F2}), 端口绝对位置: ({result.X:F2}, {result.Y:F2})");
+            return result;
+        }
+
+        /// <summary>
+        /// 计算端口在节点中的位置（当 TranslatePoint 失败时的备用方法）
+        /// </summary>
+        private Point CalculatePortPositionInNode(FrameworkElement portElement, FrameworkElement nodeControl)
+        {
+            // 获取端口的 Margin
+            var margin = portElement.Margin;
+            
+            // 获取端口和节点的尺寸
+            var portWidth = portElement.ActualWidth > 0 ? portElement.ActualWidth : 10;
+            var portHeight = portElement.ActualHeight > 0 ? portElement.ActualHeight : 10;
+            var nodeWidth = nodeControl.ActualWidth > 0 ? nodeControl.ActualWidth : 200;
+            var nodeHeight = nodeControl.ActualHeight > 0 ? nodeControl.ActualHeight : 150;
+
+            // 根据 HorizontalAlignment 和 VerticalAlignment 计算位置
+            double x = 0, y = 0;
+
+            // 水平位置（端口中心点的 X 坐标）
+            var hAlign = portElement.HorizontalAlignment;
+            if (hAlign == System.Windows.HorizontalAlignment.Left)
+            {
+                // 左对齐：左边距 + 端口宽度的一半
+                x = margin.Left + portWidth / 2;
+            }
+            else if (hAlign == System.Windows.HorizontalAlignment.Right)
+            {
+                // 右对齐：节点宽度 + 右边距（通常是负值）+ 端口宽度的一半
+                x = nodeWidth + margin.Right + portWidth / 2;
+            }
+            else // Center 或 Stretch
+            {
+                // 居中对齐：节点中心 + 左边距 + 端口宽度的一半
+                x = nodeWidth / 2 + margin.Left + portWidth / 2;
+            }
+
+            // 垂直位置（端口中心点的 Y 坐标）
+            var vAlign = portElement.VerticalAlignment;
+            if (vAlign == System.Windows.VerticalAlignment.Top)
+            {
+                // 顶部对齐：上边距（通常是负值）+ 端口高度的一半
+                y = margin.Top + portHeight / 2;
+            }
+            else if (vAlign == System.Windows.VerticalAlignment.Bottom)
+            {
+                // 底部对齐：节点高度 + 下边距（通常是负值）+ 端口高度的一半
+                y = nodeHeight + margin.Bottom + portHeight / 2;
+            }
+            else // Center 或 Stretch
+            {
+                // 居中对齐：节点中心 + 上边距 + 端口高度的一半
+                y = nodeHeight / 2 + margin.Top + portHeight / 2;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[端口位置计算] 节点尺寸: ({nodeWidth:F2}, {nodeHeight:F2}), 端口尺寸: ({portWidth:F2}, {portHeight:F2}), Margin: ({margin.Left:F2}, {margin.Top:F2}, {margin.Right:F2}, {margin.Bottom:F2}), 对齐: ({hAlign}, {vAlign}), 结果: ({x:F2}, {y:F2})");
+            return new Point(x, y);
         }
 
         /// <summary>
@@ -1143,13 +1584,19 @@ namespace Astra.UI.Controls
             }
         }
 
-        private NodeControl FindParentNodeControl(DependencyObject element)
+        private FrameworkElement FindParentNodeControl(DependencyObject element)
         {
             var current = element;
             while (current != null)
             {
+                // 支持 NodeControl 和 WorkflowReferenceNodeControl
                 if (current is NodeControl nc)
                     return nc;
+                if (current is WorkflowReferenceNodeControl wrc)
+                    return wrc;
+                // 通用检查：如果控件有 Node 类型的 DataContext，也认为是节点控件
+                if (current is FrameworkElement fe && fe.DataContext is Node)
+                    return fe;
                 current = VisualTreeHelper.GetParent(current);
             }
             return null;

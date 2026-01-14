@@ -55,8 +55,9 @@
                                     Panel.ZIndex="1"
                                     AllowDrop="True"
                                     Background="Transparent">
-                            <ItemsControl ItemsSource="{TemplateBinding ItemsSource}"
-                                          ItemTemplate="{TemplateBinding ItemTemplate}"
+                            <local:TemplateSelectorItemsControl ItemsSource="{TemplateBinding ItemsSource}"
+                                          ItemTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                          x:Name="PART_ItemsControl"
                                           AllowDrop="True">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -79,7 +80,7 @@
                                         </Setter>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
-                            </ItemsControl>
+                            </local:TemplateSelectorItemsControl>
                         </Canvas>
 
                         <!-- 对齐辅助线层 -->
@@ -302,7 +303,7 @@
 
                         <!-- 状态栏 -->
                         <Border VerticalAlignment="Bottom"
-                                HorizontalAlignment="Left"
+                                HorizontalAlignment="Center"
                                 Margin="12"
                                 Padding="10,6"
                                 Background="{DynamicResource SurfaceBrush}"

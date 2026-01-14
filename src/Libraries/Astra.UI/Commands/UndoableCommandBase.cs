@@ -15,6 +15,7 @@ namespace Astra.UI.Commands
     public abstract class UndoableCommandBase : IUndoableCommand
     {
         private readonly string _description;
+        private readonly DateTime _executionTime;
 
         /// <summary>
         /// 构造函数
@@ -23,6 +24,47 @@ namespace Astra.UI.Commands
         protected UndoableCommandBase(string description)
         {
             _description = description ?? throw new ArgumentNullException(nameof(description));
+            _executionTime = DateTime.Now; // 记录命令创建时间（即执行时间）
+        }
+
+        /// <summary>
+        /// 命令执行时间（用于按时间顺序撤销）
+        /// </summary>
+        public DateTime ExecutionTime => _executionTime;
+
+        /// <summary>
+        /// 命令所属的流程标签页（用于撤销/重做时切换到对应的标签页）
+        /// </summary>
+        public UI.Models.WorkflowTab WorkflowTab { get; set; }
+
+        /// <summary>
+        /// 获取命令相关的节点（用于查找对应的 WorkflowTab）
+        /// 子类可以重写此方法返回命令操作的节点
+        /// </summary>
+        /// <returns>命令相关的节点，如果没有则返回 null</returns>
+        public virtual Core.Nodes.Models.Node GetRelatedNode()
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// 获取命令相关的节点集合（用于查找对应的 WorkflowTab）
+        /// 子类可以重写此方法返回命令操作的节点集合
+        /// </summary>
+        /// <returns>命令相关的节点集合，如果没有则返回 null</returns>
+        public virtual System.Collections.IList GetRelatedNodeCollection()
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// 获取命令相关的连线集合（用于查找对应的 WorkflowTab）
+        /// 子类可以重写此方法返回命令操作的连线集合
+        /// </summary>
+        /// <returns>命令相关的连线集合，如果没有则返回 null</returns>
+        public virtual System.Collections.IList GetRelatedEdgeCollection()
+        {
+            return null;
         }
 
         /// <summary>
@@ -73,7 +115,7 @@ namespace Astra.UI.Commands
         /// <summary>
         /// ICommand.Execute 实现
         /// </summary>
-        void ICommand.Execute(object? parameter)
+        public void Execute(object? parameter)
         {
             Execute();
         }

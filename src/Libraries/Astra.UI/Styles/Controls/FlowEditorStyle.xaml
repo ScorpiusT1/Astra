@@ -7,23 +7,42 @@
     <Style TargetType="{x:Type local:FlowEditor}">
         <Setter Property="Background"
                 Value="{DynamicResource BrushBackground}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type local:FlowEditor}">
-                    <Grid Background="{TemplateBinding Background}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
+                    <Grid Background="{TemplateBinding Background}"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch">
 
+
+
+                        <Border Panel.ZIndex="100"
+                                Background="Transparent"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center">
+                            <local:NodeToolBox x:Name="PART_NodeToolBox"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Left"
+                                               Width="{TemplateBinding ToolBoxWidth}"
+                                               ItemsSource="{TemplateBinding ToolBoxItemsSource}" />
+
+                            <!-- 发光效果：使用 DropShadowEffect 实现（黑色发光） -->
+                            <Border.Effect>
+                                <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                                                  Opacity="0.3"
+                                                  BlurRadius="30"
+                                                  ShadowDepth="0"
+                                                  Direction="0" />
+                            </Border.Effect>
+                        </Border>
                         <!-- 工具箱区域 -->
-                        <local:NodeToolBox x:Name="PART_NodeToolBox"
-                                              Width="{TemplateBinding ToolBoxWidth}"
-                                              ItemsSource="{TemplateBinding ToolBoxItemsSource}" />
+
 
                         <!-- 分割线 - 明显的视觉分隔 -->
-                        <Border Grid.Column="1"
+                        <!--
+                        <Border Grid.Column="1" 
                                 Width="2"
                                
                                 Background="{DynamicResource BorderBrush}"
@@ -35,14 +54,15 @@
                                                   ShadowDepth="2"
                                                   Direction="90" />
                             </Border.Effect>
-                        </Border>
+                        </Border>-->
 
                         <!-- 画布区域 -->
                         <local:InfiniteCanvas x:Name="PART_InfiniteCanvas"
-                                                 Grid.Column="2"
-                                                 Background="{TemplateBinding Background}"
-                                                 ItemsSource="{TemplateBinding CanvasItemsSource}"
-                                                 AllowDrop="True" />
+                                              Background="{TemplateBinding Background}"
+                                              ItemsSource="{TemplateBinding CanvasItemsSource}"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch"
+                                              AllowDrop="True" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

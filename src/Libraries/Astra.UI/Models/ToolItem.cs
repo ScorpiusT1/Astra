@@ -1,7 +1,7 @@
 using Astra.UI.Controls;
 using System.ComponentModel;
 
-namespace Astra.Models
+namespace Astra.UI.Models
 {
     /// <summary>
     /// 工具项实现

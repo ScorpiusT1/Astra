@@ -1,0 +1,381 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:Astra.UI.Controls">
+
+    <!-- 主流程节点控件样式 WorkflowReferenceNodeControl -->
+    <!-- ================================================ -->
+    <Style TargetType="{x:Type local:WorkflowReferenceNodeControl}">
+        <Setter Property="MinWidth" Value="200" />
+        <Setter Property="MinHeight" Value="150" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:WorkflowReferenceNodeControl}">
+                    <Grid>
+                        <Border x:Name="MainBorder"
+                               Background="{DynamicResource SurfaceBrush}"
+                               BorderBrush="{DynamicResource BorderBrush}"
+                               BorderThickness="1"
+                               CornerRadius="8"
+                               Padding="0"
+                               MinWidth="200"
+                               MinHeight="150">
+                            <Border.Effect>
+                                <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                                                  BlurRadius="8"
+                                                  ShadowDepth="2"
+                                                  Opacity="0.15" />
+                            </Border.Effect>
+                            
+                            <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />  <!-- 头部：红色圆点 + 标题 + 窗口按钮 -->
+                                <RowDefinition Height="*" />     <!-- 内容：图标按钮 + 统计信息 + 开关 -->
+                            </Grid.RowDefinitions>
+                            
+                            <!-- 头部区域（深灰色背景） -->
+                            <Border Grid.Row="0"
+                                   Background="{DynamicResource ThirdlyRegionBrush}"
+                                   CornerRadius="8,8,0,0"
+                                   Padding="12,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <!-- 红色圆点 -->
+                                    <Ellipse Grid.Column="0"
+                                            Width="8"
+                                            Height="8"
+                                            Fill="{DynamicResource DangerBrush}"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0" />
+                                    
+                                    <!-- 标题 -->
+                                    <TextBlock x:Name="PART_TitleTextBlock"
+                                              Grid.Column="1"
+                                              Text="{TemplateBinding SubWorkflowName}"
+                                              FontSize="14"
+                                              FontWeight="SemiBold"
+                                              Foreground="{DynamicResource PrimaryTextBrush}"
+                                              VerticalAlignment="Center" />
+                                    
+                                    <!-- 窗口按钮（两个重叠的矩形图标） -->
+                                    <Button x:Name="PART_MaximizeButton"
+                                           Grid.Column="2"
+                                           Content="⛶"
+                                           ToolTip="最大化"
+                                           Background="Transparent"
+                                           BorderThickness="0"
+                                           Padding="4"
+                                           Cursor="Hand"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SecondaryTextBrush}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                            
+                            <!-- 内容区域（浅灰色背景） -->
+                            <Border Grid.Row="1"
+                                   Background="{DynamicResource SecondaryRegionBrush}"
+                                   CornerRadius="0,0,8,8"
+                                   Padding="12,12">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />  <!-- 图标按钮行 -->
+                                        <RowDefinition Height="Auto" />  <!-- 统计信息行 -->
+                                    </Grid.RowDefinitions>
+                                    
+                                    <!-- 第一行：图标按钮 -->
+                                    <StackPanel Grid.Row="0"
+                                               Orientation="Horizontal"
+                                               HorizontalAlignment="Left"
+                                               Margin="0,0,0,12">
+                                        <!-- 播放按钮 -->
+                                        <Button x:Name="PART_ExecuteButton"
+                                               Content="▶"
+                                               ToolTip="执行"
+                                               Width="32"
+                                               Height="32"
+                                               Background="{DynamicResource SurfaceBrush}"
+                                               BorderBrush="{DynamicResource BorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="0"
+                                              
+                                               Cursor="Hand"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                               Margin="0,0,8,0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource LightPrimaryBrush}" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        
+                                        <!-- 刷新按钮 -->
+                                        <Button x:Name="PART_RefreshButton"
+                                               Content="↻"
+                                               ToolTip="刷新"
+                                               Width="32"
+                                               Height="32"
+                                               Background="{DynamicResource SurfaceBrush}"
+                                               BorderBrush="{DynamicResource BorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="0"
+                                             
+                                               Cursor="Hand"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                               Margin="0,0,8,0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource LightPrimaryBrush}" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        
+                                        <!-- 更多选项按钮 -->
+                                        <Button x:Name="PART_MoreOptionsButton"
+                                               Content="⋯"
+                                               ToolTip="更多选项"
+                                               Width="32"
+                                               Height="32"
+                                               Background="{DynamicResource SurfaceBrush}"
+                                               BorderBrush="{DynamicResource BorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="0"
+                                             
+                                               Cursor="Hand"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                               Margin="0,0,8,0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource LightPrimaryBrush}" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        
+                                        <!-- 图表/设置按钮 -->
+                                        <Button x:Name="PART_StatisticsButton"
+                                               Content="📊"
+                                               ToolTip="统计信息"
+                                               Width="32"
+                                               Height="32"
+                                               Background="{DynamicResource SurfaceBrush}"
+                                               BorderBrush="{DynamicResource BorderBrush}"
+                                               BorderThickness="1"
+                                               Padding="0"
+                                               
+                                               Cursor="Hand"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource PrimaryTextBrush}">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource LightPrimaryBrush}" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                    
+                                    <!-- 第二行：统计信息和开关 -->
+                                    <Grid Grid.Row="1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <!-- 左侧：统计信息 -->
+                                        <StackPanel Grid.Column="0"
+                                                   Orientation="Vertical"
+                                                   HorizontalAlignment="Left">
+                                            <TextBlock x:Name="PART_ExecutionCountText"
+                                                      Text="0次"
+                                                      FontSize="14"
+                                                      FontWeight="SemiBold"
+                                                      Foreground="{DynamicResource PrimaryTextBrush}"
+                                                      Margin="0,0,0,4" />
+                                            <TextBlock x:Name="PART_ExecutionTimeText"
+                                                      Text="{TemplateBinding ExecutionTime}"
+                                                      FontSize="12"
+                                                      Foreground="{DynamicResource SecondaryTextBrush}" />
+                                        </StackPanel>
+                                        
+                                        <!-- 右侧：开关 -->
+                                        <ToggleButton x:Name="PART_EnabledToggle"
+                                                     Grid.Column="1"
+                                                     Width="48"
+                                                     Height="24"
+                                                     HorizontalAlignment="Right"
+                                                     VerticalAlignment="Center"
+                                                     IsChecked="{TemplateBinding IsEnabled}">
+                                            <ToggleButton.Style>
+                                                <Style TargetType="ToggleButton">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                <Border x:Name="border"
+                                                                       Background="{DynamicResource WarningBrush}"
+                                                                       CornerRadius="12"
+                                                                       BorderThickness="0">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <Ellipse x:Name="thumb"
+                                                                                Grid.Column="0"
+                                                                                Width="20"
+                                                                                Height="20"
+                                                                                Margin="2"
+                                                                                Fill="{DynamicResource SurfaceBrush}"
+                                                                                HorizontalAlignment="Left" />
+                                                                    </Grid>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsChecked" Value="True">
+                                                                        <Setter TargetName="thumb" Property="Grid.Column" Value="1" />
+                                                                        <Setter TargetName="thumb" Property="HorizontalAlignment" Value="Right" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ToggleButton.Style>
+                                        </ToggleButton>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- 四个端口 -->
+                        <local:PortControl x:Name="PortTop"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Top"
+                                           Margin="0,-5,0,0"
+                                           Opacity="0"
+                                           IsHitTestVisible="True" />
+
+                        <local:PortControl x:Name="PortBottom"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,0,-5"
+                                           Opacity="0"
+                                           IsHitTestVisible="True" />
+
+                        <local:PortControl x:Name="PortLeft"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Center"
+                                           Margin="-5,0,0,0"
+                                           Opacity="0"
+                                           IsHitTestVisible="True" />
+
+                        <local:PortControl x:Name="PortRight"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,-5,0"
+                                           Opacity="0"
+                                           IsHitTestVisible="True" />
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                    <!-- 显示端口 -->
+                    <Trigger Property="ShowPorts" Value="True">
+                        <Trigger.EnterActions>
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="PortTop"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1"
+                                                     Duration="0:0:0.2" />
+                                    <DoubleAnimation Storyboard.TargetName="PortBottom"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1"
+                                                     Duration="0:0:0.2" />
+                                    <DoubleAnimation Storyboard.TargetName="PortLeft"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1"
+                                                     Duration="0:0:0.2" />
+                                    <DoubleAnimation Storyboard.TargetName="PortRight"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1"
+                                                     Duration="0:0:0.2" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </Trigger.EnterActions>
+                        <Trigger.ExitActions>
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="PortTop"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0"
+                                                     Duration="0:0:0.2" />
+                                    <DoubleAnimation Storyboard.TargetName="PortBottom"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0"
+                                                     Duration="0:0:0.2" />
+                                    <DoubleAnimation Storyboard.TargetName="PortLeft"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0"
+                                                     Duration="0:0:0.2" />
+                                    <DoubleAnimation Storyboard.TargetName="PortRight"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0"
+                                                     Duration="0:0:0.2" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </Trigger.ExitActions>
+                    </Trigger>
+                    
+                    <!-- 选中状态：添加高亮边框 -->
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter TargetName="MainBorder"
+                               Property="BorderBrush"
+                               Value="{DynamicResource PrimaryBrush}" />
+                        <Setter TargetName="MainBorder"
+                               Property="BorderThickness"
+                               Value="2" />
+                    </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    
+</ResourceDictionary>
+

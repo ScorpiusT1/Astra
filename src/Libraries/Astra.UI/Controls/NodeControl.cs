@@ -1,5 +1,6 @@
 ﻿using Astra.Core.Nodes.Geometry;
 using Astra.Core.Nodes.Models;
+using Astra.UI.Commands;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -1135,47 +1136,20 @@ namespace Astra.UI.Controls
 
             if (undoManager != null)
             {
-                undoManager.Do(new RenameNodeCommand(node, this, oldTitle, newTitle));
+                var command = new Commands.RenameNodeCommand(node, this, oldTitle, newTitle);
+                // 设置命令的 WorkflowTab
+                var workflowTab = FindWorkflowTab();
+                if (workflowTab != null)
+                {
+                    command.WorkflowTab = workflowTab;
+                }
+                undoManager.Execute(command);
             }
             else
             {
                 // 无撤销管理器，直接应用
                 node.Name = newTitle;
                 Title = newTitle;
-            }
-        }
-
-        /// <summary>
-        /// 重命名命令，支持撤销/重做
-        /// </summary>
-        private class RenameNodeCommand : IUndoableCommand
-        {
-            private readonly Node _node;
-            private readonly NodeControl _control;
-            private readonly string _oldName;
-            private readonly string _newName;
-
-            public RenameNodeCommand(Node node, NodeControl control, string oldName, string newName)
-            {
-                _node = node;
-                _control = control;
-                _oldName = oldName;
-                _newName = newName;
-            }
-
-            public void Execute() => Apply(_newName);
-            public void Undo() => Apply(_oldName);
-
-            private void Apply(string value)
-            {
-                if (_node != null)
-                {
-                    _node.Name = value;
-                }
-                if (_control != null)
-                {
-                    _control.Title = value;
-                }
             }
         }
 
@@ -1371,6 +1345,32 @@ namespace Astra.UI.Controls
                 if (parent is InfiniteCanvas canvas)
                 {
                     return canvas;
+                }
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 查找父级的 FlowEditor 并获取其 WorkflowTab
+        /// </summary>
+        private UI.Models.WorkflowTab FindWorkflowTab()
+        {
+            var parent = VisualTreeHelper.GetParent(this);
+            while (parent != null)
+            {
+                if (parent is InfiniteCanvas canvas)
+                {
+                    // 继续向上查找 FlowEditor
+                    var flowEditorParent = VisualTreeHelper.GetParent(canvas);
+                    while (flowEditorParent != null)
+                    {
+                        if (flowEditorParent is FlowEditor flowEditor)
+                        {
+                            return flowEditor.DataContext as UI.Models.WorkflowTab;
+                        }
+                        flowEditorParent = VisualTreeHelper.GetParent(flowEditorParent);
+                    }
                 }
                 parent = VisualTreeHelper.GetParent(parent);
             }

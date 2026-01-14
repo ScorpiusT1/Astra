@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 
-namespace Astra.Converters
+namespace Astra.UI.Converters
 {
     /// <summary>
     /// 将对象转换为可见性（null = Collapsed, not null = Visible）

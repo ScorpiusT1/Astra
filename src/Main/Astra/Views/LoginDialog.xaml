@@ -1,7 +1,8 @@
 <Window x:Class="Astra.Views.LoginDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:core="clr-namespace:Astra.Core.Access;assembly=Astra.Core"
+       
+       
         xmlns:converters="clr-namespace:Astra.Converters"
         xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
         Title="用户登录"

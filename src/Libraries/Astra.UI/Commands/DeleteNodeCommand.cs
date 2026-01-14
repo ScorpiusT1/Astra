@@ -1,93 +1,110 @@
-using Astra.Core.Nodes.Geometry;
 using Astra.Core.Nodes.Models;
-using System;
-using System.Collections.ObjectModel;
+using System.Collections;
 
 namespace Astra.UI.Commands
 {
     /// <summary>
-    /// 删除节点命令 - 支持撤销/重做
-    /// 
-    /// 设计原则：
-    /// 1. 单一职责原则：专门负责节点的删除
-    /// 2. 开闭原则：通过继承基类扩展，无需修改基类
-    /// 3. 备忘录模式：保存节点状态以便撤销时恢复
+    /// 删除节点命令（同时删除相关连线，画布版本，使用 IList）
     /// </summary>
     public class DeleteNodeCommand : UndoableCommandBase
     {
-        private readonly Node _node;
-        private readonly ObservableCollection<Node> _nodeCollection;
-        private readonly int _originalIndex;
-        private readonly Point2D _originalPosition;
+        private readonly IList _nodes;
+        private readonly IList _edges;
+        private readonly List<object> _deletedNodes;
+        private readonly List<(object edge, int index)> _deletedEdges; // 记录边和索引，用于恢复
 
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="node">要删除的节点</param>
-        /// <param name="nodeCollection">节点集合</param>
-        public DeleteNodeCommand(Node node, ObservableCollection<Node> nodeCollection)
-            : base($"删除节点 '{node?.Name ?? "未知"}'")
+        public DeleteNodeCommand(
+            IList nodes,
+            IList edges,
+            IEnumerable<object> nodesToDelete)
+            : base($"删除节点")
         {
-            _node = node ?? throw new ArgumentNullException(nameof(node));
-            _nodeCollection = nodeCollection ?? throw new ArgumentNullException(nameof(nodeCollection));
-            
-            // 保存原始信息以便撤销（备忘录模式）
-            _originalIndex = _nodeCollection.IndexOf(_node);
-            // Point2D 是值类型，直接使用即可（如果未设置，默认值为 (0, 0)）
-            _originalPosition = _node.Position;
+            _nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
+            _edges = edges; // 允许为null
+            _deletedNodes = nodesToDelete != null ? new List<object>(nodesToDelete) : throw new ArgumentNullException(nameof(nodesToDelete));
+            _deletedEdges = new List<(object, int)>();
         }
 
-        /// <summary>
-        /// 是否可以执行
-        /// </summary>
-        public override bool CanExecute(object? parameter)
-        {
-            return _node != null && 
-                   _nodeCollection != null && 
-                   _nodeCollection.Contains(_node);
-        }
+        public override bool CanExecute(object? parameter) => _nodes != null && _deletedNodes != null && _deletedNodes.Count > 0;
 
-        /// <summary>
-        /// 是否可以撤销
-        /// </summary>
-        public override bool CanUndo => _node != null && _nodeCollection != null;
-
-        /// <summary>
-        /// 执行命令 - 从集合中删除节点
-        /// </summary>
         public override void Execute()
         {
-            if (!CanExecute(null))
-                throw new InvalidOperationException("无法执行删除命令：节点不在集合中");
-
-            if (_nodeCollection.Contains(_node))
+            // 先删除相关连线（并记录索引）
+            if (_edges != null && _deletedNodes.Count > 0)
             {
-                _nodeCollection.Remove(_node);
+                var nodeIds = new HashSet<string>();
+                foreach (var nodeObj in _deletedNodes)
+                {
+                    if (nodeObj is Node node)
+                    {
+                        nodeIds.Add(node.Id);
+                    }
+                }
+
+                if (nodeIds.Count > 0)
+                {
+                    // 从后往前遍历，记录边和其原始索引
+                    for (int i = _edges.Count - 1; i >= 0; i--)
+                    {
+                        var edgeObj = _edges[i];
+                        if (edgeObj is Edge edge)
+                        {
+                            if (nodeIds.Contains(edge.SourceNodeId) || nodeIds.Contains(edge.TargetNodeId))
+                            {
+                                _deletedEdges.Add((edgeObj, i));
+                                _edges.RemoveAt(i);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 再删除节点
+            foreach (var node in _deletedNodes)
+            {
+                _nodes.Remove(node);
             }
         }
 
-        /// <summary>
-        /// 撤销命令 - 恢复节点到集合中的原位置
-        /// </summary>
         public override void Undo()
         {
-            if (!CanUndo)
-                throw new InvalidOperationException("无法撤销删除命令：节点或集合无效");
-
-            // 恢复节点位置
-            _node.Position = _originalPosition;
-
-            // 恢复到原索引位置（如果可能）
-            if (_originalIndex >= 0 && _originalIndex < _nodeCollection.Count)
+            // 先恢复节点
+            foreach (var node in _deletedNodes)
             {
-                _nodeCollection.Insert(_originalIndex, _node);
+                _nodes.Add(node);
             }
-            else if (!_nodeCollection.Contains(_node))
+
+            // 再恢复连线（按原始索引恢复）
+            if (_edges != null && _deletedEdges.Count > 0)
             {
-                // 如果原索引无效，添加到末尾
-                _nodeCollection.Add(_node);
+                // 按索引从小到大排序，确保正确恢复顺序
+                var sortedEdges = _deletedEdges.OrderBy(x => x.index).ToList();
+                foreach (var (edge, index) in sortedEdges)
+                {
+                    // 如果索引超出当前范围，直接添加到末尾
+                    if (index >= _edges.Count)
+                    {
+                        _edges.Add(edge);
+                    }
+                    else
+                    {
+                        _edges.Insert(index, edge);
+                    }
+                }
             }
+
+            // 清空记录，为下次撤销做准备
+            _deletedEdges.Clear();
+        }
+
+        public override System.Collections.IList GetRelatedNodeCollection()
+        {
+            return _nodes;
+        }
+
+        public override System.Collections.IList GetRelatedEdgeCollection()
+        {
+            return _edges;
         }
     }
 }
-

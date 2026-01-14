@@ -15,6 +15,8 @@ using System.Windows.Data;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
 using HandyControl.Tools.Extension;
+using Astra.UI.Commands;
+using CommandManager = Astra.UI.Commands.CommandManager;
 
 namespace Astra.UI.Controls
 {
@@ -64,6 +66,23 @@ namespace Astra.UI.Controls
             
             // 监听控件卸载事件以清理资源
             Unloaded += OnInfiniteCanvasUnloaded;
+        }
+
+        /// <summary>
+        /// 查找父级的 FlowEditor 并获取其 WorkflowTab
+        /// </summary>
+        private UI.Models.WorkflowTab FindWorkflowTab()
+        {
+            var parent = VisualTreeHelper.GetParent(this);
+            while (parent != null)
+            {
+                if (parent is UI.Controls.FlowEditor flowEditor)
+                {
+                    return flowEditor.DataContext as UI.Models.WorkflowTab;
+                }
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return null;
         }
 
         /// <summary>
@@ -349,7 +368,7 @@ namespace Astra.UI.Controls
         /// <summary>
         /// 撤销/重做管理器（由 FlowEditor 注入）
         /// </summary>
-        public UndoRedoManager UndoRedoManager
+        public Commands.CommandManager UndoRedoManager
         {
             get => _undoRedoManager;
             set
@@ -388,6 +407,16 @@ namespace Astra.UI.Controls
         {
             get => (DataTemplate)GetValue(ItemTemplateProperty);
             set => SetValue(ItemTemplateProperty, value);
+        }
+
+        public static readonly DependencyProperty ItemTemplateSelectorProperty =
+            DependencyProperty.Register(nameof(ItemTemplateSelector), typeof(DataTemplateSelector), typeof(InfiniteCanvas),
+                new PropertyMetadata(null, OnItemTemplateSelectorChanged));
+
+        public DataTemplateSelector ItemTemplateSelector
+        {
+            get => (DataTemplateSelector)GetValue(ItemTemplateSelectorProperty);
+            set => SetValue(ItemTemplateSelectorProperty, value);
         }
 
         // ============ 交互配置 ============
@@ -596,7 +625,7 @@ namespace Astra.UI.Controls
         private Point _viewportIndicatorDragStart;  // 视口指示器拖拽起始点（小地图坐标）
         private FrameworkElement _transformTarget; // 专门用于承载缩放/平移变换的视觉元素
         private INotifyCollectionChanged _itemsCollectionNotify;
-        private UndoRedoManager _undoRedoManager;
+        private CommandManager _undoRedoManager;
 
         // 框选相关字段
         private bool _isBoxSelecting;
@@ -615,6 +644,18 @@ namespace Astra.UI.Controls
         private System.Windows.Threading.DispatcherTimer _minimapUpdateTimer;
         private bool _suppressMinimapUpdateAfterDrag; // 拖拽结束后抑制一次小地图重算，防止跳回
         private bool _minimapNeedsRecalc = true; // 小地图是否需要重算（内容/尺寸变化时置为 true）
+
+        // 🔧 缩放节流控制（超过10个节点时启用）
+        private DateTime _lastZoomTime = DateTime.MinValue;
+        private const int ZoomThrottleMs = 16; // 约60fps
+        private bool _isZooming = false; // 是否正在缩放（用于跳过连线刷新）
+        private System.Windows.Threading.DispatcherTimer _zoomEndTimer; // 缩放结束定时器
+
+        // 🔧 节点属性变化节流控制（避免频繁更新）
+        private DateTime _lastNodePropertyUpdateTime = DateTime.MinValue;
+        private const int NodePropertyUpdateThrottleMs = 20; // 50fps（与连线刷新频率一致）
+        private System.Windows.Threading.DispatcherTimer _nodePropertyUpdateTimer;
+        private const int PerformanceNodeThreshold = 10; // 节点数量阈值：超过此数量启用性能优化
 
         #endregion
 
@@ -664,6 +705,35 @@ namespace Astra.UI.Controls
 
             // 注意：拖放事件处理已移除（方法未定义）
 
+            // 如果外部已经通过绑定设置了 ItemTemplateSelector，第一次应用模板时就清除默认的 ItemTemplate
+            // 否则 InfiniteCanvas 会先用默认的 NodeControl 渲染，导致主流程引用节点出现错误样式
+            if (ItemTemplateSelector != null && ItemTemplate != null)
+            {
+                ItemTemplate = null;
+                System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 初始化时清除默认 ItemTemplate，优先使用 ItemTemplateSelector");
+            }
+            
+            // 获取内部的 TemplateSelectorItemsControl，并确保模板设置正确
+            if (_contentCanvas != null)
+            {
+                var itemsControl = _contentCanvas.Children.OfType<TemplateSelectorItemsControl>().FirstOrDefault();
+                if (itemsControl != null)
+                {
+                    if (ItemTemplateSelector != null)
+                    {
+                        // 如果设置了 ItemTemplateSelector，确保 ItemsControl 的 ItemTemplate 为 null
+                        itemsControl.ItemTemplate = null;
+                        System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 清除 ItemsControl 的 ItemTemplate，使用 ItemTemplateSelector");
+                    }
+                    else if (ItemTemplate != null)
+                    {
+                        // 如果没有 ItemTemplateSelector，将 InfiniteCanvas 的 ItemTemplate 传递给 ItemsControl
+                        itemsControl.ItemTemplate = ItemTemplate;
+                        System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 将 ItemTemplate 传递给 ItemsControl");
+                    }
+                }
+            }
+
             if (_contentCanvas != null)
             {
                 // 确保内容画布启用拖放
@@ -702,6 +772,15 @@ namespace Astra.UI.Controls
                 UpdateGrid();
                 UpdateMinimap();
                 UpdateViewportIndicator();
+                
+                // 刷新 ItemsControl 的模板，确保模板选择器正确应用
+                RefreshItemsControlTemplate();
+                
+                // 延迟验证并修复容器模板
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    VerifyAndFixContainerTemplates();
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
             }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
@@ -1059,6 +1138,53 @@ namespace Astra.UI.Controls
         {
             if (!EnableZoom) return;
 
+            // 🔧 性能优化：节点数量超过10时，启用缩放节流
+            int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+            if (nodeCount > PerformanceNodeThreshold)
+            {
+                var now = DateTime.Now;
+                if ((now - _lastZoomTime).TotalMilliseconds < ZoomThrottleMs)
+                {
+                    // 节流期间，重置缩放结束定时器
+                    if (_zoomEndTimer != null && _zoomEndTimer.IsEnabled)
+                    {
+                        _zoomEndTimer.Stop();
+                        _zoomEndTimer.Start();
+                    }
+                    return;
+                }
+                _lastZoomTime = now;
+
+                // 标记正在缩放（用于跳过连线刷新）
+                _isZooming = true;
+
+                // 启动或重置缩放结束定时器（100ms后认为缩放结束）
+                if (_zoomEndTimer == null)
+                {
+                    _zoomEndTimer = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromMilliseconds(100)
+                    };
+                    _zoomEndTimer.Tick += (s, e) =>
+                    {
+                        _isZooming = false;
+                        _zoomEndTimer.Stop();
+                        
+                        // 🔧 缩放结束后，统一更新所有内容
+                        _lastGridUpdateTime = DateTime.MinValue; // 重置节流，确保立即更新
+                        UpdateGrid();
+                        UpdateViewportIndicator();
+                        UpdateSelectedGroupBox();
+                        UpdateMinimap();
+                        RefreshEdgesImmediate();
+                        
+                        System.Diagnostics.Debug.WriteLine("[缩放] 结束，已更新所有内容");
+                    };
+                }
+                _zoomEndTimer.Stop();
+                _zoomEndTimer.Start();
+            }
+
             // 优先使用服务层
             if (_transformService != null)
             {
@@ -1183,6 +1309,10 @@ namespace Astra.UI.Controls
 
             // 动态获取网格画刷
             var gridBrush = GridBrush ?? TryFindResource("BorderBrush") as Brush ?? Brushes.LightGray;
+
+            // 🔧 性能优化：使用预计算的线条数量，避免在循环中创建过多对象
+            int vLineCount = (int)(width / spacing) + 1;
+            int hLineCount = (int)(height / spacing) + 1;
 
             // 绘制垂直线
             for (double x = PanX % spacing; x < width; x += spacing)
@@ -1384,7 +1514,7 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            var itemsControl = _contentCanvas.Children.OfType<System.Windows.Controls.ItemsControl>().FirstOrDefault();
             // 以屏幕像素为准的对齐触发范围，检测时将距离转换为屏幕尺度再比较
             var tolerancePx = AlignmentTolerance;
             const double linePadding = 12;
@@ -1602,6 +1732,13 @@ namespace Astra.UI.Controls
         {
             if (_minimapCanvas == null || !ShowMinimap || _contentCanvas == null || IsMinimapCollapsed) 
                 return;
+
+            // 🔧 性能优化：如果正在缩放，跳过小地图更新（缩放结束后统一更新）
+            int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+            if (nodeCount > PerformanceNodeThreshold && _isZooming)
+            {
+                return;
+            }
 
             // 拖拽后的一次性抑制：避免拖拽刚结束时定时器/布局触发的重新计算导致跳回
             if (_suppressMinimapUpdateAfterDrag)
@@ -2175,6 +2312,13 @@ namespace Astra.UI.Controls
             // 更新节点总数
             UpdateTotalItemsCount();
 
+            // 🔧 性能优化：如果正在批量操作，跳过立即更新（批量结束后会统一更新）
+            if (_isBatchUpdating)
+            {
+                System.Diagnostics.Debug.WriteLine("[节点集合变化] 批量操作中，跳过立即更新");
+                return;
+            }
+
             // 延迟更新以等待 UI 容器生成完成（ItemContainerGenerator 是异步的）
             // 使用 Loaded 优先级确保布局完成后再更新
             Dispatcher.BeginInvoke(new Action(() =>
@@ -2202,20 +2346,76 @@ namespace Astra.UI.Controls
                 _suppressMinimapUpdateAfterDrag = false;
                 _minimapNeedsRecalc = true;
 
-                // 🔧 使用 Render 优先级保证拖动时连线实时刷新
-                // 延迟更新以避免频繁刷新（使用 Dispatcher 合并多个属性变化）
-                Dispatcher.BeginInvoke(new Action(() =>
+                // 🔧 性能优化：超过10个节点时，使用节流和延迟更新
+                int nodeCount = ItemsSource?.Cast<object>().Count() ?? 0;
+                if (nodeCount > PerformanceNodeThreshold)
                 {
+                    // 使用节流控制：限制更新频率
+                    var now = DateTime.Now;
+                    if ((now - _lastNodePropertyUpdateTime).TotalMilliseconds < NodePropertyUpdateThrottleMs)
+                    {
+                        // 在节流期间，启动或重置延迟更新定时器
+                        if (_nodePropertyUpdateTimer == null)
+                        {
+                            _nodePropertyUpdateTimer = new System.Windows.Threading.DispatcherTimer
+                            {
+                                Interval = TimeSpan.FromMilliseconds(NodePropertyUpdateThrottleMs)
+                            };
+                            _nodePropertyUpdateTimer.Tick += (s, args) =>
+                            {
+                                _nodePropertyUpdateTimer.Stop();
+                                PerformNodePropertyUpdate();
+                            };
+                        }
+                        
+                        if (!_nodePropertyUpdateTimer.IsEnabled)
+                        {
+                            _nodePropertyUpdateTimer.Start();
+                        }
+                        else
+                        {
+                            // 重置定时器
+                            _nodePropertyUpdateTimer.Stop();
+                            _nodePropertyUpdateTimer.Start();
+                        }
+                        return;
+                    }
+                    
+                    _lastNodePropertyUpdateTime = now;
+                    
+                    // 🔧 拖动过程中跳过小地图和视口指示器更新（性能优化）
+                    // 只更新连线（使用增量更新+端点调整，实时跟随）
+                    // 批量操作时跳过刷新（粘贴、删除等），但智能拖动时允许刷新
+                    if (!_isBatchUpdating || _smartEdgeUpdateEnabled)
+                    {
+                        RefreshEdges(); // 直接调用，不使用Dispatcher（避免延迟）
+                    }
+                }
+                else
+                {
+                    // 节点数量少时，使用原有逻辑（不节流）
                     UpdateMinimap();
                     UpdateViewportIndicator();
                     
-                    // 🔧 批量操作时跳过刷新（粘贴、删除等），但智能拖动时允许刷新
-                    // 智能拖动模式：允许刷新，但使用路径平移优化而非重新计算A*
                     if (!_isBatchUpdating || _smartEdgeUpdateEnabled)
                     {
-                    RefreshEdges();
+                        RefreshEdges(); // 直接调用，实时更新连线
                     }
-                }), System.Windows.Threading.DispatcherPriority.Render);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 执行节点属性更新（延迟批量更新）
+        /// </summary>
+        private void PerformNodePropertyUpdate()
+        {
+            _lastNodePropertyUpdateTime = DateTime.Now;
+            
+            // 只更新连线，跳过小地图和视口指示器（拖动结束后会统一更新）
+            if (!_isBatchUpdating || _smartEdgeUpdateEnabled)
+            {
+                RefreshEdges();
             }
         }
 
@@ -2358,16 +2558,40 @@ namespace Astra.UI.Controls
                 canvas._scaleTransform.ScaleY = (double)e.NewValue;
             }
 
-            // 重置节流时间，确保缩放改变时一定会更新网格
-            canvas._lastGridUpdateTime = DateTime.MinValue;
-
-            // 使用 Render 优先级，在渲染时更新
-            canvas.Dispatcher.BeginInvoke(new Action(() =>
+            // 🔧 性能优化：如果正在缩放过程中，跳过所有UI更新（缩放结束后统一更新）
+            int nodeCount = canvas.ItemsSource?.Cast<object>().Count() ?? 0;
+            if (nodeCount > PerformanceNodeThreshold && canvas._isZooming)
             {
-                canvas.UpdateGrid();
-                canvas.UpdateViewportIndicator();
-                canvas.UpdateSelectedGroupBox();
-            }), System.Windows.Threading.DispatcherPriority.Render);
+                // 缩放过程中完全跳过更新，等缩放结束后统一更新
+                return;
+            }
+
+            // 🔧 性能优化：节点数量多时，使用节流更新网格
+            if (nodeCount > PerformanceNodeThreshold)
+            {
+                var now = DateTime.Now;
+                if ((now - canvas._lastGridUpdateTime).TotalMilliseconds >= GridUpdateThrottleMs)
+                {
+                    canvas._lastGridUpdateTime = now;
+                    canvas.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        canvas.UpdateGrid();
+                        canvas.UpdateViewportIndicator();
+                        canvas.UpdateSelectedGroupBox();
+                    }), System.Windows.Threading.DispatcherPriority.Render);
+                }
+            }
+            else
+            {
+                // 节点数量少时，不节流
+                canvas._lastGridUpdateTime = DateTime.MinValue;
+                canvas.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    canvas.UpdateGrid();
+                    canvas.UpdateViewportIndicator();
+                    canvas.UpdateSelectedGroupBox();
+                }), System.Windows.Threading.DispatcherPriority.Render);
+            }
 
             canvas.RaiseViewTransformChanged();
         }
@@ -2454,9 +2678,191 @@ namespace Astra.UI.Controls
             // 当内容变化时更新缩略图
             canvas.UpdateMinimap();
             canvas.RefreshEdges();
+            
+            // 强制刷新 ItemsControl 的模板（延迟执行，确保 ItemsControl 已加载）
+            canvas.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                canvas.RefreshItemsControlTemplate();
+                
+                // 强制 ItemsControl 生成所有容器（通过访问每个项目的容器）
+                if (canvas._contentCanvas != null)
+                {
+                    var itemsControl = canvas._contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+                    if (itemsControl != null && canvas.ItemsSource != null)
+                    {
+                        // 强制生成所有容器
+                        foreach (var item in canvas.ItemsSource)
+                        {
+                            var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item);
+                            // ContainerFromItem 如果容器不存在会返回 null，但不会自动生成
+                            // 我们需要等待容器生成完成
+                        }
+                        
+                        // 延迟验证并修复容器模板
+                        canvas.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            canvas.VerifyAndFixContainerTemplates();
+                        }), System.Windows.Threading.DispatcherPriority.Loaded);
+                    }
+                }
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         // ✅ OnEdgeItemsSourceChanged 已移至 InfiniteCanvas.Connections.cs
+
+        private static void OnItemTemplateSelectorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var canvas = (InfiniteCanvas)d;
+            
+            // 当 ItemTemplateSelector 变更时，确保 ItemsControl 正确更新
+            // 通过 TemplateBinding，ItemsControl 会自动获取新的 ItemTemplateSelector
+            // 但为了确保更新，我们需要强制刷新 ItemsControl
+            
+            // 如果设置了 ItemTemplateSelector，清除 ItemTemplate（让 ItemTemplateSelector 生效）
+            if (e.NewValue != null && canvas.ItemTemplate != null)
+            {
+                canvas.ItemTemplate = null;
+                System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 清除 ItemTemplate，让 ItemTemplateSelector 生效");
+            }
+            
+            // 同时更新内部 ItemsControl 的 ItemTemplate
+            if (canvas._contentCanvas != null)
+            {
+                var itemsControl = canvas._contentCanvas.Children.OfType<TemplateSelectorItemsControl>().FirstOrDefault();
+                if (itemsControl != null)
+                {
+                    if (e.NewValue != null)
+                    {
+                        // 设置了 ItemTemplateSelector，清除 ItemTemplate
+                        itemsControl.ItemTemplate = null;
+                        System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 清除内部 ItemsControl 的 ItemTemplate");
+                    }
+                    else if (canvas.ItemTemplate != null)
+                    {
+                        // 没有 ItemTemplateSelector，使用 ItemTemplate
+                        itemsControl.ItemTemplate = canvas.ItemTemplate;
+                        System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 设置内部 ItemsControl 的 ItemTemplate");
+                    }
+                }
+            }
+            
+            // 延迟刷新，确保 ItemsControl 已加载
+            canvas.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                canvas.RefreshItemsControlTemplate();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+        
+        /// <summary>
+        /// 刷新 ItemsControl 的模板（强制重新应用 ItemTemplateSelector）
+        /// </summary>
+        private void RefreshItemsControlTemplate()
+        {
+            if (_contentCanvas == null)
+                return;
+                
+            var itemsControl = _contentCanvas.Children.OfType<System.Windows.Controls.ItemsControl>().FirstOrDefault();
+            if (itemsControl == null)
+                return;
+            
+            // 如果设置了 ItemTemplateSelector，清除 ItemTemplate（让 ItemTemplateSelector 生效）
+            if (ItemTemplateSelector != null && ItemTemplate != null)
+            {
+                ItemTemplate = null;
+                System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 清除 ItemTemplate，让 ItemTemplateSelector 生效");
+            }
+            
+            // 强制刷新 ItemsControl 的 ItemTemplateSelector
+            var currentSelector = ItemTemplateSelector;
+            if (currentSelector != null)
+            {
+                // 确保 ItemsControl 的 ItemTemplate 被清除（让 ItemTemplateSelector 生效）
+                if (itemsControl.ItemTemplate != null)
+                {
+                    itemsControl.ItemTemplate = null;
+                    System.Diagnostics.Debug.WriteLine("[InfiniteCanvas] 清除 ItemsControl.ItemTemplate，让 ItemTemplateSelector 生效");
+                }
+                
+                // 设置 ItemTemplateSelector（ItemsControl 会自动为每个 ContentPresenter 设置 ContentTemplateSelector）
+                itemsControl.ItemTemplateSelector = currentSelector;
+                System.Diagnostics.Debug.WriteLine($"[InfiniteCanvas] ItemTemplateSelector 已设置: {currentSelector.GetType().Name}");
+                
+                // 强制生成所有容器（如果还没有生成）
+                if (ItemsSource != null)
+                {
+                    // 通过访问每个项目的容器来强制生成
+                    foreach (var item in ItemsSource)
+                    {
+                        var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item);
+                        // ContainerFromItem 如果容器不存在会返回 null，但不会自动生成
+                        // 我们需要等待容器生成完成
+                    }
+                    
+                    // 等待容器生成完成后再验证
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (itemsControl.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+                        {
+                            VerifyAndFixContainerTemplates();
+                        }
+                        else
+                        {
+                            // 如果容器还没生成，订阅 StatusChanged 事件
+                            EventHandler statusChangedHandler = null;
+                            statusChangedHandler = (s, args) =>
+                            {
+                                if (itemsControl.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+                                {
+                                    itemsControl.ItemContainerGenerator.StatusChanged -= statusChangedHandler;
+                                    VerifyAndFixContainerTemplates();
+                                }
+                            };
+                            itemsControl.ItemContainerGenerator.StatusChanged += statusChangedHandler;
+                        }
+                    }), System.Windows.Threading.DispatcherPriority.Loaded);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// 验证并修复容器的模板（确保模板选择器正确应用）
+        /// </summary>
+        private void VerifyAndFixContainerTemplates()
+        {
+            if (_contentCanvas == null || ItemTemplateSelector == null)
+                return;
+                
+            var itemsControl = _contentCanvas.Children.OfType<System.Windows.Controls.ItemsControl>().FirstOrDefault();
+            if (itemsControl == null)
+                return;
+            
+            if (itemsControl.ItemContainerGenerator.Status != System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+                return;
+            
+            foreach (var item in ItemsSource ?? Enumerable.Empty<object>())
+            {
+                var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item);
+                if (container is ContentPresenter contentPresenter)
+                {
+                    // 检查模板是否正确
+                    var expectedTemplate = ItemTemplateSelector.SelectTemplate(item, contentPresenter);
+                    var currentTemplate = contentPresenter.ContentTemplate;
+                    
+                    // 如果模板不匹配，强制重新应用
+                    if (expectedTemplate != null && currentTemplate != expectedTemplate)
+                    {
+                        // 清除当前模板和选择器
+                        contentPresenter.ContentTemplate = null;
+                        contentPresenter.ContentTemplateSelector = null;
+                        
+                        // 重新设置选择器，让 WPF 重新选择模板
+                        contentPresenter.ContentTemplateSelector = ItemTemplateSelector;
+                        
+                        System.Diagnostics.Debug.WriteLine($"[InfiniteCanvas] 修复容器模板: {item?.GetType().Name ?? "null"}, NodeType: {(item as Node)?.NodeType ?? "null"}, 期望模板: {expectedTemplate?.GetType().Name ?? "null"}, 当前模板: {currentTemplate?.GetType().Name ?? "null"}");
+                    }
+                }
+            }
+        }
 
         private static void OnMinimapCollapsedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -2826,9 +3232,14 @@ namespace Astra.UI.Controls
                         var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item) as ContentPresenter;
                         if (container != null && VisualTreeHelper.GetChildrenCount(container) > 0)
                         {
-                            if (VisualTreeHelper.GetChild(container, 0) is NodeControl nodeControl)
+                            var child = VisualTreeHelper.GetChild(container, 0);
+                            if (child is NodeControl nodeControl)
                             {
                                 nodeControl.IsSelected = false;
+                            }
+                            else if (child is WorkflowReferenceNodeControl workflowNodeControl)
+                            {
+                                workflowNodeControl.IsSelected = false;
                             }
                         }
                     }
@@ -2886,7 +3297,14 @@ namespace Astra.UI.Controls
             {
                 if (_undoRedoManager != null)
                 {
-                    _undoRedoManager.Do(new DeleteNodeCommand(nodeList, edgeList, itemsToDelete));
+                    var command = new DeleteNodeCommand(nodeList, edgeList, itemsToDelete);
+                    // 设置命令的 WorkflowTab
+                    var workflowTab = FindWorkflowTab();
+                    if (workflowTab != null)
+                    {
+                        command.WorkflowTab = workflowTab;
+                    }
+                    _undoRedoManager.Execute(command);
                 }
                 else
                 {
@@ -2899,7 +3317,14 @@ namespace Astra.UI.Controls
                 // 只有节点列表，没有连线列表
                 if (_undoRedoManager != null)
                 {
-                    _undoRedoManager.Do(new DeleteNodeCommand(list, null, itemsToDelete));
+                    var command = new DeleteNodeCommand(list, null, itemsToDelete);
+                    // 设置命令的 WorkflowTab
+                    var workflowTab = FindWorkflowTab();
+                    if (workflowTab != null)
+                    {
+                        command.WorkflowTab = workflowTab;
+                    }
+                    _undoRedoManager.Execute(command);
                 }
                 else
                 {
@@ -3001,7 +3426,7 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            var itemsControl = _contentCanvas.Children.OfType<ItemsControl>().FirstOrDefault();
+            var itemsControl = _contentCanvas.Children.OfType<System.Windows.Controls.ItemsControl>().FirstOrDefault();
             if (itemsControl == null)
             {
                 _selectedGroupBox.Visibility = Visibility.Collapsed;

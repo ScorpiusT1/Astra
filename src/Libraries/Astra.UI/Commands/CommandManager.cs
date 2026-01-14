@@ -22,6 +22,16 @@ namespace Astra.UI.Commands
         private readonly int _maxHistorySize;
 
         /// <summary>
+        /// 批量操作开始回调（用于通知 UI 开始批量更新，减少刷新次数）
+        /// </summary>
+        public Action OnBatchOperationBegin { get; set; }
+
+        /// <summary>
+        /// 批量操作结束回调（用于通知 UI 结束批量更新）
+        /// </summary>
+        public Action OnBatchOperationEnd { get; set; }
+
+        /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="maxHistorySize">最大历史记录数量，默认100</param>
@@ -37,6 +47,22 @@ namespace Astra.UI.Commands
         /// 是否可以撤销
         /// </summary>
         public bool CanUndo => _undoStack.Count > 0;
+
+        /// <summary>
+        /// 获取最后执行的命令（不弹出栈）
+        /// </summary>
+        public IUndoableCommand? PeekLastCommand()
+        {
+            return _undoStack.Count > 0 ? _undoStack.Peek() : null;
+        }
+
+        /// <summary>
+        /// 查看下一个要重做的命令（不弹出）
+        /// </summary>
+        public IUndoableCommand? PeekRedoCommand()
+        {
+            return _redoStack.Count > 0 ? _redoStack.Peek() : null;
+        }
 
         /// <summary>
         /// 是否可以重做
@@ -58,6 +84,15 @@ namespace Astra.UI.Commands
             {
                 System.Diagnostics.Debug.WriteLine($"命令无法执行: {command.Description}");
                 return;
+            }
+
+            // 检查是否是批量操作命令
+            bool isBatchCommand = IsBatchCommand(command);
+
+            if (isBatchCommand)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CommandManager] 批量执行开始: {command.Description}");
+                OnBatchOperationBegin?.Invoke();
             }
 
             try
@@ -103,6 +138,14 @@ namespace Astra.UI.Commands
                 System.Diagnostics.Debug.WriteLine($"堆栈跟踪: {ex.StackTrace}");
                 throw;
             }
+            finally
+            {
+                if (isBatchCommand)
+                {
+                    OnBatchOperationEnd?.Invoke();
+                    System.Diagnostics.Debug.WriteLine($"[CommandManager] 批量执行完成: {command.Description}");
+                }
+            }
         }
 
         /// <summary>
@@ -116,7 +159,28 @@ namespace Astra.UI.Commands
             try
             {
                 var command = _undoStack.Pop();
-                command.Undo();
+                
+                // 检查是否是批量操作命令
+                bool isBatchCommand = IsBatchCommand(command);
+
+                if (isBatchCommand)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[CommandManager] 批量撤销开始: {command.Description}");
+                    OnBatchOperationBegin?.Invoke();
+                }
+
+                try
+                {
+                    command.Undo();
+                }
+                finally
+                {
+                    if (isBatchCommand)
+                    {
+                        OnBatchOperationEnd?.Invoke();
+                        System.Diagnostics.Debug.WriteLine($"[CommandManager] 批量撤销完成: {command.Description}");
+                    }
+                }
 
                 // 移动到重做栈
                 _redoStack.Push(command);
@@ -144,7 +208,28 @@ namespace Astra.UI.Commands
             try
             {
                 var command = _redoStack.Pop();
-                command.Execute();
+                
+                // 检查是否是批量操作命令
+                bool isBatchCommand = IsBatchCommand(command);
+
+                if (isBatchCommand)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[CommandManager] 批量重做开始: {command.Description}");
+                    OnBatchOperationBegin?.Invoke();
+                }
+
+                try
+                {
+                    command.Execute();
+                }
+                finally
+                {
+                    if (isBatchCommand)
+                    {
+                        OnBatchOperationEnd?.Invoke();
+                        System.Diagnostics.Debug.WriteLine($"[CommandManager] 批量重做完成: {command.Description}");
+                    }
+                }
 
                 // 移回撤销栈
                 _undoStack.Push(command);
@@ -211,6 +296,29 @@ namespace Astra.UI.Commands
             {
                 _undoStack.Push(cmd);
             }
+        }
+
+        /// <summary>
+        /// 判断是否是批量操作命令（涉及多个节点或连线）
+        /// 批量操作命令在执行/撤销时会触发批量更新回调，减少 UI 刷新次数
+        /// </summary>
+        private bool IsBatchCommand(IUndoableCommand cmd)
+        {
+            // 检查命令类型名称，判断是否是批量操作
+            var typeName = cmd.GetType().Name;
+            return typeName.Contains("Delete") ||
+                   typeName.Contains("Paste") ||
+                   typeName.Contains("Composite") ||
+                   typeName.Contains("Toggle") ||
+                   typeName.Contains("Batch");
+        }
+
+        /// <summary>
+        /// 执行命令的别名方法（兼容 UndoRedoManager.Do 方法）
+        /// </summary>
+        public void Do(IUndoableCommand command)
+        {
+            Execute(command);
         }
     }
 }

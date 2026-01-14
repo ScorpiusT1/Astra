@@ -18,6 +18,9 @@
         <ResourceDictionary Source="../Styles/Controls/TreeStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/PortStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/NodeStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/WorkflowReferenceNodeStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/TabControlStyles.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/WorkflowTabControlStyle.xaml" />
       
         <ResourceDictionary Source="../Styles/Controls/NodeToolBoxStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/InfiniteCanvasStyle.xaml" />

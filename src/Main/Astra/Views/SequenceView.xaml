@@ -6,22 +6,19 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
-            
+             xmlns:models="clr-namespace:Astra.Models"
+             xmlns:converters="clr-namespace:Astra.Converters"
+             xmlns:uiConverters="clr-namespace:Astra.UI.Converters;assembly=Astra.UI"
+             xmlns:nodeModels="clr-namespace:Astra.Core.Nodes.Models;assembly=Astra.Core"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:behaviors="clr-namespace:Astra.Behaviors"
+             xmlns:multiFlowEditor="clr-namespace:Astra.UI.Styles.Controls;assembly=Astra.UI"
              d:DataContext="{d:DesignInstance Type=viewmodels:SequenceViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition />
-            <ColumnDefinition Width="0.15*" />
-        </Grid.ColumnDefinitions>
-
-        <controls:FlowEditor x:Name="FlowEditor"
-                             ClipToBounds="True"
-                             ToolBoxItemsSource="{Binding ToolBoxItemsSource}"
-                             CanvasItemsSource="{Binding CanvasItemsSource}"
-                             EdgeItemsSource="{Binding EdgeItemsSource}"
-                             ToolBoxWidth="90" />
+        <!-- 多流程编辑器控件 -->
+        <multiFlowEditor:MultiFlowEditor DataContext="{Binding MultiFlowEditor}" />
     </Grid>
 </UserControl>

@@ -103,7 +103,7 @@ namespace Astra.Core.Access.Services
 				System.Diagnostics.Debug.WriteLine($"[UserManagementService.AddUser] 创建用户: {username}, 角色: {role}");
 
 				_context.Users.Add(newUser);
-				_rethrowSave:;
+				
 				_context.SaveChanges();
 
 				// ⭐ 调试日志：确认保存成功

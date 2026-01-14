@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
+    <ProjectReference Include="..\NavStack\NavStack.csproj" />
   </ItemGroup>
 
 </Project>

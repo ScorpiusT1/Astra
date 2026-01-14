@@ -4,20 +4,31 @@ using Astra.Core.Plugins.Manifest.Serializers;
 using Astra.Models;
 using Astra.Services;
 using Astra.UI.Controls;
+using Astra.UI.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using NavStack.Core;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
+using System.Collections.Generic;
+using System.Linq;
+using Astra.Core.Nodes.Geometry;
+using System.Windows.Controls;
+using Microsoft.Win32;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Astra.UI.Helpers;
 
 namespace Astra.ViewModels
 {
     public partial class SequenceViewModel : ObservableObject
     {
         private readonly IFrameNavigationService _navigationService;
-        private PluginNodeService _pluginNodeService;
-
+      
         [ObservableProperty]
         private string _title = "序列配置";
 
@@ -25,252 +36,22 @@ namespace Astra.ViewModels
         private bool _isNavigating = false;
 
         /// <summary>
-        /// 工具箱数据源 - 工具类别集合
+        /// 多流程编辑器 ViewModel（组合模式）
         /// </summary>
         [ObservableProperty]
-        private ObservableCollection<ToolCategory> _toolBoxItemsSource;
+        private MultiFlowEditorViewModel _multiFlowEditor;
 
-        /// <summary>
-        /// 画布数据源 - 节点集合（使用 Node 基类）
-        /// </summary>
-        [ObservableProperty]
-        private ObservableCollection<Node> _canvasItemsSource;
-
-        /// <summary>
-        /// 连线数据源 - 连线集合（使用 Edge 类）
-        /// </summary>
-        [ObservableProperty]
-        private ObservableCollection<Edge> _edgeItemsSource;
-
-        public SequenceViewModel(IFrameNavigationService navigationService)
+        public SequenceViewModel(IFrameNavigationService navigationService, IPluginHost pluginHost, IManifestSerializer manifestSerializer)
         {
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             
-            // 初始化插件节点服务
-            InitializePluginNodeService();
+            // 创建 MultiFlowEditorViewModel 实例
+            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializer);
             
-            // 订阅导航事件
-            SubscribeToNavigationEvents();
-
-            // 初始化数据源
-            InitializeDataSources();
+            Debug.WriteLine("[SequenceViewModel] 已创建 MultiFlowEditorViewModel");
         }
 
-        /// <summary>
-        /// 初始化插件节点服务
-        /// </summary>
-        private void InitializePluginNodeService()
-        {
-            try
-            {
-                // 从服务提供者获取 IPluginHost
-                var pluginHost = App.ServiceProvider?.GetService(typeof(IPluginHost)) as IPluginHost;
-                
-                if (pluginHost == null)
-                {
-                    Debug.WriteLine("[SequenceViewModel] 警告：无法从服务提供者获取 IPluginHost，插件节点功能将不可用");
-                    return;
-                }
-
-                // 获取清单序列化器（如果已注册）
-                // 注意：如果服务提供者中没有注册序列化器，PluginNodeService 会使用默认的 XML 序列化器
-                var serializers = new List<IManifestSerializer>();
-                try
-                {
-                    // 尝试从服务提供者获取序列化器
-                    var xmlSerializer = App.ServiceProvider?.GetService(typeof(XmlManifestSerializer)) as IManifestSerializer;
-                    if (xmlSerializer != null)
-                        serializers.Add(xmlSerializer);
-                }
-                catch { }
-
-                // 创建插件节点服务
-                _pluginNodeService = new PluginNodeService(pluginHost, serializers.Count > 0 ? serializers : null);
-                
-                Debug.WriteLine($"[SequenceViewModel] 插件节点服务已初始化，已加载插件数量: {pluginHost.LoadedPlugins.Count}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[SequenceViewModel] 初始化插件节点服务失败: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// 初始化数据源
-        /// </summary>
-        private void InitializeDataSources()
-        {
-            // ⭐ 如果数据源已存在且不为空，则不重新初始化（单例模式下保持数据）
-            if (ToolBoxItemsSource != null && ToolBoxItemsSource.Count > 0)
-            {
-                Debug.WriteLine("[SequenceViewModel] 数据源已存在，跳过初始化");
-                return;
-            }
-
-            // 初始化工具箱数据源
-            ToolBoxItemsSource = new ObservableCollection<ToolCategory>();
-            
-            // 初始化画布数据源（如果为空则创建新集合，否则保持现有数据）
-            if (CanvasItemsSource == null)
-            {
-                CanvasItemsSource = new ObservableCollection<Node>();
-            }
-
-            // 初始化连线数据源（如果为空则创建新集合，否则保持现有数据）
-            if (EdgeItemsSource == null)
-            {
-                EdgeItemsSource = new ObservableCollection<Edge>();
-            }
-
-            // 创建示例工具类别
-            CreateSampleToolCategories();
-
-            // 从插件加载节点工具类别
-            LoadToolCategoriesFromPlugins();
-        }
-
-        /// <summary>
-        /// 创建示例工具类别
-        /// </summary>
-        private void CreateSampleToolCategories()
-        {
-            Debug.WriteLine("[SequenceViewModel] 开始创建示例工具类别");
-
-            // 基础节点类别
-            var basicCategory = new ToolCategory
-            {
-                Name = "基础节点",
-                IconCode = FlowEditorIcons.BasicCategory,
-                Description = "基础流程节点",
-                CategoryColor = Application.Current?.FindResource("PrimaryBrush") as Brush,
-                CategoryLightColor = Application.Current?.FindResource("LightPrimaryBrush") as Brush
-            };
-            basicCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "开始", 
-                IconCode = FlowEditorIcons.Start, 
-                Description = "流程开始节点",
-                NodeType = typeof(WorkFlowNode).FullName // 使用 WorkFlowNode 作为默认类型
-            });
-            basicCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "结束", 
-                IconCode = FlowEditorIcons.End, 
-                Description = "流程结束节点",
-                NodeType = typeof(WorkFlowNode).FullName // 使用 WorkFlowNode 作为默认类型
-            });
-            basicCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "等待", 
-                IconCode = FlowEditorIcons.Wait, 
-                Description = "等待节点",
-                NodeType = typeof(WorkFlowNode).FullName // 使用 WorkFlowNode 作为默认类型
-            });
-            ToolBoxItemsSource.Add(basicCategory);
-            Debug.WriteLine($"[SequenceViewModel] 添加基础节点类别: {basicCategory.Name}, 工具数量: {basicCategory.Tools.Count}");
-
-            // 逻辑节点类别
-            var logicCategory = new ToolCategory
-            {
-                Name = "逻辑节点",
-                IconCode = FlowEditorIcons.LogicCategory,
-                Description = "逻辑控制节点",
-                CategoryColor = Application.Current?.FindResource("PrimaryBrush") as Brush,
-                CategoryLightColor = Application.Current?.FindResource("LightPrimaryBrush") as Brush
-            };
-
-            logicCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "条件判断", 
-                IconCode = FlowEditorIcons.Condition, 
-                Description = "条件判断节点",
-                NodeType = typeof(WorkFlowNode).FullName // 暂时使用 WorkFlowNode 作为默认类型
-            });
-            logicCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "循环", 
-                IconCode = FlowEditorIcons.Loop, 
-                Description = "循环节点",
-                NodeType = typeof(WorkFlowNode).FullName // 暂时使用 WorkFlowNode 作为默认类型
-            });
-            logicCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "并行", 
-                IconCode = FlowEditorIcons.Parallel, 
-                Description = "并行执行节点",
-                NodeType = typeof(WorkFlowNode).FullName // 暂时使用 WorkFlowNode 作为默认类型
-            });
-            ToolBoxItemsSource.Add(logicCategory);
-            Debug.WriteLine($"[SequenceViewModel] 添加逻辑节点类别: {logicCategory.Name}, 工具数量: {logicCategory.Tools.Count}");
-
-            // 设备节点类别
-            var deviceCategory = new ToolCategory
-            {
-                Name = "设备节点",
-                IconCode = FlowEditorIcons.DeviceCategory,
-                Description = "设备操作节点",
-                CategoryColor = Application.Current?.FindResource("PrimaryBrush") as Brush,
-                CategoryLightColor = Application.Current?.FindResource("LightPrimaryBrush") as Brush
-            };
-            deviceCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "PLC控制", 
-                IconCode = FlowEditorIcons.PLC, 
-                Description = "PLC控制节点",
-                NodeType = typeof(WorkFlowNode).FullName // 暂时使用 WorkFlowNode 作为默认类型
-            });
-            deviceCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "扫码枪", 
-                IconCode = FlowEditorIcons.Scanner, 
-                Description = "扫码枪节点",
-                NodeType = typeof(WorkFlowNode).FullName // 暂时使用 WorkFlowNode 作为默认类型
-            });
-            deviceCategory.Tools.Add(new ToolItem 
-            { 
-                Name = "传感器", 
-                IconCode = FlowEditorIcons.Sensor, 
-                Description = "传感器节点",
-                NodeType = typeof(WorkFlowNode).FullName // 暂时使用 WorkFlowNode 作为默认类型
-            });
-            ToolBoxItemsSource.Add(deviceCategory);
-            Debug.WriteLine($"[SequenceViewModel] 添加设备节点类别: {deviceCategory.Name}, 工具数量: {deviceCategory.Tools.Count}");
-
-            Debug.WriteLine($"[SequenceViewModel] 工具类别总数: {ToolBoxItemsSource.Count}");
-        }
-
-        /// <summary>
-        /// 从插件系统加载工具类别
-        /// </summary>
-        private void LoadToolCategoriesFromPlugins()
-        {
-            if (_pluginNodeService == null)
-            {
-                Debug.WriteLine("[SequenceViewModel] 插件节点服务未初始化，跳过插件节点加载");
-                return;
-            }
-
-            try
-            {
-                var pluginCategories = _pluginNodeService.GetToolCategoriesFromPlugins();
-                
-                foreach (var category in pluginCategories)
-                {
-                    ToolBoxItemsSource.Add(category);
-                    Debug.WriteLine($"[SequenceViewModel] 从插件添加工具类别: {category.Name}, 工具数量: {category.Tools.Count}");
-                }
-
-                Debug.WriteLine($"[SequenceViewModel] 从插件加载的工具类别总数: {pluginCategories.Count}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[SequenceViewModel] 从插件加载工具类别失败: {ex.Message}");
-            }
-        }
-
-        // 注意：节点创建现在由 FlowEditor 根据 IToolItem.NodeType 自动处理
-        // 不再需要 NodeFactory，FlowEditor 会根据 ToolItem.NodeType 动态创建节点实例
-
+       
         /// <summary>
         /// 订阅导航事件
         /// </summary>
@@ -380,28 +161,7 @@ namespace Astra.ViewModels
         /// </summary>
         private void InitializeSequencePage()
         {
-            Debug.WriteLine("[SequenceViewModel] 开始初始化序列页面");
             
-            // ⭐ 确保数据源已初始化（单例模式下，数据应该已存在）
-            if (ToolBoxItemsSource == null || ToolBoxItemsSource.Count == 0)
-            {
-                Debug.WriteLine("[SequenceViewModel] 检测到数据源为空，重新初始化");
-                InitializeDataSources();
-            }
-            
-            if (CanvasItemsSource == null)
-            {
-                Debug.WriteLine("[SequenceViewModel] 检测到画布数据源为空，重新初始化");
-                CanvasItemsSource = new ObservableCollection<Node>();
-            }
-
-            if (EdgeItemsSource == null)
-            {
-                Debug.WriteLine("[SequenceViewModel] 检测到连线数据源为空，重新初始化");
-                EdgeItemsSource = new ObservableCollection<Edge>();
-            }
-            
-            Debug.WriteLine($"[SequenceViewModel] 序列页面初始化完成 - 工具箱: {ToolBoxItemsSource?.Count ?? 0} 个类别, 画布: {CanvasItemsSource?.Count ?? 0} 个节点, 连线: {EdgeItemsSource?.Count ?? 0} 条");
         }
 
         /// <summary>
@@ -421,6 +181,7 @@ namespace Astra.ViewModels
         }
 
         #endregion
+
 
         /// <summary>
         /// 释放资源

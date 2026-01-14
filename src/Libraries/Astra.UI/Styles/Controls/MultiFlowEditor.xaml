@@ -1,0 +1,621 @@
+﻿<UserControl x:Class="Astra.UI.Styles.Controls.MultiFlowEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Astra.UI.Styles.Controls"
+             xmlns:behaviors="clr-namespace:Astra.UI.Behaviors"
+             xmlns:viewModels="clr-namespace:Astra.UI.ViewModels"
+             xmlns:nodeModels="clr-namespace:Astra.Core.Nodes.Models;assembly=Astra.Core"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:models="clr-namespace:Astra.UI.Models"
+             xmlns:controls="clr-namespace:Astra.UI.Controls"
+             xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
+             d:DataContext="{d:DesignInstance Type=viewModels:MultiFlowEditorViewModel}"
+             xmlns:converters="clr-namespace:Astra.UI.Converters"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800"
+             Background="{DynamicResource SurfaceBrush}">
+    <UserControl.InputBindings>
+        <!-- 键盘快捷键：Ctrl+Z 撤销，Ctrl+R 重做，Ctrl+Y 重做（兼容） -->
+        <KeyBinding Key="Z"
+                    Modifiers="Ctrl"
+                    Command="{Binding UndoCommand}" />
+        <KeyBinding Key="R"
+                    Modifiers="Ctrl"
+                    Command="{Binding RedoCommand}" />
+        <KeyBinding Key="Y"
+                    Modifiers="Ctrl"
+                    Command="{Binding RedoCommand}" />
+    </UserControl.InputBindings>
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
+        <converters:InvertedBooleanConverter x:Key="InvertedBooleanConverter" />
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <converters:WorkflowTypeToToolBoxWidthConverter x:Key="WorkflowTypeToToolBoxWidthConverter" />
+        <converters:WorkflowTypeToToolBoxVisibilityConverter x:Key="WorkflowTypeToToolBoxVisibilityConverter" />
+        <converters:StringFallbackConverter x:Key="StringFallbackConverter" />
+        <converters:StartButtonVisibilityConverter x:Key="StartButtonVisibilityConverter" />
+
+        <!-- ExecutionResultToTimeConverter -->
+        <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
+
+
+        <!-- WorkflowReferenceNode 特殊样式模板（使用 WorkflowReferenceNodeControl 控件） -->
+        <DataTemplate x:Key="WorkflowReferenceNodeTemplate">
+            <controls:WorkflowReferenceNodeControl>
+                <controls:WorkflowReferenceNodeControl.SubWorkflowName>
+                    <MultiBinding Converter="{StaticResource StringFallbackConverter}">
+                        <Binding Path="SubWorkflowName" />
+                        <Binding Path="Name" />
+                    </MultiBinding>
+                </controls:WorkflowReferenceNodeControl.SubWorkflowName>
+                <controls:WorkflowReferenceNodeControl.ExecutionCount>0</controls:WorkflowReferenceNodeControl.ExecutionCount>
+                <controls:WorkflowReferenceNodeControl.ExecutionTime>0.00ms</controls:WorkflowReferenceNodeControl.ExecutionTime>
+                <controls:WorkflowReferenceNodeControl.IsEnabled>
+                    <Binding Path="IsEnabled"
+                             Mode="TwoWay" />
+                </controls:WorkflowReferenceNodeControl.IsEnabled>
+                <controls:WorkflowReferenceNodeControl.IsSelected>
+                    <Binding Path="IsSelected"
+                             Mode="TwoWay" />
+                </controls:WorkflowReferenceNodeControl.IsSelected>
+            </controls:WorkflowReferenceNodeControl>
+        </DataTemplate>
+
+    
+        <!-- 默认节点模板（使用 NodeControl） -->
+        <DataTemplate x:Key="DefaultNodeTemplate">
+            <controls:NodeControl Title="{Binding Name, Mode=TwoWay, FallbackValue='节点'}"
+                                  Status="{Binding ExecutionState, FallbackValue={x:Static nodeModels:NodeExecutionState.Idle}}"
+                                  ExecutionTime="{Binding LastExecutionResult, Converter={StaticResource ExecutionResultToTimeConverter}, FallbackValue='0 s'}"
+                                  IsSelected="{Binding IsSelected, Mode=TwoWay}" />
+        </DataTemplate>
+
+        <!-- 节点模板选择器 -->
+        <!-- 主流程模板选择器（包含 WorkflowReferenceNode 特殊样式） -->
+        <converters:NodeTypeToDataTemplateSelector x:Key="MasterNodeTemplateSelector"
+                                                   WorkflowReferenceNodeTemplate="{StaticResource WorkflowReferenceNodeTemplate}"
+                                                   DefaultNodeTemplate="{StaticResource DefaultNodeTemplate}" />
+
+        <!-- 子流程模板选择器（只使用默认模板，不包含 WorkflowReferenceNode 特殊样式） -->
+        <converters:NodeTypeToDataTemplateSelector x:Key="SubNodeTemplateSelector"
+                                                   DefaultNodeTemplate="{StaticResource DefaultNodeTemplate}" />
+
+        <!-- 根据流程类型选择模板选择器的转换器 -->
+        <converters:WorkflowTypeToTemplateSelectorConverter x:Key="WorkflowTypeToTemplateSelectorConverter"
+                                                            MasterTemplateSelector="{StaticResource MasterNodeTemplateSelector}"
+                                                            SubTemplateSelector="{StaticResource SubNodeTemplateSelector}" />
+
+        <!-- 图标按钮样式 -->
+        <Style x:Key="IconButtonStyle"
+               TargetType="Button">
+            <Setter Property="Background"
+                    Value="Transparent" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
+            <Setter Property="Width"
+                    Value="32" />
+            <Setter Property="Height"
+                    Value="32" />
+            <Setter Property="Cursor"
+                    Value="Hand" />
+            <Setter Property="FontSize"
+                    Value="14" />
+            <!-- 优化 Tooltip 显示延迟，使其更快出现 -->
+            <Setter Property="ToolTipService.InitialShowDelay"
+                    Value="100" />
+            <Setter Property="ToolTipService.ShowDuration"
+                    Value="5000" />
+            <Setter Property="ToolTipService.BetweenShowDelay"
+                    Value="0" />
+            <!-- 即使按钮被禁用也显示 Tooltip -->
+            <Setter Property="ToolTipService.ShowOnDisabled"
+                    Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter TargetName="border"
+                                        Property="Background"
+                                        Value="{DynamicResource SecondaryRegionBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <!-- 顶部工具栏 -->
+            <RowDefinition Height="Auto" />
+            <!-- 标签栏 -->
+            <RowDefinition Height="*" />
+            <!-- 主工作区 -->
+            <RowDefinition Height="Auto" />
+            <!-- 底部状态栏 -->
+        </Grid.RowDefinitions>
+
+        <!-- 顶部工具栏 -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SecondaryRegionBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Left">
+                <!-- 文件操作组 -->
+                <Button ToolTip="打开文件"
+                        Command="{Binding OpenFileCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="FolderOpen"
+                                  FontSize="16" />
+                </Button>
+                <Button ToolTip="保存文件"
+                        Command="{Binding SaveFileCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="Save"
+                                  FontSize="16" />
+                </Button>
+                <Button ToolTip="另存为"
+                        Command="{Binding SaveFileAsCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="FileCirclePlus"
+                                  FontSize="16" />
+                </Button>
+
+                <!-- 分隔符（竖线） -->
+                <Border Width="1"
+                        Height="20"
+                        Background="{DynamicResource BorderBrush}"
+                        Margin="8,0"
+                        VerticalAlignment="Center" />
+
+                <!-- 编辑操作组 -->
+                <Button ToolTip="撤销"
+                        Command="{Binding UndoCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="ArrowRotateLeft"
+                                  FontSize="16" />
+                </Button>
+                <Button ToolTip="重做"
+                        Command="{Binding RedoCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="ArrowRotateRight"
+                                  FontSize="16" />
+                </Button>
+
+                <!-- 分隔符（竖线） -->
+                <Border Width="1"
+                        Height="20"
+                        Background="{DynamicResource BorderBrush}"
+                        Margin="8,0"
+                        VerticalAlignment="Center" />
+
+                <!-- 画布控制组 -->
+                <Button ToolTip="锁定画布"
+                        Command="{Binding ToggleLockCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="Lock"
+                                  FontSize="16" />
+                </Button>
+
+                <!-- 分隔符（竖线） -->
+                <Border Width="1"
+                        Height="20"
+                        Background="{DynamicResource BorderBrush}"
+                        Margin="8,0"
+                        VerticalAlignment="Center" />
+
+                <!-- 执行控制组 -->
+                <Button ToolTip="执行"
+                        Command="{Binding PlayCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="Play"
+                                  FontSize="16" />
+                </Button>
+
+                <!-- 流程操作组（移动到末尾） -->
+                <Border Width="1"
+                        Height="20"
+                        Background="{DynamicResource BorderBrush}"
+                        Margin="8,0"
+                        VerticalAlignment="Center" />
+                <Button ToolTip="切换流程"
+                        Command="{Binding OpenMasterWorkflowCommand}"
+                        Style="{StaticResource IconButtonStyle}">
+                    <fa:IconBlock Icon="DiagramProject"
+                                  FontSize="16" />
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- 标签栏（WorkflowTabControl 的标题栏占位） -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource SecondaryRegionBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Visibility="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanToVisibilityConverter}}">
+        </Border>
+
+        <!-- 主工作区 -->
+        <Grid Grid.Row="2">
+            <!-- WorkflowTabControl（完整控件，包含标题栏和内容区域） -->
+            <controls:WorkflowTabControl x:Name="SubWorkflowTabControl"
+                                         ItemsSource="{Binding SubWorkflowTabs}"
+                                         SelectedItem="{Binding CurrentTab, Mode=TwoWay}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Stretch"
+                                         HorizontalContentAlignment="Stretch"
+                                         VerticalContentAlignment="Stretch"
+                                         AddButtonContent="+"
+                                         AddButtonToolTip="添加新流程"
+                                         TabListButtonToolTip="显示所有标签页"
+                                         ShowMasterWorkflowButton="False"
+                                         ShowTabPanel="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
+                                         ShowAddButton="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
+                                         ShowTabListButton="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
+                                         ShowContent="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
+                                         SelectionChanged="TabControl_SelectionChanged"
+                                         AddButtonClick="WorkflowTabControl_AddButtonClick"
+                                         TabListItemSelected="WorkflowTabControl_TabListItemSelected">
+                <controls:WorkflowTabControl.ItemContainerStyle>
+                    <Style TargetType="TabItem">
+                        <Setter Property="behaviors:TabItemBehaviors.DragDropCommand"
+                                Value="{Binding DataContext.ReorderTabsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                        <!-- 使用样式中的默认 Padding: 20,16，标题栏更大更美观 -->
+                    </Style>
+                </controls:WorkflowTabControl.ItemContainerStyle>
+
+                <controls:WorkflowTabControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type models:WorkflowTab}">
+                        <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              DataContext="{Binding}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 流程名称显示/编辑 -->
+                            <Grid Grid.Column="0"
+                                  x:Name="TabHeaderGrid">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 圆形指示器（使用主题色） -->
+                                <Ellipse Grid.Column="0"
+                                         Width="8"
+                                         Height="8"
+                                         Fill="{DynamicResource DangerBrush}"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,8,0"
+                                         Visibility="{Binding IsInEditMode, Converter={StaticResource InvertedBooleanToVisibilityConverter}, Mode=OneWay}" />
+
+                                <!-- 显示模式：TextBlock -->
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Name}"
+                                           x:Name="textBlock"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Left"
+                                           DataContext="{Binding}"
+                                           FontSize="13"
+                                           FontWeight="Normal"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding IsInEditMode, Converter={StaticResource InvertedBooleanToVisibilityConverter}, Mode=OneWay}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource SecondaryTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TabItem}}"
+                                                             Value="True">
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource PrimaryTextBrush}" />
+                                                    <Setter Property="FontWeight"
+                                                            Value="Medium" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- 编辑模式：TextBox -->
+                                <TextBox x:Name="EditNameTextBox"
+                                         Text="{Binding EditingName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                         VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center"
+                                         HorizontalAlignment="Stretch"
+                                         HorizontalContentAlignment="Left"
+                                         Background="{DynamicResource SurfaceBrush}"
+                                         BorderBrush="{DynamicResource PrimaryBrush}"
+                                         BorderThickness="1"
+                                         Padding="2,0"
+                                         MinWidth="100"
+                                         IsReadOnly="False"
+                                         IsEnabled="True"
+                                         GotFocus="EditNameTextBox_GotFocus"
+                                         PreviewKeyDown="EditNameTextBox_PreviewKeyDown"
+                                         Tag="{Binding RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                         DataContext="{Binding}"
+                                         Visibility="{Binding IsInEditMode, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
+                                    <TextBox.InputBindings>
+                                        <!-- 回车确认 -->
+                                        <KeyBinding Key="Return"
+                                                    Command="{Binding DataContext.CommitEditWorkflowNameCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        <!-- ESC取消 -->
+                                        <KeyBinding Key="Escape"
+                                                    Command="{Binding DataContext.CancelEditWorkflowNameCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                    </TextBox.InputBindings>
+                                    <hc:Interaction.Triggers>
+                                        <!-- 失焦时确认编辑 -->
+                                        <hc:EventTrigger EventName="LostFocus">
+                                            <hc:InvokeCommandAction Command="{Binding DataContext.CommitEditWorkflowNameCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                        </hc:EventTrigger>
+                                    </hc:Interaction.Triggers>
+                                </TextBox>
+                            </Grid>
+
+                            <!-- 启动按钮和关闭按钮 -->
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center"
+                                        Margin="8,0,0,0">
+                                <Button ToolTip="启动此子流程"
+                                        Command="{Binding DataContext.StartSubWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="6,4"
+                                        Margin="0,0,4,0"
+                                        Width="24"
+                                        Height="24"
+                                        Cursor="Hand"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource PrimaryTextBrush}">
+                                    <fa:IconBlock Icon="Play"
+                                                  FontSize="12" />
+                                    <Button.Visibility>
+                                        <MultiBinding Converter="{StaticResource StartButtonVisibilityConverter}">
+                                            <Binding Path="Type" />
+                                            <Binding Path="DataContext.IsStartButtonVisible"
+                                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                        </MultiBinding>
+                                    </Button.Visibility>
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Background"
+                                                    Value="Transparent" />
+                                            <Setter Property="BorderThickness"
+                                                    Value="0" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="4"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver"
+                                                         Value="True">
+                                                    <Setter Property="Background"
+                                                            Value="{DynamicResource SecondaryRegionBrush}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource PrimaryBrush}" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+
+                                <!-- 自定义关闭按钮 -->
+                                <Button ToolTip="关闭此子流程"
+                                        Command="{Binding DataContext.CloseWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="6,4"
+                                        Width="24"
+                                        Height="24"
+                                        Cursor="Hand"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource SecondaryTextBrush}">
+                                    <fa:IconBlock Icon="Xmark"
+                                                  FontSize="12" />
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Background"
+                                                    Value="Transparent" />
+                                            <Setter Property="BorderThickness"
+                                                    Value="0" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="4"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver"
+                                                         Value="True">
+                                                    <Setter Property="Background"
+                                                            Value="{DynamicResource DangerBrush}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="White" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- 右键菜单 -->
+                            <Grid.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="重命名"
+                                              Command="{Binding BeginEditWorkflowNameCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="导出流程"
+                                              Command="{Binding ExportWorkflowCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <fa:IconBlock Icon="FileExport"
+                                                          FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <Separator Style="{DynamicResource ThemedSeparator}" />
+                                    <MenuItem Header="关闭"
+                                              Command="{Binding CloseWorkflowCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="关闭其他"
+                                              Command="{Binding CloseOtherWorkflowsCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="关闭所有"
+                                              Command="{Binding CloseAllWorkflowsCommand}" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+                        </Grid>
+                    </DataTemplate>
+                </controls:WorkflowTabControl.ItemTemplate>
+
+                <controls:WorkflowTabControl.ContentTemplate>
+                    <DataTemplate DataType="{x:Type models:WorkflowTab}">
+                        <Grid HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch">
+                            <controls:FlowEditor x:Name="FlowEditorInstance"
+                                                 ClipToBounds="True"
+                                                 HorizontalAlignment="Stretch"
+                                                 VerticalAlignment="Stretch"
+                                                 ToolBoxItemsSource="{Binding DataContext.ToolBoxItemsSource, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                 CanvasItemsSource="{Binding Nodes}"
+                                                 EdgeItemsSource="{Binding Edges}"
+                                                 ItemTemplateSelector="{Binding Type, Converter={StaticResource WorkflowTypeToTemplateSelectorConverter}}"
+                                                 IsToolBoxVisible="{Binding Type, Converter={StaticResource WorkflowTypeToToolBoxVisibilityConverter}}"
+                                                 Loaded="FlowEditor_Loaded" />
+                        </Grid>
+                    </DataTemplate>
+                </controls:WorkflowTabControl.ContentTemplate>
+            </controls:WorkflowTabControl>
+
+            <!-- 主流程编辑区域（独立界面） -->
+            <local:MasterWorkflowView DataContext="{Binding}"
+                                      Visibility="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+            <!-- 当没有活动标签页且不在主流程编辑模式时显示提示 -->
+            <TextBlock Text="请点击 + 按钮添加新流程，或点击 📋 按钮打开主流程编辑"
+                       FontSize="14"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility"
+                                Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsMasterWorkflowViewVisible}"
+                                               Value="False" />
+                                    <Condition Binding="{Binding CurrentTab, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}"
+                                               Value="Visible" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility"
+                                        Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Grid>
+
+        <!-- 底部状态栏 -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SecondaryRegionBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 左侧状态消息 -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           FontSize="12"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           VerticalAlignment="Center" />
+
+                <!-- 右侧控制区域 -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <!-- 流程时间 -->
+                    <TextBlock Text="{Binding ProcessTime, StringFormat='流程 {0:F2}ms'}"
+                               FontSize="12"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,16,0" />
+
+                    <!-- 缩放控制 -->
+                    <Button ToolTip="适应画布"
+                            Command="{Binding FitToScreenCommand}"
+                            Style="{StaticResource IconButtonStyle}"
+                            Width="24"
+                            Height="24"
+                            Margin="0,0,8,0">
+                        <fa:IconBlock Icon="UpRightAndDownLeftFromCenter"
+                                      FontSize="14" />
+                    </Button>
+                    <TextBlock Text="{Binding ZoomPercentage, StringFormat='{}{0:F0}%'}"
+                               FontSize="12"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,16,0" />
+
+                    <!-- 小地图（由 InfiniteCanvas 内部提供） -->
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

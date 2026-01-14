@@ -1,14 +1,15 @@
 using Astra.UI.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Media;
 
-namespace Astra.Models
+namespace Astra.UI.Models
 {
     /// <summary>
     /// 工具类别实现
     /// </summary>
-    public class ToolCategory : IToolCategory<IToolItem>, INotifyPropertyChanged
+    public class ToolCategory : ObservableObject, IToolCategory<IToolItem>
     {
         private string _name;
         private string _iconCode;

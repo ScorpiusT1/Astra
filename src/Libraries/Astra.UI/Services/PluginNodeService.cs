@@ -1,18 +1,14 @@
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Manifest;
 using Astra.Core.Plugins.Manifest.Serializers;
-using Astra.Core.Plugins.Models;
-using Astra.Models;
 using Astra.UI.Controls;
-using System;
-using System.Collections.Generic;
+using Astra.UI.Models;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
-namespace Astra.Services
+namespace Astra.UI.Services
 {
     /// <summary>
     /// 插件节点服务 - 从插件清单文件中读取节点信息并转换为工具项
