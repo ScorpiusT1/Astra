@@ -32,6 +32,9 @@ namespace Astra.UI.Commands
             _workflowTabs = workflowTabs ?? throw new ArgumentNullException(nameof(workflowTabs));
             _updateMasterWorkflowNodeName = updateMasterWorkflowNodeName ?? throw new ArgumentNullException(nameof(updateMasterWorkflowNodeName));
             _markAsModified = markAsModified ?? throw new ArgumentNullException(nameof(markAsModified));
+            
+            // 设置 WorkflowTab 属性（用于撤销/重做时切换标签页）
+            WorkflowTab = tab;
         }
 
         public override bool CanExecute(object? parameter)

@@ -109,6 +109,36 @@ namespace Astra.UI.Controls
                 typeof(FlowEditor),
                 new PropertyMetadata(true, OnIsToolBoxVisibleChanged));
 
+        /// <summary>
+        /// 共享剪贴板：存储复制的节点（支持跨流程复制粘贴）
+        /// </summary>
+        public static readonly DependencyProperty SharedClipboardNodesProperty =
+            DependencyProperty.Register(
+                nameof(SharedClipboardNodes),
+                typeof(List<Node>),
+                typeof(FlowEditor),
+                new PropertyMetadata(null));
+
+        /// <summary>
+        /// 共享剪贴板：存储复制的连线（支持跨流程复制粘贴）
+        /// </summary>
+        public static readonly DependencyProperty SharedClipboardEdgesProperty =
+            DependencyProperty.Register(
+                nameof(SharedClipboardEdges),
+                typeof(List<Edge>),
+                typeof(FlowEditor),
+                new PropertyMetadata(null));
+
+        /// <summary>
+        /// 共享剪贴板：存储复制节点的边界框（用于保持粘贴时的相对位置）
+        /// </summary>
+        public static readonly DependencyProperty SharedClipboardBoundsProperty =
+            DependencyProperty.Register(
+                nameof(SharedClipboardBounds),
+                typeof(Rect),
+                typeof(FlowEditor),
+                new PropertyMetadata(Rect.Empty));
+
         #endregion
 
         #region 属性访问器
@@ -165,6 +195,33 @@ namespace Astra.UI.Controls
         {
             get => (bool)GetValue(IsToolBoxVisibleProperty);
             set => SetValue(IsToolBoxVisibleProperty, value);
+        }
+
+        /// <summary>
+        /// 共享剪贴板：存储复制的节点（支持跨流程复制粘贴）
+        /// </summary>
+        public List<Node> SharedClipboardNodes
+        {
+            get => (List<Node>)GetValue(SharedClipboardNodesProperty);
+            set => SetValue(SharedClipboardNodesProperty, value);
+        }
+
+        /// <summary>
+        /// 共享剪贴板：存储复制的连线（支持跨流程复制粘贴）
+        /// </summary>
+        public List<Edge> SharedClipboardEdges
+        {
+            get => (List<Edge>)GetValue(SharedClipboardEdgesProperty);
+            set => SetValue(SharedClipboardEdgesProperty, value);
+        }
+
+        /// <summary>
+        /// 共享剪贴板：存储复制节点的边界框（用于保持粘贴时的相对位置）
+        /// </summary>
+        public Rect SharedClipboardBounds
+        {
+            get => (Rect)GetValue(SharedClipboardBoundsProperty);
+            set => SetValue(SharedClipboardBoundsProperty, value);
         }
 
         /// <summary>
@@ -342,6 +399,14 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDragOver(object sender, DragEventArgs e)
         {
+            // 检查当前 WorkflowTab 是否是活动状态
+            if (DataContext is Models.WorkflowTab workflowTab && !workflowTab.IsActive)
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = false; // 不处理事件，让它冒泡到活动的 FlowEditor
+                return;
+            }
+
             // 检查拖拽数据是否有效
             if (IsValidDragData(e.Data))
             {
@@ -361,9 +426,24 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDrop(object sender, DragEventArgs e)
         {
+            var workflowTab = DataContext as Models.WorkflowTab;
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnCanvasDrop] 收到拖放事件 - WorkflowTab: {workflowTab?.Name ?? "null"}, IsActive: {workflowTab?.IsActive}, Canvas: {_infiniteCanvas != null}");
+            
             if (_infiniteCanvas == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnCanvasDrop] _infiniteCanvas 为 null，返回");
                 return;
+            }
 
+            // 检查当前 WorkflowTab 是否是活动状态
+            if (workflowTab != null && !workflowTab.IsActive)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnCanvasDrop] 拒绝处理拖放：WorkflowTab '{workflowTab.Name}' 不是活动状态（IsActive={workflowTab.IsActive}）");
+                e.Handled = false; // 不处理事件，让它冒泡到活动的 FlowEditor
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnCanvasDrop] 处理拖放：WorkflowTab '{workflowTab?.Name ?? "null"}'");
             var dropPosition = e.GetPosition(_infiniteCanvas);
             TryHandleNodeDrop(e, dropPosition);
         }
@@ -412,6 +492,16 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnFlowEditorPreviewDragOver(object sender, DragEventArgs e)
         {
+            var workflowTab = DataContext as Models.WorkflowTab;
+            
+            // 检查当前 WorkflowTab 是否是活动状态
+            if (workflowTab != null && !workflowTab.IsActive)
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = false; // 让事件传递到活动的 FlowEditor
+                return;
+            }
+            
             if (_infiniteCanvas == null || !IsValidDragData(e.Data))
             {
                 e.Effects = DragDropEffects.None;
@@ -435,9 +525,24 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnFlowEditorPreviewDrop(object sender, DragEventArgs e)
         {
+            var workflowTab = DataContext as Models.WorkflowTab;
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnFlowEditorPreviewDrop] 收到拖放事件 - WorkflowTab: {workflowTab?.Name ?? "null"}, IsActive: {workflowTab?.IsActive}");
+            
             if (_infiniteCanvas == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnFlowEditorPreviewDrop] _infiniteCanvas 为 null，返回");
                 return;
+            }
 
+            // 检查当前 WorkflowTab 是否是活动状态
+            if (workflowTab != null && !workflowTab.IsActive)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnFlowEditorPreviewDrop] 拒绝处理拖放：WorkflowTab '{workflowTab.Name}' 不是活动状态（IsActive={workflowTab.IsActive}）");
+                e.Handled = false; // 不处理事件，让它传递到活动的 FlowEditor
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnFlowEditorPreviewDrop] 处理拖放：WorkflowTab '{workflowTab?.Name ?? "null"}'");
             var point = e.GetPosition(_infiniteCanvas);
             TryHandleNodeDrop(e, point);
         }
@@ -487,6 +592,16 @@ namespace Astra.UI.Controls
             copyMenuItem.Click += OnCopyMenuItemClick;
             _canvasContextMenu.Items.Add(copyMenuItem);
 
+            // 粘贴菜单项（选中项右键菜单）
+            var pasteMenuItemForSelection = new MenuItem()
+            {
+                Header = "粘贴",
+            };
+            if (menuItemStyle != null)
+                pasteMenuItemForSelection.Style = menuItemStyle;
+            pasteMenuItemForSelection.Click += OnPasteMenuItemClick;
+            _canvasContextMenu.Items.Add(pasteMenuItemForSelection);
+
             // 分隔符
             _canvasContextMenu.Items.Add(new Separator());
 
@@ -514,7 +629,7 @@ namespace Astra.UI.Controls
             deleteMenuItem.Click += OnDeleteMenuItemClick;
             _canvasContextMenu.Items.Add(deleteMenuItem);
 
-            // 在菜单打开时更新启用/禁用文本
+            // 在菜单打开时更新启用/禁用文本和粘贴菜单项状态
             _canvasContextMenu.Opened += (s, e) =>
             {
                 if (_infiniteCanvas?.SelectedItems != null && _infiniteCanvas.SelectedItems.Count > 0)
@@ -531,6 +646,9 @@ namespace Astra.UI.Controls
                     }
                     toggleEnabledMenuItem.Header = allEnabled ? "禁用" : "启用";
                 }
+
+                // 更新粘贴菜单项可用状态（使用共享剪贴板）
+                pasteMenuItemForSelection.IsEnabled = SharedClipboardNodes != null && SharedClipboardNodes.Count > 0;
             };
 
             // 2) 画布右键菜单（锁定画布）
@@ -573,8 +691,8 @@ namespace Astra.UI.Controls
             // 在菜单打开时更新粘贴菜单项可用状态和锁定状态
             _canvasBackgroundContextMenu.Opened += (s, e) =>
             {
-                // 粘贴菜单项：只有剪贴板有内容时才可用
-                pasteMenuItem.IsEnabled = _infiniteCanvas?.ClipboardNodes != null && _infiniteCanvas.ClipboardNodes.Count > 0;
+                // 粘贴菜单项：只有剪贴板有内容时才可用（使用共享剪贴板）
+                pasteMenuItem.IsEnabled = SharedClipboardNodes != null && SharedClipboardNodes.Count > 0;
                 
                 // 更新锁定/解锁文本
                 if (_lockCanvasMenuItem != null && _infiniteCanvas != null)
@@ -659,7 +777,8 @@ namespace Astra.UI.Controls
                 return;
 
             // 获取所有选中的节点（克隆后保存，避免后续修改影响粘贴）
-            _infiniteCanvas.ClipboardNodes = new List<Node>();
+            // 🔧 使用共享剪贴板支持跨流程复制粘贴
+            var clipboardNodes = new List<Node>();
             double minX = double.MaxValue, minY = double.MaxValue;
             double maxX = double.MinValue, maxY = double.MinValue;
 
@@ -669,7 +788,7 @@ namespace Astra.UI.Controls
             var oldNodeIdToClonedNodeMap = new Dictionary<string, Node>();
 
             System.Diagnostics.Debug.WriteLine($"");
-            System.Diagnostics.Debug.WriteLine($"========== 开始复制节点 ==========");
+            System.Diagnostics.Debug.WriteLine($"========== 开始复制节点（支持跨流程） ==========");
 
             foreach (var item in _infiniteCanvas.SelectedItems)
             {
@@ -694,7 +813,7 @@ namespace Astra.UI.Controls
                     System.Diagnostics.Debug.WriteLine($"  恢复后 Position: ({clonedNode.Position.X:F2}, {clonedNode.Position.Y:F2})");
                     System.Diagnostics.Debug.WriteLine($"  恢复后 Size: ({clonedNode.Size.Width:F2}, {clonedNode.Size.Height:F2})");
                     
-                    _infiniteCanvas.ClipboardNodes.Add(clonedNode);
+                    clipboardNodes.Add(clonedNode);
                     
                     // 记录原始ID和克隆节点的映射（用于更新连线的节点ID）
                     selectedNodeIds.Add(node.Id);
@@ -717,14 +836,15 @@ namespace Astra.UI.Controls
             System.Diagnostics.Debug.WriteLine($"");
 
             // 保存边界框
-            if (_infiniteCanvas.ClipboardNodes.Count > 0 && minX != double.MaxValue)
+            Rect clipboardBounds = Rect.Empty;
+            if (clipboardNodes.Count > 0 && minX != double.MaxValue)
             {
-                _infiniteCanvas.ClipboardBounds = new Rect(minX, minY, maxX - minX, maxY - minY);
+                clipboardBounds = new Rect(minX, minY, maxX - minX, maxY - minY);
             }
 
             // 复制选中节点之间的连线，并更新节点ID引用
             // 注意：端口ID的格式是"节点ID:端口位置"（例如"8d7a0f62-1ae0-4802-bae8-b26805b83e66:Bottom"）
-            _infiniteCanvas.ClipboardEdges = new List<Astra.Core.Nodes.Models.Edge>();
+            var clipboardEdges = new List<Astra.Core.Nodes.Models.Edge>();
             if (EdgeItemsSource != null)
             {
                 System.Diagnostics.Debug.WriteLine($"========== 开始复制连线 ==========");
@@ -783,7 +903,7 @@ namespace Astra.UI.Controls
                             System.Diagnostics.Debug.WriteLine($"  最终连线: SourceNode={clonedEdge.SourceNodeId}, SourcePort={clonedEdge.SourcePortId}");
                             System.Diagnostics.Debug.WriteLine($"           -> TargetNode={clonedEdge.TargetNodeId}, TargetPort={clonedEdge.TargetPortId}");
                             
-                            _infiniteCanvas.ClipboardEdges.Add(clonedEdge);
+                            clipboardEdges.Add(clonedEdge);
                         }
                     }
                 }
@@ -792,7 +912,13 @@ namespace Astra.UI.Controls
                 System.Diagnostics.Debug.WriteLine($"");
             }
 
-            System.Diagnostics.Debug.WriteLine($"[复制] 节点数: {_infiniteCanvas.ClipboardNodes.Count}, 连线数: {_infiniteCanvas.ClipboardEdges.Count}");
+            // 🔧 保存到共享剪贴板（支持跨流程复制粘贴）
+            SharedClipboardNodes = clipboardNodes;
+            SharedClipboardEdges = clipboardEdges;
+            SharedClipboardBounds = clipboardBounds;
+
+            System.Diagnostics.Debug.WriteLine($"[复制] 节点数: {SharedClipboardNodes.Count}, 连线数: {SharedClipboardEdges.Count}");
+            System.Diagnostics.Debug.WriteLine($"[复制] 已保存到共享剪贴板（支持跨流程粘贴）");
         }
 
         /// <summary>
@@ -800,7 +926,8 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnPasteMenuItemClick(object sender, RoutedEventArgs e)
         {
-            if (_infiniteCanvas == null || _infiniteCanvas.ClipboardNodes == null || _infiniteCanvas.ClipboardNodes.Count == 0)
+            // 🔧 使用共享剪贴板支持跨流程复制粘贴
+            if (_infiniteCanvas == null || SharedClipboardNodes == null || SharedClipboardNodes.Count == 0)
                 return;
 
             if (_infiniteCanvas.ItemsSource is not System.Collections.IList itemsList)
@@ -808,6 +935,8 @@ namespace Astra.UI.Controls
                 System.Diagnostics.Debug.WriteLine("警告：ItemsSource 不是 IList，无法粘贴节点");
                 return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"[粘贴] 从共享剪贴板粘贴，节点数: {SharedClipboardNodes.Count}, 连线数: {SharedClipboardEdges?.Count ?? 0}");
 
             // 获取粘贴位置（画布坐标系，已考虑缩放）
             System.Windows.Point pastePosition;
@@ -827,15 +956,15 @@ namespace Astra.UI.Controls
             // 获取原始边界框的左上角作为参考点（与拖拽创建节点的行为一致）
             // 这样粘贴时，节点组的左上角会对齐鼠标位置
             Point2D? originalTopLeft = null;
-            if (_infiniteCanvas.ClipboardBounds.HasValue)
+            if (SharedClipboardBounds != Rect.Empty)
             {
-                var bounds = _infiniteCanvas.ClipboardBounds.Value;
+                var bounds = SharedClipboardBounds;
                 originalTopLeft = new Point2D(bounds.Left, bounds.Top);
             }
-            else if (_infiniteCanvas.ClipboardNodes.Count > 0 && _infiniteCanvas.ClipboardNodes[0].Position != null)
+            else if (SharedClipboardNodes.Count > 0 && SharedClipboardNodes[0].Position != null)
             {
                 // 如果没有边界框，使用第一个节点的位置作为参考
-                originalTopLeft = _infiniteCanvas.ClipboardNodes[0].Position;
+                originalTopLeft = SharedClipboardNodes[0].Position;
             }
 
             if (!originalTopLeft.HasValue)
@@ -850,7 +979,7 @@ namespace Astra.UI.Controls
             var offsetY = pastePosition.Y - originalTopLeft.Value.Y;
 
             // 🔧 性能优化：减少调试日志输出（特别是在粘贴多个节点时）
-            int nodeCount = _infiniteCanvas.ClipboardNodes.Count;
+            int nodeCount = SharedClipboardNodes.Count;
             bool verboseLogging = nodeCount < 10; // 只有节点数少于10时才输出详细日志
             
             // 再次克隆节点（支持多次粘贴）并应用偏移量
@@ -859,10 +988,10 @@ namespace Astra.UI.Controls
 
             if (verboseLogging)
             {
-                System.Diagnostics.Debug.WriteLine($"========== 开始粘贴克隆节点 ==========");
+                System.Diagnostics.Debug.WriteLine($"========== 开始粘贴克隆节点（跨流程） ==========");
             }
             
-            foreach (var clipboardNode in _infiniteCanvas.ClipboardNodes)
+            foreach (var clipboardNode in SharedClipboardNodes)
             {
                 // 保存剪贴板节点的属性
                 var clipboardPosition = clipboardNode.Position;
@@ -898,14 +1027,14 @@ namespace Astra.UI.Controls
             // 克隆连线并更新节点ID和端口ID引用
             // 注意：端口ID的格式是"节点ID:端口位置"（例如"8d7a0f62-1ae0-4802-bae8-b26805b83e66:Bottom"）
             var clonedEdges = new List<Astra.Core.Nodes.Models.Edge>();
-            if (_infiniteCanvas.ClipboardEdges != null && _infiniteCanvas.ClipboardEdges.Count > 0)
+            if (SharedClipboardEdges != null && SharedClipboardEdges.Count > 0)
             {
                 if (verboseLogging)
                 {
-                    System.Diagnostics.Debug.WriteLine($"========== 开始粘贴连线 ==========");
+                    System.Diagnostics.Debug.WriteLine($"========== 开始粘贴连线（跨流程） ==========");
                 }
                 
-                foreach (var clipboardEdge in _infiniteCanvas.ClipboardEdges)
+                foreach (var clipboardEdge in SharedClipboardEdges)
                 {
                     // 检查连线的两端节点是否都在映射表中
                     if (clipboardNodeIdToNewNodeIdMap.ContainsKey(clipboardEdge.SourceNodeId) && 
@@ -1381,6 +1510,12 @@ namespace Astra.UI.Controls
         /// </summary>
         private void AddNodeToCanvas(Node node, System.Windows.Point position)
         {
+            var workflowTab = DataContext as Models.WorkflowTab;
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] 添加节点: {node?.Name}, WorkflowTab: {workflowTab?.Name ?? "null"}, IsActive: {workflowTab?.IsActive}");
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] CanvasItemsSource: {CanvasItemsSource?.GetHashCode()}, Count: {(CanvasItemsSource as IList)?.Count}");
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] WorkflowTab.Nodes: {workflowTab?.Nodes?.GetHashCode()}, Count: {workflowTab?.Nodes?.Count}");
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] 集合是否相同: {ReferenceEquals(CanvasItemsSource, workflowTab?.Nodes)}");
+            
             if (CanvasItemsSource == null)
             {
                 System.Diagnostics.Debug.WriteLine("CanvasItemsSource 为 null，无法添加节点");
@@ -1403,20 +1538,23 @@ namespace Astra.UI.Controls
             // 使用撤销/重做命令添加节点
             if (CanvasItemsSource is IList list)
             {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] 准备添加节点到集合，集合当前节点数: {list.Count}");
                 if (_undoRedoManager != null)
                 {
                     var command = new AddNodeCommand(list, node);
                     // 设置命令的 WorkflowTab
-                    if (DataContext is Models.WorkflowTab workflowTab)
+                    if (DataContext is Models.WorkflowTab workflowTab2)
                     {
-                        command.WorkflowTab = workflowTab;
+                        command.WorkflowTab = workflowTab2;
                     }
                     _undoRedoManager.Execute(command);
+                    System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] 节点已添加（通过命令），集合当前节点数: {list.Count}");
                 }
                 else
                 {
                     // 回退：直接添加
                     list.Add(node);
+                    System.Diagnostics.Debug.WriteLine($"[FlowEditor.AddNodeToCanvas] 节点已添加（直接），集合当前节点数: {list.Count}");
                 }
             }
             else
@@ -1691,6 +1829,14 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnWindowPreviewDragOver(object sender, DragEventArgs e)
         {
+            var workflowTab = DataContext as Models.WorkflowTab;
+            
+            // 检查当前 WorkflowTab 是否是活动状态
+            if (workflowTab != null && !workflowTab.IsActive)
+            {
+                return; // 不处理非活动状态的 FlowEditor
+            }
+            
             // 如果 FlowEditor 禁用了拖放，不处理
             if (!AllowDrop)
                 return;
@@ -1711,6 +1857,16 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnWindowPreviewDrop(object sender, DragEventArgs e)
         {
+            var workflowTab = DataContext as Models.WorkflowTab;
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnWindowPreviewDrop] 收到拖放事件 - WorkflowTab: {workflowTab?.Name ?? "null"}, IsActive: {workflowTab?.IsActive}");
+            
+            // 检查当前 WorkflowTab 是否是活动状态
+            if (workflowTab != null && !workflowTab.IsActive)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnWindowPreviewDrop] 拒绝处理拖放：WorkflowTab '{workflowTab.Name}' 不是活动状态（IsActive={workflowTab.IsActive}）");
+                return;
+            }
+            
             // 如果 FlowEditor 禁用了拖放，不处理
             if (!AllowDrop)
                 return;
@@ -1722,6 +1878,7 @@ namespace Astra.UI.Controls
             if (!IsScreenPointInsideFlowEditor(screenPoint))
                 return;
 
+            System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnWindowPreviewDrop] 处理拖放：WorkflowTab '{workflowTab?.Name ?? "null"}'");
             var pointOnCanvas = _infiniteCanvas.PointFromScreen(screenPoint);
             TryHandleNodeDrop(e, pointOnCanvas);
         }

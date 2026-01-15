@@ -4,6 +4,7 @@ using Astra.Core.Plugins.Manifest.Serializers;
 using Astra.UI.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -22,16 +23,98 @@ using Astra.UI.Helpers;
 using Astra.UI.Models;
 using Astra.UI.Services;
 using Astra.UI.Commands;
+using Astra.Core.Nodes.Serialization;
+using Astra.Core.Nodes.Models;
+using System.IO;
 
 namespace Astra.UI.ViewModels
 {
     public partial class MultiFlowEditorViewModel : ObservableObject
     {       
+        #region 常量定义
+
+        /// <summary>
+        /// 流程文件扩展名
+        /// </summary>
+        private const string FILE_EXTENSION = ".sol";
+
+        /// <summary>
+        /// 流程文件过滤器
+        /// </summary>
+        private const string FILE_FILTER = "流程项目文件 (*.sol)|*.sol";
+
+        /// <summary>
+        /// Solutions 文件夹名称（在 bin 目录下）
+        /// </summary>
+        private const string SOLUTIONS_FOLDER_NAME = "Solutions";
+
+        /// <summary>
+        /// 获取 Solutions 文件夹的完整路径（确保路径格式正确）
+        /// </summary>
+        private static string SolutionsFolder
+        {
+            get
+            {
+                // 使用 AppDomain.CurrentDomain.BaseDirectory 已经是 bin 目录
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var folder = Path.Combine(baseDir, SOLUTIONS_FOLDER_NAME);
+                
+                // 确保文件夹存在
+                if (!Directory.Exists(folder))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(folder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[SolutionsFolder] 创建文件夹失败: {ex.Message}");
+                    }
+                }
+                
+                // 返回完整路径（解决 SaveFileDialog 的路径格式问题）
+                return Path.GetFullPath(folder);
+            }
+        }
+
+        #endregion
+
+        #region 字段
+       
         private PluginNodeService _pluginNodeService;
 
         private IPluginHost _pluginHost;
 
         private IManifestSerializer _manifestSerializer;
+
+        /// <summary>
+        /// 多流程序列化服务
+        /// </summary>
+        private readonly IMultiWorkflowSerializer _workflowSerializer;
+
+        /// <summary>
+        /// 当前文件路径（如果已保存）
+        /// </summary>
+        [ObservableProperty]
+        private string _currentFilePath;
+
+        /// <summary>
+        /// 全局剪贴板：存储复制的节点（支持跨流程复制粘贴）
+        /// </summary>
+        [ObservableProperty]
+        private List<Node> _globalClipboardNodes = new List<Node>();
+
+        /// <summary>
+        /// 全局剪贴板：存储复制的连线（支持跨流程复制粘贴）
+        /// </summary>
+        [ObservableProperty]
+        private List<Edge> _globalClipboardEdges = new List<Edge>();
+
+        /// <summary>
+        /// 全局剪贴板：存储复制节点的边界框（用于保持粘贴时的相对位置）
+        /// </summary>
+        [ObservableProperty]
+        private Rect _globalClipboardBounds = Rect.Empty;
 
         // 用于防止重复关闭标签页的集合
         private readonly HashSet<string> _closingTabs = new HashSet<string>();
@@ -92,6 +175,48 @@ namespace Astra.UI.ViewModels
 
         partial void OnCurrentTabChanged(WorkflowTab value)
         {
+            Debug.WriteLine($"[OnCurrentTabChanged] CurrentTab 变更: {value?.Name ?? "null"}");
+            
+            // 如果新标签页不为空，执行切换逻辑
+            if (value != null)
+            {
+                Debug.WriteLine($"[OnCurrentTabChanged] 调用 SwitchWorkflow");
+                
+                // 保存旧标签页的状态
+                var oldTab = SubWorkflowTabs.FirstOrDefault(t => t.IsActive && t != value);
+                if (oldTab != null)
+                {
+                    Debug.WriteLine($"[OnCurrentTabChanged] 保存旧标签页: {oldTab.Name}");
+                    oldTab.IsActive = false;
+                    SaveCurrentTabState();
+                }
+                
+                // 确保所有其他标签页都是非活动状态
+                foreach (var tab in SubWorkflowTabs)
+                {
+                    if (tab != value)
+                    {
+                        tab.IsActive = false;
+                    }
+                }
+                
+                // 激活新标签页
+                value.IsActive = true;
+                IsMasterWorkflow = value.Type == WorkflowType.Master;
+                
+                // 同步到画布
+                SyncTabToCanvas(value);
+                
+                Debug.WriteLine($"[OnCurrentTabChanged] 切换完成，新标签页: {value.Name}, IsActive: {value.IsActive}");
+                
+                // 打印所有标签页的状态
+                Debug.WriteLine($"[OnCurrentTabChanged] 所有标签页状态:");
+                foreach (var t in SubWorkflowTabs)
+                {
+                    Debug.WriteLine($"[OnCurrentTabChanged]   {t.Name}: Nodes 哈希={t.Nodes.GetHashCode()}, 节点数={t.Nodes.Count}, IsActive={t.IsActive}");
+                }
+            }
+            
             // 当当前标签页改变时，更新启动命令的可用性
             StartCurrentSubWorkflowCommand.NotifyCanExecuteChanged();
             
@@ -184,7 +309,7 @@ namespace Astra.UI.ViewModels
         /// 状态消息
         /// </summary>
         [ObservableProperty]
-        private string _statusMessage = "等待添加组件";
+        private string _statusMessage = "";
 
         /// <summary>
         /// 流程执行时间（毫秒）
@@ -222,6 +347,9 @@ namespace Astra.UI.ViewModels
         {
             _pluginHost = pluginHost;
             _manifestSerializer = manifestSerializer;
+            
+            // 初始化多流程序列化服务
+            _workflowSerializer = new MultiWorkflowSerializer();
             
             // 初始化命令管理器
             _commandManager = new CommandManager(maxHistorySize: 100);
@@ -615,16 +743,26 @@ namespace Astra.UI.ViewModels
                 Type = WorkflowType.Sub,
                 WorkflowData = subWorkflow,
                 Nodes = nodes,
-                Edges = edges
+                Edges = edges,
+                IsActive = false // 初始化为非活动状态
             };
 
-            // 取消当前标签页的活动状态
-            if (CurrentTab != null)
-                CurrentTab.IsActive = false;
+            Debug.WriteLine($"[AddNewWorkflow] 创建新标签页: {workflowName}");
+            Debug.WriteLine($"[AddNewWorkflow]   Nodes 集合哈希: {nodes.GetHashCode()}, 节点数: {nodes.Count}");
+            Debug.WriteLine($"[AddNewWorkflow]   Edges 集合哈希: {edges.GetHashCode()}, 连线数: {edges.Count}");
+
+            // 取消所有标签页的活动状态（确保只有新标签页是活动的）
+            foreach (var existingTab in SubWorkflowTabs)
+            {
+                Debug.WriteLine($"[AddNewWorkflow] 设置 {existingTab.Name} 为非活动，节点数: {existingTab.Nodes.Count}");
+                existingTab.IsActive = false;
+            }
 
             // 添加新标签页并设置为活动
             newTab.IsActive = true;
             newTab.IsModified = true;
+            Debug.WriteLine($"[AddNewWorkflow] 新标签页设置为活动: {newTab.Name}, IsActive: {newTab.IsActive}");
+
 
             // 创建添加流程命令
             var addCommand = new AddWorkflowCommand(
@@ -686,11 +824,27 @@ namespace Astra.UI.ViewModels
             if (tab == null || tab == CurrentTab)
                 return;
 
+            Debug.WriteLine($"[SwitchWorkflow] === 开始切换到流程: {tab.Name} ===");
+            Debug.WriteLine($"[SwitchWorkflow]   目标 Tab.Nodes 哈希: {tab.Nodes.GetHashCode()}, 节点数: {tab.Nodes.Count}");
+            Debug.WriteLine($"[SwitchWorkflow]   目标 Tab.Edges 哈希: {tab.Edges.GetHashCode()}, 连线数: {tab.Edges.Count}");
+
             // 保存当前标签页的修改状态
             if (CurrentTab != null)
             {
+                Debug.WriteLine($"[SwitchWorkflow]   当前 Tab: {CurrentTab.Name}");
+                Debug.WriteLine($"[SwitchWorkflow]   当前 Tab.Nodes 哈希: {CurrentTab.Nodes.GetHashCode()}, 节点数: {CurrentTab.Nodes.Count}");
+                Debug.WriteLine($"[SwitchWorkflow]   当前 Tab.Edges 哈希: {CurrentTab.Edges.GetHashCode()}, 连线数: {CurrentTab.Edges.Count}");
                 CurrentTab.IsActive = false;
                 SaveCurrentTabState();
+            }
+
+            // 确保所有其他标签页都是非活动状态
+            foreach (var existingTab in SubWorkflowTabs)
+            {
+                if (existingTab != tab)
+                {
+                    existingTab.IsActive = false;
+                }
             }
 
             // 切换到新标签页
@@ -701,7 +855,15 @@ namespace Astra.UI.ViewModels
             // 同步到画布
             SyncTabToCanvas(tab);
 
-            Debug.WriteLine($"[SequenceViewModel] 切换到流程: {tab.Name}");
+            Debug.WriteLine($"[SwitchWorkflow] === 切换完成 ===");
+            Debug.WriteLine($"[SwitchWorkflow]   CurrentTab: {CurrentTab.Name}, Nodes 哈希: {CurrentTab.Nodes.GetHashCode()}, 节点数: {CurrentTab.Nodes.Count}");
+            
+            // 打印所有标签页的集合状态（用于诊断）
+            Debug.WriteLine($"[SwitchWorkflow] 所有标签页状态:");
+            foreach (var t in SubWorkflowTabs)
+            {
+                Debug.WriteLine($"[SwitchWorkflow]   {t.Name}: Nodes 哈希={t.Nodes.GetHashCode()}, 节点数={t.Nodes.Count}, IsActive={t.IsActive}");
+            }
         }
 
         /// <summary>
@@ -826,20 +988,14 @@ namespace Astra.UI.ViewModels
             }
 
             // 如果正在重命名或编辑名尚未提交，禁止关闭，避免回车/失焦导致误删
+            // 检查 IsInEditMode 或 EditingName 是否与当前名称不同（表示正在编辑）
             if (tab.IsInEditMode || (!string.IsNullOrEmpty(tab.EditingName) && tab.EditingName != tab.Name))
             {
-                Debug.WriteLine($"[SequenceViewModel] 标签页正在重命名，忽略关闭: {tab.Name}");
+                Debug.WriteLine($"[SequenceViewModel] 标签页正在重命名，忽略关闭: {tab.Name}, IsInEditMode={tab.IsInEditMode}, EditingName={tab.EditingName}");
                 return;
             }
 
             Debug.WriteLine($"[SequenceViewModel] 准备关闭标签页: {tab.Name} (Type: {tab.Type}, Id: {tab.Id})");
-
-            // 检查标签页是否正在编辑模式（防止在重命名时误关闭）
-            if (tab.IsInEditMode)
-            {
-                Debug.WriteLine($"[SequenceViewModel] 警告: 标签页 {tab.Name} (Id: {tab.Id}) 正在编辑模式，不允许关闭");
-                return;
-            }
 
             // 检查标签页是否已经在关闭过程中（防止重复关闭）
             if (_closingTabs.Contains(tab.Id))
@@ -856,10 +1012,10 @@ namespace Astra.UI.ViewModels
             }
 
             // 显示确认对话框
-            var confirmMessage = $"确定要关闭流程 '{tab.Name}' 吗？";
-            if (!MessageBoxHelper.Confirm(confirmMessage, "关闭流程"))
+            var confirmMessage = $"确定要删除子流程 '{tab.Name}' 吗？";
+            if (!MessageBoxHelper.Confirm(confirmMessage, "删除子流程"))
             {
-                Debug.WriteLine($"[SequenceViewModel] 用户取消关闭流程: {tab.Name}");
+                Debug.WriteLine($"[SequenceViewModel] 用户取消删除子流程: {tab.Name}");
                 return;
             }
 
@@ -1232,12 +1388,19 @@ namespace Astra.UI.ViewModels
             if (tab == null || tab.Type == WorkflowType.Master)
                 return;
 
-            // 注意：FlowEditor通过XAML绑定直接使用WorkflowTab的Nodes和Edges属性
-            // 但为了保持ViewModel属性的一致性，我们仍然更新CanvasItemsSource和EdgeItemsSource
-            // 这样可以确保ViewModel中的属性与当前标签页保持同步
-            // 但在TabControl的DataTemplate中，FlowEditor绑定到WorkflowTab的属性，而不是ViewModel的属性
+            // 注意：FlowEditor 通过 XAML 绑定直接使用 WorkflowTab 的 Nodes 和 Edges 属性
+            // 因此这里的同步仅用于保持 ViewModel 属性的一致性（用于某些不直接绑定到 Tab 的场景）
+            // 由于 FlowEditor 直接绑定到 WorkflowTab，切换标签页不会触发连线重绘
+            // 只有在引用发生变化时才更新，避免不必要的通知
+            if (CanvasItemsSource != tab.Nodes)
+            {
             CanvasItemsSource = tab.Nodes;
+            }
+
+            if (EdgeItemsSource != tab.Edges)
+            {
             EdgeItemsSource = tab.Edges;
+            }
 
             Debug.WriteLine($"[SequenceViewModel] 同步标签页到画布: {tab.Name}, 节点数: {tab.Nodes.Count}, 连线数: {tab.Edges.Count}");
         }
@@ -1261,24 +1424,245 @@ namespace Astra.UI.ViewModels
         }
 
         /// <summary>
-        /// 主流程节点集合变化事件处理（检测节点删除）
+        /// 主流程节点集合变化事件处理（检测节点添加和删除）
         /// </summary>
         private void OnMasterWorkflowNodesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            // 只处理删除操作
-            if (e.Action != NotifyCollectionChangedAction.Remove)
-                return;
+            Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 集合变化事件触发，操作类型: {e.Action}");
 
-            // 检查是否有 WorkflowReferenceNode 被删除
-            foreach (var removedItem in e.OldItems)
+            // 处理删除操作
+            if (e.Action == NotifyCollectionChangedAction.Remove)
             {
-                if (removedItem is WorkflowReferenceNode workflowNode)
+                Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 检测到删除操作，删除项数: {e.OldItems?.Count ?? 0}");
+                // 检查是否有 WorkflowReferenceNode 被删除
+                foreach (var removedItem in e.OldItems)
                 {
-                    // 删除对应的子流程标签页
-                    DeleteSubWorkflowTab(workflowNode.SubWorkflowId);
-                    Debug.WriteLine($"[SequenceViewModel] 检测到流程引用节点被删除，删除对应的子流程标签页: {workflowNode.SubWorkflowName}");
+                    if (removedItem is WorkflowReferenceNode workflowNode)
+                    {
+                        // 删除对应的子流程标签页
+                        DeleteSubWorkflowTab(workflowNode.SubWorkflowId);
+                        Debug.WriteLine($"[SequenceViewModel] 检测到流程引用节点被删除，删除对应的子流程标签页: {workflowNode.SubWorkflowName}");
+                    }
                 }
             }
+            // 处理添加操作（复制粘贴子流程节点时）
+            else if (e.Action == NotifyCollectionChangedAction.Add)
+            {
+                Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 检测到添加操作，新增项数: {e.NewItems?.Count ?? 0}");
+                // 检查是否有 WorkflowReferenceNode 被添加
+                foreach (var newItem in e.NewItems)
+                {
+                    Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 检查新增项类型: {newItem?.GetType().Name ?? "null"}");
+                    if (newItem is WorkflowReferenceNode workflowNode)
+                    {
+                        Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 发现 WorkflowReferenceNode: {workflowNode.Name}, NodeId: {workflowNode.Id}, SubWorkflowId: {workflowNode.SubWorkflowId}");
+                        
+                        // 检查对应的子流程数据是否已存在
+                        bool subWorkflowExists = SubWorkflows.ContainsKey(workflowNode.SubWorkflowId);
+                        Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 子流程数据是否存在: {subWorkflowExists}");
+                        
+                        // 检查主流程中是否已经有其他节点使用相同的 SubWorkflowId（表示这是复制粘贴操作）
+                        bool isDuplicate = false;
+                        if (subWorkflowExists && MasterWorkflowTab?.Nodes != null)
+                        {
+                            int sameSubWorkflowCount = MasterWorkflowTab.Nodes
+                                .OfType<WorkflowReferenceNode>()
+                                .Count(n => n.SubWorkflowId == workflowNode.SubWorkflowId);
+                            isDuplicate = sameSubWorkflowCount > 1; // 如果有多个节点使用相同的 SubWorkflowId，说明是复制粘贴
+                            Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 主流程中使用相同 SubWorkflowId 的节点数: {sameSubWorkflowCount}, 是否为复制粘贴: {isDuplicate}");
+                        }
+                        
+                        if (!subWorkflowExists || isDuplicate)
+                        {
+                            // 子流程数据不存在，或者是复制粘贴操作，需要创建新的子流程
+                            Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 调用 HandlePastedWorkflowReferenceNode");
+                            HandlePastedWorkflowReferenceNode(workflowNode);
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 子流程数据已存在且不是复制粘贴，跳过处理");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 其他操作类型: {e.Action}");
+            }
+        }
+
+        /// <summary>
+        /// 处理粘贴的 WorkflowReferenceNode（复制对应的子流程数据并创建新标签页）
+        /// </summary>
+        private void HandlePastedWorkflowReferenceNode(WorkflowReferenceNode workflowNode)
+        {
+            if (workflowNode == null)
+                return;
+
+            Debug.WriteLine($"[SequenceViewModel] 检测到粘贴的流程引用节点: {workflowNode.Name}, SubWorkflowId: {workflowNode.SubWorkflowId}");
+
+            // 查找对应的源子流程数据
+            // 注意：粘贴的节点的 SubWorkflowId 可能指向已存在的子流程，也可能指向不存在的子流程
+            WorkFlowNode sourceSubWorkflow = null;
+
+            // 先尝试从当前的 SubWorkflows 字典中查找
+            if (!string.IsNullOrEmpty(workflowNode.SubWorkflowId) && SubWorkflows.ContainsKey(workflowNode.SubWorkflowId))
+            {
+                sourceSubWorkflow = SubWorkflows[workflowNode.SubWorkflowId];
+            }
+
+            // 如果找不到，说明这是一个孤立的节点（可能来自其他项目的复制粘贴），创建一个空的子流程
+            if (sourceSubWorkflow == null)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 未找到源子流程数据，创建新的空子流程");
+                
+                // 创建一个新的空子流程
+                var newSubWorkflow = new WorkFlowNode
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = workflowNode.SubWorkflowName ?? "新子流程",
+                    Nodes = new List<Node>(),
+                    Connections = new List<Connection>()
+                };
+
+                // 更新节点的 SubWorkflowId
+                workflowNode.SubWorkflowId = newSubWorkflow.Id;
+                workflowNode.SubWorkflowName = newSubWorkflow.Name;
+
+                // 添加到字典
+                SubWorkflows[newSubWorkflow.Id] = newSubWorkflow;
+
+                // 创建标签页
+                CreateSubWorkflowTab(newSubWorkflow);
+                return;
+            }
+
+            // 如果找到了源子流程，复制它
+            Debug.WriteLine($"[SequenceViewModel] 找到源子流程数据，开始复制: {sourceSubWorkflow.Name}");
+
+            try
+            {
+                // 克隆子流程数据
+                var clonedNode = sourceSubWorkflow.Clone();
+                var duplicatedSubWorkflow = clonedNode as WorkFlowNode;
+                
+                if (duplicatedSubWorkflow == null)
+                {
+                    Debug.WriteLine($"[SequenceViewModel] 克隆子流程失败：类型转换错误");
+                    return;
+                }
+
+                // 重建关系
+                duplicatedSubWorkflow.RebuildRelationships();
+
+                // 生成新的子流程名称
+                var newName = GenerateUniqueSubWorkflowName(sourceSubWorkflow.Name);
+                duplicatedSubWorkflow.Name = newName;
+
+                // 更新节点的引用
+                workflowNode.SubWorkflowId = duplicatedSubWorkflow.Id;
+                workflowNode.SubWorkflowName = newName;
+                workflowNode.Name = newName; // 同步节点名称
+
+                // 添加到字典
+                SubWorkflows[duplicatedSubWorkflow.Id] = duplicatedSubWorkflow;
+
+                // 创建标签页
+                CreateSubWorkflowTab(duplicatedSubWorkflow);
+
+                Debug.WriteLine($"[SequenceViewModel] 成功复制子流程: {newName}, 新ID: {duplicatedSubWorkflow.Id}");
+                StatusMessage = $"已复制子流程: {newName}";
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 复制子流程失败: {ex.Message}");
+                MessageBoxHelper.ShowError($"复制子流程失败: {ex.Message}", "错误");
+            }
+        }
+
+        /// <summary>
+        /// 创建子流程标签页
+        /// </summary>
+        private void CreateSubWorkflowTab(WorkFlowNode subWorkflow)
+        {
+            // 检查是否已存在
+            var existingTab = WorkflowTabs.FirstOrDefault(t =>
+                t.Type == WorkflowType.Sub &&
+                t.WorkflowData is WorkFlowNode workflow &&
+                workflow.Id == subWorkflow.Id);
+
+            if (existingTab != null)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 子流程标签页已存在: {subWorkflow.Name}");
+                return;
+            }
+
+            // 创建新标签页
+            var newTab = new WorkflowTab
+            {
+                Name = subWorkflow.Name,
+                Type = WorkflowType.Sub,
+                IsActive = false,
+                WorkflowData = subWorkflow
+            };
+
+            // 同步节点到标签页
+            foreach (var node in subWorkflow.Nodes)
+            {
+                newTab.Nodes.Add(node);
+            }
+
+            // 同步连线到标签页
+            foreach (var connection in subWorkflow.Connections)
+            {
+                var edge = new Edge
+                {
+                    SourceNodeId = connection.SourceNodeId,
+                    SourcePortId = connection.SourcePortId,
+                    TargetNodeId = connection.TargetNodeId,
+                    TargetPortId = connection.TargetPortId
+                };
+                newTab.Edges.Add(edge);
+            }
+
+            // 添加到集合
+            WorkflowTabs.Add(newTab);
+            SubWorkflowTabs.Add(newTab);
+
+            Debug.WriteLine($"[SequenceViewModel] 创建子流程标签页: {subWorkflow.Name}");
+        }
+
+        /// <summary>
+        /// 生成唯一的子流程名称
+        /// </summary>
+        private string GenerateUniqueSubWorkflowName(string baseName)
+        {
+            // 移除基础名称中已有的 " - 副本" 或 " - 副本(N)" 后缀
+            var cleanBaseName = System.Text.RegularExpressions.Regex.Replace(baseName, @" - 副本(\(\d+\))?$", "");
+
+            // 查找所有以 cleanBaseName 开头的子流程
+            var existingNames = SubWorkflows.Values
+                .Select(w => w.Name)
+                .Where(n => n.StartsWith(cleanBaseName))
+                .ToHashSet();
+
+            // 如果基础名称本身就不存在，直接使用 " - 副本"
+            if (!existingNames.Contains($"{cleanBaseName} - 副本"))
+            {
+                return $"{cleanBaseName} - 副本";
+            }
+
+            // 否则，查找下一个可用的序号
+            int counter = 2;
+            string candidateName;
+            do
+            {
+                candidateName = $"{cleanBaseName} - 副本({counter})";
+                counter++;
+            }
+            while (existingNames.Contains(candidateName));
+
+            return candidateName;
         }
 
         /// <summary>
@@ -1405,9 +1789,45 @@ namespace Astra.UI.ViewModels
                     // 同步节点
                     subWorkflow.Nodes = CurrentTab.Nodes.ToList();
 
+                    // 将 Edges 转换为 Connections 并同步到 WorkFlowNode
                     // 注意：WorkFlowNode 使用 Connections，画布使用 Edges
-                    // 这里需要将 Edges 转换为 Connections，或者保持两套数据
-                    // 暂时只同步 Nodes，Connections 的同步需要根据实际需求实现
+                    if (subWorkflow.Connections == null)
+                    {
+                        subWorkflow.Connections = new List<Connection>();
+                    }
+                    else
+                    {
+                        subWorkflow.Connections.Clear();
+                    }
+
+                    // 从 Edges 转换为 Connections
+                    if (CurrentTab.Edges != null && CurrentTab.Edges.Count > 0)
+                    {
+                        Debug.WriteLine($"[SequenceViewModel] 保存当前标签页状态: 将 {CurrentTab.Edges.Count} 个 Edges 转换为 Connections");
+                        foreach (var edge in CurrentTab.Edges)
+                        {
+                            if (edge == null)
+                                continue;
+
+                            var connection = new Connection
+                            {
+                                Id = edge.Id,
+                                SourceNodeId = edge.SourceNodeId,
+                                TargetNodeId = edge.TargetNodeId,
+                                SourcePortId = edge.SourcePortId,
+                                TargetPortId = edge.TargetPortId,
+                                Type = ConnectionType.Flow, // 默认类型，可以根据需要调整
+                                Label = null,
+                                Metadata = new Dictionary<string, object>()
+                            };
+                            subWorkflow.Connections.Add(connection);
+                        }
+                        Debug.WriteLine($"[SequenceViewModel] 已保存 {subWorkflow.Connections.Count} 个 Connections 到子流程 '{subWorkflow.Name}'");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[SequenceViewModel] 当前标签页没有 Edges，清空 Connections");
+                    }
                 }
             }
         }
@@ -1422,8 +1842,72 @@ namespace Astra.UI.ViewModels
         [RelayCommand]
         private void OpenFile()
         {
+            try
+        {
             Debug.WriteLine("[SequenceViewModel] 打开文件命令");
-            // TODO: 实现文件打开逻辑
+
+                // 检查是否有未保存的更改
+                if (HasUnsavedChanges())
+                {
+                    var saveResult = MessageBoxHelper.ConfirmSave("当前项目有未保存的更改，是否保存？");
+                    if (saveResult == MessageBoxResult.Yes)
+                    {
+                        if (!SaveFileInternal())
+                        {
+                            return; // 用户取消保存或保存失败
+                        }
+                    }
+                    else if (saveResult == MessageBoxResult.Cancel)
+                    {
+                        return; // 用户取消操作
+                    }
+                }
+
+                // 打开文件对话框
+                var openFileDialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "打开流程项目",
+                    Filter = FILE_FILTER,
+                    FilterIndex = 1,
+                    InitialDirectory = SolutionsFolder,
+                    DefaultExt = FILE_EXTENSION,
+                    AddExtension = true
+                };
+
+                if (openFileDialog.ShowDialog() != true)
+                {
+                    Debug.WriteLine("[SequenceViewModel] 用户取消打开文件");
+                    return;
+                }
+
+                var filePath = openFileDialog.FileName;
+
+                // 加载文件
+                var loadResult = _workflowSerializer.LoadFromFile(filePath);
+                if (!loadResult.Success)
+                {
+                    MessageBoxHelper.ShowError($"加载文件失败: {loadResult.ErrorMessage}", "打开失败");
+                    Debug.WriteLine($"[SequenceViewModel] 加载文件失败: {loadResult.ErrorMessage}");
+                    return;
+                }
+
+                // 导入数据到 ViewModel
+                LoadMultiWorkflowData(loadResult.Data);
+
+                // 更新当前文件路径
+                CurrentFilePath = filePath;
+
+                // 清除所有修改标记
+                ClearAllModifiedFlags();
+
+                MessageBoxHelper.ShowSuccess($"项目已成功加载: {Path.GetFileName(filePath)}", "打开成功");
+                Debug.WriteLine($"[SequenceViewModel] 项目已成功加载: {filePath}");
+            }
+            catch (Exception ex)
+            {
+                MessageBoxHelper.ShowError($"打开文件时发生错误: {ex.Message}", "错误");
+                Debug.WriteLine($"[SequenceViewModel] 打开文件异常: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -1432,8 +1916,29 @@ namespace Astra.UI.ViewModels
         [RelayCommand]
         private void SaveFile()
         {
+            try
+        {
             Debug.WriteLine("[SequenceViewModel] 保存文件命令");
-            // TODO: 实现文件保存逻辑
+
+                if (string.IsNullOrWhiteSpace(CurrentFilePath))
+                {
+                    // 如果没有当前文件路径，执行另存为
+                    SaveFileAs();
+                    return;
+                }
+
+                // 保存到当前文件
+                if (SaveFileInternal(CurrentFilePath))
+                {
+                    MessageBoxHelper.ShowSuccess($"项目已保存: {Path.GetFileName(CurrentFilePath)}", "保存成功");
+                    Debug.WriteLine($"[SequenceViewModel] 项目已保存: {CurrentFilePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBoxHelper.ShowError($"保存文件时发生错误: {ex.Message}", "错误");
+                Debug.WriteLine($"[SequenceViewModel] 保存文件异常: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -1442,8 +1947,380 @@ namespace Astra.UI.ViewModels
         [RelayCommand]
         private void SaveFileAs()
         {
+            try
+        {
             Debug.WriteLine("[SequenceViewModel] 另存为命令");
-            // TODO: 实现文件另存为逻辑
+
+                // 提前获取文件夹路径，确保文件夹存在
+                var initialDir = SolutionsFolder;
+                Debug.WriteLine($"[SequenceViewModel] Solutions 文件夹路径: {initialDir}");
+
+                // 打开文件保存对话框
+                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = "保存流程项目",
+                    Filter = FILE_FILTER,
+                    FilterIndex = 1,
+                    DefaultExt = FILE_EXTENSION,
+                    AddExtension = true,
+                    InitialDirectory = initialDir,
+                    FileName = string.IsNullOrWhiteSpace(CurrentFilePath) 
+                        ? $"项目_{DateTime.Now:yyyyMMdd_HHmmss}" 
+                        : Path.GetFileNameWithoutExtension(CurrentFilePath)
+                };
+
+                if (saveFileDialog.ShowDialog() != true)
+                {
+                    Debug.WriteLine("[SequenceViewModel] 用户取消另存为");
+                    return;
+                }
+
+                var filePath = saveFileDialog.FileName;
+
+                // 保存文件
+                if (SaveFileInternal(filePath))
+                {
+                    // 更新当前文件路径
+                    CurrentFilePath = filePath;
+                    MessageBoxHelper.ShowSuccess($"项目已保存: {Path.GetFileName(filePath)}", "保存成功");
+                    Debug.WriteLine($"[SequenceViewModel] 项目已另存为: {filePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBoxHelper.ShowError($"另存为文件时发生错误: {ex.Message}", "错误");
+                Debug.WriteLine($"[SequenceViewModel] 另存为文件异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 内部保存方法
+        /// </summary>
+        private bool SaveFileInternal(string filePath = null)
+        {
+            try
+            {
+                filePath = filePath ?? CurrentFilePath;
+                if (string.IsNullOrWhiteSpace(filePath))
+                {
+                    Debug.WriteLine("[SequenceViewModel] 保存失败: 文件路径为空");
+                    return false;
+                }
+
+                // 导出当前数据
+                var data = ExportMultiWorkflowData();
+                if (data == null)
+                {
+                    MessageBoxHelper.ShowError("导出数据失败，无法保存", "保存失败");
+                    return false;
+                }
+
+                // 保存到文件
+                var result = _workflowSerializer.SaveToFile(data, filePath);
+                if (!result.Success)
+                {
+                    MessageBoxHelper.ShowError($"保存文件失败: {result.ErrorMessage}", "保存失败");
+                    return false;
+                }
+
+                // 清除所有修改标记
+                ClearAllModifiedFlags();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBoxHelper.ShowError($"保存文件时发生错误: {ex.Message}", "错误");
+                Debug.WriteLine($"[SequenceViewModel] 保存文件异常: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 导出当前多流程数据
+        /// </summary>
+        private MultiWorkflowData ExportMultiWorkflowData()
+        {
+            try
+            {
+                // 保存当前标签页状态
+                SaveCurrentTabState();
+
+                // 保存所有子流程标签页的状态（确保所有标签页的 Edges 都转换为 Connections）
+                foreach (var tab in SubWorkflowTabs)
+                {
+                    if (tab == null || tab.Type != WorkflowType.Sub)
+                        continue;
+
+                    var subWorkflow = tab.GetSubWorkflow();
+                    if (subWorkflow != null)
+                    {
+                        // 同步节点
+                        subWorkflow.Nodes = tab.Nodes?.ToList() ?? new List<Node>();
+
+                        // 将 Edges 转换为 Connections
+                        if (subWorkflow.Connections == null)
+                        {
+                            subWorkflow.Connections = new List<Connection>();
+                        }
+                        else
+                        {
+                            subWorkflow.Connections.Clear();
+                        }
+
+                        if (tab.Edges != null && tab.Edges.Count > 0)
+                        {
+                            foreach (var edge in tab.Edges)
+                            {
+                                if (edge == null)
+                                    continue;
+
+                                var connection = new Connection
+                                {
+                                    Id = edge.Id,
+                                    SourceNodeId = edge.SourceNodeId,
+                                    TargetNodeId = edge.TargetNodeId,
+                                    SourcePortId = edge.SourcePortId,
+                                    TargetPortId = edge.TargetPortId,
+                                    Type = ConnectionType.Flow, // 默认类型
+                                    Label = null,
+                                    Metadata = new Dictionary<string, object>()
+                                };
+                                subWorkflow.Connections.Add(connection);
+                            }
+                            Debug.WriteLine($"[SequenceViewModel] 导出时保存子流程 '{subWorkflow.Name}': {subWorkflow.Connections.Count} 个 Connections");
+                        }
+                    }
+                }
+
+                // 如果主流程编辑界面可见，保存主流程状态
+                if (IsMasterWorkflowViewVisible)
+                {
+                    SaveMasterWorkflowState();
+                }
+
+                // 创建多流程数据对象
+                var data = new MultiWorkflowData
+                {
+                    ProjectName = MasterWorkflow?.Name ?? "未命名项目",
+                    ProjectDescription = MasterWorkflow?.Description ?? "",
+                    MasterWorkflow = MasterWorkflow,
+                    SubWorkflows = SubWorkflows,
+                    GlobalVariables = GlobalVariables
+                };
+
+                return data;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 导出多流程数据失败: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 从多流程数据加载到 ViewModel
+        /// </summary>
+        private void LoadMultiWorkflowData(MultiWorkflowData data)
+        {
+            try
+            {
+                if (data == null)
+                {
+                    Debug.WriteLine("[SequenceViewModel] 加载失败: 数据为空");
+                    return;
+                }
+
+                // 清空当前数据
+                ClearAllWorkflows();
+
+                // 加载主流程
+                if (data.MasterWorkflow != null)
+                {
+                    MasterWorkflow = data.MasterWorkflow;
+                }
+
+                // 加载子流程
+                if (data.SubWorkflows != null)
+                {
+                    SubWorkflows = new Dictionary<string, WorkFlowNode>(data.SubWorkflows);
+                    
+                    // 为每个子流程创建标签页
+                    foreach (var subWorkflow in data.SubWorkflows.Values)
+                    {
+                        // 确保关系已重建（虽然序列化器已经调用过，但为了保险再次调用）
+                        subWorkflow.RebuildRelationships();
+
+                        var nodes = new ObservableCollection<Node>(subWorkflow.Nodes ?? new List<Node>());
+                        var edges = new ObservableCollection<Edge>();
+
+                        // 将 Connections 转换为 Edges（如果需要）
+                        if (subWorkflow.Connections != null && subWorkflow.Connections.Count > 0)
+                        {
+                            Debug.WriteLine($"[SequenceViewModel] 加载子流程 '{subWorkflow.Name}' 包含 {subWorkflow.Connections.Count} 个连接");
+                            foreach (var connection in subWorkflow.Connections)
+                            {
+                                if (connection == null)
+                                {
+                                    Debug.WriteLine($"[SequenceViewModel] 警告：发现空的连接对象");
+                                    continue;
+                                }
+
+                                var edge = new Edge
+                                {
+                                    Id = connection.Id,
+                                    SourceNodeId = connection.SourceNodeId,
+                                    TargetNodeId = connection.TargetNodeId,
+                                    SourcePortId = connection.SourcePortId,
+                                    TargetPortId = connection.TargetPortId
+                                };
+                                edges.Add(edge);
+                                Debug.WriteLine($"[SequenceViewModel] 转换连接: {connection.SourceNodeId} -> {connection.TargetNodeId}");
+                            }
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[SequenceViewModel] 警告：子流程 '{subWorkflow.Name}' 没有连接（Connections 为 null 或空）");
+                        }
+
+                        var tab = new WorkflowTab
+                        {
+                            Name = subWorkflow.Name ?? "未命名流程",
+                            Type = WorkflowType.Sub,
+                            WorkflowData = subWorkflow,
+                            Nodes = nodes,
+                            Edges = edges,
+                            IsActive = false // 初始化为非活动状态
+                        };
+
+                        WorkflowTabs.Add(tab);
+                        SubWorkflowTabs.Add(tab);
+                    }
+                }
+
+                // 加载全局变量
+                if (data.GlobalVariables != null)
+                {
+                    GlobalVariables = data.GlobalVariables;
+                }
+
+                // 重建主流程标签页（如果主流程存在）
+                if (MasterWorkflow != null)
+                {
+                    MasterWorkflowTab = new WorkflowTab
+                    {
+                        Name = MasterWorkflow.Name ?? "主流程",
+                        Type = WorkflowType.Master,
+                        IsActive = false,
+                        WorkflowData = MasterWorkflow
+                    };
+
+                    // 初始化主流程的节点和连线
+                    MasterWorkflowTab.Nodes = new ObservableCollection<Node>();
+                    MasterWorkflowTab.Edges = new ObservableCollection<Edge>();
+
+                    // 恢复主流程的连线
+                    if (MasterWorkflow.Edges != null)
+                    {
+                        foreach (var edge in MasterWorkflow.Edges)
+                        {
+                            MasterWorkflowTab.Edges.Add(edge);
+                        }
+                    }
+
+                    // 如果主流程编辑界面已打开，刷新节点
+                    if (IsMasterWorkflowViewVisible)
+                    {
+                        RefreshMasterWorkflowNodes();
+                    }
+                }
+
+                // 切换到第一个子流程标签页（如果存在）
+                var firstTab = SubWorkflowTabs.FirstOrDefault();
+                if (firstTab != null)
+                {
+                    SwitchWorkflow(firstTab);
+                }
+                else
+                {
+                    CurrentTab = null;
+                }
+
+                Debug.WriteLine($"[SequenceViewModel] 多流程数据加载完成: 主流程1个, 子流程{data.SubWorkflows?.Count ?? 0}个");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 加载多流程数据失败: {ex.Message}");
+                MessageBoxHelper.ShowError($"加载数据失败: {ex.Message}", "加载失败");
+            }
+        }
+
+        /// <summary>
+        /// 检查是否有未保存的更改
+        /// </summary>
+        private bool HasUnsavedChanges()
+        {
+            // 检查主流程是否已修改
+            if (MasterWorkflow != null && MasterWorkflow.IsModified)
+                return true;
+
+            // 检查是否有标签页已修改
+            if (WorkflowTabs != null && WorkflowTabs.Any(t => t.IsModified))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// 清除所有修改标记
+        /// </summary>
+        private void ClearAllModifiedFlags()
+        {
+            if (MasterWorkflow != null)
+            {
+                MasterWorkflow.IsModified = false;
+            }
+
+            if (WorkflowTabs != null)
+            {
+                foreach (var tab in WorkflowTabs)
+                {
+                    tab.IsModified = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 清空所有流程
+        /// </summary>
+        private void ClearAllWorkflows()
+        {
+            // 清空标签页
+            if (WorkflowTabs != null)
+            {
+                WorkflowTabs.Clear();
+            }
+
+            if (SubWorkflowTabs != null)
+            {
+                SubWorkflowTabs.Clear();
+            }
+
+            // 清空子流程字典
+            if (SubWorkflows != null)
+            {
+                SubWorkflows.Clear();
+            }
+
+            // 重置当前标签页
+            CurrentTab = null;
+            MasterWorkflowTab = null;
+
+            // 重置主流程
+            MasterWorkflow = new MasterWorkflow
+            {
+                Name = "主流程"
+            };
         }
 
         /// <summary>
@@ -1859,12 +2736,32 @@ namespace Astra.UI.ViewModels
                 return;
             }
 
-            // 先退出编辑模式（防止重复调用）
-            tab.IsInEditMode = false;
-
-            // 执行重命名
+            // 执行重命名（在重命名完成后再退出编辑模式，防止重命名期间被误删）
             Debug.WriteLine($"[SequenceViewModel] CommitEditWorkflowName: 准备执行重命名，OldName={oldName}, NewName={newName}");
-            ExecuteRenameWorkflow(tab, newName);
+            
+            // 先执行重命名，如果成功再退出编辑模式
+            try
+            {
+                ExecuteRenameWorkflow(tab, newName);
+                
+                // 重命名成功后，延迟退出编辑模式，确保UI已更新
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // 再次检查是否仍在编辑模式（防止重复调用）
+                    if (tab.IsInEditMode)
+                    {
+                        tab.IsInEditMode = false;
+                        tab.EditingName = null;
+                        Debug.WriteLine($"[SequenceViewModel] CommitEditWorkflowName: 退出编辑模式完成");
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
+            catch (Exception ex)
+            {
+                // 如果重命名失败，保持编辑模式，让用户可以继续编辑
+                Debug.WriteLine($"[SequenceViewModel] CommitEditWorkflowName: 重命名失败，保持编辑模式: {ex.Message}");
+                // 不退出编辑模式，让用户可以继续编辑或取消
+            }
         }
 
         /// <summary>
@@ -1945,7 +2842,7 @@ namespace Astra.UI.ViewModels
             if (tab == null || string.IsNullOrWhiteSpace(newName))
             {
                 Debug.WriteLine($"[SequenceViewModel] ExecuteRenameWorkflow: tab 或 newName 为空");
-                return;
+                throw new ArgumentException("tab 或 newName 为空");
             }
 
             Debug.WriteLine($"[SequenceViewModel] ExecuteRenameWorkflow: 开始重命名流程, TabId={tab.Id}, TabName={tab.Name}, NewName={newName}, Type={tab.Type}");
@@ -1956,7 +2853,7 @@ namespace Astra.UI.ViewModels
             {
                 Debug.WriteLine($"[SequenceViewModel] ExecuteRenameWorkflow: 名称已存在，重命名失败");
                 MessageBoxHelper.ShowWarning($"流程名称 '{newName}' 已存在，请使用其他名称。", "重命名失败");
-                return;
+                throw new InvalidOperationException($"流程名称 '{newName}' 已存在");
             }
 
             // 更新流程名称
@@ -1980,7 +2877,71 @@ namespace Astra.UI.ViewModels
         }
 
         /// <summary>
-        /// 导出流程命令
+        /// 复制子流程命令（克隆整个子流程，包括所有节点和连线）
+        /// </summary>
+        [RelayCommand]
+        private void DuplicateWorkflow(WorkflowTab tab)
+        {
+            if (tab == null)
+            {
+                Debug.WriteLine("[SequenceViewModel] 复制子流程失败: 标签页为 null");
+                return;
+            }
+
+            if (tab.Type != WorkflowType.Sub)
+            {
+                MessageBoxHelper.ShowWarning("只能复制子流程，主流程不支持复制", "复制失败");
+                return;
+            }
+
+            try
+            {
+                // 先保存当前标签页状态（如果是当前活动标签页）
+                if (tab == CurrentTab)
+                {
+                    SaveCurrentTabState();
+                }
+
+                // 创建并执行复制子流程命令（支持撤销/重做）
+                var command = new DuplicateWorkflowCommand(
+                    sourceWorkflowTab: tab,
+                    workflowTabs: WorkflowTabs,
+                    subWorkflowTabs: SubWorkflowTabs,
+                    subWorkflows: SubWorkflows,
+                    onWorkflowAdded: (newTab) =>
+                    {
+                        // 自动切换到新创建的子流程
+                        CurrentTab = newTab;
+                        SwitchWorkflow(newTab);
+                        StatusMessage = $"已复制子流程: {newTab.Name}";
+                        Debug.WriteLine($"[SequenceViewModel] 复制子流程成功: {newTab.Name}");
+                    },
+                    onWorkflowRemoved: (removedTab) =>
+                    {
+                        // 撤销时的回调（选择第一个标签页或主流程）
+                        if (SubWorkflowTabs.Count > 0)
+                        {
+                            CurrentTab = SubWorkflowTabs[0];
+                            SwitchWorkflow(CurrentTab);
+                        }
+                        else
+                        {
+                            CurrentTab = null;
+                        }
+                        StatusMessage = $"已撤销复制子流程: {removedTab.Name}";
+                    });
+
+                _commandManager.Execute(command);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 复制子流程异常: {ex.Message}");
+                MessageBoxHelper.ShowError($"复制子流程失败: {ex.Message}", "复制失败");
+            }
+        }
+
+        /// <summary>
+        /// 导出流程命令（导出单个子流程）
         /// </summary>
         [RelayCommand]
         private void ExportWorkflow(WorkflowTab tab)
@@ -1991,15 +2952,74 @@ namespace Astra.UI.ViewModels
                 return;
             }
 
+            if (tab.Type != WorkflowType.Sub)
+            {
+                MessageBoxHelper.ShowWarning("只能导出子流程，主流程不支持单独导出", "导出失败");
+                return;
+            }
+
             try
             {
+                var subWorkflow = tab.GetSubWorkflow();
+                if (subWorkflow == null)
+                {
+                    MessageBoxHelper.ShowError("无法获取子流程数据", "导出失败");
+                    return;
+                }
+
+                // 先保存当前标签页状态，确保 Edges 转换为 Connections
+                // 同步节点
+                subWorkflow.Nodes = tab.Nodes?.ToList() ?? new List<Node>();
+
+                // 将 Edges 转换为 Connections
+                if (subWorkflow.Connections == null)
+                {
+                    subWorkflow.Connections = new List<Connection>();
+                }
+                else
+                {
+                    subWorkflow.Connections.Clear();
+                }
+
+                if (tab.Edges != null && tab.Edges.Count > 0)
+                {
+                    Debug.WriteLine($"[SequenceViewModel] 导出流程 '{tab.Name}': 将 {tab.Edges.Count} 个 Edges 转换为 Connections");
+                    foreach (var edge in tab.Edges)
+                    {
+                        if (edge == null)
+                            continue;
+
+                        var connection = new Connection
+                        {
+                            Id = edge.Id,
+                            SourceNodeId = edge.SourceNodeId,
+                            TargetNodeId = edge.TargetNodeId,
+                            SourcePortId = edge.SourcePortId,
+                            TargetPortId = edge.TargetPortId,
+                            Type = ConnectionType.Flow, // 默认类型
+                            Label = null,
+                            Metadata = new Dictionary<string, object>()
+                        };
+                        subWorkflow.Connections.Add(connection);
+                    }
+                    Debug.WriteLine($"[SequenceViewModel] 已保存 {subWorkflow.Connections.Count} 个 Connections 到子流程 '{subWorkflow.Name}'");
+                }
+                else
+                {
+                    Debug.WriteLine($"[SequenceViewModel] 导出流程 '{tab.Name}': 没有 Edges，清空 Connections");
+                }
+
                 // 打开文件保存对话框
+                // 确保 Solutions 文件夹存在
                 var saveFileDialog = new SaveFileDialog
                 {
-                    Title = "导出流程",
-                    Filter = "JSON文件 (*.json)|*.json|所有文件 (*.*)|*.*",
-                    FileName = $"{tab.Name}_{DateTime.Now:yyyyMMdd_HHmmss}.json",
-                    DefaultExt = "json"
+                    Title = "导出子流程",
+                    Filter = FILE_FILTER,
+                    FilterIndex = 1,
+                    InitialDirectory = SolutionsFolder,
+                    FileName = $"{tab.Name}_{DateTime.Now:yyyyMMdd_HHmmss}",
+                    DefaultExt = FILE_EXTENSION,
+                    AddExtension = true
                 };
 
                 if (saveFileDialog.ShowDialog() != true)
@@ -2009,41 +3029,14 @@ namespace Astra.UI.ViewModels
 
                 var exportFilePath = saveFileDialog.FileName;
 
-                // 准备导出数据
-                var exportData = new
+                // 使用序列化服务导出
+                var result = _workflowSerializer.ExportSingleWorkflowToFile(subWorkflow, exportFilePath);
+                if (!result.Success)
                 {
-                    Name = tab.Name,
-                    Type = tab.Type.ToString(),
-                    Id = tab.Id,
-                    CreatedAt = tab.CreatedAt,
-                    ModifiedAt = tab.ModifiedAt,
-                    Nodes = tab.Nodes?.Select(n => new
-                    {
-                        n.Id,
-                        n.Name,
-                        n.NodeType,
-                        Position = new { n.Position.X, n.Position.Y },
-                        Size = new { n.Size.Width, n.Size.Height },
-                        n.IsEnabled,
-                        n.IsSelected
-                    }).ToList(),
-                    Edges = tab.Edges?.Select(e => new
-                    {
-                        e.SourceNodeId,
-                        e.TargetNodeId,
-                        e.SourcePortId,
-                        e.TargetPortId
-                    }).ToList()
-                };
-
-                // 序列化为JSON并保存（使用 System.Text.Json.JsonSerializer）
-                var options = new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                };
-                var json = JsonSerializer.Serialize(exportData, options);
-                File.WriteAllText(exportFilePath, json);
+                    MessageBoxHelper.ShowError($"导出流程失败: {result.ErrorMessage}", "导出失败");
+                    Debug.WriteLine($"[SequenceViewModel] 导出流程失败: {result.ErrorMessage}");
+                    return;
+                }
 
                 MessageBoxHelper.ShowSuccess($"流程 '{tab.Name}' 已成功导出到:\n{exportFilePath}", "导出成功");
                 Debug.WriteLine($"[SequenceViewModel] 导出流程成功: {tab.Name} -> {exportFilePath}");
@@ -2053,6 +3046,260 @@ namespace Astra.UI.ViewModels
                 MessageBoxHelper.ShowError($"导出流程失败: {ex.Message}", "导出失败");
                 Debug.WriteLine($"[SequenceViewModel] 导出流程失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 导出所有流程命令
+        /// </summary>
+        [RelayCommand]
+        private void ExportAllWorkflows()
+        {
+            try
+            {
+                if (SubWorkflows == null || SubWorkflows.Count == 0)
+                {
+                    MessageBoxHelper.ShowWarning("没有可导出的子流程", "导出失败");
+                    return;
+                }
+
+                // 打开文件保存对话框
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Title = "导出所有流程",
+                    Filter = FILE_FILTER,
+                    FilterIndex = 1,
+                    InitialDirectory = SolutionsFolder,
+                    FileName = $"所有流程_{DateTime.Now:yyyyMMdd_HHmmss}",
+                    DefaultExt = FILE_EXTENSION,
+                    AddExtension = true
+                };
+
+                if (saveFileDialog.ShowDialog() != true)
+                {
+                    return; // 用户取消
+                }
+
+                var exportFilePath = saveFileDialog.FileName;
+
+                // 导出当前所有流程数据
+                var data = ExportMultiWorkflowData();
+                if (data == null)
+                {
+                    MessageBoxHelper.ShowError("导出数据失败，无法保存", "导出失败");
+                    return;
+                }
+
+                // 使用序列化服务保存
+                var result = _workflowSerializer.SaveToFile(data, exportFilePath);
+                if (!result.Success)
+                {
+                    MessageBoxHelper.ShowError($"导出所有流程失败: {result.ErrorMessage}", "导出失败");
+                    Debug.WriteLine($"[SequenceViewModel] 导出所有流程失败: {result.ErrorMessage}");
+                    return;
+                }
+
+                MessageBoxHelper.ShowSuccess($"所有流程已成功导出到:\n{exportFilePath}\n共 {SubWorkflows.Count} 个子流程", "导出成功");
+                Debug.WriteLine($"[SequenceViewModel] 导出所有流程成功: {exportFilePath}, 共 {SubWorkflows.Count} 个子流程");
+            }
+            catch (Exception ex)
+            {
+                MessageBoxHelper.ShowError($"导出所有流程失败: {ex.Message}", "导出失败");
+                Debug.WriteLine($"[SequenceViewModel] 导出所有流程失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 导入子流程命令（自动检测单个或多个）
+        /// </summary>
+        [RelayCommand]
+        private void ImportWorkflows()
+        {
+            try
+            {
+                Debug.WriteLine("[SequenceViewModel] 导入子流程命令");
+
+                // 打开文件对话框
+                var openFileDialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "导入流程",
+                    Filter = FILE_FILTER,
+                    FilterIndex = 1,
+                    InitialDirectory = SolutionsFolder,
+                    DefaultExt = FILE_EXTENSION,
+                    AddExtension = true
+                };
+
+                if (openFileDialog.ShowDialog() != true)
+                {
+                    Debug.WriteLine("[SequenceViewModel] 用户取消导入子流程");
+                    return;
+                }
+
+                var filePath = openFileDialog.FileName;
+
+                // 尝试导入多个子流程（会自动处理单个子流程文件）
+                var result = _workflowSerializer.ImportMultipleWorkflowsFromFile(filePath);
+                if (!result.Success)
+                {
+                    MessageBoxHelper.ShowError($"导入子流程失败: {result.ErrorMessage}", "导入失败");
+                    Debug.WriteLine($"[SequenceViewModel] 导入子流程失败: {result.ErrorMessage}");
+                    return;
+                }
+
+                var importedWorkflows = result.Data;
+                if (importedWorkflows == null || importedWorkflows.Count == 0)
+                {
+                    MessageBoxHelper.ShowWarning("导入的文件中没有找到子流程", "导入失败");
+                    return;
+                }
+
+                // 添加到当前流程后面
+                int successCount = 0;
+                foreach (var workflow in importedWorkflows)
+                {
+                    try
+                    {
+                        AddImportedWorkflow(workflow);
+                        successCount++;
+            }
+            catch (Exception ex)
+            {
+                        Debug.WriteLine($"[SequenceViewModel] 添加导入的子流程失败: {workflow.Name}, 错误: {ex.Message}");
+                    }
+                }
+
+                // 根据导入数量显示不同的提示信息
+                if (importedWorkflows.Count == 1)
+                {
+                    MessageBoxHelper.ShowSuccess($"子流程 '{importedWorkflows[0].Name}' 已成功导入", "导入成功");
+                    Debug.WriteLine($"[SequenceViewModel] 子流程已成功导入: {importedWorkflows[0].Name}");
+                }
+                else
+                {
+                    MessageBoxHelper.ShowSuccess($"成功导入 {successCount}/{importedWorkflows.Count} 个子流程", "导入完成");
+                    Debug.WriteLine($"[SequenceViewModel] 成功导入 {successCount}/{importedWorkflows.Count} 个子流程");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBoxHelper.ShowError($"导入子流程时发生错误: {ex.Message}", "错误");
+                Debug.WriteLine($"[SequenceViewModel] 导入子流程异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 添加导入的子流程到当前流程后面
+        /// </summary>
+        private void AddImportedWorkflow(WorkFlowNode importedWorkflow)
+        {
+            if (importedWorkflow == null)
+                return;
+
+            // 检查是否已存在相同ID的子流程
+            if (SubWorkflows.ContainsKey(importedWorkflow.Id))
+            {
+                // 如果已存在，生成新的ID
+                importedWorkflow.Id = Guid.NewGuid().ToString();
+                Debug.WriteLine($"[SequenceViewModel] 检测到ID冲突，已生成新ID: {importedWorkflow.Id}");
+            }
+
+            // 检查名称是否冲突，如果冲突则生成新名称
+            var originalName = importedWorkflow.Name ?? "未命名流程";
+            var existingNames = new HashSet<string>();
+            
+            // 从 SubWorkflows 字典中获取所有流程名
+            foreach (var subWorkflow in SubWorkflows.Values)
+            {
+                if (!string.IsNullOrEmpty(subWorkflow.Name))
+                {
+                    existingNames.Add(subWorkflow.Name);
+                }
+            }
+            
+            // 从 SubWorkflowTabs 中获取所有标签页名（作为备用检查）
+            foreach (var existingTab in SubWorkflowTabs)
+            {
+                if (!string.IsNullOrEmpty(existingTab.Name))
+                {
+                    existingNames.Add(existingTab.Name);
+                }
+            }
+
+            // 如果名称冲突，生成新名称
+            if (existingNames.Contains(originalName))
+            {
+                var newName = originalName;
+                int suffix = 1;
+                while (existingNames.Contains(newName))
+                {
+                    newName = $"{originalName}_{suffix}";
+                    suffix++;
+                }
+                importedWorkflow.Name = newName;
+                Debug.WriteLine($"[SequenceViewModel] 检测到名称冲突，已更新名称: {originalName} -> {newName}");
+            }
+
+            // 确保导入的工作流关系已重建（虽然序列化器已经调用过，但为了保险再次调用）
+            importedWorkflow.RebuildRelationships();
+
+            // 添加到子流程字典
+            SubWorkflows[importedWorkflow.Id] = importedWorkflow;
+
+            // 创建标签页
+            var nodes = new ObservableCollection<Node>(importedWorkflow.Nodes ?? new List<Node>());
+            var edges = new ObservableCollection<Edge>();
+
+            // 将 Connections 转换为 Edges
+            if (importedWorkflow.Connections != null && importedWorkflow.Connections.Count > 0)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 导入的工作流包含 {importedWorkflow.Connections.Count} 个连接");
+                foreach (var connection in importedWorkflow.Connections)
+                {
+                    if (connection == null)
+                    {
+                        Debug.WriteLine($"[SequenceViewModel] 警告：发现空的连接对象");
+                        continue;
+                    }
+
+                    var edge = new Edge
+                    {
+                        Id = connection.Id,
+                        SourceNodeId = connection.SourceNodeId,
+                        TargetNodeId = connection.TargetNodeId,
+                        SourcePortId = connection.SourcePortId,
+                        TargetPortId = connection.TargetPortId
+                    };
+                    edges.Add(edge);
+                    Debug.WriteLine($"[SequenceViewModel] 转换连接: {connection.SourceNodeId} -> {connection.TargetNodeId}");
+                }
+            }
+            else
+            {
+                Debug.WriteLine($"[SequenceViewModel] 警告：导入的工作流没有连接（Connections 为 null 或空）");
+            }
+
+            var tab = new WorkflowTab
+            {
+                Name = importedWorkflow.Name ?? "未命名流程",
+                Type = WorkflowType.Sub,
+                WorkflowData = importedWorkflow,
+                Nodes = nodes,
+                Edges = edges,
+                IsModified = false, // 导入的流程标记为未修改
+                IsActive = false // 初始化为非活动状态
+            };
+
+            // 添加到标签页集合（添加到后面）
+            WorkflowTabs.Add(tab);
+            SubWorkflowTabs.Add(tab);
+
+            // 如果主流程编辑界面已打开，刷新主流程节点
+            if (IsMasterWorkflowViewVisible)
+            {
+                RefreshMasterWorkflowNodes();
+            }
+
+            Debug.WriteLine($"[SequenceViewModel] 已添加导入的子流程: {importedWorkflow.Name} (ID: {importedWorkflow.Id})");
         }
 
         /// <summary>
@@ -2515,3 +3762,4 @@ namespace Astra.UI.ViewModels
     }
 }
 
+#endregion

@@ -22,13 +22,13 @@ namespace Astra.Services.Authorization
     }
 
     /// <summary>
-    /// 管理员权限策略
+    /// 管理员权限策略（包括超级管理员和管理员）
     /// </summary>
     public class AdministratorPermissionStrategy : IPermissionStrategy
     {
         public bool HasPermission(User user, string operation)
         {
-            return user?.Role == UserRole.Administrator;
+            return user?.Role == UserRole.Administrator || user?.Role == UserRole.SuperAdministrator;
         }
 
         public string GetDeniedMessage(User user, string operation)
@@ -40,13 +40,16 @@ namespace Astra.Services.Authorization
     }
 
     /// <summary>
-    /// 工程师及以上权限策略
+    /// 工程师及以上权限策略（包括超级管理员、管理员和工程师）
     /// </summary>
     public class EngineerOrAbovePermissionStrategy : IPermissionStrategy
     {
         public bool HasPermission(User user, string operation)
         {
-            return user?.Role >= UserRole.Engineer;
+            if (user == null) return false;
+            return user.Role == UserRole.SuperAdministrator 
+                || user.Role == UserRole.Administrator 
+                || user.Role == UserRole.Engineer;
         }
 
         public string GetDeniedMessage(User user, string operation)

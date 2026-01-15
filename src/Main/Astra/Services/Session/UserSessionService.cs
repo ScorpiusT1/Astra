@@ -80,7 +80,7 @@ namespace Astra.Services.Session
 
         public User CurrentUser => _currentUser;
         public bool IsLoggedIn => _currentUser != null;
-        public bool IsAdministrator => _currentUser?.Role == UserRole.Administrator;
+        public bool IsAdministrator => _currentUser?.Role == UserRole.Administrator || _currentUser?.Role == UserRole.SuperAdministrator;
 
         public UserSessionService(IMessenger messenger = null)
         {
@@ -160,8 +160,8 @@ namespace Astra.Services.Session
             if (_autoLogoutTimer == null)
                 return;
 
-            // 只有管理员且启用自动登出时才启动计时器
-            if (IsAdministrator && _autoLogoutEnabled)
+            // 只有管理员且启用自动登出时才启动计时器（超级管理员不受自动登出限制）
+            if (IsAdministrator && _currentUser?.Role != UserRole.SuperAdministrator && _autoLogoutEnabled)
             {
                 if (!_autoLogoutTimer.IsEnabled)
                 {
@@ -181,6 +181,13 @@ namespace Astra.Services.Session
 
         private void OnAutoLogoutTimerTick(object sender, EventArgs e)
         {
+            // 超级管理员不受自动登出限制
+            if (_currentUser?.Role == UserRole.SuperAdministrator)
+            {
+                ManageAutoLogout();
+                return;
+            }
+
             if (!IsAdministrator || !_autoLogoutEnabled)
             {
                 ManageAutoLogout();

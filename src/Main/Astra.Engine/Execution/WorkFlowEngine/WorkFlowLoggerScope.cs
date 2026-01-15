@@ -31,7 +31,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
             try
             {
                 // 尝试从上下文获取现有日志器
-                var existing = context?.ServiceProvider?.GetService(typeof(Logger)) as Logger;
+                var existing = context?.ServiceProvider?.GetService(typeof(Astra.Core.Logs.Logger)) as Astra.Core.Logs.Logger;
                 if (existing != null)
                 {
                     return new WorkFlowLoggerScope(existing, shouldDispose: false);
@@ -43,7 +43,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
             }
 
             // 创建新日志器
-            var newLogger = Logger.CreateForWorkflow(workflow.Id, workflow.Name);
+            var newLogger = Astra.Core.Logs.Logger.CreateForWorkflow(workflow.Id, workflow.Name);
             return new WorkFlowLoggerScope(newLogger, shouldDispose: true);
         }
 

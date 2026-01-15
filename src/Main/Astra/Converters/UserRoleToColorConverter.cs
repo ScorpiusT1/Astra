@@ -59,20 +59,25 @@ namespace Astra.Converters
         {
             return role switch
             {
-                // 管理员: 使用 Danger 色系 (红色) - 最高权限
+                // 超级管理员: 使用 Primary 色系 (主色) - 最高权限
+                UserRole.SuperAdministrator => parameterType == "Dark" 
+                    ? "DarkPrimaryBrush"      // 深主色文字
+                    : "LightPrimaryBrush",    // 浅主色背景
+                
+                // 管理员: 使用 Danger 色系 (红色) - 高级权限
                 UserRole.Administrator => parameterType == "Dark" 
                     ? "DarkDangerBrush"      // 深红色文字
-                    : "LightDangerBrush",    // 浅红色背景
+                    : "LightDangerBrush",     // 浅红色背景
                 
                 // 工程师: 使用 Warn 色系 (橙色) - 中级权限
                 UserRole.Engineer => parameterType == "Dark"
                     ? "DarkWarningBrush"     // 深橙色文字
-                    : "LightWarningBrush",   // 浅橙色背景
+                    : "LightWarningBrush",    // 浅橙色背景
                 
                 // 操作员: 使用 Info 色系 (青色) - 最低权限
                 UserRole.Operator => parameterType == "Dark"
                     ? "DarkInfoBrush"        // 深青色文字
-                    : "LightInfoBrush",      // 浅青色背景
+                    : "LightInfoBrush",       // 浅青色背景
                 
                 // 未知权限: 使用 Default 色系 (灰色)
                 _ => parameterType == "Dark"

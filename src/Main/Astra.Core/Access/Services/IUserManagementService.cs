@@ -32,7 +32,7 @@ namespace Astra.Core.Access.Services
         void DeleteUser(User currentUser, string username);
         
         /// <summary>
-        /// 修改用户角色（仅管理员可操作）
+        /// 修改用户角色（仅管理员或超级管理员可操作）
         /// </summary>
         /// <param name="currentUser">当前操作用户</param>
         /// <param name="username">目标用户名</param>
@@ -40,7 +40,15 @@ namespace Astra.Core.Access.Services
         void ChangeUserRole(User currentUser, string username, UserRole newRole);
         
         /// <summary>
-        /// 重置密码（管理员操作）
+        /// 修改用户名（仅管理员或超级管理员可操作）
+        /// </summary>
+        /// <param name="currentUser">当前操作用户</param>
+        /// <param name="oldUsername">原用户名</param>
+        /// <param name="newUsername">新用户名</param>
+        void ChangeUsername(User currentUser, string oldUsername, string newUsername);
+        
+        /// <summary>
+        /// 重置密码（管理员或超级管理员操作）
         /// </summary>
         void ResetPassword(User currentUser, string username, string newPassword);
         

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -20,7 +20,7 @@ namespace Astra.Core.Nodes.Models
         /// <summary>
         /// 全局变量字典（变量名 -> 变量对象）
         /// </summary>
-        [JsonPropertyOrder(1)]
+        [JsonProperty(Order = 1)]
         public Dictionary<string, GlobalVariable> Variables { get; set; }
 
         /// <summary>
@@ -119,43 +119,43 @@ namespace Astra.Core.Nodes.Models
         /// <summary>
         /// 变量名
         /// </summary>
-        [JsonPropertyOrder(1)]
+        [JsonProperty(Order = 1)]
         public string Name { get; set; }
 
         /// <summary>
         /// 变量值
         /// </summary>
-        [JsonPropertyOrder(2)]
+        [JsonProperty(Order = 2)]
         public object Value { get; set; }
 
         /// <summary>
         /// 数据类型名称
         /// </summary>
-        [JsonPropertyOrder(3)]
+        [JsonProperty(Order = 3)]
         public string DataType { get; set; }
 
         /// <summary>
         /// 变量描述
         /// </summary>
-        [JsonPropertyOrder(4)]
+        [JsonProperty(Order = 4)]
         public string Description { get; set; }
 
         /// <summary>
         /// 创建时间
         /// </summary>
-        [JsonPropertyOrder(5)]
+        [JsonProperty(Order = 5)]
         public DateTime CreatedAt { get; set; }
 
         /// <summary>
         /// 修改时间
         /// </summary>
-        [JsonPropertyOrder(6)]
+        [JsonProperty(Order = 6)]
         public DateTime ModifiedAt { get; set; }
 
         /// <summary>
         /// 是否只读
         /// </summary>
-        [JsonPropertyOrder(7)]
+        [JsonProperty(Order = 7)]
         public bool IsReadOnly { get; set; }
     }
 }

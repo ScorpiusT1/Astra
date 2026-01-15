@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+﻿using Newtonsoft.Json;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -17,28 +17,28 @@ namespace Astra.Core.Nodes.Models
             Metadata = new Dictionary<string, object>();
         }
 
-        [JsonPropertyOrder(1)]
+        [JsonProperty(Order = 1)]
         public string Id { get; set; }
 
-        [JsonPropertyOrder(2)]
+        [JsonProperty(Order = 2)]
         public string SourceNodeId { get; set; }
 
-        [JsonPropertyOrder(3)]
+        [JsonProperty(Order = 3)]
         public string SourcePortId { get; set; }
 
-        [JsonPropertyOrder(4)]
+        [JsonProperty(Order = 4)]
         public string TargetNodeId { get; set; }
 
-        [JsonPropertyOrder(5)]
+        [JsonProperty(Order = 5)]
         public string TargetPortId { get; set; }
 
-        [JsonPropertyOrder(6)]
+        [JsonProperty(Order = 6)]
         public ConnectionType Type { get; set; }
 
-        [JsonPropertyOrder(7)]
+        [JsonProperty(Order = 7)]
         public string Label { get; set; }  // 连接标签（可选）
 
-        [JsonPropertyOrder(8)]
+        [JsonProperty(Order = 8)]
         public Dictionary<string, object> Metadata { get; set; }
 
         // ===== 运行时属性（不序列化） =====

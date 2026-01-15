@@ -75,7 +75,7 @@ namespace Astra.Engine.Execution.Middleware
             var logger = _logger ?? ResolveLogger(context);
             if (logger != null)
             {
-                logger.LogWarn($"节点 {node.Name} 执行时间过长: {elapsedMs}ms");
+                logger.Warn($"节点 {node.Name} 执行时间过长: {elapsedMs}ms");
             }
         }
 

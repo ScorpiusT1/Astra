@@ -76,6 +76,11 @@ namespace Astra.ViewModels
         /// </summary>
         public bool IsAdministrator => _sessionService?.IsAdministrator ?? false;
 
+        /// <summary>
+        /// 获取当前登录用户（用于权限检查）
+        /// </summary>
+        public User GetCurrentUser() => _sessionService?.CurrentUser;
+
         #endregion
 
         public PermissionViewModel(
@@ -190,6 +195,44 @@ namespace Astra.ViewModels
                     throw new ArgumentException("用户名不能为空", nameof(userName));
                 }
 
+                // 不能修改为超级管理员
+                if (newRole == UserRole.SuperAdministrator)
+                {
+                    throw new InvalidOperationException("不能通过界面将用户修改为超级管理员");
+                }
+
+                // 查找要修改的用户（从数据库查询，因为界面上不显示超级管理员）
+                var userToModify = _userManagementService.GetUserByUsername(userName);
+                if (userToModify == null)
+                {
+                    throw new InvalidOperationException("用户不存在");
+                }
+
+                // 超级管理员可以修改任何用户角色（除了超级管理员本身）
+                if (_sessionService.CurrentUser.Role == UserRole.SuperAdministrator)
+                {
+                    // 不能修改超级管理员
+                    if (userToModify.Role == UserRole.SuperAdministrator)
+                    {
+                        throw new InvalidOperationException("不能修改超级管理员的角色");
+                    }
+                }
+                // 管理员只能修改工程师和操作员的角色
+                else if (_sessionService.CurrentUser.Role == UserRole.Administrator)
+                {
+                    // 不能修改管理员和超级管理员
+                    if (userToModify.Role == UserRole.Administrator || userToModify.Role == UserRole.SuperAdministrator)
+                    {
+                        throw new InvalidOperationException("管理员只能修改工程师和操作员的角色");
+                    }
+
+                    // 不能修改为管理员
+                    if (newRole == UserRole.Administrator)
+                    {
+                        throw new InvalidOperationException("管理员只能将用户修改为工程师或操作员");
+                    }
+                }
+
                 // 在后台线程执行数据库操作
                 await Task.Run(() =>
                 {
@@ -234,8 +277,102 @@ namespace Astra.ViewModels
             await LoadUsers();
         }
 
+        /// <summary>
+        /// 修改用户名 - 同步到数据库
+        /// </summary>
+        public async Task ChangeUsername(string oldUsername, string newUsername)
+        {
+            try
+            {
+                // 检查参数
+                if (_sessionService.CurrentUser == null)
+                {
+                    throw new ArgumentNullException(nameof(_sessionService.CurrentUser), "当前用户不能为空");
+                }
+
+                if (string.IsNullOrEmpty(oldUsername))
+                {
+                    throw new ArgumentException("原用户名不能为空", nameof(oldUsername));
+                }
+
+                if (string.IsNullOrEmpty(newUsername))
+                {
+                    throw new ArgumentException("新用户名不能为空", nameof(newUsername));
+                }
+
+                // 验证权限
+                var currentUser = _sessionService.CurrentUser;
+                if (currentUser.Role != UserRole.Administrator 
+                    && currentUser.Role != UserRole.SuperAdministrator)
+                {
+                    throw new InvalidOperationException("只有管理员才能修改用户名");
+                }
+
+                // 获取要修改的用户
+                var userToModify = _userManagementService.GetUserByUsername(oldUsername);
+                if (userToModify == null)
+                {
+                    throw new InvalidOperationException("用户不存在");
+                }
+
+                // 超级管理员可以修改任何用户名（除了超级管理员本身）
+                if (currentUser.Role == UserRole.SuperAdministrator)
+                {
+                    // 不能修改超级管理员的用户名
+                    if (userToModify.Role == UserRole.SuperAdministrator)
+                    {
+                        throw new InvalidOperationException("不能修改超级管理员的用户名");
+                    }
+                }
+                // 管理员只能修改工程师和操作员的用户名
+                else if (currentUser.Role == UserRole.Administrator)
+                {
+                    // 不能修改管理员和超级管理员的用户名
+                    if (userToModify.Role == UserRole.Administrator || userToModify.Role == UserRole.SuperAdministrator)
+                    {
+                        throw new InvalidOperationException("管理员只能修改工程师和操作员的用户名");
+                    }
+                }
+
+                // 在后台线程执行数据库操作
+                await Task.Run(() =>
+                {
+                    _userManagementService.ChangeUsername(_sessionService.CurrentUser, oldUsername, newUsername.Trim());
+                });
+
+                // 更新UI状态
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    StatusMessage = $"用户 {oldUsername} 的用户名已修改为 {newUsername}";
+                });
+
+                // 发送更新消息
+                _messenger.Send(new UsersUpdatedMessage { Message = $"用户 {oldUsername} 的用户名已修改为 {newUsername}" });
+            }
+            catch (Exception ex)
+            {
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    StatusMessage = $"修改用户名失败: {ex.Message}";
+                });
+
+                ToastHelper.ShowError($"修改用户名失败: {ex.Message}");
+
+                // 重新抛出异常，让调用者知道操作失败
+                throw;
+            }
+        }
+
 
         #region 命令
+
+        /// <summary>
+        /// 获取所有用户（用于权限检查，包括超级管理员）
+        /// </summary>
+        public List<User> GetAllUsersForCheck()
+        {
+            return _userManagementService.GetAllUsers().ToList();
+        }
 
         /// <summary>
         /// 加载用户列表
@@ -251,11 +388,14 @@ namespace Astra.ViewModels
 
                 var users = _userManagementService.GetAllUsers().ToList();
 
+                // 过滤掉超级管理员，不在界面上显示
+                var filteredUsers = users.Where(u => u.Role != UserRole.SuperAdministrator).ToList();
+
                 // 按照角色优先级排序：管理员 > 工程师 > 操作员
                 // 同一角色内按创建时间升序排序
-                var sortedUsers = users.OrderBy(u => GetRolePriority(u.Role))
-                                       .ThenBy(u => u.CreateTime)
-                                       .ToList();
+                var sortedUsers = filteredUsers.OrderBy(u => GetRolePriority(u.Role))
+                                               .ThenBy(u => u.CreateTime)
+                                               .ToList();
 
                 Users.Clear();
 
@@ -303,7 +443,7 @@ namespace Astra.ViewModels
 
         /// <summary>
         /// 获取角色优先级（用于排序）
-        /// 管理员=1, 工程师=2, 操作员=3
+        /// 超级管理员=0, 管理员=1, 工程师=2, 操作员=3
         /// </summary>
         /// <param name="role">用户角色</param>
         /// <returns>角色优先级，数值越小优先级越高</returns>
@@ -311,6 +451,7 @@ namespace Astra.ViewModels
         {
             return role switch
             {
+                UserRole.SuperAdministrator => 0,
                 UserRole.Administrator => 1,
                 UserRole.Engineer => 2,
                 UserRole.Operator => 3,
@@ -338,6 +479,22 @@ namespace Astra.ViewModels
             }
 
             System.Diagnostics.Debug.WriteLine($"[PermissionViewModel.AddUser] 权限验证通过");
+
+            // 验证不能添加超级管理员
+            if (SelectedRole == UserRole.SuperAdministrator)
+            {
+                StatusMessage = "不能通过界面添加超级管理员";
+                ToastHelper.ShowError("不能通过界面添加超级管理员");
+                return;
+            }
+
+            // 管理员只能添加工程师和操作员，不能添加管理员
+            if (currentUser.Role == UserRole.Administrator && SelectedRole == UserRole.Administrator)
+            {
+                StatusMessage = "管理员只能添加工程师和操作员，不能添加管理员";
+                ToastHelper.ShowError("管理员只能添加工程师和操作员，不能添加管理员");
+                return;
+            }
 
             // 验证输入
             ValidateForm();
@@ -421,6 +578,22 @@ namespace Astra.ViewModels
                 return;
             }
 
+            // 不能删除超级管理员
+            if (user.Role == UserRole.SuperAdministrator)
+            {
+                StatusMessage = "不能删除超级管理员";
+                ToastHelper.ShowError("不能删除超级管理员");
+                return;
+            }
+
+            // 管理员只能删除工程师和操作员，不能删除管理员
+            if (currentUser.Role == UserRole.Administrator && user.Role == UserRole.Administrator)
+            {
+                StatusMessage = "管理员只能删除工程师和操作员，不能删除管理员";
+                ToastHelper.ShowError("管理员只能删除工程师和操作员，不能删除管理员");
+                return;
+            }
+
             // 检查是否为最后一个管理员
             if (!CanDeleteUser(user))
             {
@@ -470,9 +643,13 @@ namespace Astra.ViewModels
         private async Task ChangeUserRole(User user)
         {
             var currentUser = _sessionService.CurrentUser;
-            if (!_permissionService.CheckPermissionWithMessage(currentUser, "修改用户角色", _adminPermissionStrategy))
+            // 超级管理员和管理员都可以修改用户角色
+            if (currentUser == null || (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.SuperAdministrator))
             {
-                return;
+                if (!_permissionService.CheckPermissionWithMessage(currentUser, "修改用户角色", _adminPermissionStrategy))
+                {
+                    return;
+                }
             }
             if (user == null)
             {
@@ -520,9 +697,20 @@ namespace Astra.ViewModels
         /// </summary>
         private bool CanDeleteUser(User user)
         {
+            // 不能删除超级管理员
+            if (user.Role == UserRole.SuperAdministrator)
+            {
+                ToastHelper.ShowWarning("不能删除超级管理员");
+                StatusMessage = "不能删除超级管理员";
+                return false;
+            }
+
             if (user.Role == UserRole.Administrator)
             {
-                var otherAdmins = Users.Count(u => u.Role == UserRole.Administrator && u.Id != user.Id);
+                // 从数据库查询所有管理员（包括超级管理员），因为界面上不显示超级管理员
+                var allUsers = _userManagementService.GetAllUsers().ToList();
+                var otherAdmins = allUsers.Count(u => 
+                    (u.Role == UserRole.Administrator || u.Role == UserRole.SuperAdministrator) && u.Id != user.Id);
                 if (otherAdmins == 0)
                 {
                     ToastHelper.ShowWarning("不能删除最后一个管理员账户");
@@ -538,25 +726,54 @@ namespace Astra.ViewModels
         /// </summary>
         public bool CanChangeUserRole(User user, UserRole newRole, UserRole? originalRole = null)
         {
+            var currentUser = _sessionService.CurrentUser;
             var currentRole = originalRole ?? user.Role;
 
-            // 如果要将管理员改为其他角色
-            if (currentRole == UserRole.Administrator && newRole != UserRole.Administrator)
+            // 超级管理员可以修改任何用户角色（除了超级管理员本身）
+            if (currentUser?.Role == UserRole.SuperAdministrator)
             {
-                var otherAdmins = Users.Count(u =>
+                // 不能修改超级管理员
+                if (currentRole == UserRole.SuperAdministrator)
                 {
-                    var userRole = (u.Id == user.Id) ? currentRole : u.Role;
-                    return userRole == UserRole.Administrator && u.Id != user.Id;
-                });
-
-                if (otherAdmins == 0)
-                {
-                    ToastHelper.ShowWarning("不能修改最后一个管理员的权限");
+                    ToastHelper.ShowWarning("不能修改超级管理员的角色");
                     return false;
                 }
+
+                // 不能修改为超级管理员
+                if (newRole == UserRole.SuperAdministrator)
+                {
+                    ToastHelper.ShowWarning("不能通过界面将用户修改为超级管理员");
+                    return false;
+                }
+
+                // 超级管理员可以修改任何其他角色
+                return true;
             }
 
-            return true;
+            // 管理员只能修改工程师和操作员的角色
+            if (currentUser?.Role == UserRole.Administrator)
+            {
+                // 不能修改管理员和超级管理员
+                if (currentRole == UserRole.Administrator || currentRole == UserRole.SuperAdministrator)
+                {
+                    ToastHelper.ShowWarning("管理员只能修改工程师和操作员的角色");
+                    return false;
+                }
+
+                // 不能修改为管理员或超级管理员
+                if (newRole == UserRole.Administrator || newRole == UserRole.SuperAdministrator)
+                {
+                    ToastHelper.ShowWarning("管理员只能将用户修改为工程师或操作员");
+                    return false;
+                }
+
+                // 管理员可以修改工程师和操作员的角色
+                return true;
+            }
+
+            // 其他角色不能修改用户角色
+            ToastHelper.ShowWarning("只有管理员才能修改用户角色");
+            return false;
         }
 
         /// <summary>

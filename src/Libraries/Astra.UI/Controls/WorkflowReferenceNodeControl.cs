@@ -626,6 +626,16 @@ namespace Astra.UI.Controls
                 _copyMenuItem.Click += OnCopyMenuItemClick;
                 _contextMenu.Items.Add(_copyMenuItem);
 
+                // 粘贴
+                var pasteMenuItem = new MenuItem
+                {
+                    Header = "粘贴"
+                };
+                if (menuItemStyle != null)
+                    pasteMenuItem.Style = menuItemStyle;
+                pasteMenuItem.Click += OnPasteMenuItemClick;
+                _contextMenu.Items.Add(pasteMenuItem);
+
                 // 分隔符
                 _contextMenu.Items.Add(new Separator());
 
@@ -804,7 +814,7 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
-        /// 右键菜单复制节点到剪贴板（不立即粘贴）
+        /// 右键菜单复制节点到剪贴板（委托给 FlowEditor 处理以支持跨流程复制）
         /// </summary>
         private void OnCopyMenuItemClick(object sender, RoutedEventArgs e)
         {
@@ -814,6 +824,24 @@ namespace Astra.UI.Controls
             _parentCanvas ??= FindParentCanvas(this);
             if (_parentCanvas == null)
                 return;
+
+            // 查找父级 FlowEditor
+            var flowEditor = FindParentFlowEditor(this);
+            if (flowEditor != null)
+            {
+                // 委托给 FlowEditor 的复制逻辑（支持共享剪贴板和跨流程复制）
+                var copyMethod = flowEditor.GetType().GetMethod("OnCopyMenuItemClick", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (copyMethod != null)
+                {
+                    copyMethod.Invoke(flowEditor, new object[] { sender, e });
+                    System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 已委托给 FlowEditor 处理复制操作");
+                    return;
+                }
+            }
+
+            // 后备方案：使用本地剪贴板
+            System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 未找到 FlowEditor，使用本地剪贴板");
 
             // 获取所有选中的节点（保存原始节点，不克隆）
             var selectedNodes = new List<Node>();
@@ -858,6 +886,34 @@ namespace Astra.UI.Controls
             {
                 _parentCanvas.ClipboardBounds = new Rect(minX, minY, maxX - minX, maxY - minY);
             }
+        }
+
+        /// <summary>
+        /// 右键菜单粘贴节点（委托给 FlowEditor 处理以支持跨流程粘贴）
+        /// </summary>
+        private void OnPasteMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            _parentCanvas ??= FindParentCanvas(this);
+            if (_parentCanvas == null)
+                return;
+
+            // 查找父级 FlowEditor
+            var flowEditor = FindParentFlowEditor(this);
+            if (flowEditor != null)
+            {
+                // 委托给 FlowEditor 的粘贴逻辑（支持共享剪贴板和跨流程粘贴）
+                var pasteMethod = flowEditor.GetType().GetMethod("OnPasteMenuItemClick", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (pasteMethod != null)
+                {
+                    pasteMethod.Invoke(flowEditor, new object[] { sender, e });
+                    System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 已委托给 FlowEditor 处理粘贴操作");
+                    return;
+                }
+            }
+
+            // 后备方案：使用本地剪贴板
+            System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 未找到 FlowEditor，粘贴操作失败");
         }
 
 
@@ -1290,6 +1346,54 @@ namespace Astra.UI.Controls
             {
                 ShowPorts = false;
             }
+        }
+
+        /// <summary>
+        /// 查找父级 FlowEditor
+        /// </summary>
+        private FlowEditor FindParentFlowEditor(DependencyObject element)
+        {
+            // 优先走视觉树查找
+            var parent = VisualTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                if (parent is FlowEditor flowEditor)
+                {
+                    return flowEditor;
+                }
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            // 如果视觉树未找到，尝试逻辑树
+            parent = LogicalTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                if (parent is FlowEditor flowEditor)
+                {
+                    return flowEditor;
+                }
+                parent = LogicalTreeHelper.GetParent(parent);
+            }
+
+            // 最后尝试通过模板父级获取
+            if (element is FrameworkElement fe)
+            {
+                if (fe.TemplatedParent is FlowEditor templatedFlowEditor)
+                {
+                    return templatedFlowEditor;
+                }
+
+                // 尝试从 TemplatedParent 再向上找
+                parent = fe.TemplatedParent;
+                while (parent != null)
+                {
+                    if (parent is FlowEditor flowEditor)
+                        return flowEditor;
+                    parent = VisualTreeHelper.GetParent(parent) ?? LogicalTreeHelper.GetParent(parent);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

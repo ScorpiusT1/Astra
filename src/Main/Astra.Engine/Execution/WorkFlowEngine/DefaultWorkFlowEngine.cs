@@ -182,11 +182,11 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         {
             // 使用结构化日志而非控制台输出
             var logger = Logger.Create("WorkFlowEngine", Core.Logs.LogLevel.Info);
-            logger?.LogInfo("=".PadRight(60, '='));
-            logger?.LogInfo($"检测到执行策略: {strategy.Type}");
-            logger?.LogInfo($"描述: {strategy.Description}");
-            logger?.LogInfo($"原因: {strategy.Reason}");
-            logger?.LogInfo("=".PadRight(60, '='));
+            logger?.Info("=".PadRight(60, '='));
+            logger?.Info($"检测到执行策略: {strategy.Type}");
+            logger?.Info($"描述: {strategy.Description}");
+            logger?.Info($"原因: {strategy.Reason}");
+            logger?.Info("=".PadRight(60, '='));
         }
 
         /// <summary>

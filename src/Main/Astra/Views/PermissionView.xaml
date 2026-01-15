@@ -416,6 +416,7 @@
                                           Tag="{x:Static models:UserRole.Engineer}" />
                             <ComboBoxItem Content="👨‍💻 管理员"
                                           Tag="{x:Static models:UserRole.Administrator}" />
+                            <!-- 超级管理员不在界面中显示，只能通过数据库初始化自动创建 -->
                         </ComboBox>
                     </StackPanel>
 
@@ -502,10 +503,12 @@
                                   EnableRowVirtualization="True"
                                   EnableColumnVirtualization="True"
                                   VirtualizingPanel.IsVirtualizing="True"
-                                  VirtualizingPanel.VirtualizationMode="Recycling">
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  BeginningEdit="DataGrid_BeginningEdit"
+                                  CellEditEnding="DataGrid_CellEditEnding">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="用户名"
-                                                    Binding="{Binding Username}"
+                                                    Binding="{Binding Username, UpdateSourceTrigger=LostFocus}"
                                                     Width="2*"
                                                     IsReadOnly="False"
                                                     MinWidth="140">
@@ -521,6 +524,12 @@
                                                     Value="Center" />
                                         </Style>
                                     </DataGridTextColumn.ElementStyle>
+                                    <DataGridTextColumn.EditingElementStyle>
+                                        <Style TargetType="TextBox">
+                                            <Setter Property="FontSize" Value="14" />
+                                            <Setter Property="Padding" Value="8,4" />
+                                        </Style>
+                                    </DataGridTextColumn.EditingElementStyle>
                                 </DataGridTextColumn>
 
                                 <DataGridTemplateColumn Header="角色"
@@ -542,7 +551,7 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
 
-                                    <!-- 编辑模板 - 仅管理员可编辑 -->
+                                    <!-- 编辑模板 - 仅管理员可编辑，超级管理员不可编辑 -->
                                     <DataGridTemplateColumn.CellEditingTemplate>
                                         <DataTemplate>
                                             <ComboBox SelectedValue="{Binding Role, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -552,15 +561,16 @@
                                                       BorderBrush="{DynamicResource PrimaryBrush}"
                                                       BorderThickness="2"
                                                       Background="{DynamicResource SurfaceBrush}"
-                                                      IsEnabled="{Binding DataContext.IsAdministrator, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                       SelectionChanged="RoleComboBox_SelectionChanged"
-                                                      GotFocus="RoleComboBox_GotFocus">
+                                                      GotFocus="RoleComboBox_GotFocus"
+                                                      Loaded="RoleComboBox_Loaded">
                                                 <ComboBoxItem Content="👨‍💼 操作员"
                                                               Tag="{x:Static models:UserRole.Operator}" />
                                                 <ComboBoxItem Content="👨‍🔧 工程师"
                                                               Tag="{x:Static models:UserRole.Engineer}" />
                                                 <ComboBoxItem Content="👨‍💻 管理员"
                                                               Tag="{x:Static models:UserRole.Administrator}" />
+                                                <!-- 超级管理员不在界面中显示，不能通过界面修改 -->
                                             </ComboBox>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellEditingTemplate>
@@ -608,12 +618,24 @@
                                             <StackPanel Orientation="Horizontal">
                                                
                                                 <Button Content="🗑️ 删除"
-                                                        Style="{StaticResource DangerButtonStyle}"
+                                                       
                                                         Margin="0"
                                                         Padding="16,8"
                                                         Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}"
-                                                        Visibility="{Binding DataContext.IsAdministrator, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                        CommandParameter="{Binding}">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <!-- 只有管理员可以看到删除按钮 -->
+                                                                <DataTrigger Binding="{Binding DataContext.IsAdministrator, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                    <!-- 超级管理员不能删除，通过代码中验证 -->
+                                                </Button>
                                             </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>

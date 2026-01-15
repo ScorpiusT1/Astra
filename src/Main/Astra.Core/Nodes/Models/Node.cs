@@ -1,8 +1,7 @@
 ﻿﻿using Astra.Core.Nodes.Geometry;
 using System.Diagnostics;
 using Astra.Core.Logs;
-using System.Text.Json.Serialization;
-using System.Text.Json;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,11 +27,13 @@ namespace Astra.Core.Nodes.Models
     /// </summary>
     public abstract class Node
     {
-        private static readonly JsonSerializerOptions jsonCloneOptions = new JsonSerializerOptions
+        private static readonly JsonSerializerSettings jsonCloneSettings = new JsonSerializerSettings
         {
-            ReferenceHandler = ReferenceHandler.Preserve,
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.Never
+            ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
+            PreserveReferencesHandling = PreserveReferencesHandling.Objects,
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Include,
+            TypeNameHandling = TypeNameHandling.Auto
         };
 
         protected Node()
@@ -46,33 +47,33 @@ namespace Astra.Core.Nodes.Models
 
         // ===== 基本属性 =====
         
-        [JsonPropertyOrder(1)]
+        [JsonProperty(Order = 1)]
         public string Id { get; set; }
         
-        [JsonPropertyOrder(2)]
+        [JsonProperty(Order = 2)]
         public string NodeType { get; set; }
         
-        [JsonPropertyOrder(3)]
+        [JsonProperty(Order = 3)]
         public string Name { get; set; }
         
-        [JsonPropertyOrder(4)]
+        [JsonProperty(Order = 4)]
         public string Description { get; set; }
         
-        [JsonPropertyOrder(5)]
+        [JsonProperty(Order = 5)]
         public string Icon { get; set; }
         
-        [JsonPropertyOrder(6)]
+        [JsonProperty(Order = 6)]
         public string Color { get; set; }
 
         // ===== 状态属性 =====
         
-        [JsonPropertyOrder(7)]
+        [JsonProperty(Order = 7)]
         public bool IsEnabled { get; set; }
         
-        [JsonPropertyOrder(8)]
+        [JsonProperty(Order = 8)]
         public bool IsReadonly { get; set; }
         
-        [JsonPropertyOrder(9)]
+        [JsonProperty(Order = 9)]
         public bool IsLocked { get; set; }
         
         /// <summary>
@@ -83,7 +84,7 @@ namespace Astra.Core.Nodes.Models
 
         // ===== 参数和结果 =====
         
-        [JsonPropertyOrder(10)]
+        [JsonProperty(Order = 10)]
         public Dictionary<string, object> Parameters { get; set; }
 
         [JsonIgnore]
@@ -94,18 +95,18 @@ namespace Astra.Core.Nodes.Models
 
         // ===== 端口集合 =====
         
-        [JsonPropertyOrder(11)]
+        [JsonProperty(Order = 11)]
         public List<Port> InputPorts { get; set; }
         
-        [JsonPropertyOrder(12)]
+        [JsonProperty(Order = 12)]
         public List<Port> OutputPorts { get; set; }
 
         // ===== 布局属性 =====
         
-        [JsonPropertyOrder(13)]
+        [JsonProperty(Order = 13)]
         public Point2D Position { get; set; }
         
-        [JsonPropertyOrder(14)]
+        [JsonProperty(Order = 14)]
         public Size2D Size { get; set; }
 
         // ===== 端口管理方法（符合单一职责原则） =====
@@ -226,7 +227,7 @@ namespace Astra.Core.Nodes.Models
         }
 
         /// <summary>
-        /// 克隆节点（默认实现：基于 System.Text.Json 的序列化/反序列化深拷贝）
+        /// 克隆节点（默认实现：基于 Newtonsoft.Json 的序列化/反序列化深拷贝）
         /// 符合开闭原则：提供默认实现，子类可重写定制
         /// </summary>
         public virtual Node Clone()
@@ -235,8 +236,8 @@ namespace Astra.Core.Nodes.Models
             var originalPosition = this.Position;
             var originalSize = this.Size;
             
-            var json = JsonSerializer.Serialize(this, GetType(), jsonCloneOptions);
-            var cloned = (Node)JsonSerializer.Deserialize(json, GetType(), jsonCloneOptions);
+            var json = JsonConvert.SerializeObject(this, GetType(), jsonCloneSettings);
+            var cloned = (Node)JsonConvert.DeserializeObject(json, GetType(), jsonCloneSettings);
             cloned.Id = Guid.NewGuid().ToString();
             
             // 手动恢复只读结构体属性

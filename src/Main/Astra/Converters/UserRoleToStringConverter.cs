@@ -14,6 +14,7 @@ namespace Astra.Converters
             {
                 return role switch
                 {
+                    UserRole.SuperAdministrator => "超级管理员",
                     UserRole.Operator => "操作员",
                     UserRole.Engineer => "工程师",
                     UserRole.Administrator => "管理员",
@@ -29,6 +30,7 @@ namespace Astra.Converters
             {
                 return roleString switch
                 {
+                    "超级管理员" => UserRole.SuperAdministrator,
                     "操作员" => UserRole.Operator,
                     "工程师" => UserRole.Engineer,
                     "管理员" => UserRole.Administrator,

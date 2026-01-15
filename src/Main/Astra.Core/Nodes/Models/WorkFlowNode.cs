@@ -3,10 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Text.Json;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -44,18 +43,18 @@ namespace Astra.Core.Nodes.Models
 
         // ===== 数据：子节点 =====
 
-        [JsonPropertyOrder(20)]
+        [JsonProperty(Order = 20)]
         public List<Node> Nodes { get; set; }
 
-        [JsonPropertyOrder(21)]
+        [JsonProperty(Order = 21)]
         public List<Connection> Connections { get; set; }
 
-        [JsonPropertyOrder(22)]
+        [JsonProperty(Order = 22)]
         public Dictionary<string, object> Variables { get; set; }
 
         // ===== 配置 =====
 
-        [JsonPropertyOrder(23)]
+        [JsonProperty(Order = 23)]
         public WorkFlowConfiguration Configuration { get; set; }
 
         // ===== 辅助方法（仅数据操作，无执行逻辑） =====
@@ -333,15 +332,17 @@ namespace Astra.Core.Nodes.Models
         public override Node Clone()
         {
             // 1) JSON 深拷贝整个工作流（包含子节点/连接/变量/配置）
-            var json = JsonSerializer.Serialize(this, GetType(), new JsonSerializerOptions
+            var json = JsonConvert.SerializeObject(this, GetType(), new JsonSerializerSettings
             {
-                PropertyNamingPolicy = null,
-                ReferenceHandler = ReferenceHandler.Preserve
+                ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
+                PreserveReferencesHandling = PreserveReferencesHandling.Objects,
+                TypeNameHandling = TypeNameHandling.Auto
             });
-            var cloned = (WorkFlowNode)JsonSerializer.Deserialize(json, GetType(), new JsonSerializerOptions
+            var cloned = (WorkFlowNode)JsonConvert.DeserializeObject(json, GetType(), new JsonSerializerSettings
             {
-                PropertyNamingPolicy = null,
-                ReferenceHandler = ReferenceHandler.Preserve
+                ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
+                PreserveReferencesHandling = PreserveReferencesHandling.Objects,
+                TypeNameHandling = TypeNameHandling.Auto
             });
 
             // 2) 重新生成工作流自身ID

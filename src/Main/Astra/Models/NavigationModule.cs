@@ -110,7 +110,7 @@ namespace Astra.Models
                     Order = 50,
                     Description = "管理用户权限",
                     Group = "Core",
-                    RequiredPermissionLevel = (int)UserRole.Administrator, // 仅管理员
+                    RequiredPermissionLevel = 3, // 仅管理员和超级管理员（管理员=3，超级管理员=4）
                     PermissionDeniedMessage = "只有管理员才能管理用户权限"
                 },
             };

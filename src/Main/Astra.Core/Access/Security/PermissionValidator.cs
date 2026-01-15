@@ -30,11 +30,11 @@ namespace Astra.Core.Access.Security
 
         /// <summary>
         /// 验证当前用户是否有权限添加用户
-        /// 只有管理员角色可以添加用户
+        /// 只有管理员或超级管理员角色可以添加用户
         /// </summary>
         public void ValidateCanAddUser(User currentUser)
         {
-            if (currentUser.Role != UserRole.Administrator)
+            if (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.SuperAdministrator)
             {
                 throw new AccessGuardException("只有管理员才能添加用户");
             }
@@ -42,11 +42,11 @@ namespace Astra.Core.Access.Security
 
         /// <summary>
         /// 验证当前用户是否有权限删除用户
-        /// 只有管理员角色可以删除用户
+        /// 只有管理员或超级管理员角色可以删除用户
         /// </summary>
         public void ValidateCanDeleteUser(User currentUser)
         {
-            if (currentUser.Role != UserRole.Administrator)
+            if (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.SuperAdministrator)
             {
                 throw new AccessGuardException("只有管理员才能删除用户");
             }
@@ -54,11 +54,11 @@ namespace Astra.Core.Access.Security
 
         /// <summary>
         /// 验证当前用户是否有权限重置密码
-        /// 只有管理员角色可以重置其他用户的密码
+        /// 只有管理员或超级管理员角色可以重置其他用户的密码
         /// </summary>
         public void ValidateCanResetPassword(User currentUser)
         {
-            if (currentUser.Role != UserRole.Administrator)
+            if (currentUser.Role != UserRole.Administrator && currentUser.Role != UserRole.SuperAdministrator)
             {
                 throw new AccessGuardException("只有管理员才能重置密码");
             }
@@ -78,11 +78,14 @@ namespace Astra.Core.Access.Security
                 throw new AccessGuardException("不能删除当前登录的账号");
             }
 
-            // 不能删除最后一个管理员
-            if (targetUser.Role == UserRole.Administrator)
+            // 不能删除最后一个管理员（包括超级管理员）
+            if (targetUser.Role == UserRole.Administrator || targetUser.Role == UserRole.SuperAdministrator)
             {
                 int adminCount = _userRepository.CountByRole(UserRole.Administrator);
-                if (adminCount <= 1)
+                int superAdminCount = _userRepository.CountByRole(UserRole.SuperAdministrator);
+                int totalAdminCount = adminCount + superAdminCount;
+                
+                if (totalAdminCount <= 1)
                 {
                     throw new AccessGuardException("不能删除最后一个管理员账号");
                 }

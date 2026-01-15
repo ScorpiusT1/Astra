@@ -623,6 +623,18 @@ namespace Astra.UI.Controls
                         System.Diagnostics.Debug.WriteLine($"[智能连线] ✅ 平移路径（基于原始，跳过A*计算） - 点数: {savedOriginalPath.Count}, 偏移: ({smartOffsetX:F2}, {smartOffsetY:F2})");
                     }
                 }
+                // 🔧 检查是否需要保留路径（用于复制/粘贴场景）
+                else if (edge.PreservePathOnRefresh && edge.Points != null && edge.Points.Count > 2)
+                {
+                    // 直接使用已有的路径点，不进行任何验证和调整
+                    // 这样可以确保复制的连线与原始连线保持完全相同的形状
+                    points = new PointCollection(edge.Points.Select(p => new Point(p.X, p.Y)));
+                    
+                    // 首次刷新后，清除标志，允许后续正常调整
+                    edge.PreservePathOnRefresh = false;
+                    
+                    System.Diagnostics.Debug.WriteLine($"[连线优化] ✅ 保留克隆的路径（跳过验证和重算） - 点数: {edge.Points.Count}");
+                }
                 else if (!forceRecalculate && edge.Points != null && edge.Points.Count > 2)
                 {
                     // 🔧 检查路径端点是否与当前端口位置匹配

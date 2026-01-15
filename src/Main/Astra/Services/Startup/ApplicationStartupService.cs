@@ -179,8 +179,8 @@ namespace Astra.Services.Startup
                 }
             }, DispatcherPriority.Loaded);
 
-            // ⭐ 启动后自动登录操作员账号
-            await AutoLoginOperator(serviceProvider);
+            // ⭐ 启动后自动登录超级管理员账号
+            await AutoLoginSuperAdministrator(serviceProvider);
 
             return serviceProvider;
         }
@@ -317,9 +317,9 @@ namespace Astra.Services.Startup
         }
 
         /// <summary>
-        /// 自动登录操作员账号
+        /// 自动登录超级管理员账号
         /// </summary>
-        private async Task AutoLoginOperator(IServiceProvider serviceProvider)
+        private async Task AutoLoginSuperAdministrator(IServiceProvider serviceProvider)
         {
             try
             {
@@ -331,21 +331,34 @@ namespace Astra.Services.Startup
                     return;
                 }
 
-                // ⭐ 尝试获取最后一次登录的操作员
-                var lastOperator = userManagementService.GetLastLoginOperator();
+                // ⭐ 使用超级管理员账号和密码进行登录
+                const string SUPER_ADMIN_USERNAME = "SupperAdmin";
+                const string SUPER_ADMIN_PASSWORD = "Admin.123";
 
-                if (lastOperator != null)
+                try
                 {
-                    // 自动登录
-                    await _dispatcher.InvokeAsync(() =>
+                    // 验证超级管理员账号和密码
+                    var superAdmin = userManagementService.Login(SUPER_ADMIN_USERNAME, SUPER_ADMIN_PASSWORD);
+
+                    if (superAdmin != null)
                     {
-                        sessionService.Login(lastOperator);
-                    });
+                        // 自动登录
+                        await _dispatcher.InvokeAsync(() =>
+                        {
+                            sessionService.Login(superAdmin);
+                        });
+                    }
+                }
+                catch (Exception loginEx)
+                {
+                    // 登录失败不影响程序启动，只记录日志
+                    System.Diagnostics.Debug.WriteLine($"[ApplicationStartupService] 自动登录超级管理员失败: {loginEx.Message}");
                 }
             }
             catch (Exception ex)
             {
                 // 自动登录失败不影响程序启动，只记录日志
+                System.Diagnostics.Debug.WriteLine($"[ApplicationStartupService] 自动登录超级管理员异常: {ex.Message}");
             }
         }
 

@@ -7,6 +7,11 @@ namespace Astra.Core.Access.Models
     public enum UserRole
     {
         /// <summary>
+        /// 超级管理员角色 - 拥有最高权限，系统唯一，不能通过界面添加或删除
+        /// </summary>
+        SuperAdministrator,
+
+        /// <summary>
         /// 管理员角色 - 拥有所有权限，包括用户管理、权限管理等
         /// </summary>
         Administrator,

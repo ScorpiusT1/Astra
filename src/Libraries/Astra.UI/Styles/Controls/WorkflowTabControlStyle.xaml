@@ -100,7 +100,7 @@
                                             <TabPanel x:Name="HeaderPanel"
                                                       IsItemsHost="True"
                                                       Background="Transparent"
-                                                      VerticalAlignment="Stretch"
+                                                      VerticalAlignment="Center"
                                                       KeyboardNavigation.TabIndex="1"
                                                       KeyboardNavigation.TabNavigation="Once"
                                                       KeyboardNavigation.DirectionalNavigation="None" />
@@ -441,15 +441,41 @@
                             </Border>
                         </Grid>
 
-                        <!-- 内容区域 -->
-                        <ContentPresenter Grid.Row="1"
-                                          x:Name="PART_SelectedContentHost"
-                                          ContentSource="SelectedContent"
-                                          Margin="0"
+                        <!-- 内容区域 - 使用 ItemsControl 保持所有内容加载，避免切换时重绘 -->
+                        <Grid Grid.Row="1"
+                              x:Name="PART_ContentHost"
+                              Visibility="{TemplateBinding ShowContent, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ItemsControl ItemsSource="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=ItemsSource}"
                                           HorizontalAlignment="Stretch"
-                                          VerticalAlignment="Stretch"
-                                          SnapsToDevicePixels="True"
-                                          Visibility="{TemplateBinding ShowContent, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                          VerticalAlignment="Stretch">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <Grid />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Setter Property="IsHitTestVisible" Value="False" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Setter Property="IsHitTestVisible" Value="True" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <ContentPresenter Content="{Binding}"
+                                                              ContentTemplate="{Binding Path=ContentTemplate, RelativeSource={RelativeSource AncestorType={x:Type TabControl}}}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

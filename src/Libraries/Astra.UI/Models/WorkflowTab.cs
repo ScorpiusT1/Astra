@@ -118,9 +118,10 @@ namespace Astra.UI.Models
         public bool IsModified { get; set; }
 
         /// <summary>
-        /// 是否当前活动标签页
+        /// 是否当前活动标签页（用于控制多标签页的内容可见性）
         /// </summary>
-        public bool IsActive { get; set; }
+        [ObservableProperty]
+        private bool _isActive;
 
         /// <summary>
         /// 文件路径（如果已保存）

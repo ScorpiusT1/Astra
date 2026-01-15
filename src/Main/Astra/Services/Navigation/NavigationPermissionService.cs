@@ -74,18 +74,21 @@ namespace Astra.Services.Navigation
             }
 
             // 操作员场景：如果页面未显式配置权限，则默认仅首页可见（避免误放开）
+            // 超级管理员不受此限制，拥有所有权限
             if (user != null && user.Role == UserRole.Operator && requiredLevel == 0 && !isHome)
             {
                 return false;
             }
-
+            
             // 未登录用户没有任何权限
             if (user == null)
                 return false;
 
-            // 检查用户角色等级是否满足要求（将枚举映射为等级：操作员=1, 工程师=2, 管理员=3）
+            // 检查用户角色等级是否满足要求（将枚举映射为等级：操作员=1, 工程师=2, 管理员=3, 超级管理员=4）
+            // 超级管理员拥有最高权限（等级4），权限高于管理员（等级3）
             int userLevel = user.Role switch
             {
+                UserRole.SuperAdministrator => 4,  // 超级管理员拥有最高权限，权限高于管理员
                 UserRole.Operator => 1,
                 UserRole.Engineer => 2,
                 UserRole.Administrator => 3,
@@ -176,6 +179,7 @@ namespace Astra.Services.Navigation
         {
             return role switch
             {
+                UserRole.SuperAdministrator => "超级管理员",
                 UserRole.Administrator => "管理员",
                 UserRole.Engineer => "工程师",
                 UserRole.Operator => "操作员",

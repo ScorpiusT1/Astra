@@ -149,9 +149,13 @@ namespace Astra.Engine.Execution.NodeExecutor
         /// <summary>
         /// 添加权限拦截器
         /// </summary>
-        public ExecutorBuilder WithPermission()
+        /// <param name="permissionService">权限服务实例</param>
+        public ExecutorBuilder WithPermission(IPermissionService permissionService)
         {
-            _interceptors.Add(new PermissionInterceptor());
+            if (permissionService == null)
+                throw new ArgumentNullException(nameof(permissionService));
+            
+            _interceptors.Add(new PermissionInterceptor(permissionService));
             return this;
         }
 

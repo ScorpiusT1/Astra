@@ -14,7 +14,8 @@
              d:DataContext="{d:DesignInstance Type=viewModels:MultiFlowEditorViewModel}"
              xmlns:converters="clr-namespace:Astra.UI.Converters"
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
+             d:DesignHeight="450"
+             d:DesignWidth="800"
              Background="{DynamicResource SurfaceBrush}">
     <UserControl.InputBindings>
         <!-- 键盘快捷键：Ctrl+Z 撤销，Ctrl+R 重做，Ctrl+Y 重做（兼容） -->
@@ -33,6 +34,7 @@
         <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
         <converters:InvertedBooleanConverter x:Key="InvertedBooleanConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <converters:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
         <converters:WorkflowTypeToToolBoxWidthConverter x:Key="WorkflowTypeToToolBoxWidthConverter" />
         <converters:WorkflowTypeToToolBoxVisibilityConverter x:Key="WorkflowTypeToToolBoxVisibilityConverter" />
         <converters:StringFallbackConverter x:Key="StringFallbackConverter" />
@@ -189,6 +191,29 @@
                         Margin="8,0"
                         VerticalAlignment="Center" />
 
+                <!-- 导入导出操作组 -->
+                <Button ToolTip="导入子流程（自动检测单个或多个）"
+                        Command="{Binding ImportWorkflowsCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="FileArrowDown"
+                                  FontSize="16" />
+                </Button>
+                <Button ToolTip="导出所有流程"
+                        Command="{Binding ExportAllWorkflowsCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="FileArrowUp"
+                                  FontSize="16" />
+                </Button>
+
+                <!-- 分隔符（竖线） -->
+                <Border Width="1"
+                        Height="20"
+                        Background="{DynamicResource BorderBrush}"
+                        Margin="8,0"
+                        VerticalAlignment="Center" />
+
                 <!-- 编辑操作组 -->
                 <Button ToolTip="撤销"
                         Command="{Binding UndoCommand}"
@@ -294,7 +319,8 @@
                 <controls:WorkflowTabControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:WorkflowTab}">
                         <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              DataContext="{Binding}">
+                              DataContext="{Binding}"
+                              VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -328,7 +354,15 @@
                                            FontWeight="Normal"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextTrimming="CharacterEllipsis"
+                                           Width="120"
                                            Visibility="{Binding IsInEditMode, Converter={StaticResource InvertedBooleanToVisibilityConverter}, Mode=OneWay}">
+                                    <!-- ToolTip：鼠标悬浮时显示完整名称 -->
+                                    <TextBlock.ToolTip>
+                                        <ToolTip Content="{Binding Name}"
+                                                 Placement="Top"
+                                                 ToolTipService.InitialShowDelay="300"
+                                                 ToolTipService.ShowDuration="5000" />
+                                    </TextBlock.ToolTip>
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Foreground"
@@ -351,16 +385,18 @@
                                          Text="{Binding EditingName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
                                          VerticalAlignment="Center"
                                          VerticalContentAlignment="Center"
-                                         HorizontalAlignment="Stretch"
+                                         HorizontalAlignment="Left"
                                          HorizontalContentAlignment="Left"
                                          Background="{DynamicResource SurfaceBrush}"
                                          BorderBrush="{DynamicResource PrimaryBrush}"
                                          BorderThickness="1"
                                          Padding="2,0"
-                                         MinWidth="100"
+                                         Width="120"
                                          IsReadOnly="False"
                                          IsEnabled="True"
                                          GotFocus="EditNameTextBox_GotFocus"
+                                         IsVisibleChanged="EditNameTextBox_IsVisibleChanged"
+                                         LostFocus="EditNameTextBox_LostFocus"
                                          PreviewKeyDown="EditNameTextBox_PreviewKeyDown"
                                          Tag="{Binding RelativeSource={RelativeSource AncestorType=UserControl}}"
                                          DataContext="{Binding}"
@@ -375,13 +411,7 @@
                                                     Command="{Binding DataContext.CancelEditWorkflowNameCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}" />
                                     </TextBox.InputBindings>
-                                    <hc:Interaction.Triggers>
-                                        <!-- 失焦时确认编辑 -->
-                                        <hc:EventTrigger EventName="LostFocus">
-                                            <hc:InvokeCommandAction Command="{Binding DataContext.CommitEditWorkflowNameCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                    CommandParameter="{Binding}" />
-                                        </hc:EventTrigger>
-                                    </hc:Interaction.Triggers>
+                                    <!-- 失焦事件在代码中处理，避免鼠标移动到TabItem其他部分时误触发 -->
                                 </TextBox>
                             </Grid>
 
@@ -494,11 +524,19 @@
                                     <MenuItem Header="重命名"
                                               Command="{Binding BeginEditWorkflowNameCommand}"
                                               CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="复制子流程"
+                                              Command="{Binding DuplicateWorkflowCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <fa:IconBlock Icon="Copy"
+                                                          FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
                                     <MenuItem Header="导出流程"
                                               Command="{Binding ExportWorkflowCommand}"
                                               CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
                                         <MenuItem.Icon>
-                                            <fa:IconBlock Icon="FileExport"
+                                            <fa:IconBlock Icon="FileArrowUp"
                                                           FontSize="12" />
                                         </MenuItem.Icon>
                                     </MenuItem>
@@ -520,16 +558,22 @@
                 <controls:WorkflowTabControl.ContentTemplate>
                     <DataTemplate DataType="{x:Type models:WorkflowTab}">
                         <Grid HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch">
+                              VerticalAlignment="Stretch"
+                              DataContext="{Binding}">
+                            <!-- 调试：显式设置 DataContext 为 WorkflowTab -->
                             <controls:FlowEditor x:Name="FlowEditorInstance"
                                                  ClipToBounds="True"
                                                  HorizontalAlignment="Stretch"
                                                  VerticalAlignment="Stretch"
+                                                 DataContext="{Binding}"
                                                  ToolBoxItemsSource="{Binding DataContext.ToolBoxItemsSource, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                  CanvasItemsSource="{Binding Nodes}"
                                                  EdgeItemsSource="{Binding Edges}"
                                                  ItemTemplateSelector="{Binding Type, Converter={StaticResource WorkflowTypeToTemplateSelectorConverter}}"
                                                  IsToolBoxVisible="{Binding Type, Converter={StaticResource WorkflowTypeToToolBoxVisibilityConverter}}"
+                                                 SharedClipboardNodes="{Binding DataContext.GlobalClipboardNodes, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay}"
+                                                 SharedClipboardEdges="{Binding DataContext.GlobalClipboardEdges, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay}"
+                                                 SharedClipboardBounds="{Binding DataContext.GlobalClipboardBounds, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay}"
                                                  Loaded="FlowEditor_Loaded" />
                         </Grid>
                     </DataTemplate>
@@ -545,7 +589,8 @@
                        FontSize="14"
                        Foreground="{DynamicResource SecondaryTextBrush}"
                        HorizontalAlignment="Center"
-                       VerticalAlignment="Center">
+                       VerticalAlignment="Center"
+                       Panel.ZIndex="1000">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
                         <Setter Property="Visibility"
@@ -555,7 +600,7 @@
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding IsMasterWorkflowViewVisible}"
                                                Value="False" />
-                                    <Condition Binding="{Binding CurrentTab, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}"
+                                    <Condition Binding="{Binding SubWorkflowTabs.Count, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=0}"
                                                Value="Visible" />
                                 </MultiDataTrigger.Conditions>
                                 <Setter Property="Visibility"
@@ -575,19 +620,54 @@
                 Padding="12,8">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 左侧状态消息 -->
-                <TextBlock Grid.Column="0"
+                <!-- 左侧文件路径 -->
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="0,0,16,0">
+                    <fa:IconBlock Icon="File"
+                                  FontSize="12"
+                                  Foreground="{DynamicResource SecondaryTextBrush}"
+                                  Margin="0,0,6,0"
+                                  VerticalAlignment="Center"
+                                  Visibility="{Binding CurrentFilePath, Converter={StaticResource NullToVisibilityConverter}}" />
+                    <TextBlock Text="{Binding CurrentFilePath}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               VerticalAlignment="Center"
+                               ToolTip="{Binding CurrentFilePath}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentFilePath}"
+                                                 Value="{x:Null}">
+                                        <Setter Property="Text"
+                                                Value="未保存" />
+                                        <Setter Property="FontStyle"
+                                                Value="Italic" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- 中间状态消息 -->
+                <TextBlock Grid.Column="1"
+                           Margin="0,0,20,0"
                            Text="{Binding StatusMessage}"
                            FontSize="12"
                            Foreground="{DynamicResource PrimaryTextBrush}"
-                           VerticalAlignment="Center" />
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right" />
 
                 <!-- 右侧控制区域 -->
-                <StackPanel Grid.Column="1"
+                <StackPanel Grid.Column="2"
                             Orientation="Horizontal"
                             HorizontalAlignment="Right">
                     <!-- 流程时间 -->
@@ -597,16 +677,7 @@
                                VerticalAlignment="Center"
                                Margin="0,0,16,0" />
 
-                    <!-- 缩放控制 -->
-                    <Button ToolTip="适应画布"
-                            Command="{Binding FitToScreenCommand}"
-                            Style="{StaticResource IconButtonStyle}"
-                            Width="24"
-                            Height="24"
-                            Margin="0,0,8,0">
-                        <fa:IconBlock Icon="UpRightAndDownLeftFromCenter"
-                                      FontSize="14" />
-                    </Button>
+                    <!-- 缩放显示 -->
                     <TextBlock Text="{Binding ZoomPercentage, StringFormat='{}{0:F0}%'}"
                                FontSize="12"
                                Foreground="{DynamicResource SecondaryTextBrush}"

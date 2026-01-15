@@ -2,7 +2,7 @@ using Astra.Core.Nodes.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -26,51 +26,51 @@ namespace Astra.Core.Nodes.Models
         /// <summary>
         /// 主流程唯一标识
         /// </summary>
-        [JsonPropertyOrder(1)]
+        [JsonProperty(Order = 1)]
         public string Id { get; set; }
 
         /// <summary>
         /// 主流程名称
         /// </summary>
-        [JsonPropertyOrder(2)]
+        [JsonProperty(Order = 2)]
         public string Name { get; set; }
 
         /// <summary>
         /// 主流程描述
         /// </summary>
-        [JsonPropertyOrder(3)]
+        [JsonProperty(Order = 3)]
         public string Description { get; set; }
 
         /// <summary>
         /// 子流程引用列表（在主流程画布上显示的流程节点）
         /// Key: WorkFlowNode.Id (子流程ID)
         /// </summary>
-        [JsonPropertyOrder(4)]
+        [JsonProperty(Order = 4)]
         public List<WorkflowReference> SubWorkflowReferences { get; set; }
 
         /// <summary>
         /// 流程间连线列表（连接不同的子流程节点）
         /// 统一使用 Edge 类，与画布显示保持一致
         /// </summary>
-        [JsonPropertyOrder(5)]
+        [JsonProperty(Order = 5)]
         public List<Edge> Edges { get; set; }
 
         /// <summary>
         /// 创建时间
         /// </summary>
-        [JsonPropertyOrder(6)]
+        [JsonProperty(Order = 6)]
         public DateTime CreatedAt { get; set; }
 
         /// <summary>
         /// 修改时间
         /// </summary>
-        [JsonPropertyOrder(7)]
+        [JsonProperty(Order = 7)]
         public DateTime ModifiedAt { get; set; }
 
         /// <summary>
         /// 文件路径（如果已保存）
         /// </summary>
-        [JsonPropertyOrder(8)]
+        [JsonProperty(Order = 8)]
         public string FilePath { get; set; }
 
         /// <summary>
@@ -176,43 +176,43 @@ namespace Astra.Core.Nodes.Models
         /// <summary>
         /// 引用节点唯一标识
         /// </summary>
-        [JsonPropertyOrder(1)]
+        [JsonProperty(Order = 1)]
         public string Id { get; set; }
 
         /// <summary>
         /// 引用的子流程ID
         /// </summary>
-        [JsonPropertyOrder(2)]
+        [JsonProperty(Order = 2)]
         public string SubWorkflowId { get; set; }
 
         /// <summary>
         /// 在主流程画布上的位置
         /// </summary>
-        [JsonPropertyOrder(3)]
+        [JsonProperty(Order = 3)]
         public Point2D Position { get; set; }
 
         /// <summary>
         /// 在主流程画布上的大小
         /// </summary>
-        [JsonPropertyOrder(4)]
+        [JsonProperty(Order = 4)]
         public Size2D Size { get; set; }
 
         /// <summary>
         /// 显示名称（可以覆盖子流程的名称）
         /// </summary>
-        [JsonPropertyOrder(5)]
+        [JsonProperty(Order = 5)]
         public string DisplayName { get; set; }
 
         /// <summary>
         /// 参数映射（子流程输入参数 -> 主流程变量或常量）
         /// </summary>
-        [JsonPropertyOrder(6)]
+        [JsonProperty(Order = 6)]
         public Dictionary<string, string> InputParameterMapping { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
         /// 输出参数映射（子流程输出参数 -> 主流程变量）
         /// </summary>
-        [JsonPropertyOrder(7)]
+        [JsonProperty(Order = 7)]
         public Dictionary<string, string> OutputParameterMapping { get; set; } = new Dictionary<string, string>();
     }
 }

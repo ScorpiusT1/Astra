@@ -16,7 +16,7 @@ namespace Astra.Converters
         {
             if (value is User user)
             {
-                bool isAdmin = user.Role == UserRole.Administrator;
+                bool isAdmin = user.Role == UserRole.Administrator || user.Role == UserRole.SuperAdministrator;
                 
                 // 如果目标类型是Visibility
                 if (targetType == typeof(Visibility))
