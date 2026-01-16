@@ -9,7 +9,7 @@
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
              xmlns:converters="clr-namespace:Astra.Converters"
              xmlns:System="clr-namespace:System;assembly=mscorlib"
-                xmlns:models="clr-namespace:Astra.Core.Access.Models;assembly=Astra.Core"
+             xmlns:models="clr-namespace:Astra.Core.Access.Models;assembly=Astra.Core"
              d:DataContext="{d:DesignInstance Type=viewmodels:PermissionViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource BackgroundBrush}">

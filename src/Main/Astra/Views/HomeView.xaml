@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:controls="clr-namespace:Astra.UI.Controls;assembly=Astra.UI"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
              d:DataContext="{d:DesignInstance Type=viewmodels:HomeViewModel}"
@@ -10,75 +11,52 @@
              Background="{DynamicResource SurfaceBrush}"
             
              d:DesignHeight="450" d:DesignWidth="800">
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <!-- 欢迎区域 -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource PrimaryBrush}"
-                CornerRadius="12"
-                Padding="32,24"
-                Margin="0,0,0,24">
-            <StackPanel>
-                <TextBlock Text="欢迎使用自动化测试平台"
-                           FontSize="28"
+        <!-- 左侧：预览区 -->
+        <Border Grid.Column="0"
+                Background="#F5F5F5"
+                Padding="20">
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center">
+                <TextBlock Text="预览区域"
+                           FontSize="24"
                            FontWeight="Bold"
-                           Foreground="White"
-                           Margin="0,0,0,8" />
-                <TextBlock Text="高效、稳定、智能的测试解决方案"
-                           FontSize="16"
-                           Foreground="White"
-                           Opacity="0.9" />
+                           Margin="0,0,0,10" />
+                <Button Content="切换到Person"
+                        Click="LoadPerson_Click"
+                        Margin="5" />
+                <Button Content="切换到Config"
+                        Click="LoadConfig_Click"
+                        Margin="5" />
+                <Button Content="动态隐藏Age属性"
+                        Click="HideAge_Click"
+                        Margin="5" />
+                <Button Content="隐藏/显示基本信息组"
+                        Click="HideBasicInfoGroup_Click"
+                        Margin="5" />
+                <Button Content="隐藏/显示激活属性"
+                        Click="HideIsActive_Click"
+                        Margin="5" />
+                <Button Content="获取所有属性值"
+                        Click="GetValues_Click"
+                        Margin="5" />
             </StackPanel>
         </Border>
 
-        <!-- 功能卡片区域 -->
-        <ScrollViewer Grid.Row="1"
-                      VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding FeatureCards}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="3" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Background="{DynamicResource CardBrush}"
-                                CornerRadius="12"
-                                Padding="24"
-                                Margin="8"
-                                MinHeight="200">
-                            <Border.Effect>
-                                <DropShadowEffect Color="Black"
-                                                  Opacity="0.1"
-                                                  ShadowDepth="2"
-                                                  BlurRadius="8" />
-                            </Border.Effect>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Icon}"
-                                           FontSize="32"
-                                           HorizontalAlignment="Center"
-                                           Margin="0,0,0,12" />
-                                <TextBlock Text="{Binding Title}"
-                                           FontSize="18"
-                                           FontWeight="Bold"
-                                           Foreground="{DynamicResource PrimaryTextBrush}"
-                                           HorizontalAlignment="Center"
-                                           Margin="0,0,0,8" />
-                                <TextBlock Text="{Binding Description}"
-                                           FontSize="14"
-                                           Foreground="{DynamicResource SecondaryTextBrush}"
-                                           TextWrapping="Wrap"
-                                           HorizontalAlignment="Center"
-                                           TextAlignment="Center" />
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <!-- 右侧：属性编辑器 -->
+        <controls:PropertyEditorControl x:Name="PropertyEditor"
+                                     Grid.Column="1"
+                                    
+                                     ShowSearchBox="True"
+                                     EnableCategory="True"
+                                     PropertySortMode="Categorized"
+                                     LabelWidthRatio="0.1"
+                                     PropertyValueChanged="PropertyEditor_PropertyValueChanged"
+                                     Margin="10" />
     </Grid>
 </UserControl>

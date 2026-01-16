@@ -25,5 +25,8 @@
         <ResourceDictionary Source="../Styles/Controls/NodeToolBoxStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/InfiniteCanvasStyle.xaml" />
         <ResourceDictionary Source="../Styles/Controls/FlowEditorStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/PropertyEditorStyle.xaml" />
+        <ResourceDictionary Source="../Styles/Controls/ValidationTemplates.xaml" />
+
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
