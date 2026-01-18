@@ -29,19 +29,10 @@
                     Modifiers="Ctrl"
                     Command="{Binding RedoCommand}" />
     </UserControl.InputBindings>
-    <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
-        <converters:InvertedBooleanConverter x:Key="InvertedBooleanConverter" />
-        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
-        <converters:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
-        <converters:WorkflowTypeToToolBoxWidthConverter x:Key="WorkflowTypeToToolBoxWidthConverter" />
-        <converters:WorkflowTypeToToolBoxVisibilityConverter x:Key="WorkflowTypeToToolBoxVisibilityConverter" />
-        <converters:StringFallbackConverter x:Key="StringFallbackConverter" />
-        <converters:StartButtonVisibilityConverter x:Key="StartButtonVisibilityConverter" />
 
-        <!-- ExecutionResultToTimeConverter -->
-        <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
+    <UserControl.Resources>
+        <!-- 通用转换器已移动到 Themes/Converters.xaml，通过 Generic.xaml 引入 -->
+        <!-- 以下转换器需要特殊配置，保留在本地 -->
 
 
         <!-- WorkflowReferenceNode 特殊样式模板（使用 WorkflowReferenceNodeControl 控件） -->
@@ -301,10 +292,10 @@
                                          AddButtonToolTip="添加新流程"
                                          TabListButtonToolTip="显示所有标签页"
                                          ShowMasterWorkflowButton="False"
-                                         ShowTabPanel="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
-                                         ShowAddButton="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
-                                         ShowTabListButton="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
-                                         ShowContent="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InvertedBooleanConverter}}"
+                                         ShowTabPanel="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InverseBoolConverter}}"
+                                         ShowAddButton="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InverseBoolConverter}}"
+                                         ShowTabListButton="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InverseBoolConverter}}"
+                                         ShowContent="{Binding IsMasterWorkflowViewVisible, Converter={StaticResource InverseBoolConverter}}"
                                          SelectionChanged="TabControl_SelectionChanged"
                                          AddButtonClick="WorkflowTabControl_AddButtonClick"
                                          TabListItemSelected="WorkflowTabControl_TabListItemSelected">

@@ -1,13 +1,17 @@
 ﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:system="clr-namespace:System;assembly=mscorlib">
+                    xmlns:system="clr-namespace:System;assembly=mscorlib"
+                    xmlns:hc="https://handyorg.github.io/handycontrol">
 
     <ResourceDictionary.MergedDictionaries>
      
-        <!-- 1. 文字样式（基础） -->
+        <!-- 1. 值转换器（基础，可被其他资源使用） -->
+        <ResourceDictionary Source="Converters.xaml" />
+
+        <!-- 2. 文字样式（基础） -->
         <ResourceDictionary Source="Typography.xaml" />
 
-        <!-- 2. 控件样式（依赖文字和颜色） -->
+        <!-- 3. 控件样式（依赖文字和颜色） -->
         <ResourceDictionary Source="Controls.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
@@ -73,4 +77,61 @@
                       BlurRadius="12"
                       ShadowDepth="4"
                       Direction="270" />
+
+    <!-- ==================== HandyControl Tag 样式修复 ==================== -->
+    <!-- 修复 ShowCloseButton 绑定警告：完全覆盖模板，避免查找 TagContainer -->
+    <!-- 此样式必须在 HandyControl Theme 之后加载才能覆盖默认样式 -->
+    <Style TargetType="{x:Type hc:Tag}">
+        <Setter Property="ShowCloseButton" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type hc:Tag}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- 内容 -->
+                            <ContentPresenter Grid.Column="0"
+                                            Content="{TemplateBinding Content}"
+                                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                            Margin="{TemplateBinding Padding}" />
+                            
+                            <!-- 关闭按钮 - 使用触发器控制显示，避免绑定错误 -->
+                            <Button x:Name="PART_CloseButton"
+                                    Grid.Column="1"
+                                    Width="16"
+                                    Height="16"
+                                    Margin="4,0,0,0"
+                                    Padding="0"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed">
+                                <Path Data="M0,0 L8,8 M8,0 L0,8"
+                                      Stroke="{TemplateBinding Foreground}"
+                                      StrokeThickness="1.5"
+                                      Stretch="Uniform" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- 当 ShowCloseButton 为 True 时显示关闭按钮 -->
+                        <Trigger Property="ShowCloseButton" Value="True">
+                            <Setter TargetName="PART_CloseButton" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>

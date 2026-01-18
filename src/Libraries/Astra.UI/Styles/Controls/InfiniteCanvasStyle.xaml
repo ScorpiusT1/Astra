@@ -4,11 +4,12 @@
                     xmlns:converters="clr-namespace:Astra.UI.Converters"
                     xmlns:models="clr-namespace:Astra.Core.Nodes.Models;assembly=Astra.Core">
 
+    <ResourceDictionary.MergedDictionaries>
+        <!-- 引入转换器资源（确保模板中可以使用） -->
+        <ResourceDictionary Source="../../Themes/Converters.xaml" />
+    </ResourceDictionary.MergedDictionaries>
 
-    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-    <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
-    <converters:PositionConverter x:Key="PositionConverter" />
-    <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
+    <!-- 转换器已移动到 Themes/Converters.xaml，通过 Controls.xaml 引入 -->
 
     <!-- InfiniteCanvas 默认样式 -->
     <Style TargetType="{x:Type local:InfiniteCanvas}">

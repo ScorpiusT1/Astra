@@ -6,16 +6,12 @@
                     xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp">
 
 
-    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    <ResourceDictionary.MergedDictionaries>
+        <!-- 引入转换器资源（确保模板中可以使用） -->
+        <ResourceDictionary Source="../../Themes/Converters.xaml" />
+    </ResourceDictionary.MergedDictionaries>
 
-    <!-- 简单的布尔值到字符串转换器 -->
-    <converters:BooleanToStringConverter x:Key="BooleanToStringConverter" />
-
-    <!-- 图标代码转换器 -->
-    <converters:IconConverter x:Key="IconConverter" />
-    
-    <!-- Brush 转 Color 转换器 -->
-    <converters:BrushToColorConverter x:Key="BrushToColorConverter" />
+    <!-- 转换器已移动到 Themes/Converters.xaml，通过 Controls.xaml 引入 -->
     
     <!-- ==================== 工具箱字体资源 ==================== -->
     <FontFamily x:Key="ToolboxFontFamily">Segoe UI</FontFamily>

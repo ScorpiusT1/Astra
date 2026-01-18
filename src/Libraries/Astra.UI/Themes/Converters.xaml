@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:Astra.UI.Converters">
+
+    <!-- ==================== 值转换器 ==================== -->
+    
+    <!-- 布尔值转换器 -->
+    <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBooleanToVisibilityConverter" />
+    <converters:BooleanToStringConverter x:Key="BooleanToStringConverter" />
+
+    <!-- 可见性转换器 -->
+    <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    <converters:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
+    <converters:GroupItemCountToVisibilityConverter x:Key="GroupItemCountToVisibilityConverter" />
+
+    <!-- 布局转换器 -->
+    <converters:RatioToGridLengthConverter x:Key="RatioToGridLengthConverter" />
+    <converters:PositionConverter x:Key="PositionConverter" />
+    <converters:TopCornerRadiusConverter x:Key="TopCornerRadiusConverter" />
+
+    <!-- 工作流相关转换器 -->
+    <converters:WorkflowTypeToToolBoxWidthConverter x:Key="WorkflowTypeToToolBoxWidthConverter" />
+    <converters:WorkflowTypeToToolBoxVisibilityConverter x:Key="WorkflowTypeToToolBoxVisibilityConverter" />
+    <converters:StartButtonVisibilityConverter x:Key="StartButtonVisibilityConverter" />
+    <!-- WorkflowTypeToTemplateSelectorConverter 需要参数化配置，在使用处声明 -->
+    <!-- NodeTypeToDataTemplateSelector 需要参数化配置，在使用处声明 -->
+
+    <!-- 其他转换器 -->
+    <converters:StringFallbackConverter x:Key="StringFallbackConverter" />
+    <converters:EnumToDisplayTextConverter x:Key="EnumToDisplayTextConverter" />
+    <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
+    <converters:BrushToColorConverter x:Key="BrushToColorConverter" />
+    <converters:IconConverter x:Key="IconConverter" />
+
+</ResourceDictionary>
+

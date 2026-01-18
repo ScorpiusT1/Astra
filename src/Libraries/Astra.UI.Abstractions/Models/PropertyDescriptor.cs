@@ -10,6 +10,16 @@ namespace Astra.UI.Abstractions.Models
     {
         private readonly object _targetObject;
         private readonly PropertyInfo _propertyInfo;
+
+        /// <summary>
+        /// 获取目标对象（供 PropertyEditorBase 等扩展类使用）
+        /// </summary>
+        public object TargetObject => _targetObject;
+
+        /// <summary>
+        /// 获取属性信息（供 PropertyEditorBase 等扩展类使用）
+        /// </summary>
+        public PropertyInfo PropertyInfo => _propertyInfo;
         private object _value;
         private bool _isBrowsable = true;
         private readonly object _defaultValue;
@@ -222,7 +232,19 @@ namespace Astra.UI.Abstractions.Models
                     catch (Exception ex)
                     {
                         // 捕获所有其他异常（例如属性设置失败）
-                        var errorMessage = $"设置属性值失败: {ex.InnerException?.Message ?? ex.Message}";
+                        var innerMessage = ex.InnerException?.Message ?? ex.Message;
+                        var errorMessage = $"设置属性值失败: {innerMessage}";
+                        
+                        // 提供更友好的错误提示
+                        if (ex is ArgumentException)
+                        {
+                            errorMessage = $"属性值无效: {innerMessage}";
+                        }
+                        else if (ex is InvalidOperationException)
+                        {
+                            errorMessage = $"无法设置属性值: {innerMessage}";
+                        }
+                        
                         SetError(errorMessage, Validations.ValidationSeverity.Error);
                         _value = oldValue;
                     }

@@ -3,8 +3,13 @@
                     xmlns:controls="clr-namespace:Astra.UI.Controls"
                     xmlns:ui="clr-namespace:Astra.UI.Controls;assembly=Astra.UI">
 
+    <ResourceDictionary.MergedDictionaries>
+        <!-- 引入转换器资源（确保模板中可以使用） -->
+        <ResourceDictionary Source="../../Themes/Converters.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
     <!-- ==================== 辅助转换器 ==================== -->
-    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    <!-- 转换器已移动到 Themes/Converters.xaml，通过 Controls.xaml 引入 -->
 
     <!-- ==================== 阴影效果资源 ==================== -->
     <DropShadowEffect x:Key="LightShadow"

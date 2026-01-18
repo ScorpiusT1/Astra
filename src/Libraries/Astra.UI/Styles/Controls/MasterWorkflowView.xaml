@@ -13,9 +13,8 @@
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:StringFallbackConverter x:Key="StringFallbackConverter" />
-        <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
+        <!-- 通用转换器已移动到 Themes/Converters.xaml，通过 Generic.xaml 引入 -->
+        <!-- 以下转换器需要特殊配置，保留在本地 -->
 
         <!-- WorkflowReferenceNode 特殊样式模板（使用 WorkflowReferenceNodeControl 控件） -->
         <DataTemplate x:Key="WorkflowReferenceNodeTemplate">

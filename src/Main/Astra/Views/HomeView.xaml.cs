@@ -1,9 +1,8 @@
-﻿using Astra.UI.Abstractions.Attributes;
-using Astra.UI.Abstractions.Interfaces;
-using Astra.UI.Controls;
+﻿using Astra.UI.Controls;
 using HandyControl.Themes;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -46,7 +45,9 @@ namespace Astra.Views
                 BirthDate = new DateTime(1994, 5, 20),
                 Salary = 15000.50m,
                 Tags = new List<string> { "开发", "测试" },
-                Address = new Address { City = "北京", Street = "中关村大街1号" }
+                Address = new Address { City = "北京", Street = "中关村大街1号" },
+                Skills = new ObservableCollection<Skill>(
+                    SkillProvider.GetAllSkills().Where(s => s.Id == 1 || s.Id == 3).ToList())
             };
 
             _config = new AppConfig
@@ -127,171 +128,6 @@ namespace Astra.Views
         }
     }
 
-    // ==================== 测试数据模型 ====================
-
-    public class Person : System.ComponentModel.INotifyPropertyChanged, IPropertyVisibilityProvider
-    {
-        private bool _hideAge;
-        private bool _hideBasicInfoGroup;
-        private bool _hideIsActive;
-        private string _name;
-        private int _age;
-
-        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
-
-        protected virtual void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
-        }
-
-        [Display(Name = "姓名", GroupName = "基本信息", Order = 1, Description = "用户的姓名")]
-        public string Name
-        {
-            get => _name;
-            set
-            {
-                if (_name != value)
-                {
-                    _name = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        [Display(Name = "年龄", GroupName = "基本信息", Order = 2)]
-        public int Age
-        {
-            get => _age;
-            set
-            {
-                if (_age != value)
-                {
-                    _age = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        /// <summary>
-        /// 控制是否隐藏 Age 属性
-        /// </summary>
-        [Browsable(false)]
-        public bool HideAge
-        {
-            get => _hideAge;
-            set
-            {
-                if (_hideAge != value)
-                {
-                    _hideAge = value;
-                    OnPropertyChanged();
-                    // 当 HideAge 改变时，触发属性可见性更新
-                    OnPropertyChanged(nameof(Age));
-                }
-            }
-        }
-
-        /// <summary>
-        /// 控制是否隐藏"基本信息"组的所有属性
-        /// </summary>
-        [Browsable(false)]
-        public bool HideBasicInfoGroup
-        {
-            get => _hideBasicInfoGroup;
-            set
-            {
-                if (_hideBasicInfoGroup != value)
-                {
-                    _hideBasicInfoGroup = value;
-                    OnPropertyChanged();
-                    // 触发所有"基本信息"组属性的可见性更新
-                    OnPropertyChanged(nameof(Name));
-                    OnPropertyChanged(nameof(Age));
-                    OnPropertyChanged(nameof(Gender));
-                    OnPropertyChanged(nameof(BirthDate));
-                }
-            }
-        }
-
-        /// <summary>
-        /// 实现 IPropertyVisibilityProvider 接口，动态控制属性可见性
-        /// </summary>
-        public bool IsPropertyVisible(string propertyName)
-        {
-            // 如果隐藏"基本信息"组，则隐藏该组内的所有属性
-            if (HideBasicInfoGroup)
-            {
-                if (propertyName == nameof(Name) || 
-                    propertyName == nameof(Age) || 
-                    propertyName == nameof(Gender) || 
-                    propertyName == nameof(BirthDate))
-                {
-                    return false;
-                }
-            }
-
-            // 如果 HideAge 为 true，则隐藏 Age 属性（优先级高于组隐藏）
-            if (propertyName == nameof(Age))
-            {
-                return !HideAge;
-            }
-
-            // 如果 HideIsActive 为 true，则隐藏 IsActive 属性
-            if (propertyName == nameof(IsActive))
-            {
-                return !HideIsActive;
-            }
-
-            // 其他属性默认可见
-            return true;
-        }
-
-        [Display(Name = "电子邮件", GroupName = "联系方式", Order = 1)]
-        public string Email { get; set; }
-
-        /// <summary>
-        /// 控制是否隐藏 IsActive 属性
-        /// </summary>
-        [Browsable(false)]
-        public bool HideIsActive
-        {
-            get => _hideIsActive;
-            set
-            {
-                if (_hideIsActive != value)
-                {
-                    _hideIsActive = value;
-                    OnPropertyChanged();
-                    // 当 HideIsActive 改变时，触发属性可见性更新
-                    OnPropertyChanged(nameof(IsActive));
-                }
-            }
-        }
-
-        [Display(Name = "是否激活", GroupName = "状态", Order = 1)]
-        public bool IsActive { get; set; }
-
-        [Display(Name = "性别", GroupName = "基本信息", Order = 3)]
-        public Gender Gender { get; set; }
-
-        [Display(Name = "出生日期", GroupName = "基本信息", Order = 4)]
-        public DateTime BirthDate { get; set; }
-
-        [Display(Name = "薪资", GroupName = "财务", Order = 1)]
-        public decimal Salary { get; set; }
-
-        [Display(Name = "标签", GroupName = "扩展信息")]
-        [CollectionEditor(ItemType = typeof(string))]
-        public List<string> Tags { get; set; }
-
-        [Display(Name = "地址", GroupName = "联系方式", Order = 2)]
-        [System.ComponentModel.ReadOnly(true)]
-        public Address Address { get; set; }
-
-        [System.ComponentModel.Browsable(false)]
-        public string InternalId { get; set; } = Guid.NewGuid().ToString();
-    }
-
     public class Address
     {
         public string City { get; set; }
@@ -359,5 +195,33 @@ namespace Astra.Views
         }
 
         public override string ToString() => Name;
+    }
+
+    /// <summary>
+    /// 技能数据提供者
+    /// </summary>
+    public static class SkillProvider
+    {
+        private static readonly List<Skill> _allSkills = new List<Skill>
+        {
+            new Skill { Id = 1, Name = "C#", Category = "编程语言", Description = "C# 编程语言" },
+            new Skill { Id = 2, Name = "Java", Category = "编程语言", Description = "Java 编程语言" },
+            new Skill { Id = 3, Name = "Python", Category = "编程语言", Description = "Python 编程语言" },
+            new Skill { Id = 4, Name = "JavaScript", Category = "编程语言", Description = "JavaScript 编程语言" },
+            new Skill { Id = 5, Name = "WPF", Category = "框架", Description = "Windows Presentation Foundation" },
+            new Skill { Id = 6, Name = "ASP.NET", Category = "框架", Description = "ASP.NET 框架" },
+            new Skill { Id = 7, Name = "SQL", Category = "数据库", Description = "SQL 数据库查询" },
+            new Skill { Id = 8, Name = "MySQL", Category = "数据库", Description = "MySQL 数据库" },
+            new Skill { Id = 9, Name = "Git", Category = "工具", Description = "Git 版本控制" },
+            new Skill { Id = 10, Name = "Docker", Category = "工具", Description = "Docker 容器化" }
+        };
+
+        /// <summary>
+        /// 获取所有可用技能列表（供 ItemsSource 使用）
+        /// </summary>
+        public static IEnumerable<Skill> GetAllSkills()
+        {
+            return _allSkills;
+        }
     }
 }

@@ -2,9 +2,12 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:selectors="clr-namespace:Astra.UI.Selectors"
                     xmlns:converters="clr-namespace:Astra.UI.Converters"
-                    xmlns:local="clr-namespace:Astra.UI.Controls">
+                    xmlns:local="clr-namespace:Astra.UI.Controls"
+                    xmlns:hc="https://handyorg.github.io/handycontrol">
 
     <ResourceDictionary.MergedDictionaries>
+        <!-- 引入转换器资源（确保模板中可以使用） -->
+        <ResourceDictionary Source="../../Themes/Converters.xaml" />
         <!-- 引入输入控件样式 -->
         <ResourceDictionary Source="./InputStyles.xaml" />
     </ResourceDictionary.MergedDictionaries>
@@ -55,17 +58,7 @@
                 Value="13" />
     </Style>
 
-    <!-- ========================================
-         值转换器
-    ========================================= -->
-    <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
-    <converters:RatioToGridLengthConverter x:Key="RatioToGridLengthConverter" />
-    <converters:GroupItemCountToVisibilityConverter x:Key="GroupItemCountToVisibilityConverter" />
-    <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
-    <!-- ========================================
-         编辑器模板选择器
-    ========================================= -->
     <selectors:PropertyEditorTemplateSelector x:Key="EditorTemplateSelector" />
 
     <!-- ========================================
@@ -449,58 +442,9 @@
         </Grid>
     </DataTemplate>
 
-    <!-- 枚举编辑器 -->
-    <DataTemplate x:Key="EnumPropertyEditor">
-        <ComboBox ItemsSource="{Binding EnumValues}"
-                  SelectedItem="{Binding Value, Mode=TwoWay}"
-                  ToolTip="{Binding Description}"
-                  IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
-                  HorizontalAlignment="Stretch"
-                  Style="{StaticResource CompactComboBoxStyle}" />
-    </DataTemplate>
-
-    <!-- 集合属性显示 -->
-    <DataTemplate x:Key="CollectionPropertyEditor">
-        <Border MinHeight="36"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Center"
-                Background="{DynamicResource SecondaryRegionBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="5"
-                Padding="10,6"
-                Effect="{StaticResource NormalShadow}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-
-                <!-- 图标 -->
-                <Path Grid.Column="0"
-                      Data="M 2 4 L 14 4 M 2 8 L 14 8 M 2 12 L 14 12"
-                      Stroke="{DynamicResource ThirdlyTextBrush}"
-                      StrokeThickness="1.5"
-                      StrokeStartLineCap="Round"
-                      Width="12"
-                      Height="12"
-                      Stretch="Uniform"
-                      VerticalAlignment="Center"
-                      Margin="0,0,8,0" />
-
-                <TextBlock Grid.Column="1"
-                           Text="集合属性"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource ThirdlyTextBrush}"
-                           FontStyle="Italic"
-                           FontSize="12"
-                           ToolTip="集合属性需要自定义编辑器" />
-            </Grid>
-        </Border>
-    </DataTemplate>
 
     <!-- ========================================
-         属性行样式（统一行高的核心）
+         属性行样式
     ========================================= -->
     <Style x:Key="PropertyRowStyle"
            TargetType="Border">
@@ -604,6 +548,34 @@
     </Style>
 
     <!-- ========================================
+         PropertyEditorHost 默认样式
+    ========================================= -->
+    <!-- PropertyEditorHost 使用自定义模板确保内容能正确显示和拉伸 -->
+    <Style TargetType="{x:Type local:PropertyEditorHost}">
+        <Setter Property="HorizontalAlignment"
+                Value="Stretch" />
+        <Setter Property="VerticalAlignment"
+                Value="Center" />
+        <Setter Property="HorizontalContentAlignment"
+                Value="Stretch" />
+        <Setter Property="VerticalContentAlignment"
+                Value="Center" />
+      
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:PropertyEditorHost}">
+                    <!-- 使用 Border 作为容器，确保内容能够正确测量 -->
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Margin="{TemplateBinding Padding}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========================================
          PropertyEditorControl 默认样式
     ========================================= -->
     <Style TargetType="{x:Type local:PropertyEditorControl}">
@@ -646,7 +618,7 @@
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="0,0,0,1"
                                     Padding="10"
-                                    Visibility="{TemplateBinding ShowSearchBox, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    Visibility="{TemplateBinding ShowSearchBox, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <TextBox x:Name="PART_SearchBox"
                                              Style="{StaticResource SearchBoxStyle}" />

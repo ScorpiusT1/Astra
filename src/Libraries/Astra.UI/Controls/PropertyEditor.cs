@@ -15,14 +15,11 @@ namespace Astra.UI.Controls
     /// 企业级属性编辑器控件
     /// </summary>
     [TemplatePart(Name = PART_SearchBox, Type = typeof(TextBox))]
-    [TemplatePart(Name = PART_PropertiesContainer, Type = typeof(ItemsControl))]
     public class PropertyEditorControl : Control
     {
         private const string PART_SearchBox = "PART_SearchBox";
-        private const string PART_PropertiesContainer = "PART_PropertiesContainer";
 
         private TextBox _searchBox;
-        private ItemsControl _propertiesContainer;
         private PropertyEditorViewModel _viewModel;
 
         static PropertyEditorControl()
@@ -252,9 +249,6 @@ namespace Astra.UI.Controls
             }
         }
 
-        public static readonly RoutedCommand RemoveCollectionItemCommand =
-            new RoutedCommand(nameof(RemoveCollectionItemCommand), typeof(PropertyEditorControl));
-
         #endregion
 
         #region 公共方法
@@ -293,7 +287,6 @@ namespace Astra.UI.Controls
             base.OnApplyTemplate();
 
             _searchBox = GetTemplateChild(PART_SearchBox) as TextBox;
-            _propertiesContainer = GetTemplateChild(PART_PropertiesContainer) as ItemsControl;
 
             if (_searchBox != null)
             {
@@ -342,20 +335,6 @@ namespace Astra.UI.Controls
             OldValue = oldValue;
             NewValue = newValue;
         }
-    }
-
-    #endregion
-
-    #region 辅助类
-
-    /// <summary>
-    /// 集合项信息（用于命令参数）
-    /// </summary>
-    public class CollectionItemInfo
-    {
-        public PropertyDescriptor PropertyDescriptor { get; set; }
-        public int ItemIndex { get; set; }
-        public object Item { get; set; }
     }
 
     #endregion
@@ -518,7 +497,9 @@ namespace Astra.UI.Controls
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"加载属性失败: {ex.Message}");
+                // 记录错误但不抛出异常，避免影响 UI
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 加载属性失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 异常详情: {ex}");
                 Properties = new ObservableCollection<PropertyDescriptor>();
             }
         }
@@ -759,7 +740,8 @@ namespace Astra.UI.Controls
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"添加集合项失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 添加集合项失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 异常详情: {ex}");
             }
         }
 
@@ -780,7 +762,8 @@ namespace Astra.UI.Controls
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"删除集合项失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 删除集合项失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 异常详情: {ex}");
             }
         }
 
@@ -805,7 +788,8 @@ namespace Astra.UI.Controls
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"删除集合项失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 删除集合项失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[PropertyEditor] 异常详情: {ex}");
             }
         }
 

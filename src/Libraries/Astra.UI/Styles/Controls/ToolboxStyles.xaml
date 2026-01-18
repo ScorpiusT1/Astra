@@ -12,14 +12,7 @@
     <System:Double x:Key="ToolboxFontSizeLarge">16</System:Double>
 
     <!-- ==================== 工具箱转换器 ==================== -->
-    <!-- 如果转换器不存在，使用简单的默认实现 -->
-    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-    
-    <!-- 简单的布尔值到字符串转换器 -->
-    <converters:BooleanToStringConverter x:Key="BooleanToStringConverter" />
-    
-    <!-- 图标代码转换器 -->
-    <converters:IconConverter x:Key="IconConverter" />
+    <!-- 转换器已移动到 Themes/Converters.xaml，通过 Controls.xaml 引入 -->
 
     <!-- ==================== 工具箱工具栏样式 ==================== -->
     <Style x:Key="ToolboxToolbarStyle" TargetType="Border">

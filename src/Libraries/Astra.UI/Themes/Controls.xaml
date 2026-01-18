@@ -4,6 +4,9 @@
     <!-- ==================== 控件样式集合 ==================== -->
     <ResourceDictionary.MergedDictionaries>
 
+        <!-- 转换器资源（所有样式文件都可以使用） -->
+        <ResourceDictionary Source="Converters.xaml" />
+
         <!-- 按照依赖顺序引用 -->
         <ResourceDictionary Source="../Styles/Controls/CommonStyles.xaml" />
         <ResourceDictionary Source="../Styles/Controls/InputStyles.xaml" />
