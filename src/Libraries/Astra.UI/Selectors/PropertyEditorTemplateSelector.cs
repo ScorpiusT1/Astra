@@ -37,25 +37,19 @@ namespace Astra.UI.Selectors
                     }
                 }
 
-                // 2. 集合类型
-                if (property.IsCollection)
-                {
-                    return element.TryFindResource("CollectionPropertyEditor") as DataTemplate;
-                }
-
-                // 3. 布尔类型
+                // 2. 布尔类型
                 if (property.PropertyType == typeof(bool))
                 {
                     return element.TryFindResource("BoolPropertyEditor") as DataTemplate;
                 }
 
-                // 4. 枚举类型
+                // 3. 枚举类型
                 if (property.PropertyType.IsEnum)
                 {
                     return CreateEnumTemplate(property.PropertyType);
                 }
 
-                // 5. 数字类型
+                // 4. 数字类型
                 if (IsNumericType(property.PropertyType))
                 {
                     return element.TryFindResource("NumericPropertyEditor") as DataTemplate
@@ -86,6 +80,11 @@ namespace Astra.UI.Selectors
 
             // 🎨 设置样式（从资源中查找）
             comboFactory.SetResourceReference(ComboBox.StyleProperty, "CompactComboBoxStyle");
+            
+            // 设置固定高度和垂直对齐
+            comboFactory.SetValue(ComboBox.HeightProperty, 40.0);
+            comboFactory.SetValue(ComboBox.VerticalAlignmentProperty, VerticalAlignment.Center);
+            comboFactory.SetValue(ComboBox.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
 
             // 🌐 创建 ItemTemplate，使用转换器显示中文
             var itemTemplate = new DataTemplate { DataType = enumType };

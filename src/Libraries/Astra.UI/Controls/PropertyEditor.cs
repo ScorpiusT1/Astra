@@ -37,15 +37,13 @@ namespace Astra.UI.Controls
             _viewModel = new PropertyEditorViewModel();
             DataContext = _viewModel;
 
-            //CommandBindings.Add(new CommandBinding(EditCollectionCommand, OnEditCollection));
             CommandBindings.Add(new CommandBinding(ResetPropertyCommand, OnResetProperty));
+            CommandBindings.Add(new CommandBinding(AddCollectionItemCommand, OnAddCollectionItem));
+           
         }
 
         #region 依赖属性
 
-        /// <summary>
-        /// 当前选中的对象
-        /// </summary>
         public static readonly DependencyProperty SelectedObjectProperty =
             DependencyProperty.Register(
                 nameof(SelectedObject),
@@ -70,9 +68,6 @@ namespace Astra.UI.Controls
                 e.OldValue, e.NewValue, SelectedObjectChangedEvent));
         }
 
-        /// <summary>
-        /// 属性过滤文本
-        /// </summary>
         public static readonly DependencyProperty FilterTextProperty =
             DependencyProperty.Register(
                 nameof(FilterText),
@@ -92,9 +87,6 @@ namespace Astra.UI.Controls
             control._viewModel.FilterText = e.NewValue as string;
         }
 
-        /// <summary>
-        /// 是否显示搜索框
-        /// </summary>
         public static readonly DependencyProperty ShowSearchBoxProperty =
             DependencyProperty.Register(
                 nameof(ShowSearchBox),
@@ -108,9 +100,6 @@ namespace Astra.UI.Controls
             set => SetValue(ShowSearchBoxProperty, value);
         }
 
-        /// <summary>
-        /// 是否启用分类
-        /// </summary>
         public static readonly DependencyProperty EnableCategoryProperty =
             DependencyProperty.Register(
                 nameof(EnableCategory),
@@ -130,9 +119,6 @@ namespace Astra.UI.Controls
             control._viewModel.EnableCategory = (bool)e.NewValue;
         }
 
-        /// <summary>
-        /// 属性排序模式
-        /// </summary>
         public static readonly DependencyProperty PropertySortModeProperty =
             DependencyProperty.Register(
                 nameof(PropertySortMode),
@@ -152,9 +138,6 @@ namespace Astra.UI.Controls
             control._viewModel.SortMode = (PropertySortMode)e.NewValue;
         }
 
-        /// <summary>
-        /// 是否只读模式
-        /// </summary>
         public static readonly DependencyProperty IsReadOnlyProperty =
             DependencyProperty.Register(
                 nameof(IsReadOnly),
@@ -168,9 +151,6 @@ namespace Astra.UI.Controls
             set => SetValue(IsReadOnlyProperty, value);
         }
 
-        /// <summary>
-        /// 标签宽度比例 (0-1)
-        /// </summary>
         public static readonly DependencyProperty LabelWidthRatioProperty =
             DependencyProperty.Register(
                 nameof(LabelWidthRatio),
@@ -190,9 +170,6 @@ namespace Astra.UI.Controls
             return Math.Max(0.2, Math.Min(0.8, value));
         }
 
-        /// <summary>
-        /// 自定义属性提供器
-        /// </summary>
         public static readonly DependencyProperty PropertyProviderProperty =
             DependencyProperty.Register(
                 nameof(PropertyProvider),
@@ -216,9 +193,6 @@ namespace Astra.UI.Controls
 
         #region 路由事件
 
-        /// <summary>
-        /// 选中对象改变事件
-        /// </summary>
         public static readonly RoutedEvent SelectedObjectChangedEvent =
             EventManager.RegisterRoutedEvent(
                 nameof(SelectedObjectChanged),
@@ -232,9 +206,6 @@ namespace Astra.UI.Controls
             remove => RemoveHandler(SelectedObjectChangedEvent, value);
         }
 
-        /// <summary>
-        /// 属性值改变事件
-        /// </summary>
         public static readonly RoutedEvent PropertyValueChangedEvent =
             EventManager.RegisterRoutedEvent(
                 nameof(PropertyValueChanged),
@@ -259,29 +230,8 @@ namespace Astra.UI.Controls
 
         #region 命令
 
-        //public static readonly RoutedCommand EditCollectionCommand =
-        //    new RoutedCommand(nameof(EditCollectionCommand), typeof(PropertyEditorControl));
-
         public static readonly RoutedCommand ResetPropertyCommand =
             new RoutedCommand(nameof(ResetPropertyCommand), typeof(PropertyEditorControl));
-
-        private void OnEditCollection(object sender, ExecutedRoutedEventArgs e)
-        {
-            //if (e.Parameter is PropertyDescriptor property && property.IsCollection)
-            //{
-            //    var editor = new CollectionEditorWindow(
-            //        property.Value as IEnumerable,
-            //        property.CollectionItemType,
-            //        this);
-
-            //    if (editor.ShowDialog() == true)
-            //    {
-            //        var oldValue = property.Value;
-            //        property.Value = editor.GetResult();
-            //        RaisePropertyValueChangedEvent(property, oldValue, property.Value);
-            //    }
-            //}
-        }
 
         private void OnResetProperty(object sender, ExecutedRoutedEventArgs e)
         {
@@ -291,45 +241,44 @@ namespace Astra.UI.Controls
             }
         }
 
+        public static readonly RoutedCommand AddCollectionItemCommand =
+            new RoutedCommand(nameof(AddCollectionItemCommand), typeof(PropertyEditorControl));
+
+        private void OnAddCollectionItem(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (e.Parameter is PropertyDescriptor property && property.IsCollection)
+            {
+                _viewModel.AddCollectionItem(property);
+            }
+        }
+
+        public static readonly RoutedCommand RemoveCollectionItemCommand =
+            new RoutedCommand(nameof(RemoveCollectionItemCommand), typeof(PropertyEditorControl));
+
         #endregion
 
         #region 公共方法
 
-        /// <summary>
-        /// 刷新属性列表
-        /// </summary>
         public void Refresh()
         {
             _viewModel.Refresh();
         }
 
-        /// <summary>
-        /// 设置属性可见性
-        /// </summary>
         public void SetPropertyVisibility(string propertyName, bool visible)
         {
             _viewModel.SetPropertyVisibility(propertyName, visible);
         }
 
-        /// <summary>
-        /// 获取指定属性的值
-        /// </summary>
         public object GetPropertyValue(string propertyName)
         {
             return _viewModel.GetPropertyValue(propertyName);
         }
 
-        /// <summary>
-        /// 设置指定属性的值
-        /// </summary>
         public bool SetPropertyValue(string propertyName, object value)
         {
             return _viewModel.SetPropertyValue(propertyName, value);
         }
 
-        /// <summary>
-        /// 获取所有属性描述器
-        /// </summary>
         public IEnumerable<PropertyDescriptor> GetProperties()
         {
             return _viewModel.Properties;
@@ -363,16 +312,10 @@ namespace Astra.UI.Controls
 
     #region 枚举定义
 
-    /// <summary>
-    /// 属性排序模式
-    /// </summary>
     public enum PropertySortMode
     {
-        /// <summary>按类别分组排序</summary>
         Categorized,
-        /// <summary>按字母排序</summary>
         Alphabetical,
-        /// <summary>按定义顺序</summary>
         DefinitionOrder
     }
 
@@ -403,6 +346,19 @@ namespace Astra.UI.Controls
 
     #endregion
 
+    #region 辅助类
+
+    /// <summary>
+    /// 集合项信息（用于命令参数）
+    /// </summary>
+    public class CollectionItemInfo
+    {
+        public PropertyDescriptor PropertyDescriptor { get; set; }
+        public int ItemIndex { get; set; }
+        public object Item { get; set; }
+    }
+
+    #endregion
 
     internal class PropertyEditorViewModel : INotifyPropertyChanged
     {
@@ -489,7 +445,6 @@ namespace Astra.UI.Controls
 
         public void SetSelectedObject(object obj)
         {
-            // 取消之前对象的事件订阅
             if (_notifyObject != null)
             {
                 _notifyObject.PropertyChanged -= OnSelectedObjectPropertyChanged;
@@ -509,14 +464,14 @@ namespace Astra.UI.Controls
         {
             if (_selectedObject == null)
             {
-                Properties = new ObservableCollection<Astra.UI.Abstractions.Models.PropertyDescriptor>();
+                Properties = new ObservableCollection<PropertyDescriptor>();
                 PropertiesView = null;
                 return;
             }
 
             try
             {
-                IEnumerable<Astra.UI.Abstractions.Models.PropertyDescriptor> properties;
+                IEnumerable<PropertyDescriptor> properties;
 
                 if (_propertyProvider != null)
                 {
@@ -532,40 +487,33 @@ namespace Astra.UI.Controls
 
                 Properties = new ObservableCollection<PropertyDescriptor>(properties);
 
-                // 订阅属性值改变事件
                 foreach (var property in Properties)
                 {
                     property.PropertyChanged += OnPropertyDescriptorChanged;
                 }
 
-                // 如果对象实现了 INotifyPropertyChanged，订阅其属性变化事件
                 if (_selectedObject is INotifyPropertyChanged notifyObject)
                 {
                     _notifyObject = notifyObject;
                     notifyObject.PropertyChanged += OnSelectedObjectPropertyChanged;
                 }
 
-                // 计算每个分组的 GroupOrder（取该分组中所有属性的最小 GroupOrder）
                 UpdateCategoryGroupOrders();
 
-                // 创建视图
                 var collectionViewSource = new CollectionViewSource
                 {
                     Source = Properties,
-                    IsLiveFilteringRequested = true  // 启用实时过滤功能
+                    IsLiveFilteringRequested = true
                 };
-                
-                // 启用实时过滤：当 IsBrowsable 属性改变时，自动重新评估过滤器
-                // 这是 WPF 的虚拟化过滤机制，不需要手动刷新整个视图
+
                 collectionViewSource.LiveFilteringProperties.Add(nameof(PropertyDescriptor.IsBrowsable));
-                
+
                 PropertiesView = collectionViewSource.View;
                 PropertiesView.Filter = FilterProperties;
 
                 UpdateSorting();
                 UpdateGrouping();
-                
-                // 初始检查属性可见性
+
                 UpdatePropertyVisibility();
             }
             catch (Exception ex)
@@ -579,14 +527,12 @@ namespace Astra.UI.Controls
         {
             if (e.PropertyName == nameof(PropertyDescriptor.Value))
             {
-                // 当属性值改变时，检查是否需要更新其他属性的可见性
-                UpdatePropertyVisibility();              
-            }          
+                UpdatePropertyVisibility();
+            }
         }
 
         private void OnSelectedObjectPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            // 当绑定对象的属性改变时，更新属性可见性
             UpdatePropertyVisibility();
         }
 
@@ -595,7 +541,6 @@ namespace Astra.UI.Controls
             if (_selectedObject == null || Properties == null)
                 return;
 
-            // 如果对象实现了 IPropertyVisibilityProvider，使用它来控制可见性
             if (_selectedObject is IPropertyVisibilityProvider visibilityProvider)
             {
                 foreach (var property in Properties)
@@ -603,23 +548,18 @@ namespace Astra.UI.Controls
                     var shouldBeVisible = visibilityProvider.IsPropertyVisible(property.Name);
                     if (property.IsBrowsable != shouldBeVisible)
                     {
-                        // 设置 IsBrowsable 会触发 PropertyChanged 事件
-                        // OnPropertyDescriptorChanged 会检测到并调用 RefreshViewAsync
                         property.IsBrowsable = shouldBeVisible;
                     }
                 }
-                // 注意：这里不再直接调用 Refresh()，而是通过 PropertyChanged 事件触发
                 return;
             }
 
-            // 否则，尝试通过方法名约定来检查
-            // 例如：如果对象有 IsAgeVisible 方法，则检查 Age 属性的可见性
             var objectType = _selectedObject.GetType();
             foreach (var property in Properties)
             {
                 var methodName = $"Is{property.Name}Visible";
                 var visibilityMethod = objectType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
-                
+
                 if (visibilityMethod != null && visibilityMethod.ReturnType == typeof(bool))
                 {
                     try
@@ -627,7 +567,6 @@ namespace Astra.UI.Controls
                         var shouldBeVisible = (bool)visibilityMethod.Invoke(_selectedObject, null);
                         if (property.IsBrowsable != shouldBeVisible)
                         {
-                            // 设置 IsBrowsable 会触发 PropertyChanged 事件                          
                             property.IsBrowsable = shouldBeVisible;
                         }
                     }
@@ -637,7 +576,6 @@ namespace Astra.UI.Controls
                     }
                 }
             }
-            // 注意：这里不再直接调用 Refresh()，而是通过 PropertyChanged 事件触发
         }
 
         private bool FilterProperties(object item)
@@ -646,11 +584,9 @@ namespace Astra.UI.Controls
             if (property == null)
                 return false;
 
-            // 首先检查 IsBrowsable 属性
             if (!property.IsBrowsable)
                 return false;
 
-            // 然后检查搜索文本过滤
             if (string.IsNullOrWhiteSpace(FilterText))
                 return true;
 
@@ -666,9 +602,9 @@ namespace Astra.UI.Controls
             switch (SortMode)
             {
                 case PropertySortMode.Categorized:
-                    // 先按分组排序（GroupOrder），再按分组名称（Category），最后按属性排序（Order）和显示名称
+                    // ✅ 修复：使用 CategoryGroupOrder 而不是 GroupOrder
                     PropertiesView.SortDescriptions.Add(
-                        new SortDescription(nameof(PropertyDescriptor.GroupOrder), ListSortDirection.Ascending));
+                        new SortDescription(nameof(PropertyDescriptor.CategoryGroupOrder), ListSortDirection.Ascending));
                     PropertiesView.SortDescriptions.Add(
                         new SortDescription(nameof(PropertyDescriptor.Category), ListSortDirection.Ascending));
                     PropertiesView.SortDescriptions.Add(
@@ -689,21 +625,16 @@ namespace Astra.UI.Controls
             }
         }
 
-        /// <summary>
-        /// 更新每个分组的 GroupOrder（取该分组中所有属性的最小 GroupOrder）
-        /// </summary>
         private void UpdateCategoryGroupOrders()
         {
             if (Properties == null) return;
 
-            // 按 Category 分组，计算每个分组的最小 GroupOrder
             var categoryGroupOrders = Properties
                 .GroupBy(p => p.Category ?? "常规")
                 .ToDictionary(
                     g => g.Key,
                     g => g.Select(p => p.GroupOrder).DefaultIfEmpty(int.MaxValue).Min());
 
-            // 更新每个属性的 CategoryGroupOrder（用于分组排序）
             foreach (var property in Properties)
             {
                 var category = property.Category ?? "常规";
@@ -722,36 +653,9 @@ namespace Astra.UI.Controls
 
             if (EnableCategory && SortMode == PropertySortMode.Categorized)
             {
-                // 使用自定义的 PropertyGroupDescription 来支持分组排序
+                // ✅ 修复：直接使用 Category 属性，不使用转换器
                 PropertiesView.GroupDescriptions.Add(
-                    new PropertyGroupDescription(nameof(PropertyDescriptor.Category))
-                    {
-                        Converter = new CategoryGroupConverter()
-                    });
-            }
-        }
-
-        /// <summary>
-        /// 分组转换器，用于在分组时包含 GroupOrder 信息
-        /// </summary>
-        private class CategoryGroupConverter : IValueConverter
-        {
-            public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-            {
-                if (value is PropertyDescriptor property)
-                {
-                    // 返回包含分组名称和排序顺序的复合键
-                    // 格式："{GroupOrder:0000}_{Category}"，这样分组会先按 GroupOrder 排序，再按 Category 排序
-                    var category = property.Category ?? "常规";
-                    var groupOrder = property.CategoryGroupOrder;
-                    return $"{groupOrder:0000}_{category}";
-                }
-                return value;
-            }
-
-            public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-            {
-                throw new NotImplementedException();
+                    new PropertyGroupDescription(nameof(PropertyDescriptor.Category)));
             }
         }
 
@@ -788,13 +692,127 @@ namespace Astra.UI.Controls
             return false;
         }
 
+        public void AddCollectionItem(PropertyDescriptor property)
+        {
+            if (property == null || !property.IsCollection)
+                return;
+
+            try
+            {
+                var collection = property.Value as System.Collections.IList;
+                if (collection == null && property.Value is System.Collections.IEnumerable enumerable)
+                {
+                    // 如果是非 IList 的集合，尝试创建新的列表
+                    var itemType = property.CollectionItemType ?? typeof(object);
+                    collection = System.Collections.ArrayList.Adapter(new System.Collections.ArrayList());
+
+                    // 对于泛型列表，使用反射创建
+                    if (property.PropertyType.IsGenericType)
+                    {
+                        var listType = typeof(List<>).MakeGenericType(itemType);
+                        collection = (System.Collections.IList)Activator.CreateInstance(listType);
+
+                        // 将现有项复制到新列表
+                        foreach (var item in enumerable)
+                        {
+                            collection.Add(item);
+                        }
+                    }
+                }
+
+                if (collection != null)
+                {
+                    var itemType = property.CollectionItemType ?? typeof(object);
+                    object newItem = null;
+
+                    // 尝试创建新项
+                    if (itemType == typeof(string))
+                    {
+                        newItem = string.Empty;
+                    }
+                    else if (itemType.IsValueType)
+                    {
+                        newItem = Activator.CreateInstance(itemType);
+                    }
+                    // 对于引用类型，尝试使用默认构造函数创建
+
+                    if (newItem != null || itemType.IsClass)
+                    {
+                        if (newItem == null && itemType.IsClass)
+                        {
+                            try
+                            {
+                                newItem = Activator.CreateInstance(itemType);
+                            }
+                            catch
+                            {
+                                // 创建失败，跳过
+                                return;
+                            }
+                        }
+
+                        collection.Add(newItem);
+                        property.Value = collection; // 触发更新
+                        PropertiesView?.Refresh();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"添加集合项失败: {ex.Message}");
+            }
+        }
+
+        public void RemoveCollectionItem(PropertyDescriptor property, int itemIndex)
+        {
+            if (property == null || !property.IsCollection)
+                return;
+
+            try
+            {
+                var collection = property.Value as System.Collections.IList;
+                if (collection != null && itemIndex >= 0 && itemIndex < collection.Count)
+                {
+                    collection.RemoveAt(itemIndex);
+                    property.Value = collection; // 触发更新
+                    PropertiesView?.Refresh();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"删除集合项失败: {ex.Message}");
+            }
+        }
+
+        public void RemoveCollectionItem(PropertyDescriptor property, object item)
+        {
+            if (property == null || !property.IsCollection || item == null)
+                return;
+
+            try
+            {
+                var collection = property.Value as System.Collections.IList;
+                if (collection != null)
+                {
+                    var index = collection.IndexOf(item);
+                    if (index >= 0)
+                    {
+                        collection.RemoveAt(index);
+                        property.Value = collection; // 触发更新
+                        PropertiesView?.Refresh();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"删除集合项失败: {ex.Message}");
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
-
-   
-    
 }

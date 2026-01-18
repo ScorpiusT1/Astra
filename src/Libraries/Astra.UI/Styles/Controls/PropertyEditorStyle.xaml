@@ -9,61 +9,63 @@
         <ResourceDictionary Source="./InputStyles.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
+    <!-- ========================================
+         编辑器专用样式（黄金配置）
+    ========================================= -->
 
-    <!-- 基于别名样式创建 PropertyEditor 专用的文本框样式 -->
+    <!-- TextBox 样式 -->
     <Style x:Key="CompactTextBoxStyle"
            TargetType="TextBox"
            BasedOn="{StaticResource ModernTextBoxStyle}">
         <Setter Property="MinHeight"
-                Value="30" />
-       
+                Value="36" />
         <Setter Property="FontSize"
-                Value="12" />
+                Value="13" />
         <Setter Property="Padding"
-                Value="8,5" />
+                Value="10,6" />
+        <Setter Property="VerticalAlignment"
+                Value="Center" />
     </Style>
 
-
-    <!-- 基于别名样式创建 PropertyEditor 专用的 ComboBox 样式 -->
+    <!-- ComboBox 样式 -->
     <Style x:Key="CompactComboBoxStyle"
            TargetType="ComboBox"
            BasedOn="{StaticResource ModernComboBoxStyle}">
         <Setter Property="MinHeight"
-                Value="30" />
+                Value="36" />
         <Setter Property="FontSize"
-                Value="12" />
+                Value="13" />
         <Setter Property="Padding"
-                Value="8,5" />
+                Value="10,6" />
+        <Setter Property="VerticalAlignment"
+                Value="Center" />
     </Style>
 
-    <!-- ========================================
-         搜索框样式（必须在 ModernTextBoxStyle 之后定义）
-    ========================================= -->
+    <!-- 搜索框样式 -->
     <Style x:Key="SearchBoxStyle"
            TargetType="TextBox"
            BasedOn="{StaticResource ModernTextBoxStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="MinHeight"
+                Value="32" />
         <Setter Property="Padding"
-                Value="16,5,8,5" />
+                Value="32,6,8,6" />
+        <Setter Property="FontSize"
+                Value="13" />
     </Style>
 
-
-
     <!-- ========================================
-       值转换器
-       注意：InputStyles.xaml 已经在 Controls.xaml 中合并（在 PropertyEditorStyle.xaml 之前），
-       所以可以直接引用其中的样式
-  ========================================= -->
+         值转换器
+    ========================================= -->
     <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
     <converters:RatioToGridLengthConverter x:Key="RatioToGridLengthConverter" />
     <converters:GroupItemCountToVisibilityConverter x:Key="GroupItemCountToVisibilityConverter" />
-
     <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
     <!-- ========================================
-       编辑器模板选择器
-  ========================================= -->
+         编辑器模板选择器
+    ========================================= -->
     <selectors:PropertyEditorTemplateSelector x:Key="EditorTemplateSelector" />
 
     <!-- ========================================
@@ -90,10 +92,8 @@
                       ShadowDepth="0"
                       Direction="270" />
 
-
-
     <!-- ========================================
-         现代化 Expander 切换按钮
+         Expander 切换按钮
     ========================================= -->
     <ControlTemplate x:Key="ExpanderToggleButtonTemplate"
                      TargetType="ToggleButton">
@@ -108,20 +108,18 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 箭头容器（带圆形背景） -->
+                <!-- 箭头 -->
                 <Border Grid.Column="0"
                         Width="16"
                         Height="16"
-                      
                         CornerRadius="8"
                         Margin="0,0,6,0"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Left">
-                    <Path x:Name="Arrow"                 
+                    <Path x:Name="Arrow"
                           Data="M 6 4 L 10 8 L 6 12"
                           Stroke="{DynamicResource DarkPrimaryBrush}"
                           StrokeThickness="1.8"
-                         
                           StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round">
                         <Path.RenderTransform>
@@ -136,7 +134,7 @@
                 <TextBlock Grid.Column="1"
                            Text="{TemplateBinding Content}"
                            FontWeight="SemiBold"
-                           FontSize="12.5"
+                           FontSize="13"
                            Foreground="{DynamicResource DarkPrimaryBrush}"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Stretch"
@@ -189,7 +187,6 @@
         </ControlTemplate.Triggers>
     </ControlTemplate>
 
-  
     <!-- ========================================
          属性编辑器数据模板
     ========================================= -->
@@ -207,6 +204,7 @@
                      Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True}"
                      ToolTip="{Binding Description}"
                      IsReadOnly="{Binding IsReadOnly}"
+                     IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
                      HorizontalAlignment="Stretch"
                      Style="{StaticResource CompactTextBoxStyle}">
                 <TextBox.Resources>
@@ -241,8 +239,8 @@
 
             <!-- 错误消息 -->
             <Border Grid.Row="1"
-                    Margin="0,3,0,0"
-                    Padding="7,4"
+                    Margin="0,4,0,0"
+                    Padding="8,5"
                     CornerRadius="4"
                     HorizontalAlignment="Stretch">
                 <Border.Style>
@@ -250,7 +248,6 @@
                         <Setter Property="Visibility"
                                 Value="Collapsed" />
                         <Style.Triggers>
-                            <!-- Error 状态 -->
                             <DataTrigger Binding="{Binding ValidationSeverity}"
                                          Value="Error">
                                 <Setter Property="Visibility"
@@ -262,7 +259,6 @@
                                     </Setter.Value>
                                 </Setter>
                             </DataTrigger>
-                            <!-- Warning 状态 -->
                             <DataTrigger Binding="{Binding ValidationSeverity}"
                                          Value="Warning">
                                 <Setter Property="Visibility"
@@ -274,7 +270,6 @@
                                     </Setter.Value>
                                 </Setter>
                             </DataTrigger>
-                            <!-- Info 状态 -->
                             <DataTrigger Binding="{Binding ValidationSeverity}"
                                          Value="Info">
                                 <Setter Property="Visibility"
@@ -286,7 +281,6 @@
                                     </Setter.Value>
                                 </Setter>
                             </DataTrigger>
-                            <!-- 当 HasErrors 为 True 时也显示（备用方案） -->
                             <DataTrigger Binding="{Binding HasErrors}"
                                          Value="True">
                                 <Setter Property="Visibility"
@@ -310,7 +304,6 @@
                             <Setter Property="Foreground"
                                     Value="{DynamicResource ThirdlyTextBrush}" />
                             <Style.Triggers>
-                                <!-- 根据错误严重程度设置颜色 -->
                                 <DataTrigger Binding="{Binding ValidationSeverity}"
                                              Value="Error">
                                     <Setter Property="Foreground"
@@ -336,90 +329,17 @@
 
     <!-- 布尔编辑器 -->
     <DataTemplate x:Key="BoolPropertyEditor">
-        <Border HorizontalAlignment="Stretch"
-                Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="5"
-                MinHeight="30"
-                Padding="8,0"
-                Effect="{StaticResource NormalShadow}">
+        <Border MinHeight="36"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center"
+                Background="Transparent"
+                Padding="0">
             <CheckBox IsChecked="{Binding Value, Mode=TwoWay}"
                       ToolTip="{Binding Description}"
                       IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
                       VerticalAlignment="Center"
-                      HorizontalAlignment="Left">
-                <CheckBox.Style>
-                    <Style TargetType="CheckBox">
-                        <Setter Property="Foreground"
-                                Value="{DynamicResource SecondaryTextBrush}" />
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="CheckBox">
-                                    <Grid Background="Transparent">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <Border x:Name="CheckBoxBorder"
-                                                Width="18"
-                                                Height="18"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                BorderBrush="{DynamicResource BorderBrush}"
-                                                BorderThickness="2"
-                                                CornerRadius="4"
-                                                VerticalAlignment="Center">
-                                            <Path x:Name="CheckMark"
-                                                  Data="M 2 6 L 6 10 L 14 2"
-                                                  Stroke="{DynamicResource SurfaceBrush}"
-                                                  StrokeThickness="2.5"
-                                                  StrokeStartLineCap="Round"
-                                                  StrokeEndLineCap="Round"
-                                                  Visibility="Collapsed"
-                                                  Stretch="Uniform"
-                                                  Margin="3" />
-                                        </Border>
-
-                                        <ContentPresenter Grid.Column="1"
-                                                          Margin="8,0,0,0"
-                                                          VerticalAlignment="Center" />
-                                    </Grid>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsChecked"
-                                                 Value="True">
-                                            <Setter TargetName="CheckBoxBorder"
-                                                    Property="Background"
-                                                    Value="{DynamicResource PrimaryBrush}" />
-                                            <Setter TargetName="CheckBoxBorder"
-                                                    Property="BorderBrush"
-                                                    Value="{DynamicResource PrimaryBrush}" />
-                                            <Setter TargetName="CheckMark"
-                                                    Property="Visibility"
-                                                    Value="Visible" />
-                                        </Trigger>
-                                        <Trigger Property="IsMouseOver"
-                                                 Value="True">
-                                            <Setter TargetName="CheckBoxBorder"
-                                                    Property="BorderBrush"
-                                                    Value="{DynamicResource PrimaryBrush}" />
-                                        </Trigger>
-                                        <Trigger Property="IsEnabled"
-                                                 Value="False">
-                                            <Setter TargetName="CheckBoxBorder"
-                                                    Property="Background"
-                                                    Value="{DynamicResource SecondaryRegionBrush}" />
-                                            <Setter TargetName="CheckBoxBorder"
-                                                    Property="BorderBrush"
-                                                    Value="{DynamicResource BorderBrush}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </CheckBox.Style>
-            </CheckBox>
+                      HorizontalAlignment="Left"
+                      FontSize="13" />
         </Border>
     </DataTemplate>
 
@@ -435,6 +355,7 @@
                      Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True}"
                      ToolTip="{Binding Description}"
                      IsReadOnly="{Binding IsReadOnly}"
+                     IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
                      HorizontalAlignment="Stretch"
                      Style="{StaticResource CompactTextBoxStyle}">
                 <TextBox.Resources>
@@ -462,8 +383,8 @@
 
             <!-- 错误消息 -->
             <Border Grid.Row="1"
-                    Margin="0,3,0,0"
-                    Padding="7,4"
+                    Margin="0,4,0,0"
+                    Padding="8,5"
                     CornerRadius="4"
                     HorizontalAlignment="Stretch">
                 <Border.Style>
@@ -505,7 +426,6 @@
                             <Setter Property="Foreground"
                                     Value="{DynamicResource ThirdlyTextBrush}" />
                             <Style.Triggers>
-                                <!-- 根据错误严重程度设置颜色 -->
                                 <DataTrigger Binding="{Binding ValidationSeverity}"
                                              Value="Error">
                                     <Setter Property="Foreground"
@@ -535,18 +455,20 @@
                   SelectedItem="{Binding Value, Mode=TwoWay}"
                   ToolTip="{Binding Description}"
                   IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
+                  HorizontalAlignment="Stretch"
                   Style="{StaticResource CompactComboBoxStyle}" />
     </DataTemplate>
 
     <!-- 集合属性显示 -->
     <DataTemplate x:Key="CollectionPropertyEditor">
-        <Border HorizontalAlignment="Stretch"
+        <Border MinHeight="36"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center"
                 Background="{DynamicResource SecondaryRegionBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="5"
-                MinHeight="30"
-                Padding="8,0"
+                Padding="10,6"
                 Effect="{StaticResource NormalShadow}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -564,41 +486,45 @@
                       Height="12"
                       Stretch="Uniform"
                       VerticalAlignment="Center"
-                      Margin="0,0,7,0" />
+                      Margin="0,0,8,0" />
 
                 <TextBlock Grid.Column="1"
                            Text="集合属性"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource ThirdlyTextBrush}"
                            FontStyle="Italic"
-                           FontSize="11"
+                           FontSize="12"
                            ToolTip="集合属性需要自定义编辑器" />
             </Grid>
         </Border>
     </DataTemplate>
 
     <!-- ========================================
-         属性行样式
+         属性行样式（统一行高的核心）
     ========================================= -->
     <Style x:Key="PropertyRowStyle"
            TargetType="Border">
-        <Setter Property="BorderThickness"
-                Value="0" />
+        <Setter Property="MinHeight"
+                Value="52" />
         <Setter Property="Padding"
-                Value="8,4" />
+                Value="10,8" />
         <Setter Property="Background"
                 Value="Transparent" />
         <Setter Property="Margin"
                 Value="0,1,0,0" />
         <Setter Property="CornerRadius"
-                Value="4" />
+                Value="5" />
+        <Setter Property="HorizontalAlignment"
+                Value="Stretch" />
+        <Setter Property="BorderThickness"
+                Value="0" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver"
                      Value="True">
                 <Setter Property="Background">
                     <Setter.Value>
                         <SolidColorBrush Color="{DynamicResource LightPrimaryColor}"
-                                         Opacity="0.12" />
+                                         Opacity="0.08" />
                     </Setter.Value>
                 </Setter>
             </Trigger>
@@ -613,7 +539,7 @@
         <Setter Property="IsExpanded"
                 Value="True" />
         <Setter Property="Margin"
-                Value="0,5,0,0" />
+                Value="0,6,0,0" />
         <Setter Property="Background"
                 Value="Transparent" />
         <Setter Property="HorizontalAlignment"
@@ -642,14 +568,14 @@
                             <!-- 标题区域 -->
                             <Border Grid.Row="0"
                                     Background="{DynamicResource BackgroundBrush}"
-                                    CornerRadius="8"
+                                    CornerRadius="8,8,0,0"
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="0,0,0,1">
                                 <ToggleButton IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
                                               OverridesDefaultStyle="True"
                                               Template="{StaticResource ExpanderToggleButtonTemplate}"
                                               Content="{TemplateBinding Header}"
-                                              Padding="8,6,8,6"
+                                              Padding="10,8"
                                               HorizontalAlignment="Stretch"
                                               HorizontalContentAlignment="Stretch" />
                             </Border>
@@ -658,9 +584,9 @@
                             <Border Grid.Row="1"
                                     x:Name="ContentBorder"
                                     Background="{DynamicResource SurfaceBrush}"
-                                    CornerRadius="8"
+                                    CornerRadius="0,0,8,8"
                                     Visibility="Collapsed">
-                                <ContentPresenter Margin="0,3,0,5" />
+                                <ContentPresenter Margin="0,4,0,6" />
                             </Border>
                         </Grid>
                     </Border>
@@ -677,7 +603,6 @@
         </Setter>
     </Style>
 
-
     <!-- ========================================
          PropertyEditorControl 默认样式
     ========================================= -->
@@ -691,7 +616,7 @@
         <Setter Property="BorderThickness"
                 Value="1" />
         <Setter Property="FontSize"
-                Value="12" />
+                Value="13" />
         <Setter Property="Padding"
                 Value="0" />
         <Setter Property="Template">
@@ -720,7 +645,7 @@
                                     CornerRadius="8,8,0,0"
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="0,0,0,1"
-                                    Padding="8"
+                                    Padding="10"
                                     Visibility="{TemplateBinding ShowSearchBox, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <Grid>
                                     <TextBox x:Name="PART_SearchBox"
@@ -734,7 +659,7 @@
                                           Stretch="Uniform"
                                           HorizontalAlignment="Left"
                                           VerticalAlignment="Center"
-                                          Margin="16,0,0,0"
+                                          Margin="12,0,0,0"
                                           IsHitTestVisible="False" />
 
                                     <!-- 占位符文本 -->
@@ -742,6 +667,7 @@
                                                Foreground="{DynamicResource ThirdlyTextBrush}"
                                                VerticalAlignment="Center"
                                                Margin="38,0,0,0"
+                                               FontSize="13"
                                                IsHitTestVisible="False">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -764,7 +690,7 @@
                             <ScrollViewer Grid.Row="1"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
-                                          Padding="6,0,6,6">
+                                          Padding="8,4,8,8">
                                 <ItemsControl x:Name="PART_PropertiesContainer"
                                               ItemsSource="{Binding PropertiesView}">
                                     <!-- 分组样式 -->
@@ -793,7 +719,7 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource PropertyRowStyle}">
-                                                <Grid>
+                                                <Grid HorizontalAlignment="Stretch">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="{Binding LabelWidthRatio, 
                                                             RelativeSource={RelativeSource AncestorType=local:PropertyEditorControl}, 
@@ -807,17 +733,18 @@
                                                                Text="{Binding DisplayName}"
                                                                ToolTip="{Binding Description}"
                                                                VerticalAlignment="Center"
-                                                               Margin="0,0,10,0"
+                                                               Margin="0,0,12,0"
                                                                TextTrimming="CharacterEllipsis"
                                                                FontWeight="Medium"
-                                                               FontSize="12"
+                                                               FontSize="13"
                                                                Foreground="{DynamicResource SecondaryTextBrush}" />
 
                                                     <!-- 编辑器 -->
                                                     <ContentPresenter Grid.Column="1"
                                                                       Content="{Binding}"
                                                                       ContentTemplateSelector="{StaticResource EditorTemplateSelector}"
-                                                                      HorizontalAlignment="Stretch" />
+                                                                      HorizontalAlignment="Stretch"
+                                                                      VerticalAlignment="Center" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>

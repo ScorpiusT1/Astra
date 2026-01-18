@@ -337,4 +337,27 @@ namespace Astra.Views
         Dark,
         Auto
     }
+
+    /// <summary>
+    /// 技能定义
+    /// </summary>
+    public class Skill
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string Category { get; set; }
+        public string Description { get; set; }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Skill skill && Id == skill.Id;
+        }
+
+        public override int GetHashCode()
+        {
+            return Id.GetHashCode();
+        }
+
+        public override string ToString() => Name;
+    }
 }
