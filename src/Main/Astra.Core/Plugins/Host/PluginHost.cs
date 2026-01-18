@@ -54,6 +54,17 @@ namespace Astra.Core.Plugins.Host
         private readonly Dictionary<string, PluginAssemblyLoadContext> _loadContexts = new();
         private readonly Dictionary<string, IDisposable> _pluginScopes = new();
         private IServiceProvider _sharedServiceProvider; // ⭐ 全局共享的 ServiceProvider（非 readonly，支持后续更新）
+        
+        // ⚠️ 性能优化：缓存默认上下文中的程序集查找结果，避免重复遍历
+        // Key: 程序集路径（规范化后的完整路径），Value: (程序集实例, 文件最后修改时间)
+        private static readonly Dictionary<string, (System.Reflection.Assembly Assembly, DateTime LastWriteTime)> _defaultContextAssemblyCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _cacheLock = new object();
+        
+        // 静态构造函数：初始化缓存失效监听机制
+        static PluginHost()
+        {
+            InitializeCacheInvalidationMechanism();
+        }
 
         public IReadOnlyList<IPlugin> LoadedPlugins =>
             _loadedPlugins.Values.Select(p => p.Instance).ToList();
@@ -233,15 +244,10 @@ namespace Astra.Core.Plugins.Host
             {
                 try
                 {
-					// 创建隔离的加载上下文（可回收）
-					var loadContext = new PluginAssemblyLoadContext(descriptor.AssemblyPath, isCollectible: true);
-                    _loadContexts[descriptor.Id] = loadContext;
-
-                    // 加载程序集
-                    var swLoadAsm = System.Diagnostics.Stopwatch.StartNew();
-                    var assembly = loadContext.LoadFromAssemblyPath(descriptor.AssemblyPath);
-                    swLoadAsm.Stop();
-                    try { _services.ResolveOrDefault<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "load_assembly", swLoadAsm.Elapsed); } catch { }
+                    // ⚠️ 关键修复：检查程序集是否已在默认上下文中加载（例如在 ApplicationBootstrapper 阶段1中）
+                    // 如果已在默认上下文中，复用该程序集，避免重复加载导致的 WPF 资源解析问题
+                    var (assembly, loadContext) = await LoadOrReuseAssemblyAsync(descriptor);
+                    
                     var pluginType = assembly.GetType(descriptor.TypeName);
 
                     if (pluginType == null)
@@ -411,6 +417,15 @@ namespace Astra.Core.Plugins.Host
                         await _logger.LogWarningAsync($"Plugin dispose failed: {ex.Message}", pluginId);
                     }
 
+                    // ⚠️ 缓存失效：如果插件使用的是默认上下文中的程序集，从缓存中移除
+                    // 注意：由于默认上下文中的程序集通常不会被卸载，这里主要是清理缓存以支持重新加载
+                    var pluginAssemblyPath = loadedPlugin.Descriptor.AssemblyPath;
+                    if (!string.IsNullOrEmpty(pluginAssemblyPath))
+                    {
+                        ClearAssemblyCache(pluginAssemblyPath);
+                        await _logger.LogInfoAsync($"已清理程序集缓存: {pluginAssemblyPath}", pluginId);
+                    }
+                    
                     if (_loadContexts.TryGetValue(pluginId, out var loadContext))
                     {
                         try
@@ -472,6 +487,224 @@ namespace Astra.Core.Plugins.Host
                 // 这样可以确保 _sharedServiceProvider 指向新的 ServiceProvider 实例
                 _sharedServiceProvider = adapter.GetServiceProvider();
             }
+        }
+
+        /// <summary>
+        /// 加载或复用程序集（性能优化版本）
+        /// ⚠️ 关键修复：检查程序集是否已在默认上下文中加载，如果已加载则复用，避免重复加载导致的 WPF 资源解析问题
+        /// </summary>
+        /// <param name="descriptor">插件描述符</param>
+        /// <returns>程序集实例和加载上下文（如果使用隔离上下文则为非 null，如果复用默认上下文则为 null）</returns>
+        private async Task<(System.Reflection.Assembly Assembly, PluginAssemblyLoadContext LoadContext)> LoadOrReuseAssemblyAsync(PluginDescriptor descriptor)
+        {
+            System.Reflection.Assembly assembly = null;
+            PluginAssemblyLoadContext loadContext = null;
+            
+            // ⚠️ 性能优化：使用缓存避免重复遍历所有程序集
+            var normalizedPath = System.IO.Path.GetFullPath(descriptor.AssemblyPath);
+            
+            // 首先检查缓存
+            System.Reflection.Assembly defaultContextAssembly = null;
+            bool cacheInvalidated = false; // 用于标记是否需要记录缓存失效日志
+            
+            lock (_cacheLock)
+            {
+                if (_defaultContextAssemblyCache.TryGetValue(normalizedPath, out var cachedEntry))
+                {
+                    var cachedAssembly = cachedEntry.Assembly;
+                    var cachedLastWriteTime = cachedEntry.LastWriteTime;
+                    
+                    // 验证缓存的程序集仍然有效
+                    if (cachedAssembly != null && !cachedAssembly.IsDynamic && cachedAssembly.Location != null)
+                    {
+                        // ⚠️ 缓存失效检查：如果文件已被修改，清理缓存
+                        if (System.IO.File.Exists(normalizedPath))
+                        {
+                            var currentLastWriteTime = System.IO.File.GetLastWriteTime(normalizedPath);
+                            if (currentLastWriteTime != cachedLastWriteTime)
+                            {
+                                // 文件已被修改，缓存失效（在 lock 外部记录日志）
+                                _defaultContextAssemblyCache.Remove(normalizedPath);
+                                cacheInvalidated = true;
+                            }
+                            else
+                            {
+                                // 缓存有效
+                                defaultContextAssembly = cachedAssembly;
+                            }
+                        }
+                        else
+                        {
+                            // 文件不存在，缓存无效
+                            _defaultContextAssemblyCache.Remove(normalizedPath);
+                        }
+                    }
+                    else
+                    {
+                        // 程序集引用无效（可能已被卸载），移除缓存
+                        _defaultContextAssemblyCache.Remove(normalizedPath);
+                    }
+                }
+            }
+            
+            // ⚠️ 在 lock 外部执行异步操作（日志记录）
+            if (cacheInvalidated)
+            {
+                await _logger.LogInfoAsync($"程序集文件已更新，缓存失效: {descriptor.Name} ({normalizedPath})", descriptor.Id);
+            }
+            
+            // 如果缓存未命中，遍历默认上下文查找
+            if (defaultContextAssembly == null)
+            {
+                defaultContextAssembly = System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies
+                    .FirstOrDefault(a => !a.IsDynamic && 
+                                       a.Location != null &&
+                                       System.IO.Path.GetFullPath(a.Location).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+                
+                // 更新缓存（包含文件最后修改时间，用于检测文件更新）
+                if (defaultContextAssembly != null && System.IO.File.Exists(normalizedPath))
+                {
+                    var lastWriteTime = System.IO.File.GetLastWriteTime(normalizedPath);
+                    lock (_cacheLock)
+                    {
+                        _defaultContextAssemblyCache[normalizedPath] = (defaultContextAssembly, lastWriteTime);
+                    }
+                }
+            }
+            
+            if (defaultContextAssembly != null)
+            {
+                // ✅ 程序集已在默认上下文中，复用它
+                assembly = defaultContextAssembly;
+                await _logger.LogInfoAsync($"复用默认上下文中的程序集: {descriptor.Name} ({assembly.GetName().Name})", descriptor.Id);
+                
+                // ⚠️ 注意：不创建 PluginAssemblyLoadContext，这样可以确保类型和资源都在默认上下文中
+                // 这对于 WPF 资源解析至关重要
+                // loadContext 保持为 null
+            }
+            else
+            {
+                // ⚠️ 程序集未在默认上下文中，使用隔离的加载上下文（可回收）
+                loadContext = new PluginAssemblyLoadContext(descriptor.AssemblyPath, isCollectible: true);
+                _loadContexts[descriptor.Id] = loadContext;
+
+                // 加载程序集
+                var swLoadAsm = System.Diagnostics.Stopwatch.StartNew();
+                assembly = loadContext.LoadFromAssemblyPath(descriptor.AssemblyPath);
+                swLoadAsm.Stop();
+                
+                // 记录性能指标
+                try 
+                { 
+                    _services.ResolveOrDefault<IPerformanceMonitor>()?.RecordOperation(descriptor.Id, "load_assembly", swLoadAsm.Elapsed); 
+                } 
+                catch { }
+                
+                await _logger.LogInfoAsync($"在隔离上下文中加载程序集: {descriptor.Name} ({assembly.GetName().Name})，耗时: {swLoadAsm.ElapsedMilliseconds}ms", descriptor.Id);
+            }
+            
+            return (assembly, loadContext);
+        }
+
+        /// <summary>
+        /// 初始化缓存失效机制
+        /// 监听程序集卸载事件，自动清理相关缓存
+        /// </summary>
+        private static void InitializeCacheInvalidationMechanism()
+        {
+            // ⚠️ 注意：.NET Core/.NET 5+ 中，AssemblyLoadContext 的卸载事件不是直接的 AppDomain 事件
+            // 默认上下文中的程序集通常不会被卸载，但我们可以监听文件变化来实现缓存失效
+            
+            // 由于默认上下文的程序集很少被卸载，我们主要依赖：
+            // 1. 插件卸载时的手动清理（在 UnloadPluginAsync 中）
+            // 2. 文件修改时间检查（在 LoadOrReuseAssemblyAsync 中）
+            // 3. 程序集引用验证（检查 Location 是否为 null）
+            
+            // 如果需要更主动的缓存失效，可以使用 FileSystemWatcher 监听程序集文件变化
+            // 但这可能会带来性能开销，所以暂时不实现
+        }
+
+        /// <summary>
+        /// 从缓存中清除指定程序集路径的缓存项
+        /// </summary>
+        /// <param name="assemblyPath">程序集路径（可以是相对或绝对路径）</param>
+        public static void ClearAssemblyCache(string assemblyPath)
+        {
+            if (string.IsNullOrEmpty(assemblyPath))
+                return;
+
+            var normalizedPath = System.IO.Path.GetFullPath(assemblyPath);
+            
+            lock (_cacheLock)
+            {
+                if (_defaultContextAssemblyCache.Remove(normalizedPath))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PluginHost] 已从缓存中移除程序集: {normalizedPath}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 清除所有程序集缓存
+        /// ⚠️ 谨慎使用：这会导致所有缓存失效，下次加载插件时会重新遍历程序集列表
+        /// </summary>
+        public static void ClearAllAssemblyCache()
+        {
+            lock (_cacheLock)
+            {
+                var count = _defaultContextAssemblyCache.Count;
+                _defaultContextAssemblyCache.Clear();
+                System.Diagnostics.Debug.WriteLine($"[PluginHost] 已清除所有程序集缓存（共 {count} 项）");
+            }
+        }
+
+        /// <summary>
+        /// 清理无效的缓存项（程序集已被卸载或文件不存在）
+        /// 可以定期调用此方法以清理缓存，避免内存泄漏
+        /// </summary>
+        public static int CleanupInvalidCacheEntries()
+        {
+            var removedCount = 0;
+            var keysToRemove = new List<string>();
+            
+            lock (_cacheLock)
+            {
+                foreach (var kvp in _defaultContextAssemblyCache)
+                {
+                    var normalizedPath = kvp.Key;
+                    var cachedEntry = kvp.Value;
+                    var cachedAssembly = cachedEntry.Assembly;
+                    
+                    // 检查程序集引用是否有效
+                    bool isValid = cachedAssembly != null && 
+                                   !cachedAssembly.IsDynamic && 
+                                   cachedAssembly.Location != null;
+                    
+                    // 检查文件是否存在
+                    if (isValid && !System.IO.File.Exists(normalizedPath))
+                    {
+                        isValid = false;
+                    }
+                    
+                    if (!isValid)
+                    {
+                        keysToRemove.Add(normalizedPath);
+                    }
+                }
+                
+                foreach (var key in keysToRemove)
+                {
+                    _defaultContextAssemblyCache.Remove(key);
+                    removedCount++;
+                }
+            }
+            
+            if (removedCount > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PluginHost] 已清理 {removedCount} 个无效的缓存项");
+            }
+            
+            return removedCount;
         }
     }
 }

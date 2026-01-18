@@ -7,8 +7,10 @@ using Astra.Core.Plugins.Discovery;
 using Astra.Core.Plugins.Models;
 using Astra.Core.Plugins.Validation;
 using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -536,12 +538,91 @@ namespace Astra.Bootstrap.Services
                         // ⭐ 检查是否已取消
                         cancellationToken.ThrowIfCancellationRequested();
                         
-                        // 5. 按依赖顺序加载插件（70% ~ 90%，占 20%，根据插件数量分配）
+                        // ⭐ 阶段1：先只加载插件程序集（不初始化），用于扫描 ConfigProvider
+                        // 这样可以确保所有 Provider 在插件初始化前已经注册
+                        UpdateSplashScreen(70, "正在加载插件程序集...", null);
+                        
+                        if (sortedCount > 0)
+                        {
+                            var loadedAssemblies = new List<System.Reflection.Assembly>();
+                            
+                            // 逐个加载插件程序集（不初始化）
+                            for (int i = 0; i < sortedDescriptors.Count; i++)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                
+                                var descriptor = sortedDescriptors[i];
+                                
+                                try
+                                {
+                                    if (!string.IsNullOrEmpty(descriptor.AssemblyPath) && File.Exists(descriptor.AssemblyPath))
+                                    {
+                                        // 只加载程序集，不创建实例和初始化
+                                        var assembly = System.Reflection.Assembly.LoadFrom(descriptor.AssemblyPath);
+                                        loadedAssemblies.Add(assembly);
+                                        _context.Logger?.LogInfo($"已加载插件程序集: {descriptor.Name ?? descriptor.Id}");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _context.Logger?.LogWarning($"加载插件程序集失败: {descriptor.Name ?? descriptor.Id}, 错误: {ex.Message}");
+                                    // 继续加载下一个，不阻止流程
+                                }
+                            }
+                            
+                            _context.Logger?.LogInfo($"已加载 {loadedAssemblies.Count}/{sortedCount} 个插件程序集");
+                        }
+                        
+                        await Task.Delay(50, cancellationToken);
+                        
+                        // ⭐ 阶段2：扫描所有程序集并注册 ConfigProvider
+                        UpdateSplashScreen(75, "正在扫描并注册配置提供者...", null);
+                        
+                        try
+                        {
+                            var configProviderDiscovery = _context.ServiceProvider?.GetService<Astra.Core.Configuration.ConfigProviderDiscovery>();
+                            if (configProviderDiscovery != null)
+                            {
+                                _context.Logger?.LogInfo("开始扫描所有程序集中的 ConfigProvider...");
+                                
+                                // 扫描所有已加载的程序集（包括主程序集和插件程序集）
+                                var allAssemblies = AppDomain.CurrentDomain.GetAssemblies()
+                                    .Where(a => !a.IsDynamic)
+                                    .ToList();
+                                
+                                var totalProviderCount = 0;
+                                foreach (var assembly in allAssemblies)
+                                {
+                                    try
+                                    {
+                                        var count = configProviderDiscovery.DiscoverAndRegisterProviders(assembly);
+                                        totalProviderCount += count;
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _context.Logger?.LogWarning($"扫描程序集 {assembly.FullName} 时出错: {ex.Message}");
+                                    }
+                                }
+                                
+                                _context.Logger?.LogInfo($"ConfigProvider 扫描完成，共注册了 {totalProviderCount} 个 Provider");
+                                UpdateSplashScreen(80, $"已注册 {totalProviderCount} 个配置提供者", null);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _context.Logger?.LogWarning($"扫描 ConfigProvider 失败: {ex.Message}，不影响启动流程");
+                        }
+                        
+                        await Task.Delay(50, cancellationToken);
+                        
+                        // ⭐ 阶段3：初始化并启用所有插件（此时 ConfigProvider 已全部注册）
+                        UpdateSplashScreen(80, "正在初始化插件...", null);
+                        
                         var loadedCount = 0;
                         
                         if (sortedCount > 0)
                         {
-                            // 逐个加载插件，这样可以报告详细进度
+                            // 逐个初始化并启用插件
                             for (int i = 0; i < sortedDescriptors.Count; i++)
                             {
                                 // ⭐ 在循环中检查取消
@@ -550,20 +631,22 @@ namespace Astra.Bootstrap.Services
                                 var descriptor = sortedDescriptors[i];
                                 var currentIndex = i + 1;
                                 
-                                // 计算加载进度：70% ~ 90%
-                                var loadProgress = 70 + (currentIndex * 20.0 / sortedCount);
-                                UpdateSplashScreen(loadProgress, $"正在加载插件 ({currentIndex}/{sortedCount})...", $"插件: {descriptor.Name ?? descriptor.Id}");
+                                // 计算初始化进度：80% ~ 95%
+                                var initProgress = 80 + (currentIndex * 15.0 / sortedCount);
+                                UpdateSplashScreen(initProgress, $"正在初始化插件 ({currentIndex}/{sortedCount})...", $"插件: {descriptor.Name ?? descriptor.Id}");
                                 await Task.Delay(30, cancellationToken); // 短暂延迟，确保 UI 更新可见
                                 
                                 try
                                 {
-                                    // 尝试加载插件（使用路径）
+                                    // 尝试加载并初始化插件（使用路径）
                                     if (!string.IsNullOrEmpty(descriptor.AssemblyPath) && File.Exists(descriptor.AssemblyPath))
                                     {
+                                        // ⭐ 此时程序集已经加载，LoadPluginAsync 会检测到并复用
+                                        // 只执行创建实例、初始化、启用等操作
                                         await pluginHost.LoadPluginAsync(descriptor.AssemblyPath);
                                         loadedCount++;
                                         
-                                        _context.Logger?.LogInfo($"成功加载插件 ({currentIndex}/{sortedCount}): {descriptor.Name ?? descriptor.Id}");
+                                        _context.Logger?.LogInfo($"成功初始化插件 ({currentIndex}/{sortedCount}): {descriptor.Name ?? descriptor.Id}");
                                     }
                                     else
                                     {
@@ -572,8 +655,8 @@ namespace Astra.Bootstrap.Services
                                 }
                                 catch (Exception ex)
                                 {
-                                    _context.Logger?.LogError($"加载插件失败 ({currentIndex}/{sortedCount}): {descriptor.Name ?? descriptor.Id}, 错误: {ex.Message}", ex);
-                                    // 继续加载下一个插件（即使某个插件失败，也要尝试加载其他插件）
+                                    _context.Logger?.LogError($"初始化插件失败 ({currentIndex}/{sortedCount}): {descriptor.Name ?? descriptor.Id}, 错误: {ex.Message}", ex);
+                                    // 继续初始化下一个插件（即使某个插件失败，也要尝试初始化其他插件）
                                 }
                             }
                             
@@ -581,9 +664,9 @@ namespace Astra.Bootstrap.Services
                             loadedCount = pluginHost.LoadedPlugins.Count;
                         }
                         
-                        _context.Logger?.LogInfo($"插件加载完成，成功加载: {loadedCount}/{sortedCount}");
+                        _context.Logger?.LogInfo($"插件初始化完成，成功初始化: {loadedCount}/{sortedCount}");
                         
-                        UpdateSplashScreen(90, $"插件加载完成，已加载 {loadedCount}/{sortedCount} 个插件", null);
+                        UpdateSplashScreen(95, $"插件初始化完成，已初始化 {loadedCount}/{sortedCount} 个插件", null);
                         await Task.Delay(50, cancellationToken);
                     }
                 }

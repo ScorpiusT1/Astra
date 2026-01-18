@@ -27,7 +27,6 @@
                BasedOn="{StaticResource ModernCalendarButtonStyle}" />
         <Style TargetType="hc:DatePicker"
                BasedOn="{StaticResource ModernHandyDatePickerStyle}" />
-        <converters:IsNotNullConverter x:Key="IsNotNullConverter" />
         <commons:SensorTypeToStringConverter x:Key="SensorTypeToStringConverter" />
         <commons:PhysicalUnitToStringConverter x:Key="PhysicalUnitToStringConverter" />
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />

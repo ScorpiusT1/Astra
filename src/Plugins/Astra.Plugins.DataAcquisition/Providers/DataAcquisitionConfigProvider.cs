@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Astra.Plugins.DataAcquisition.Providers
 {
-    internal class DataAcquisitionConfigProvider : JsonConfigProvider<DataAcquisitionConfig>
+    public class DataAcquisitionConfigProvider : JsonConfigProvider<DataAcquisitionConfig>
     {
         public DataAcquisitionConfigProvider(string configDirectory, ConfigProviderOptions<DataAcquisitionConfig>? options) : base(configDirectory, options)
         {

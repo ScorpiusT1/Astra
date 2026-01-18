@@ -45,6 +45,10 @@
 	  </None>
 	</ItemGroup>
 
+	<!-- ⚠️ 注意：不需要显式指定 XAML 文件为 Page 类型
+	     .NET SDK 在 <UseWPF>true</UseWPF> 时会自动包含所有 .xaml 文件作为 Page 项
+	     显式指定会导致重复项警告 -->
+
 
 	<!-- ⭐ 构建后清理：只保留插件自己的 DLL 和 .addin 文件 -->
 	<Target Name="CleanPluginOutput" AfterTargets="Build">

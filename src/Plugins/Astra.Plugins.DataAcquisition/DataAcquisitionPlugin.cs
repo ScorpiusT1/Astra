@@ -7,15 +7,7 @@ using Astra.Core.Plugins.Messaging;
 using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
-using Astra.Plugins.DataAcquisition.Providers;
-using HandyControl.Tools;
 using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 
 
 namespace Astra.Plugins.DataAcquisition
@@ -269,17 +261,26 @@ namespace Astra.Plugins.DataAcquisition
         {
             try
             {
-                string path = Path.Combine(Core.Configuration.ConfigPathString.BaseConfigDirectory, "Sensors");
+                // ✅ Provider 已通过 ConfigProviderDiscovery 自动发现并注册
+                // 无需手动注册，直接获取配置即可
+                
+                if (_configuManager == null)
+                {
+                    _logger?.Warn($"[{Name}] ConfigurationManager 未初始化，跳过传感器配置加载", LogCategory.System);
+                    return;
+                }
 
-                ConfigProviderOptions<SensorConfig> options = new ConfigProviderOptions<SensorConfig>
-                {                  
-                    DefaultCollectionFileName = "SensorConfig.json",
-                };
-
-                SensorConfigProvider provider = new SensorConfigProvider(path, options);
-                _configuManager?.RegisterProvider(provider);
-                var result = await _configuManager?.GetAllConfigsAsync();
-                var bb = result.Data.ToArray();
+                // 直接获取所有传感器配置（Provider 已在启动时自动注册）
+                var result = await _configuManager.GetAllConfigsAsync<SensorConfig>();
+                
+                if (result?.Success == true && result.Data != null)
+                {
+                    _logger?.Info($"[{Name}] 已加载 {result.Data.Count()} 个传感器配置", LogCategory.System);
+                }
+                else
+                {
+                    _logger?.Warn($"[{Name}] 未找到传感器配置或加载失败", LogCategory.System);
+                }
             }
             catch (Exception ex)
             {
@@ -293,16 +294,17 @@ namespace Astra.Plugins.DataAcquisition
             {
                 _devices?.Clear();
 
-                string path = Path.Combine(Core.Configuration.ConfigPathString.BaseConfigDirectory, "Devices");
+                // ✅ Provider 已通过 ConfigProviderDiscovery 自动发现并注册
+                // 无需手动注册，直接获取配置即可
 
-                ConfigProviderOptions<DataAcquisitionConfig> options = new ConfigProviderOptions<DataAcquisitionConfig>
-                {                   
-                    DefaultCollectionFileName = "Astra.Plugins.DataAcquisition.config.json",
-                };
+                if (_configuManager == null)
+                {
+                    _logger?.Error($"[{Name}] ConfigurationManager 未初始化，无法加载设备配置", null, LogCategory.System);
+                    return;
+                }
 
-                DataAcquisitionConfigProvider provider = new DataAcquisitionConfigProvider(path, options);
-                _configuManager?.RegisterProvider(provider);
-                var result = await _configuManager?.GetAllConfigsAsync<DataAcquisitionConfig>();
+                // 直接获取所有设备配置（Provider 已在启动时自动注册）
+                var result = await _configuManager.GetAllConfigsAsync<DataAcquisitionConfig>();
 
                 if (result == null || result.Data == null || result.Data.Count() == 0)
                 {
@@ -310,9 +312,9 @@ namespace Astra.Plugins.DataAcquisition
                     return;
                 }
 
-                // 先加载所有传感器配置，用于恢复传感器引用
-                var sensorResult = await _configuManager?.GetAllConfigsAsync<Astra.Plugins.DataAcquisition.Configs.SensorConfig>();
-                var availableSensors = sensorResult?.Data?.ToList() ?? new List<Astra.Plugins.DataAcquisition.Configs.SensorConfig>();
+                // 获取所有传感器配置，用于恢复传感器引用
+                var sensorResult = await _configuManager.GetAllConfigsAsync<SensorConfig>();
+                var availableSensors = sensorResult?.Data?.ToList() ?? new List<SensorConfig>();
 
                 foreach (var config in result.Data)
                 {

@@ -362,6 +362,25 @@ namespace Astra.Core.Configuration
                 var result = await provider.LoadAsync(configId);
                 result.ThrowIfFailed();
 
+                // 执行加载后处理（IPostLoadConfig）
+                if (result.Data is IPostLoadConfig postLoadConfig)
+                {
+                    try
+                    {
+                        var postLoadResult = await postLoadConfig.PostLoadAsync(this);
+                        if (postLoadResult != null && !postLoadResult.Success)
+                        {
+                            _logger?.LogWarning("配置 {ConfigId} 的加载后处理失败: {Message}", 
+                                configId, postLoadResult.Message);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "配置 {ConfigId} 的加载后处理异常", configId);
+                        // 不阻止配置加载，仅记录警告
+                    }
+                }
+
                 // 缓存配置
                 _cacheService.Set(result.Data);
 
@@ -646,6 +665,28 @@ namespace Astra.Core.Configuration
                             var result = await baseProvider.GetAllConfigsAsync().ConfigureAwait(false);
                             if (result.Success && result.Data != null)
                             {
+                                // 执行加载后处理（IPostLoadConfig）
+                                foreach (var config in result.Data)
+                                {
+                                    if (config is IPostLoadConfig postLoadConfig)
+                                    {
+                                        try
+                                        {
+                                            var postLoadResult = await postLoadConfig.PostLoadAsync(this);
+                                            if (postLoadResult != null && !postLoadResult.Success)
+                                            {
+                                                _logger?.LogWarning("配置 {ConfigId} 的加载后处理失败: {Message}",
+                                                    config.ConfigId, postLoadResult.Message);
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            _logger?.LogWarning(ex, "配置 {ConfigId} 的加载后处理异常", config.ConfigId);
+                                            // 不阻止配置加载，仅记录警告
+                                        }
+                                    }
+                                }
+
                                 allConfigs.AddRange(result.Data);
                             }
                             else

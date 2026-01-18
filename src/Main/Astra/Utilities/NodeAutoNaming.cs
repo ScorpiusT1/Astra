@@ -14,20 +14,25 @@ namespace Astra.Utilities
 
         public string GenerateUniqueName(TreeNode parent)
         {
+            // ✅ 使用父节点的名称作为基础名称
+            string baseName = !string.IsNullOrWhiteSpace(parent?.Header) 
+                ? parent.Header 
+                : BASE_NAME;
+
             var siblings = parent?.Children?.ToList() ?? new List<TreeNode>();
 
             if (siblings.Count == 0)
             {
-                return $"{BASE_NAME}1";
+                return $"{baseName}1";
             }
 
-            // 提取所有已使用的编号
-            var usedNumbers = ExtractUsedNumbers(siblings.Select(n => n.Header));
+            // 提取所有已使用的编号（基于父节点名称）
+            var usedNumbers = ExtractUsedNumbers(baseName, siblings.Select(n => n.Header));
 
             // 查找最小可用编号
             int availableNumber = FindSmallestAvailableNumber(usedNumbers);
 
-            return $"{BASE_NAME}{availableNumber}";
+            return $"{baseName}{availableNumber}";
         }
 
         public string GenerateRootName(ObservableCollection<TreeNode> rootNodes)
@@ -37,7 +42,7 @@ namespace Astra.Utilities
                 return $"{BASE_NAME}1";
             }
 
-            var usedNumbers = ExtractUsedNumbers(rootNodes.Select(n => n.Header));
+            var usedNumbers = ExtractUsedNumbers(BASE_NAME, rootNodes.Select(n => n.Header));
             int availableNumber = FindSmallestAvailableNumber(usedNumbers);
 
             return $"{BASE_NAME}{availableNumber}";
@@ -48,19 +53,27 @@ namespace Astra.Utilities
         /// </summary>
         public string GenerateUniqueNameFromList(IEnumerable<string> existingNames)
         {
-            if (existingNames == null || !existingNames.Any())
-            {
-                return $"{BASE_NAME}1";
-            }
-
-            var usedNumbers = ExtractUsedNumbers(existingNames);
-            int availableNumber = FindSmallestAvailableNumber(usedNumbers);
-
-            return $"{BASE_NAME}{availableNumber}";
+            return GenerateUniqueNameFromList(BASE_NAME, existingNames);
         }
 
-        // 提取已使用的编号
-        private HashSet<int> ExtractUsedNumbers(IEnumerable<string> names)
+        /// <summary>
+        /// 基于已存在的名称列表和基础名称生成唯一名称
+        /// </summary>
+        public string GenerateUniqueNameFromList(string baseName, IEnumerable<string> existingNames)
+        {
+            if (existingNames == null || !existingNames.Any())
+            {
+                return $"{baseName}1";
+            }
+
+            var usedNumbers = ExtractUsedNumbers(baseName, existingNames);
+            int availableNumber = FindSmallestAvailableNumber(usedNumbers);
+
+            return $"{baseName}{availableNumber}";
+        }
+
+        // 提取已使用的编号（基于基础名称）
+        private HashSet<int> ExtractUsedNumbers(string baseName, IEnumerable<string> names)
         {
             var usedNumbers = new HashSet<int>();
 
@@ -71,9 +84,10 @@ namespace Astra.Utilities
                     continue;
                 }
 
-                if (name.StartsWith(BASE_NAME))
+                // 检查名称是否以基础名称开头
+                if (name.StartsWith(baseName))
                 {
-                    string numberPart = name.Substring(BASE_NAME.Length);
+                    string numberPart = name.Substring(baseName.Length);
 
                     if (int.TryParse(numberPart, out int number))
                     {

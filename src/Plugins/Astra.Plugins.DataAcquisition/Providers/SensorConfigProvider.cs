@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Astra.Plugins.DataAcquisition.Providers
 {
-    internal class SensorConfigProvider : JsonConfigProvider<SensorConfig>
+    public class SensorConfigProvider : JsonConfigProvider<SensorConfig>
     {
         public SensorConfigProvider(string configDirectory, ConfigProviderOptions<SensorConfig>? options) : base(configDirectory, options)
         {

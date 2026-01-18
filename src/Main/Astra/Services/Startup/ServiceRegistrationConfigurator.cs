@@ -243,6 +243,22 @@ namespace Astra.Services.Startup
             // ⭐ 通过构造函数注入所有依赖的服务
             services.AddSingleton<IConfigurationManager, ConfigurationManager>();
             
+            // 6. 注册配置导入导出助手类（简化导入导出逻辑）
+            services.AddSingleton<ConfigImportExportHelper>(provider =>
+            {
+                var configManager = provider.GetRequiredService<IConfigurationManager>();
+                var importExportService = provider.GetRequiredService<IConfigurationImportExportService>();
+                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigImportExportHelper>>();
+                return new ConfigImportExportHelper(configManager, importExportService, logger);
+            });
+
+            // 7. 注册配置提供者自动发现服务
+            services.AddSingleton<ConfigProviderDiscovery>(provider =>
+            {
+                var configManager = provider.GetRequiredService<IConfigurationManager>();
+                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigProviderDiscovery>>();
+                return new ConfigProviderDiscovery(configManager, logger);
+            });
 
             Debug.WriteLine("✅ 配置管理器注册完成（包括重构后的 ConfigurationManager）");
         }
