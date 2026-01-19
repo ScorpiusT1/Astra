@@ -27,6 +27,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Astra.Plugins.AudioPlayer",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Astra.Plugins.DataAcquisition", "Plugins\Astra.Plugins.DataAcquisition\Astra.Plugins.DataAcquisition.csproj", "{850AB88A-057B-4795-A1A0-E8BEB3DA66F5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NVHDataBridge", "Libraries\NVHDataBridge\NVHDataBridge.csproj", "{A74746EB-C29C-4344-8599-2D015B1EF199}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -65,6 +67,10 @@ Global
 		{850AB88A-057B-4795-A1A0-E8BEB3DA66F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{850AB88A-057B-4795-A1A0-E8BEB3DA66F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{850AB88A-057B-4795-A1A0-E8BEB3DA66F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A74746EB-C29C-4344-8599-2D015B1EF199}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A74746EB-C29C-4344-8599-2D015B1EF199}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A74746EB-C29C-4344-8599-2D015B1EF199}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A74746EB-C29C-4344-8599-2D015B1EF199}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -78,6 +84,7 @@ Global
 		{96D2AD30-45BA-4EAD-9B7A-2EAD2C12348D} = {9DB55D21-DEBA-4C0A-8445-4D7CF05C3F96}
 		{16A0B88A-9DAD-1677-8916-1AE760A6D7BB} = {34E86E80-A304-4E65-ABD7-C334E10BC1A6}
 		{850AB88A-057B-4795-A1A0-E8BEB3DA66F5} = {34E86E80-A304-4E65-ABD7-C334E10BC1A6}
+		{A74746EB-C29C-4344-8599-2D015B1EF199} = {A3A1C007-A25D-49FE-A1C9-A125320218DA}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {74A17629-BD90-4E53-AD8F-76A0E4C20D66}

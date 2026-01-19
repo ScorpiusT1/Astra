@@ -17,6 +17,7 @@
 
 		<!-- ⭐ 阻止复制依赖项到输出目录 -->
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -28,6 +29,8 @@
 		<!-- ⭐ 项目引用：不复制依赖项（主程序已包含这些库） -->
 	
 		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
+	
+		<ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj" />
 	
 		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
 			<Private>false</Private>
