@@ -39,22 +39,28 @@
             <!-- 标题 -->
             <TextBlock Grid.Row="0"
                        Text="数据采集设备配置"
-                       FontSize="18"
+                       FontSize="20"
                        FontWeight="Bold"
+                       Foreground="{DynamicResource TitleBrush}"
                        Margin="0,0,0,20" />
 
             <!-- 设备名称 -->
             <Grid Grid.Row="1"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
                            Text="设备名称:"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
                 <TextBox Grid.Column="1"
                          Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="13"
+                         Height="36"
                          hc:InfoElement.Placeholder="请输入设备名称" />
             </Grid>
 
@@ -62,14 +68,19 @@
             <Grid Grid.Row="2"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
                            Text="序列号:"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
                 <TextBox Grid.Column="1"
                          Text="{Binding SerialNumber, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="13"
+                         Height="36"
                          hc:InfoElement.Placeholder="请输入设备序列号" />
             </Grid>
 
@@ -77,16 +88,20 @@
             <Grid Grid.Row="3"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
                            Text="采样率 (Hz):"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
                 <ComboBox Grid.Column="1"
                           ItemsSource="{Binding SampleRateOptions}"
                           SelectedItem="{Binding SampleRate, UpdateSourceTrigger=PropertyChanged}"
-                          FontSize="14"
+                          FontSize="13"
+                          Height="36"
                           hc:InfoElement.Placeholder="请选择采样率">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
@@ -100,16 +115,20 @@
             <Grid Grid.Row="4"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
                            Text="通道数量:"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
                 <ComboBox Grid.Column="1"
                           ItemsSource="{Binding ChannelCountOptions}"
                           SelectedItem="{Binding ChannelCount, UpdateSourceTrigger=PropertyChanged}"
-                          FontSize="14"
+                          FontSize="13"
+                          Height="36"
                           hc:InfoElement.Placeholder="请选择通道数量">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
@@ -123,22 +142,26 @@
             <Grid Grid.Row="5"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
                            Text="缓冲区大小:"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
                 <TextBox Grid.Column="1"
                          Text="{Binding BufferSize, UpdateSourceTrigger=PropertyChanged}"
-                         FontSize="14"
+                         FontSize="13"
+                         Height="36"
                          hc:InfoElement.Placeholder="请输入缓冲区大小" />
             </Grid>
 
             <!-- 自动启动 -->
             <CheckBox Grid.Row="6"
                       Content="插件启动时自动开始采集"
-                      FontSize="14"
+                      FontSize="13"
                       FontWeight="Medium"
                       IsChecked="{Binding AutoStart}"
                       Margin="0,0,0,15" />
@@ -147,7 +170,7 @@
             <CheckBox Grid.Row="7"
                       Content="启用设备"
                       IsChecked="{Binding IsEnabled}"
-                      FontSize="14"
+                      FontSize="13"
                       FontWeight="Medium"
                       Margin="0,0,0,15" />
 
@@ -166,9 +189,14 @@
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0"
                                Text="分组ID:"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
                                Margin="0,0,0,5" />
                     <TextBox Grid.Row="1"
                              Text="{Binding GroupId, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13"
+                             Height="36"
                              hc:InfoElement.Placeholder="G0" />
                 </Grid>
                 <Grid Grid.Column="2">
@@ -178,9 +206,14 @@
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0"
                                Text="槽位ID:"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
                                Margin="0,0,0,5" />
                     <TextBox Grid.Row="1"
                              Text="{Binding SlotId, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13"
+                             Height="36"
                              hc:InfoElement.Placeholder="S0" />
                 </Grid>
             </Grid>

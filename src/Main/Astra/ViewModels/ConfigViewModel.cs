@@ -169,33 +169,6 @@ namespace Astra.ViewModels
         }
 
         /// <summary>
-        /// 为没有实例的配置类型创建默认配置节点（仅内存，不持久化）
-        /// </summary>
-        private IConfig? CreateDefaultConfig(Type configType, TreeNodeConfigAttribute attr, List<IConfig> existingConfigsOfSameType)
-        {
-            try
-            {
-                // 创建默认配置实例
-                var defaultConfig = Activator.CreateInstance(configType, Guid.NewGuid().ToString()) as IConfig;
-
-                if (defaultConfig != null)
-                {
-                    // 使用 NodeAutoNaming 生成唯一名称
-                    var existingNames = existingConfigsOfSameType.Select(c => c.ConfigName).ToList();
-
-                    NodeAutoNaming nodeAutoNaming = new NodeAutoNaming();
-                    defaultConfig.ConfigName = nodeAutoNaming.GenerateUniqueNameFromList(existingNames);
-                }
-
-                return defaultConfig;
-            }
-            catch (Exception ex)
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
         /// 构建配置树（基于 ConfigurationManager 中的配置）
         /// ✅ 重构：使用 GetAllConfigTypesAsync() 获取已注册的配置类型
         /// ⚠️ 关键修复：保留已存在节点的 Config 引用，避免刷新树时丢失未保存的数据
@@ -258,14 +231,19 @@ namespace Astra.ViewModels
                     }
                 }
 
-                // 如果没有现有配置，创建一个默认配置（仅内存）
-                if (configsOfType.Count == 0)
+                // ✅ 获取或创建根节点（即使没有配置也要创建根节点，显示"+"号）
+                if (!rootNodes.TryGetValue(attr.Category, out TreeNode? rootNode))
                 {
-                    var defaultConfig = CreateDefaultConfig(configType, attr, configsOfType);
-                    if (defaultConfig != null)
-                    {
-                        configsOfType.Add(defaultConfig);
-                    }
+                    rootNode = GetTreeNode(attr.Category);
+
+                    // 设置根节点属性
+                    rootNode.ShowAddButton = true;
+                    rootNode.ShowDeleteButton = false;
+                    rootNode.Config = null;
+                    rootNode.ConfigType = configType;
+                    rootNode.Icon = attr.Icon ?? _defaultIcon;
+
+                    rootNodes[attr.Category] = rootNode;
                 }
 
                 // 按照 UpdatedAt 排序（保持保存时的顺序）
@@ -275,22 +253,9 @@ namespace Astra.ViewModels
                     .ThenBy(c => c.CreatedAt) // 如果 UpdatedAt 相同，按创建时间排序
                     .ToList();
 
-                // 为该类型的所有配置创建树节点
+                // 为该类型的所有配置创建子节点
                 foreach (var config in configsOfType)
                 {
-                    // 获取或创建根节点
-                    if (!rootNodes.TryGetValue(attr.Category, out TreeNode? rootNode))
-                    {
-                        rootNode = GetTreeNode(attr.Category);
-
-                        // 首次创建时设置根节点属性
-                        rootNode.ShowAddButton = true;
-                        rootNode.ShowDeleteButton = false;
-                        rootNode.Config = null;
-
-                        rootNodes[attr.Category] = rootNode;
-                    }
-
                     // 创建子节点
                     TreeNode childNode = new TreeNode
                     {
@@ -306,30 +271,15 @@ namespace Astra.ViewModels
                         Parent = rootNode,
                     };
 
-                    // 如果根节点还没有图标，使用第一个子节点的图标
-                    if (rootNode.Icon == null || rootNode.Icon == _defaultIcon)
-                    {
-                        rootNode.Icon = childNode.Icon;
-                    }
-
-                    // 如果根节点还没有ConfigType，使用第一个子节点的类型
-                    if (rootNode.ConfigType == null)
-                    {
-                        rootNode.ConfigType = configType;
-                    }
-
                     rootNode.Children.Add(childNode);
                 }
             }
 
 
-            // 添加所有非空的根节点
+            // ✅ 添加所有根节点（即使没有子节点也要显示，以便用户点击"+"号添加配置）
             foreach (var rootNode in rootNodes.Values)
             {
-                if (rootNode.Children.Count > 0)
-                {
-                    TreeNodes.Add(rootNode);
-                }
+                TreeNodes.Add(rootNode);
             }
         }
 

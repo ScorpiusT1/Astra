@@ -56,5 +56,19 @@ namespace Astra.Plugins.DataAcquisition.Views
                 }
             }
         }
+
+        /// <summary>
+        /// 采样率 ComboBox 选择变化事件处理
+        /// 当从下拉列表选择时，更新 Text 显示
+        /// </summary>
+        private void SampleRateComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is ComboBox comboBox && comboBox.SelectedItem is double selectedValue)
+            {
+                // 当从列表选择时，更新 Text 显示为 KHz 格式
+                var converter = new Commons.HzToKHzConverter();
+                comboBox.Text = converter.Convert(selectedValue, typeof(string), null, System.Globalization.CultureInfo.CurrentCulture)?.ToString();
+            }
+        }
     }
 }

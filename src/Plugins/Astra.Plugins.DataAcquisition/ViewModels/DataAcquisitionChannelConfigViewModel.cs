@@ -33,6 +33,35 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             SensorAxis.Z
         };
 
+        /// <summary>
+        /// 采样率选项列表（常见采样频率，单位：Hz）
+        /// </summary>
+        public IReadOnlyList<double> SampleRateOptions { get; } = new List<double>
+        {
+            1024.0,
+            1280.0,
+            1563.0,
+            1920.0,
+            2560.0,
+            3072.0,
+            3413.333,
+            3657.143,
+            3938.462,
+            4266.667,
+            4654.545,
+            5120.0,
+            5688.889,
+            6400.0,
+            7314.286,
+            8533.333,
+            10240.0,
+            12800.0,
+            17066.667,
+            25600.0,
+            48000.0,
+            51200.0
+        };
+
         public DataAcquisitionChannelConfigViewModel(DataAcquisitionConfig config)
         {
             _config = config;

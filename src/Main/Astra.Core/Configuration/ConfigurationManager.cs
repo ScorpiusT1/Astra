@@ -626,7 +626,38 @@ namespace Astra.Core.Configuration
                     throw new ProviderNotRegisteredException(typeof(T));
                 }
 
-                return await provider.GetAllAsync();
+                var result = await provider.GetAllAsync();
+                if (!result.Success)
+                {
+                    return result;
+                }
+
+                // ✅ 执行加载后处理（IPostLoadConfig）
+                if (result.Data != null)
+                {
+                    foreach (var config in result.Data)
+                    {
+                        if (config is IPostLoadConfig postLoadConfig)
+                        {
+                            try
+                            {
+                                var postLoadResult = await postLoadConfig.PostLoadAsync(this);
+                                if (postLoadResult != null && !postLoadResult.Success)
+                                {
+                                    _logger?.LogWarning("配置 {ConfigId} 的加载后处理失败: {Message}",
+                                        config.ConfigId, postLoadResult.Message);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger?.LogWarning(ex, "配置 {ConfigId} 的加载后处理异常", config.ConfigId);
+                                // 不阻止配置加载，仅记录警告
+                            }
+                        }
+                    }
+                }
+
+                return result;
             }
             catch (ConfigurationException)
             {
@@ -834,6 +865,27 @@ namespace Astra.Core.Configuration
 
         private async Task<OperationResult> SaveConfigInternalAsync<T>(T config, bool isNew) where T : class, IConfig
         {
+            // ✅ 执行保存前处理（IPreSaveConfig）
+            if (config is IPreSaveConfig preSaveConfig)
+            {
+                try
+                {
+                    var preSaveResult = await preSaveConfig.PreSaveAsync(this);
+                    if (preSaveResult != null && !preSaveResult.Success)
+                    {
+                        _logger?.LogWarning("配置 {ConfigId} 的保存前处理失败: {Message}", 
+                            config.ConfigId, preSaveResult.Message);
+                        return preSaveResult; // 保存前处理失败，阻止保存
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "配置 {ConfigId} 的保存前处理异常", config.ConfigId);
+                    // 保存前处理异常，阻止保存以确保数据一致性
+                    return OperationResult.Failure($"保存前处理失败: {ex.Message}");
+                }
+            }
+
             var provider = GetProvider<T>();
             if (provider == null)
             {
@@ -893,6 +945,27 @@ namespace Astra.Core.Configuration
         /// </summary>
         private async Task<OperationResult> SaveConfigInternalDynamic(IConfig config, bool isNew)
         {
+            // ✅ 执行保存前处理（IPreSaveConfig）
+            if (config is IPreSaveConfig preSaveConfig)
+            {
+                try
+                {
+                    var preSaveResult = await preSaveConfig.PreSaveAsync(this);
+                    if (preSaveResult != null && !preSaveResult.Success)
+                    {
+                        _logger?.LogWarning("配置 {ConfigId} 的保存前处理失败: {Message}", 
+                            config.ConfigId, preSaveResult.Message);
+                        return preSaveResult; // 保存前处理失败，阻止保存
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "配置 {ConfigId} 的保存前处理异常", config.ConfigId);
+                    // 保存前处理异常，阻止保存以确保数据一致性
+                    return OperationResult.Failure($"保存前处理失败: {ex.Message}");
+                }
+            }
+
             var configType = config.GetType();
 
             if (!_providers.TryGetValue(configType, out var provider))

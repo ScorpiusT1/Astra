@@ -1,140 +1,196 @@
 ﻿<UserControl x:Class="Astra.Plugins.DataAcquisition.Views.DataAcquisitionChannelConfigView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Astra.Plugins.DataAcquisition.Views"
              xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
              xmlns:configs="clr-namespace:Astra.Plugins.DataAcquisition.Configs"
+             xmlns:commons="clr-namespace:Astra.Plugins.DataAcquisition.Commons"
              xmlns:hc="https://handyorg.github.io/handycontrol"
              d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionChannelConfigViewModel}"
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800">
+             mc:Ignorable="d"
+             d:DesignHeight="450"
+             d:DesignWidth="800">
     <UserControl.Resources>
         <!-- 样式定义 -->
         <Style TargetType="TextBlock"
                BasedOn="{StaticResource ModrenTextBlockStyle}" />
-        
+
         <Style TargetType="TextBox"
                BasedOn="{StaticResource DefaultModernTextBoxStyle}" />
-        
+
         <Style TargetType="ComboBox"
                BasedOn="{StaticResource ModernComboBoxStyle}" />
-        
+
         <Style TargetType="CheckBox"
                BasedOn="{StaticResource ModernCheckBoxStyle}" />
-        
+
         <!-- 通道卡片样式 -->
-        <Style x:Key="ChannelCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource RegionBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Margin" Value="0,0,0,8" />
-            <Setter Property="Effect" Value="{StaticResource CardShadow}" />
+        <Style x:Key="ChannelCardStyle"
+               TargetType="Border">
+            <Setter Property="Background"
+                    Value="{DynamicResource RegionBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness"
+                    Value="1" />
+            <Setter Property="CornerRadius"
+                    Value="12" />
+            <Setter Property="Padding"
+                    Value="16" />
+            <Setter Property="Margin"
+                    Value="0,0,0,12" />
+            <Setter Property="Effect"
+                    Value="{StaticResource CardShadow}" />
             <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Effect" Value="{StaticResource HoverShadow}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                <Trigger Property="IsMouseOver"
+                         Value="True">
+                    <Setter Property="Effect"
+                            Value="{StaticResource HoverShadow}" />
+                    <Setter Property="BorderBrush"
+                            Value="{DynamicResource PrimaryBrush}" />
+                    <Setter Property="BorderThickness"
+                            Value="1.5" />
                 </Trigger>
             </Style.Triggers>
         </Style>
-        
+
         <!-- 选中状态的通道卡片样式（通过DataTrigger实现） -->
-        <Style x:Key="SelectedChannelCardStyle" TargetType="Border" BasedOn="{StaticResource ChannelCardStyle}">
+        <Style x:Key="SelectedChannelCardStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource ChannelCardStyle}">
             <Style.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
-                    <Setter Property="BorderThickness" Value="2" />
-                    <Setter Property="Background" Value="{DynamicResource LightPrimaryBrush}" />
-                    <Setter Property="Effect" Value="{StaticResource ActiveShadow}" />
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}"
+                             Value="True">
+                    <Setter Property="BorderBrush"
+                            Value="{DynamicResource PrimaryBrush}" />
+                    <Setter Property="BorderThickness"
+                            Value="2" />
+                    <Setter Property="Background">
+                        <Setter.Value>
+                            <SolidColorBrush Color="#F5F7FA"
+                                             Opacity="0.8" />
+                        </Setter.Value>
+                    </Setter>
+                    <Setter Property="Effect"
+                            Value="{StaticResource ActiveShadow}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-        
+
         <!-- 通道标题样式 -->
-        <Style x:Key="ChannelHeaderStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource TitleBrush}" />
+        <Style x:Key="ChannelHeaderStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="14" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource TitleBrush}" />
         </Style>
-        
+
+        <Style x:Key="DefaultLabelStyle"
+               TargetType="TextBlock">
+
+            <Setter Property="VerticalAlignment"
+                    Value="Center" />
+            <Setter Property="Margin"
+                    Value="0,0,0,20" />
+        </Style>
+
         <!-- 字段标签样式 -->
-        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="MinWidth" Value="70" />
+        <Style x:Key="FieldLabelStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="13" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="VerticalAlignment"
+                    Value="Center" />
+            <Setter Property="Margin"
+                    Value="0,0,8,0" />
+            <Setter Property="MinWidth"
+                    Value="75" />
         </Style>
-        
+
         <!-- 小按钮样式 -->
-        <Style x:Key="SmallButtonStyle" TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
-            <Setter Property="Padding" Value="12,6" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="MinHeight" Value="28" />
-            <Setter Property="MinWidth" Value="60" />
+        <Style x:Key="SmallButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource DangerButtonStyle}">
+            <Setter Property="Padding"
+                    Value="12,6" />
+            <Setter Property="FontSize"
+                    Value="12" />
+            <Setter Property="MinHeight"
+                    Value="28" />
+            <Setter Property="MinWidth"
+                    Value="60" />
         </Style>
-        
+
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <commons:HzToKHzConverter x:Key="HzToKHzConverter" />
     </UserControl.Resources>
-    
-    <Grid Margin="12">
+
+    <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <!-- 标题和操作按钮区域 -->
-        <Border Grid.Row="0" 
+        <Border Grid.Row="0"
                 Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="0,0,0,10"
-                Margin="0,0,0,12"
-                Effect="{StaticResource LightShadow}">
+                BorderThickness="0,0,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                
+
                 <!-- 标题 -->
-                <StackPanel Grid.Column="0" Orientation="Vertical">
+                <StackPanel Grid.Column="0"
+                            Orientation="Vertical">
                     <TextBlock Text="通道配置"
                                FontSize="20"
                                FontWeight="Bold"
-                               Foreground="{DynamicResource TitleBrush}"
-                               VerticalAlignment="Center" />
+                               Foreground="{DynamicResource TitleBrush}" />
                     <TextBlock Text="配置数据采集卡的通道参数和传感器绑定"
-                               FontSize="12"
+                               FontSize="13"
                                Foreground="{DynamicResource SecondaryTextBrush}"
-                               Margin="0,2,0,0" />
+                               Margin="0,4,0,0"
+                               Opacity="0.8" />
                 </StackPanel>
-                
+
                 <!-- 操作按钮 -->
-                <StackPanel Grid.Column="1" 
+                <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
                     <Button Content="添加通道"
                             Command="{Binding AddChannelCommand}"
                             Style="{DynamicResource PrimaryButtonStyle}"
-                            Margin="0,0,6,0"
-                            Padding="16,8" />
+                            Margin="0,0,8,0"
+                            Padding="18,10"
+                            FontSize="13"
+                            FontWeight="Medium" />
                     <Button Content="删除选中"
                             Command="{Binding DeleteChannelCommand}"
                             CommandParameter="{Binding SelectedChannel}"
                             IsEnabled="{Binding CanDeleteChannel}"
                             Style="{DynamicResource DangerButtonStyle}"
-                            Padding="16,8" />
+                            Padding="18,10"
+                            FontSize="13"
+                            FontWeight="Medium" />
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- 通道列表 -->
-        <ScrollViewer Grid.Row="1" 
+        <ScrollViewer Grid.Row="1"
+                      Margin="0,8,0,0"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       Padding="0,4,0,0">
@@ -145,10 +201,14 @@
                      SelectionMode="Single">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0" />
-                        <Setter Property="BorderThickness" Value="0" />
-                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Padding"
+                                Value="0" />
+                        <Setter Property="Margin"
+                                Value="0" />
+                        <Setter Property="BorderThickness"
+                                Value="0" />
+                        <Setter Property="Background"
+                                Value="Transparent" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
@@ -157,11 +217,15 @@
                             </Setter.Value>
                         </Setter>
                         <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="Transparent" />
+                            <Trigger Property="IsSelected"
+                                     Value="True">
+                                <Setter Property="Background"
+                                        Value="Transparent" />
                             </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="Transparent" />
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter Property="Background"
+                                        Value="Transparent" />
                             </Trigger>
                         </Style.Triggers>
                     </Style>
@@ -177,37 +241,71 @@
                                 </Grid.RowDefinitions>
 
                                 <!-- 通道头部信息 -->
-                                <Grid Grid.Row="0" Margin="0,0,0,10">
+                                <Grid Grid.Row="0"
+                                      Margin="0,0,0,14">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    
+
                                     <!-- 通道标识 -->
-                                    <TextBlock Grid.Column="0"
-                                               Text="{Binding ChannelId, StringFormat='通道 {0}'}"
-                                               Style="{StaticResource ChannelHeaderStyle}"
-                                               VerticalAlignment="Center" />
-                                    
+                                    <Border Grid.Column="0"
+                                            Background="{DynamicResource PrimaryBrush}"
+                                            CornerRadius="6"
+                                            Padding="10,6"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding ChannelId, StringFormat='通道 {0}'}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+
+                                    <!-- 通道别名 -->
+                                    <Grid Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Margin="12,0,12,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="通道名:"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,20,0" />
+                                        <TextBox Grid.Column="1"
+                                                 Text="{Binding ChannelName, UpdateSourceTrigger=PropertyChanged}"
+                                                 MinWidth="180"
+                                                 hc:InfoElement.Placeholder="请输入通道名" />
+                                    </Grid>
+
                                     <!-- 启用状态 -->
-                                    <CheckBox Grid.Column="1"
+                                    <CheckBox Grid.Column="2"
                                               Content="启用此通道"
                                               IsChecked="{Binding Enabled}"
                                               HorizontalAlignment="Right"
                                               VerticalAlignment="Center"
-                                              Margin="0,0,12,0" />
-                                    
+                                              Margin="0,0,14,0"
+                                              FontSize="13" />
+
                                     <!-- 删除按钮 -->
-                                    <Button Grid.Column="2"
+                                    <Button Grid.Column="3"
                                             Content="删除"
                                             Command="{Binding DataContext.DeleteChannelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
-                                            Style="{StaticResource SmallButtonStyle}" />
+                                            Style="{StaticResource SmallButtonStyle}"
+                                            FontSize="12" />
                                 </Grid>
 
                                 <!-- 基本参数 -->
-                                <Grid Grid.Row="1" Margin="0,0,0,10">
+                                <Grid Grid.Row="1"
+                                      Margin="0,0,0,14">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -220,35 +318,50 @@
                                     </Grid.ColumnDefinitions>
 
                                     <!-- 采样率 -->
-                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="0"
                                                Text="采样率"
                                                Style="{StaticResource FieldLabelStyle}" />
-                                    <Border Grid.Row="0" Grid.Column="1"
-                                            Background="{DynamicResource SecondaryRegionBrush}"
-                                            CornerRadius="4"
-                                            Padding="8,6"
-                                            Margin="0,0,12,8">
-                                        <TextBlock Text="{Binding SampleRate, StringFormat='{}{0:N0} Hz'}"
-                                                   FontSize="13"
-                                                   FontWeight="Medium"
-                                                   Foreground="{DynamicResource PrimaryTextBrush}"
-                                                   VerticalAlignment="Center" />
-                                    </Border>
+                                    <ComboBox Grid.Row="0"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              ItemsSource="{Binding DataContext.SampleRateOptions, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
+                                              SelectedItem="{Binding SampleRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Text="{Binding SampleRate, Converter={StaticResource HzToKHzConverter}}"
+                                              Margin="0,0,14,0"
+                                              hc:BorderElement.CornerRadius="8"
+                                              FontSize="13"
+                                              Height="36"
+                                              hc:InfoElement.Placeholder="请选择或输入采样率">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource HzToKHzConverter}}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
 
                                     <!-- 传感器位置 -->
-                                    <TextBlock Grid.Row="0" Grid.Column="2"
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="2"
                                                Text="测点位置"
                                                Style="{StaticResource FieldLabelStyle}" />
-                                    <TextBox Grid.Row="0" Grid.Column="3"
+                                    <TextBox Grid.Row="0"
+                                             Grid.Column="3"
+                                             VerticalAlignment="Center"
                                              Text="{Binding MeasurementLocation, UpdateSourceTrigger=PropertyChanged}"
-                                             Margin="0,0,0,8"
+                                             Margin="0,0,0,10"
+                                             Height="36"
                                              hc:InfoElement.Placeholder="请输入测点位置" />
 
                                     <!-- 传感器选择 -->
-                                    <TextBlock Grid.Row="1" Grid.Column="0"
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="0"
                                                Text="传感器"
                                                Style="{StaticResource FieldLabelStyle}" />
-                                    <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3">
+                                    <Grid Grid.Row="1"
+                                          Grid.Column="1"
+                                          Grid.ColumnSpan="3"
+                                          VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -259,7 +372,8 @@
                                                   ItemsSource="{Binding DataContext.AvailableSensors, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
                                                   SelectedItem="{Binding Sensor, Mode=TwoWay}"
                                                   DisplayMemberPath="DisplayText"
-                                                  Margin="0,0,6,0"
+                                                  Margin="0,0,8,0"
+                                                  Height="36"
                                                   hc:InfoElement.Placeholder="请选择传感器">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
@@ -267,14 +381,16 @@
                                                 </DataTemplate>
                                             </ComboBox.ItemTemplate>
                                         </ComboBox>
-                                        
+
                                         <!-- 轴选择（仅三轴加速度传感器显示） -->
-                                        <ComboBox Grid.Column="1" x:Name="cmbBox"
+                                        <ComboBox Grid.Column="1"
+                                                  x:Name="cmbBox"
                                                   SelectedValue="{Binding Path=SelectedAxis, Mode=TwoWay}"
                                                   SelectedValuePath="Tag"
                                                   Visibility="{Binding HasAxisSelection, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                  Margin="0,0,6,0"
-                                                  Width="100"
+                                                  Margin="0,0,8,0"
+                                                  Width="110"
+                                                  Height="36"
                                                   hc:InfoElement.Placeholder="选择轴">
                                             <ComboBoxItem Content="X轴"
                                                           Tag="{x:Static configs:SensorAxis.X}" />
@@ -283,7 +399,7 @@
                                             <ComboBoxItem Content="Z轴"
                                                           Tag="{x:Static configs:SensorAxis.Z}" />
                                         </ComboBox>
-                                        
+
                                         <!--<Button Grid.Column="2"
                                                 Content="配置"
                                                 Command="{Binding DataContext.OpenSensorConfigCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -297,19 +413,22 @@
                                         <Button Grid.Column="3"
                                                 Content="清除"
                                                 MinWidth="80"
-                                               
+                                                Height="36"
                                                 Command="{Binding DataContext.ClearSensorCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding HasSensor, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                Style="{StaticResource SmallButtonStyle}" />
+                                                Style="{StaticResource SmallButtonStyle}"
+                                                FontSize="12" />
                                     </Grid>
                                 </Grid>
 
                                 <!-- 传感器信息显示（如果有传感器） -->
                                 <Border Grid.Row="2"
-                                        Background="{DynamicResource LightPrimaryBrush}"
-                                        CornerRadius="6"
-                                        Padding="10"
+                                        Background="#F0F4F8"
+                                        CornerRadius="8"
+                                        BorderBrush="#E2E8F0"
+                                        BorderThickness="1"
+                                        Padding="14"
                                         Visibility="{Binding HasSensor, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -322,25 +441,33 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        
-                                        <TextBlock Grid.Row="0" Grid.Column="0"
+
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="0"
                                                    Text="传感器类型:"
                                                    Style="{StaticResource FieldLabelStyle}"
-                                                   Foreground="{DynamicResource PrimaryTextBrush}" />
-                                        <TextBlock Grid.Row="0" Grid.Column="1"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="1"
                                                    Text="{Binding Sensor.SensorType}"
-                                                   FontSize="12"
+                                                   FontSize="13"
                                                    Foreground="{DynamicResource PrimaryTextBrush}"
-                                                   Margin="0,0,12,6" />
-                                        
-                                        <TextBlock Grid.Row="0" Grid.Column="2"
+                                                   FontWeight="Medium"
+                                                   Margin="0,0,16,8" />
+
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="2"
                                                    Text="灵敏度:"
                                                    Style="{StaticResource FieldLabelStyle}"
-                                                   Foreground="{DynamicResource PrimaryTextBrush}" />
-                                        <TextBlock Grid.Row="0" Grid.Column="3"
-                                                   FontSize="12"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="3"
+                                                   FontSize="13"
                                                    Foreground="{DynamicResource PrimaryTextBrush}"
-                                                   Margin="0,0,0,6">
+                                                   FontWeight="Medium"
+                                                   Margin="0,0,0,8">
                                             <TextBlock.Text>
                                                 <MultiBinding StringFormat="{}{0:F2} {1}">
                                                     <Binding Path="Sensor.Sensitivity" />
@@ -348,25 +475,33 @@
                                                 </MultiBinding>
                                             </TextBlock.Text>
                                         </TextBlock>
-                                        
-                                        <TextBlock Grid.Row="1" Grid.Column="0"
+
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="0"
                                                    Text="物理单位:"
                                                    Style="{StaticResource FieldLabelStyle}"
-                                                   Foreground="{DynamicResource PrimaryTextBrush}" />
-                                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="1"
                                                    Text="{Binding Sensor.PhysicalUnit}"
-                                                   FontSize="12"
+                                                   FontSize="13"
                                                    Foreground="{DynamicResource PrimaryTextBrush}"
-                                                   Margin="0,0,12,0" />
-                                        
-                                        <TextBlock Grid.Row="1" Grid.Column="2"
+                                                   FontWeight="Medium"
+                                                   Margin="0,0,16,0" />
+
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="2"
                                                    Text="配置模式:"
                                                    Style="{StaticResource FieldLabelStyle}"
-                                                   Foreground="{DynamicResource PrimaryTextBrush}" />
-                                        <TextBlock Grid.Row="1" Grid.Column="3"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="3"
                                                    Text="{Binding SensorConfigMode}"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource PrimaryTextBrush}" />
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                                   FontWeight="Medium" />
                                     </Grid>
                                 </Border>
                             </Grid>

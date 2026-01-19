@@ -22,6 +22,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
         private string _serialNumber = string.Empty;
 
         private ObservableCollection<DAQChannelConfig> _channels;
+        
+        // 同步标志，避免通道数量双向同步时的循环更新
+        private bool _isSyncingChannels = false;
 
         public DataAcquisitionConfig() : base()
         {
@@ -47,14 +50,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
             if (_channels == null || availableSensors == null)
                 return;
 
-            System.Diagnostics.Debug.WriteLine($"[DataAcquisitionConfig] 开始恢复传感器引用，通道数: {_channels.Count}, 可用传感器数: {availableSensors.Count()}");
-
             foreach (var channel in _channels)
             {
                 channel?.RestoreSensorReference(availableSensors, channel.SensorId);
             }
-
-            System.Diagnostics.Debug.WriteLine($"[DataAcquisitionConfig] 传感器引用恢复完成");
         }
 
         /// <summary>
@@ -63,71 +62,58 @@ namespace Astra.Plugins.DataAcquisition.Devices
         public async Task<OperationResult> PreSaveAsync(IConfigurationManager configManager)
         {
             if (configManager == null)
-            {
                 return OperationResult.Failure("配置管理器未初始化");
-            }
 
-            if (_channels == null)
-            {
+            if (_channels == null || _channels.Count == 0)
                 return OperationResult.Succeed();
-            }
-
-            var sensorConfigs = new List<SensorConfig>();
 
             // 收集所有独立模式的传感器配置
-            foreach (var channel in _channels)
+            var independentSensors = _channels
+                .Where(c => c?.Sensor != null && c.SensorConfigMode == SensorConfigMode.Independent)
+                .Select(c => c.Sensor)
+                .ToList();
+
+            if (independentSensors.Count == 0)
+                return OperationResult.Succeed();
+
+            // 确保所有传感器配置有效
+            foreach (var sensor in independentSensors)
             {
-                if (channel?.Sensor != null &&
-                    channel.SensorConfigMode == SensorConfigMode.Independent)
+                // ✅ 使用 SetConfigId 方法替代反射
+                if (sensor is ConfigBase sensorConfigBase && string.IsNullOrEmpty(sensorConfigBase.ConfigId))
                 {
-                    // 确保传感器配置有有效的 ConfigId
-                    if (string.IsNullOrEmpty(channel.Sensor.ConfigId))
-                    {
-                        // 如果 ConfigId 为空，生成一个新的（使用反射设置）
-                        var configIdField = typeof(ConfigBase).GetField("_configId",
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        if (configIdField != null)
-                        {
-                            configIdField.SetValue(channel.Sensor, Guid.NewGuid().ToString());
-                        }
-                    }
+                    sensorConfigBase.SetConfigId(Guid.NewGuid().ToString());
+                }
 
-                    // 确保传感器配置有名称
-                    if (string.IsNullOrEmpty(channel.Sensor.ConfigName))
-                    {
-                        channel.Sensor.ConfigName = $"{channel.Sensor.SensorType}_{channel.ChannelId}";
-                    }
-
-                    sensorConfigs.Add(channel.Sensor);
+                // 确保传感器配置有名称
+                if (string.IsNullOrEmpty(sensor.ConfigName))
+                {
+                    var channel = _channels.FirstOrDefault(c => c.Sensor == sensor);
+                    sensor.ConfigName = $"{sensor.SensorType}_{channel?.ChannelId ?? 0}";
                 }
             }
 
-            // 保存所有独立模式的传感器配置
+            // 批量保存，收集错误
             var errors = new List<string>();
-            foreach (var sensor in sensorConfigs)
+            foreach (var sensor in independentSensors)
             {
                 try
                 {
                     var result = await configManager.UpdateConfigAsync(sensor);
                     if (result != null && !result.Success)
                     {
-                        errors.Add($"传感器 {sensor.ConfigName}: {result.Message}");
-                        System.Diagnostics.Debug.WriteLine($"[DataAcquisitionConfig] 保存独立模式传感器配置失败: {sensor.ConfigName}, 错误: {result.Message}");
+                        errors.Add($"传感器 '{sensor.ConfigName}': {result.Message}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"传感器 {sensor.ConfigName}: {ex.Message}");
-                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionConfig] 保存独立模式传感器配置异常: {sensor.ConfigName}, 错误: {ex.Message}");
+                    errors.Add($"传感器 '{sensor.ConfigName}': {ex.Message}");
                 }
             }
 
-            if (errors.Count > 0)
-            {
-                return OperationResult.Failure($"保存独立模式传感器配置时发生错误:\n{string.Join("\n", errors)}");
-            }
-
-            return OperationResult.Succeed();
+            return errors.Count > 0
+                ? OperationResult.Failure($"保存独立模式传感器配置失败:\n{string.Join("\n", errors)}")
+                : OperationResult.Succeed();
         }
 
         /// <summary>
@@ -136,14 +122,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
         public async Task<OperationResult> PostLoadAsync(IConfigurationManager configManager)
         {
             if (configManager == null)
-            {
                 return OperationResult.Failure("配置管理器未初始化");
-            }
 
             if (_channels == null)
-            {
                 return OperationResult.Succeed();
-            }
 
             try
             {
@@ -158,7 +140,6 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DataAcquisitionConfig] 加载后处理失败: {ex.Message}");
                 return OperationResult.Failure($"加载后处理失败: {ex.Message}");
             }
         }
@@ -270,20 +251,26 @@ namespace Astra.Plugins.DataAcquisition.Devices
         /// </summary>
         private void UpdateChannelCount()
         {
-            if (_channels != null)
+            if (_isSyncingChannels || _channels == null)
+                return;
+
+            var newCount = _channels.Count;
+            if (_channelCount != newCount)
             {
-                var newCount = _channels.Count;
-                if (_channelCount != newCount)
+                _isSyncingChannels = true;
+                try
                 {
-                    var oldValue = _channelCount;
-                    // 直接设置字段避免触发集合调整
                     _channelCount = newCount;
                     OnPropertyChanged(new PropertyChangedEventArgs
                     {
                         PropertyName = nameof(ChannelCount),
-                        OldValue = oldValue,
+                        OldValue = _channelCount,
                         NewValue = newCount
                     });
+                }
+                finally
+                {
+                    _isSyncingChannels = false;
                 }
             }
         }
@@ -293,36 +280,65 @@ namespace Astra.Plugins.DataAcquisition.Devices
         /// </summary>
         private void SyncChannelsToCount(int targetCount)
         {
+            if (_isSyncingChannels || _channels == null)
+                return;
+
+            if (targetCount < 0)
+                targetCount = 0;
+
+            _isSyncingChannels = true;
+            try
+            {
+                var currentCount = _channels.Count;
+
+                if (targetCount > currentCount)
+                {
+                    // 添加通道
+                    for (int i = currentCount; i < targetCount; i++)
+                    {
+                        _channels.Add(CreateChannel(i + 1));
+                    }
+                }
+                else if (targetCount < currentCount)
+                {
+                    // 删除多余的通道
+                    while (_channels.Count > targetCount)
+                    {
+                        _channels.RemoveAt(_channels.Count - 1);
+                    }
+                }
+
+                // 重新编号所有通道
+                RenumberChannels();
+            }
+            finally
+            {
+                _isSyncingChannels = false;
+            }
+        }
+
+        /// <summary>
+        /// 创建通道配置（提取公共逻辑，消除重复代码）
+        /// </summary>
+        private DAQChannelConfig CreateChannel(int channelId)
+        {
+            return new DAQChannelConfig
+            {
+                ChannelId = channelId,
+                ChannelName = $"通道 {channelId}",
+                SampleRate = SampleRate,
+                Enabled = true
+            };
+        }
+
+        /// <summary>
+        /// 重新编号所有通道
+        /// </summary>
+        private void RenumberChannels()
+        {
             if (_channels == null)
                 return;
 
-            var currentCount = _channels.Count;
-
-            if (targetCount > currentCount)
-            {
-                // 添加通道
-                for (int i = currentCount; i < targetCount; i++)
-                {
-                    var channel = new DAQChannelConfig
-                    {
-                        ChannelId = i + 1,
-                        ChannelName = $"通道 {i + 1}",
-                        SampleRate = SampleRate,
-                        Enabled = true
-                    };
-                    _channels.Add(channel);
-                }
-            }
-            else if (targetCount < currentCount)
-            {
-                // 删除多余的通道
-                while (_channels.Count > targetCount)
-                {
-                    _channels.RemoveAt(_channels.Count - 1);
-                }
-            }
-
-            // 重新编号所有通道
             for (int i = 0; i < _channels.Count; i++)
             {
                 _channels[i].ChannelId = i + 1;
@@ -336,14 +352,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             for (int i = 0; i < _channelCount; i++)
             {
-                var channel = new DAQChannelConfig
-                {
-                    ChannelId = i + 1,
-                    ChannelName = $"通道 {i + 1}",
-                    SampleRate = SampleRate,
-                    Enabled = true
-                };
-                _channels.Add(channel);
+                _channels.Add(CreateChannel(i + 1));
             }
         }
 
@@ -366,57 +375,23 @@ namespace Astra.Plugins.DataAcquisition.Devices
             set => SetProperty(ref _autoStart, value);
         }
 
+        /// <summary>
+        /// 克隆配置（使用基类的序列化方法，更简洁且不易出错）
+        /// </summary>
         public override DeviceConfig Clone()
         {
-            var clone = new DataAcquisitionConfig
-            {
-                DeviceName = DeviceName,
-                SerialNumber = SerialNumber,
-                SampleRate = SampleRate,
-                BufferSize = BufferSize,
-                AutoStart = AutoStart,
-                IsEnabled = IsEnabled,
-                GroupId = GroupId,
-                SlotId = SlotId,
-                // IConfig 接口属性
-                Version = Version,
-                ModifiedAt = ModifiedAt,
-                ConfigName = ConfigName
-            };
+            // 使用基类的序列化方法实现深拷贝
+            var json = Serialize();
+            var clone = ConfigBase.Deserialize<DataAcquisitionConfig>(json);
 
-            // 克隆通道配置
-            clone._channels.Clear();
-            foreach (var channel in Channels)
+            // 重置配置ID和元数据
+            if (clone is ConfigBase cloneConfigBase)
             {
-                // 需要实现 DAQChannelConfig 的 Clone 方法，这里先简单复制属性
-                var clonedChannel = new DAQChannelConfig
-                {
-                    ChannelId = channel.ChannelId,
-                    ChannelName = channel.ChannelName,
-                    Enabled = channel.Enabled,
-                    SampleRate = channel.SampleRate,
-                    CouplingMode = channel.CouplingMode,
-                    Gain = channel.Gain,
-                    Offset = channel.Offset,
-                    ICPCurrent = channel.ICPCurrent,
-                    EnableAntiAliasingFilter = channel.EnableAntiAliasingFilter,
-                    AntiAliasingCutoff = channel.AntiAliasingCutoff,
-                    MeasurementLocation = channel.MeasurementLocation,
-                    MountingDirection = channel.MountingDirection,
-                    CoordinateX = channel.CoordinateX,
-                    CoordinateY = channel.CoordinateY,
-                    CoordinateZ = channel.CoordinateZ,
-                    AlarmEnabled = channel.AlarmEnabled,
-                    AlarmUpperLimit = channel.AlarmUpperLimit,
-                    AlarmLowerLimit = channel.AlarmLowerLimit,
-                    DisplayColor = channel.DisplayColor,
-                    DisplayOrder = channel.DisplayOrder,
-                    SensorConfigMode = channel.SensorConfigMode,
-                    // 注意：传感器引用不复制，因为它是通过 SensorId 序列化的
-                    // 反序列化时会根据 SensorId 重新加载传感器引用
-                };
-                clone._channels.Add(clonedChannel);
+                cloneConfigBase.SetConfigId(Guid.NewGuid().ToString());
             }
+
+            // 注意：传感器引用不复制，因为它是通过 SensorId 序列化的
+            // 反序列化时会根据 SensorId 重新加载传感器引用
 
             return clone;
         }
@@ -430,33 +405,22 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             var errors = new List<string>();
 
+            // 基类验证
             var baseResult = base.Validate();
             if (!baseResult.Success && !string.IsNullOrWhiteSpace(baseResult.ErrorMessage))
             {
                 errors.Add(baseResult.ErrorMessage);
             }
 
-            if (SampleRate <= 0)
-            {
-                errors.Add("采样率必须大于 0 Hz");
-            }
+            // 本地验证
+            if (SampleRate <= 0) errors.Add("采样率必须大于 0 Hz");
+            if (ChannelCount <= 0) errors.Add("通道数量必须大于 0");
+            if (BufferSize <= 0) errors.Add("缓冲区大小必须大于 0");
 
-            if (ChannelCount <= 0)
-            {
-                errors.Add("通道数量必须大于 0");
-            }
-
-            if (BufferSize <= 0)
-            {
-                errors.Add("缓冲区大小必须大于 0");
-            }
-
-            if (errors.Count > 0)
-            {
-                return OperationResult<bool>.Failure(string.Join(Environment.NewLine, errors));
-            }
-
-            return OperationResult<bool>.Succeed(true, "采集卡配置验证通过");
+            return errors.Count > 0
+                ? OperationResult<bool>.Failure(string.Join(Environment.NewLine, errors))
+                : OperationResult<bool>.Succeed(true, "采集卡配置验证通过");
         }
     }
 }
+

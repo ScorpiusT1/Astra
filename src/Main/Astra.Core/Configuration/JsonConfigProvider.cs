@@ -1,7 +1,8 @@
 ﻿using Astra.Core.Foundation.Common;
 using System.Collections.Concurrent;
 using System.Linq;
-using System.Text.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Astra.Core.Configuration
 {
@@ -12,7 +13,7 @@ namespace Astra.Core.Configuration
         where T : class, IConfig  // ← 严格约束：必须实现 IConfig
     {
         protected readonly string ConfigDirectory;
-        protected readonly JsonSerializerOptions JsonOptions;
+        protected readonly JsonSerializerSettings JsonSettings;
         protected readonly ConfigProviderOptions<T> Options;
 
         // 配置索引：ConfigId → 元数据
@@ -33,15 +34,13 @@ namespace Astra.Core.Configuration
             ConfigDirectory = configDirectory;
             Options = options ?? new ConfigProviderOptions<T>();
 
-            JsonOptions = new JsonSerializerOptions
+            JsonSettings = new JsonSerializerSettings
             {
-                WriteIndented = true,
-                PropertyNameCaseInsensitive = true,
-                // ✅ 修复空值错误：Never = 不忽略null值，确保数据完整性
-                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                IncludeFields = true, // ✅ 支持字段序列化
-                // System.Text.Json 可以访问 protected setter（因为反序列化发生在同一类型或派生类型中）
+                Formatting = Formatting.Indented,
+                NullValueHandling = NullValueHandling.Include, // ✅ 不忽略null值，确保数据完整性
+                DefaultValueHandling = DefaultValueHandling.Include,
+                DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                // Newtonsoft.Json 可以访问 protected setter（因为反序列化发生在同一类型或派生类型中）
             };
 
             if (!Directory.Exists(ConfigDirectory))
@@ -85,12 +84,11 @@ namespace Astra.Core.Configuration
                 else if (trimmed.StartsWith("{"))
                 {
                     // 需要进一步判断是 SingleObject 还是 Container
-                    using var doc = JsonDocument.Parse(json);
-                    var root = doc.RootElement;
+                    var root = JObject.Parse(json);
 
                     // 检查是否有 Configs 属性（或自定义的容器属性名）
-                    if (root.TryGetProperty(Options.ContainerPropertyName, out var configsProp)
-                        && configsProp.ValueKind == JsonValueKind.Array)
+                    if (root.TryGetValue(Options.ContainerPropertyName, out var configsProp)
+                        && configsProp.Type == JTokenType.Array)
                     {
                         return ConfigStorageFormat.Container;
                     }
@@ -100,9 +98,15 @@ namespace Astra.Core.Configuration
 
                 return ConfigStorageFormat.Auto;
             }
-            catch (JsonException jsonEx)
+            catch (JsonReaderException jsonEx)
             {
                 // JSON 格式错误，记录详细错误信息
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] JSON 格式检测失败: {filePath}, 错误: {jsonEx.Message}");
+                return ConfigStorageFormat.Auto;
+            }
+            catch (JsonException jsonEx)
+            {
+                // JSON 序列化错误
                 System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider] JSON 格式检测失败: {filePath}, 错误: {jsonEx.Message}");
                 return ConfigStorageFormat.Auto;
             }
@@ -138,11 +142,11 @@ namespace Astra.Core.Configuration
             switch (format)
             {
                 case ConfigStorageFormat.SingleObject:
-                    configs = new List<T> { JsonSerializer.Deserialize<T>(json, JsonOptions)! };
+                    configs = new List<T> { JsonConvert.DeserializeObject<T>(json, JsonSettings)! };
                     break;
 
                 case ConfigStorageFormat.Array:
-                    configs = JsonSerializer.Deserialize<List<T>>(json, JsonOptions);
+                    configs = JsonConvert.DeserializeObject<List<T>>(json, JsonSettings);
                     break;
 
                 case ConfigStorageFormat.Container:
@@ -159,7 +163,7 @@ namespace Astra.Core.Configuration
                     return null;
             }
 
-            // System.Text.Json 应该能够通过 internal setter 设置 ConfigId
+            // Newtonsoft.Json 应该能够通过 internal setter 设置 ConfigId
             // 但如果 ConfigId 仍然为空（JSON 中没有或反序列化失败），则生成新的
             // 注意：这不应该覆盖 JSON 中的 ConfigId，因为 SetConfigId 只在 ConfigId 为空时才设置
             if (configs != null)
@@ -180,7 +184,7 @@ namespace Astra.Core.Configuration
         /// <summary>
         /// 确保配置有 ConfigId
         /// 如果 ConfigId 为空，则生成新的（用于创建新配置的场景）
-        /// 注意：JSON 反序列化时，如果 JSON 中包含 configId，System.Text.Json 会通过 internal setter 设置
+        /// 注意：JSON 反序列化时，如果 JSON 中包含 configId，Newtonsoft.Json 会通过 internal setter 设置
         /// </summary>
         private void EnsureConfigId(T config)
         {
@@ -199,13 +203,12 @@ namespace Astra.Core.Configuration
             try
             {
                 // 使用动态方式解析容器
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
+                var root = JObject.Parse(json);
 
-                if (root.TryGetProperty(Options.ContainerPropertyName, out var configsProp))
+                if (root.TryGetValue(Options.ContainerPropertyName, out var configsProp))
                 {
-                    var configsJson = configsProp.GetRawText();
-                    return JsonSerializer.Deserialize<List<T>>(configsJson, JsonOptions);
+                    var configsJson = configsProp.ToString();
+                    return JsonConvert.DeserializeObject<List<T>>(configsJson, JsonSettings);
                 }
 
                 return null;
@@ -233,11 +236,11 @@ namespace Astra.Core.Configuration
                     {
                         throw new InvalidOperationException("SingleObject 格式只能保存一个配置");
                     }
-                    json = JsonSerializer.Serialize(configs[0], JsonOptions);
+                    json = JsonConvert.SerializeObject(configs[0], JsonSettings);
                     break;
 
                 case ConfigStorageFormat.Array:
-                    json = JsonSerializer.Serialize(configs, JsonOptions);
+                    json = JsonConvert.SerializeObject(configs, JsonSettings);
                     break;
 
                 case ConfigStorageFormat.Container:
@@ -270,7 +273,7 @@ namespace Astra.Core.Configuration
                     lastModifiedProp.SetValue(container, DateTime.Now);
                 }
 
-                return JsonSerializer.Serialize(container, JsonOptions);
+                return JsonConvert.SerializeObject(container, JsonSettings);
             }
 
             // 否则使用默认容器
@@ -279,7 +282,7 @@ namespace Astra.Core.Configuration
                 Configs = configs,
                 LastModified = DateTime.Now
             };
-            return JsonSerializer.Serialize(defaultContainer, JsonOptions);
+            return JsonConvert.SerializeObject(defaultContainer, JsonSettings);
         }
 
         /// <summary>
