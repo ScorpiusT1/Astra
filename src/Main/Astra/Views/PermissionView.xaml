@@ -396,7 +396,7 @@
                                 Margin="0,0,12,0">
                         <TextBlock Text="密码 *"
                                    Style="{StaticResource FieldLabelStyle}" />
-                        <PasswordBox x:Name="PasswordBox"
+                        <hc:PasswordBox x:Name="PasswordBox"
                                      Style="{StaticResource ModernPasswordBoxStyle}"
                                      helpers:PasswordHelper.Attach="True"
                                      helpers:PasswordHelper.Password="{Binding NewPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"

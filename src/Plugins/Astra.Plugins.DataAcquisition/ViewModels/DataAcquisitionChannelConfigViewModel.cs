@@ -1,5 +1,6 @@
 ﻿using Astra.Core.Configuration;
 using Astra.Core.Devices;
+using Astra.Core.Devices.Specifications;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.UI.Helpers;
@@ -18,6 +19,50 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
     {
         private DataAcquisitionConfig _config;
         private readonly IConfigurationManager _configManager;
+        private IDeviceSpecification _deviceSpecification;
+
+        private IReadOnlyList<CouplingMode> _couplingModeOptions;
+        private IReadOnlyList<double> _triggerLevelOptions;
+
+        /// <summary>
+        /// 规格中定义的可用耦合方式（AC/DC等）
+        /// </summary>
+        public IReadOnlyList<CouplingMode> CouplingModeOptions
+        {
+            get => _couplingModeOptions;
+            private set
+            {
+                if (SetProperty(ref _couplingModeOptions, value))
+                {
+                    OnPropertyChanged(nameof(HasCouplingModeOptions));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 规格中定义的可用触发电平（单位：mA）
+        /// </summary>
+        public IReadOnlyList<double> TriggerLevelOptions
+        {
+            get => _triggerLevelOptions;
+            private set
+            {
+                if (SetProperty(ref _triggerLevelOptions, value))
+                {
+                    OnPropertyChanged(nameof(HasTriggerLevelOptions));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否存在耦合方式约束（用于控制界面显示）
+        /// </summary>
+        public bool HasCouplingModeOptions => CouplingModeOptions != null && CouplingModeOptions.Count > 0;
+
+        /// <summary>
+        /// 是否存在触发电平约束（用于控制界面显示）
+        /// </summary>
+        public bool HasTriggerLevelOptions => TriggerLevelOptions != null && TriggerLevelOptions.Count > 0;
 
         [ObservableProperty]
         private DAQChannelConfig _selectedChannel;
@@ -66,6 +111,9 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         {
             _config = config;
 
+            // 初始化规格选项
+            UpdateSpecificationOptions();
+
             // 获取配置管理器服务
             try
             {
@@ -95,11 +143,47 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             InitializeChannels();
             LoadSensorsAsync();
 
-            // 监听配置的 Channels 属性变化
+            // 监听配置的属性变化
             if (_config != null)
             {
                 _config.PropertyChanged += Config_PropertyChanged;
             }
+        }
+
+        /// <summary>
+        /// 更新规格选项（当设备型号变化时调用）
+        /// </summary>
+        private void UpdateSpecificationOptions()
+        {
+            // 从设备规格注册表中获取当前设备的规格，用于通道级别的约束选项
+            _deviceSpecification = DeviceSpecificationRegistry.GetSpecification(
+                DeviceType.DataAcquisition,
+                _config?.Manufacturer ?? string.Empty,
+                _config?.Model ?? string.Empty
+            );
+
+            // 初始化耦合方式和触发电平选项（如果规格中有定义）
+            IReadOnlyList<CouplingMode> couplingModes = null;
+            IReadOnlyList<double> triggerLevels = null;
+
+            if (_deviceSpecification != null)
+            {
+                var couplingModesList = _deviceSpecification.GetConstraint<List<CouplingMode>>("AllowedCouplingModes", null);
+                if (couplingModesList != null)
+                {
+                    couplingModes = couplingModesList.AsReadOnly();
+                }
+
+                var triggerLevelsList = _deviceSpecification.GetConstraint<List<double>>("AllowedTriggerLevels", null);
+                if (triggerLevelsList != null)
+                {
+                    triggerLevels = triggerLevelsList.AsReadOnly();
+                }
+            }
+
+            // 更新属性（会自动触发 HasCouplingModeOptions 和 HasTriggerLevelOptions 的变更通知）
+            CouplingModeOptions = couplingModes;
+            TriggerLevelOptions = triggerLevels;
         }
 
         /// <summary>
@@ -247,6 +331,12 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 // 基础配置的采样率变化时，通知 UI 更新通道显示
                 // 通道的采样率已由 DataAcquisitionConfig 自动同步
                 OnPropertyChanged(nameof(Channels));
+            }
+            else if (e.PropertyName == nameof(DataAcquisitionConfig.Manufacturer) || 
+                     e.PropertyName == nameof(DataAcquisitionConfig.Model))
+            {
+                // 当设备厂家或型号变化时，重新从规格中读取选项
+                UpdateSpecificationOptions();
             }
         }
 
@@ -423,7 +513,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                     // 尝试获取配置视图模型服务来打开传感器配置
                     // 这里可以根据实际系统的导航方式来实现
                     // 例如：通过消息总线、事件或服务来打开配置窗口
-                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 打开传感器配置: {sensor.ConfigName} (ID: {sensor.SensorId})");
+                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 打开传感器配置: {sensor.ConfigName} (ID: {sensor.ConfigId})");
 
                     // TODO: 根据实际系统架构实现打开传感器配置界面的逻辑
                     // 例如：

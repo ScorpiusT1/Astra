@@ -1,6 +1,8 @@
 ﻿using Astra.Core.Foundation.Common;
 using Astra.Core.Devices.Interfaces;
+using Astra.Core.Devices.Specifications;
 using Astra.Core.Configuration;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -40,16 +42,35 @@ namespace Astra.Core.Devices.Configuration
 
         #region 基础配置项
 
-        private string _deviceName;
         private bool _isEnabled = true;
         private string _groupId = "G0";
         private string _slotId = "S0";
 
+        /// <summary>
+        /// 设备名称（与 ConfigName 保持一致，作为别名）
+        /// 统一使用 ConfigName 作为设备名称，消除冗余
+        /// 注意：不序列化此属性，因为它是 ConfigName 的别名
+        /// </summary>
         [HotUpdatable]
+        [JsonIgnore]
         public string DeviceName
         {
-            get => _deviceName;
-            set => SetProperty(ref _deviceName, value);
+            get => ConfigName;
+            set
+            {
+                if (ConfigName != value)
+                {
+                    var oldValue = ConfigName;
+                    ConfigName = value;
+                    // 触发 DeviceName 的属性变更通知（ConfigName 的变更通知由基类处理）
+                    OnPropertyChanged(new PropertyChangedEventArgs
+                    {
+                        PropertyName = nameof(DeviceName),
+                        OldValue = oldValue,
+                        NewValue = value
+                    });
+                }
+            }
         }
 
         /// <summary>
@@ -176,10 +197,106 @@ namespace Astra.Core.Devices.Configuration
 
         #endregion
 
+        #region 设备标识信息（IDeviceInfo 接口新增属性）
+
+        private string _manufacturer = string.Empty;
+        private string _model = string.Empty;
+        private string _serialNumber = string.Empty;
+
+        /// <summary>
+        /// 设备厂家
+        /// </summary>
+        [HotUpdatable]
+        public string Manufacturer
+        {
+            get => _manufacturer;
+            set
+            {
+                if (SetProperty(ref _manufacturer, value))
+                {
+                    // 厂家变更时，重置型号
+                    if (!string.IsNullOrEmpty(_model))
+                    {
+                        var oldModel = _model;
+                        _model = string.Empty;
+                        OnPropertyChanged(new PropertyChangedEventArgs
+                        {
+                            PropertyName = nameof(Model),
+                            OldValue = oldModel,
+                            NewValue = string.Empty
+                        });
+                    }
+
+                    // 应用设备约束
+                    ApplyDeviceConstraints();
+                    
+                    // 更新设备ID
+                    DeviceId = GenerateDeviceId();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 设备型号
+        /// </summary>
+        [HotUpdatable]
+        public string Model
+        {
+            get => _model;
+            set
+            {
+                if (SetProperty(ref _model, value))
+                {
+                    // 应用设备约束
+                    ApplyDeviceConstraints();
+                    
+                    // 更新设备ID
+                    DeviceId = GenerateDeviceId();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 设备序列号
+        /// </summary>
+        [HotUpdatable]
+        public string SerialNumber
+        {
+            get => _serialNumber;
+            set
+            {
+                if (SetProperty(ref _serialNumber, value))
+                {
+                    // 更新设备ID
+                    DeviceId = GenerateDeviceId();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 应用设备约束（子类可重写以实现特定约束逻辑）
+        /// </summary>
+        protected virtual void ApplyDeviceConstraints()
+        {
+            var spec = DeviceSpecificationRegistry.GetSpecification(Type, Manufacturer, Model);
+            if (spec == null)
+            {
+                return; // 未找到规格，不应用约束
+            }
+
+            // 如果配置实现了约束接口，调用应用约束方法
+            if (this is IDeviceSpecificationConstraint constraint)
+            {
+                constraint.ApplyConstraints(spec);
+            }
+        }
+
+        #endregion
+
         #region IDeviceInfo 接口方法实现
 
         /// <summary>
-        /// 获取设备信息字典
+        /// 获取设备信息字典（包含厂家、型号和序列号）
         /// </summary>
         public virtual Dictionary<string, string> GetDeviceInfo()
         {
@@ -190,7 +307,10 @@ namespace Astra.Core.Devices.Configuration
                 ["DeviceType"] = Type.ToString(),
                 ["IsEnabled"] = IsEnabled.ToString(),
                 ["GroupId"] = GroupId ?? string.Empty,
-                ["SlotId"] = SlotId ?? string.Empty
+                ["SlotId"] = SlotId ?? string.Empty,
+                ["Manufacturer"] = Manufacturer ?? string.Empty,
+                ["Model"] = Model ?? string.Empty,
+                ["SerialNumber"] = SerialNumber ?? string.Empty
             };
         }
 
@@ -288,6 +408,28 @@ namespace Astra.Core.Devices.Configuration
                 errors.Add($"设备名称长度不能超过100个字符（当前长度：{DeviceName.Length}）");
             }
 
+            // 厂家和型号验证（如果设备类型需要）
+            if (RequiresManufacturerAndModel())
+            {
+                if (string.IsNullOrWhiteSpace(Manufacturer))
+                {
+                    errors.Add("必须选择设备厂家");
+                }
+
+                if (string.IsNullOrWhiteSpace(Model))
+                {
+                    errors.Add("必须选择设备型号");
+                }
+            }
+
+            // 根据规格验证（如果存在）
+            var spec = DeviceSpecificationRegistry.GetSpecification(Type, Manufacturer, Model);
+            if (spec != null)
+            {
+                var specErrors = ValidateAgainstSpecification(spec);
+                errors.AddRange(specErrors);
+            }
+
             if (errors.Count > 0)
             {
                 var errorMessage = $"配置验证失败，发现 {errors.Count} 个问题：" + Environment.NewLine + string.Join(Environment.NewLine + "  - ", errors);
@@ -295,6 +437,23 @@ namespace Astra.Core.Devices.Configuration
             }
 
             return OperationResult<bool>.Succeed(true, "配置验证通过");
+        }
+
+        /// <summary>
+        /// 判断是否需要厂家和型号（子类可重写）
+        /// </summary>
+        protected virtual bool RequiresManufacturerAndModel()
+        {
+            // 默认情况下，如果指定了厂家，则必须指定型号
+            return !string.IsNullOrWhiteSpace(Manufacturer);
+        }
+
+        /// <summary>
+        /// 根据规格验证配置（子类可重写以实现特定验证逻辑）
+        /// </summary>
+        protected virtual List<string> ValidateAgainstSpecification(IDeviceSpecification specification)
+        {
+            return new List<string>(); // 默认不进行额外验证
         }
 
         public virtual Dictionary<string, object> ToDictionary()

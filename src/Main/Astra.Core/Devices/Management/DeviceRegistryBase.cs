@@ -232,9 +232,43 @@ namespace Astra.Core.Devices.Management
 
         public void Dispose() => DisposeAll();
 
+        /// <summary>
+        /// 选择工厂（增强版：支持厂家和型号匹配）
+        /// </summary>
         protected virtual IDeviceFactory SelectFactory(TConfig config)
         {
+            // 优先查找精确匹配的工厂（厂家+型号）
+            if (config is IDeviceInfo deviceInfo && 
+                !string.IsNullOrWhiteSpace(deviceInfo.Manufacturer) && 
+                !string.IsNullOrWhiteSpace(deviceInfo.Model))
+            {
+                var exactMatch = _factories.FirstOrDefault(f => 
+                    f.CanCreate(config) && 
+                    IsFactoryMatch(f, deviceInfo.Manufacturer, deviceInfo.Model));
+                
+                if (exactMatch != null)
+                {
+                    return exactMatch;
+                }
+            }
+
+            // 回退到类型匹配
             return _factories.FirstOrDefault(f => f.CanCreate(config));
+        }
+
+        /// <summary>
+        /// 检查工厂是否匹配指定的厂家和型号（子类可重写）
+        /// </summary>
+        protected virtual bool IsFactoryMatch(
+            IDeviceFactory factory, 
+            string manufacturer, 
+            string model)
+        {
+            // 默认实现：工厂名称包含厂家和型号信息
+            // 子类可以重写此方法以实现更精确的匹配逻辑
+            var factoryName = factory.GetType().Name;
+            return factoryName.Contains(manufacturer, StringComparison.OrdinalIgnoreCase) &&
+                   factoryName.Contains(model, StringComparison.OrdinalIgnoreCase);
         }
 
         protected virtual void RegisterWithDeviceManager(TDevice device)

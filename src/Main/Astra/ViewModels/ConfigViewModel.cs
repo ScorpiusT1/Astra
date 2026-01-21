@@ -216,7 +216,7 @@ namespace Astra.ViewModels
                 // 如果某个 ConfigId 在 existingNodeConfigs 中存在，使用它；否则使用从配置管理器加载的 Config
                 var configsOfType = new List<IConfig>();
                 var loadedConfigsOfType = loadedConfigs.Where(c => c.GetType() == configType).ToList();
-                
+
                 foreach (var loadedConfig in loadedConfigsOfType)
                 {
                     // 如果该 ConfigId 在 existingNodeConfigs 中存在，使用已存在的 Config（保留修改）
@@ -259,7 +259,7 @@ namespace Astra.ViewModels
                     // 创建子节点
                     TreeNode childNode = new TreeNode
                     {
-                        Header = config.ConfigName,
+                        Header = GetNodeDisplayName(config, rootNode),
                         Icon = attr.Icon ?? _defaultIcon,
                         ViewModelType = attr.ViewModelType,
                         ViewType = attr.ViewType,
@@ -389,11 +389,11 @@ namespace Astra.ViewModels
                         // 尝试更新 ViewModel 的 Config 属性
                         var viewModelType = cached.ViewModel.GetType();
                         var configProperty = viewModelType.GetProperty("Config");
-                        
+
                         if (configProperty != null)
                         {
                             var currentConfig = configProperty.GetValue(cached.ViewModel);
-                            
+
                             // 如果 Config 引用不同，更新它
                             if (!ReferenceEquals(currentConfig, node.Config))
                             {
@@ -401,7 +401,7 @@ namespace Astra.ViewModels
                             }
                         }
                     }
-                    
+
                     ContentControlChanged?.Invoke(this, cached.View);
                     return;
                 }
@@ -411,17 +411,17 @@ namespace Astra.ViewModels
                 if (node.ViewType != null)
                 {
                     try
-                    {                      
+                    {
                         var viewTypeFromPluginContext = node.ViewType;
                         var viewAssemblyFromPluginContext = viewTypeFromPluginContext.Assembly;
                         var assemblyName = viewAssemblyFromPluginContext.GetName();
                         var assemblyLocation = viewAssemblyFromPluginContext.Location;
-          
+
                         Type viewTypeToUse = viewTypeFromPluginContext;
                         var defaultContextAssembly = AssemblyLoadContext.Default.Assemblies
-                            .FirstOrDefault(a => a.GetName().Name == assemblyName.Name && 
+                            .FirstOrDefault(a => a.GetName().Name == assemblyName.Name &&
                                                a.GetName().Version?.ToString() == assemblyName.Version?.ToString());
-                        
+
                         if (defaultContextAssembly != null && defaultContextAssembly != viewAssemblyFromPluginContext)
                         {
                             // 默认上下文中存在该程序集，尝试获取相同类型
@@ -438,7 +438,7 @@ namespace Astra.ViewModels
                                 // 忽略类型获取错误，继续使用原始类型
                             }
                         }
-                        
+
                         // 如果 Location 为空（可能在内存中加载的），尝试从插件目录查找
                         if (string.IsNullOrEmpty(assemblyLocation))
                         {
@@ -460,7 +460,7 @@ namespace Astra.ViewModels
                                 // 忽略获取程序集路径的错误
                             }
                         }
-                        
+
                         // 如果默认上下文中没有程序集，尝试加载到默认上下文（用于资源访问）
                         if (defaultContextAssembly == null && !string.IsNullOrEmpty(assemblyLocation) && File.Exists(assemblyLocation))
                         {
@@ -468,7 +468,7 @@ namespace Astra.ViewModels
                             {
                                 // 使用 LoadFrom 将程序集加载到默认上下文
                                 defaultContextAssembly = Assembly.LoadFrom(assemblyLocation);
-                                
+
                                 // 再次尝试从默认上下文获取类型
                                 try
                                 {
@@ -494,7 +494,7 @@ namespace Astra.ViewModels
                         // ⚠️ 更关键：在创建 View 之前，确保使用默认上下文中的程序集进行反射
                         // 使用 AssemblyLoadContext.EnterContextualReflection 确保 WPF 使用正确的程序集
                         var targetAssemblyForReflection = defaultContextAssembly ?? viewAssemblyFromPluginContext;
-                        
+
                         if (targetAssemblyForReflection != null)
                         {
                             using (AssemblyLoadContext.EnterContextualReflection(targetAssemblyForReflection))
@@ -569,12 +569,12 @@ namespace Astra.ViewModels
                         }
                     }
 
-                if (viewModel == null)
-                {
-                    var errorMsg = $"无法创建 ViewModel 实例: {node.ViewModelType.Name}，未找到合适的构造函数";
-                    ToastHelper.ShowError(errorMsg);
-                    return;
-                }
+                    if (viewModel == null)
+                    {
+                        var errorMsg = $"无法创建 ViewModel 实例: {node.ViewModelType.Name}，未找到合适的构造函数";
+                        ToastHelper.ShowError(errorMsg);
+                        return;
+                    }
                 }
                 catch (Exception vmEx)
                 {
@@ -587,13 +587,13 @@ namespace Astra.ViewModels
                 }
 
                 configView.DataContext = viewModel;
-                
+
                 // ✅ 将创建的 View 和 ViewModel 添加到缓存中
                 if (configView != null && viewModel != null)
                 {
                     _viewCache[cacheKey] = (configView, viewModel);
                 }
-                
+
                 ContentControlChanged?.Invoke(this, configView);
             }
             catch (Exception ex)
@@ -761,13 +761,8 @@ namespace Astra.ViewModels
             if (newConfig != null)
             {
                 // ✅ 确保配置名称与树节点名称一致
+                // 注意：DeviceName 现在是 ConfigName 的别名，设置 ConfigName 即可
                 newConfig.ConfigName = newNodeName;
-
-                // ✅ 如果配置是设备配置（DeviceConfig），也要设置设备名称
-                if (newConfig is Astra.Core.Devices.Configuration.DeviceConfig deviceConfig)
-                {
-                    deviceConfig.DeviceName = newNodeName;
-                }
             }
 
             TreeNode newNode = new TreeNode
@@ -971,6 +966,15 @@ namespace Astra.ViewModels
                     }
                 }
 
+                // 在保存前更新节点名称和配置名称，确保保存时名称已同步
+                // 注意：DeviceName 现在是 ConfigName 的别名，更新 ConfigName 即可
+                // 先异步获取所有已保存的配置，然后传递给 GetNodeDisplayName 以确保编号唯一
+                var allConfigsResult = await _configManager.GetAllConfigsAsync();
+                var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
+                
+                string newNodeName = GetNodeDisplayName(targetNode.Config, targetNode.Parent, savedConfigs);
+                targetNode.Config.ConfigName = newNodeName;
+
                 // 通过 IConfigurationManager 的非泛型入口更新当前配置
                 OperationResult rlt = await _configManager.UpdateConfigAsync(targetNode.Config);
 
@@ -980,8 +984,10 @@ namespace Astra.ViewModels
                     return;
                 }
 
-                targetNode.Header = targetNode.Config.ConfigName;
-                ToastHelper.ShowSuccess($"已保存: {targetNode.Config.ConfigName}");
+                // 更新节点名称（设备名称已在保存前更新）
+                targetNode.Header = newNodeName;
+
+                ToastHelper.ShowSuccess($"已保存: {targetNode.Header}");
 
             }
             catch (Exception ex)
@@ -1012,6 +1018,9 @@ namespace Astra.ViewModels
                 // 获取基准时间（用于按顺序设置 UpdatedAt）
                 var baseTime = DateTime.Now;
                 var timeOffset = 0;
+                
+                // 预先获取所有已保存的配置，用于检查编号唯一性（避免在循环中重复获取）
+                List<IConfig> savedConfigs = null;
 
                 // 遍历所有根节点（按树中的顺序）
                 foreach (var rootNode in TreeNodes)
@@ -1040,11 +1049,25 @@ namespace Astra.ViewModels
                                 childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
                                 timeOffset++;
 
+                                // 在保存前更新节点名称和配置名称，确保保存时名称已同步
+                                // 注意：DeviceName 现在是 ConfigName 的别名，更新 ConfigName 即可
+                                // 先异步获取所有已保存的配置，然后传递给 GetNodeDisplayName 以确保编号唯一
+                                // 注意：这里在循环外获取一次即可，避免重复获取
+                                if (savedConfigs == null)
+                                {
+                                    var allConfigsResult = await _configManager.GetAllConfigsAsync();
+                                    savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
+                                }
+                                
+                                string newNodeName = GetNodeDisplayName(childNode.Config, childNode.Parent, savedConfigs);
+                                childNode.Config.ConfigName = newNodeName;
+
                                 var result = await _configManager.UpdateConfigAsync(childNode.Config);
 
                                 if (result != null && result.Success)
                                 {
-                                    childNode.Header = string.IsNullOrEmpty(childNode.Config.ConfigName) ? childNode.Header : childNode.Config.ConfigName;
+                                    // 更新节点名称（设备名称已在保存前更新）
+                                    childNode.Header = newNodeName;
                                     successCount++;
                                 }
                                 else
@@ -1168,62 +1191,62 @@ namespace Astra.ViewModels
                         {
                             allImportedConfigs.AddRange(result.Data);
                             successCount += result.Data.Count;
-                            }
-                            else
-                            {
-                                                failureCount++;
+                        }
+                        else
+                        {
+                            failureCount++;
                             errors.Add($"{Path.GetFileName(filePath)}: {result.Message}");
                         }
-                            }
-                            catch (Exception ex)
-                            {
-                                failureCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        failureCount++;
                         errors.Add($"{Path.GetFileName(filePath)}: {ex.Message}");
-                            }
-                        }
+                    }
+                }
 
-                        // 获取配置类型的属性信息（用于创建树节点）
-                        var attr = targetNode.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>();
-                        if (attr == null)
-                        {
+                // 获取配置类型的属性信息（用于创建树节点）
+                var attr = targetNode.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>();
+                if (attr == null)
+                {
                     ToastHelper.ShowError("配置类型缺少 TreeNodeConfigAttribute");
                     return;
-                        }
+                }
 
                 // 将所有导入的配置添加到树节点（不保存到配置管理器）
                 foreach (var config in allImportedConfigs)
+                {
+                    try
+                    {
+                        // 使用统一的节点显示名称生成方法
+                        // 如果名称中没有编号，自动添加唯一编号
+                        var displayName = GetNodeDisplayName(config, targetNode);
+
+                        // 创建子节点
+                        TreeNode childNode = new TreeNode
                         {
-                            try
-                            {
-                                var displayName = string.IsNullOrWhiteSpace(config.ConfigName) 
-                                    ? "未命名配置" 
-                                    : config.ConfigName;
-
-                                // 创建子节点
-                                TreeNode childNode = new TreeNode
-                                {
-                                    Header = displayName,
-                                    Icon = attr.Icon ?? _defaultIcon,
-                                    ViewModelType = attr.ViewModelType,
-                                    ViewType = attr.ViewType,
-                                    ShowAddButton = false,
-                                    ShowDeleteButton = true,
+                            Header = displayName,
+                            Icon = attr.Icon ?? _defaultIcon,
+                            ViewModelType = attr.ViewModelType,
+                            ViewType = attr.ViewType,
+                            ShowAddButton = false,
+                            ShowDeleteButton = true,
                             Config = config,
-                                    Order = attr.Order,
+                            Order = attr.Order,
                             ConfigType = config.ConfigType,
-                                    Parent = targetNode,
-                                };
+                            Parent = targetNode,
+                        };
 
-                                // 添加到根节点的子节点集合
-                                targetNode.Children.Add(childNode);
-                                
+                        // 添加到根节点的子节点集合
+                        targetNode.Children.Add(childNode);
+
                         // 确保根节点展开
-                                targetNode.IsExpanded = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                failureCount++;
-                                errors.Add($"{config.ConfigName ?? "未知配置"}: {ex.Message}");
+                        targetNode.IsExpanded = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        failureCount++;
+                        errors.Add($"{config.ConfigName ?? "未知配置"}: {ex.Message}");
                     }
                 }
 
@@ -1348,6 +1371,226 @@ namespace Astra.ViewModels
             }
         }
 
+        /// <summary>
+        /// 获取节点的显示名称
+        /// 使用配置对象的 GetDisplayName() 方法（如果实现了 ConfigBase）
+        /// 如果名称中没有编号，自动添加唯一编号
+        /// </summary>
+        /// <param name="config">配置对象</param>
+        /// <param name="parent">父节点（可选，用于生成唯一编号）</param>
+        /// <param name="savedConfigs">已保存的配置列表（可选，用于检查编号唯一性）</param>
+        private string GetNodeDisplayName(IConfig config, TreeNode parent = null, List<IConfig> savedConfigs = null)
+        {
+            if (config == null)
+                return string.Empty;
+
+            string displayName;
+
+            // 如果配置继承自 ConfigBase，使用 GetDisplayName() 方法
+            if (config is ConfigBase configBase)
+            {
+                displayName = configBase.GetDisplayName();
+            }
+            else
+            {
+                // 对于其他配置类型，使用 ConfigName
+                displayName = string.IsNullOrEmpty(config.ConfigName) ? "未命名配置" : config.ConfigName;
+            }
+
+            // 如果提供了父节点，检查是否需要添加编号
+            if (parent != null)
+            {
+                displayName = EnsureUniqueNumber(displayName, parent, config.ConfigId, savedConfigs);
+            }
+
+            return displayName;
+        }
+
+        /// <summary>
+        /// 确保名称有唯一编号（如果名称末尾没有 #数字 格式的编号，自动添加）
+        /// </summary>
+        /// <param name="savedConfigs">已保存的配置列表（可选，用于检查编号唯一性）</param>
+        private string EnsureUniqueNumber(string baseName, TreeNode parent, string currentConfigId = null, List<IConfig> savedConfigs = null)
+        {
+            if (string.IsNullOrEmpty(baseName) || parent == null || parent.Children == null)
+                return baseName;
+
+            // 只检查是否以 #数字 结尾（明确标识为编号）
+            // 如果只是以数字结尾（如 BRC6804），不应该认为是编号，应该直接添加 #1
+            if (HasHashNumberSuffix(baseName))
+            {
+                // 如果已有 #数字 后缀，检查是否唯一，如果不唯一则生成新的编号
+                return EnsureUniqueNameWithNumber(baseName, parent, currentConfigId, savedConfigs);
+            }
+            else
+            {
+                // 如果没有 #数字 后缀，添加唯一编号
+                return AddUniqueNumber(baseName, parent, currentConfigId, savedConfigs);
+            }
+        }
+
+        /// <summary>
+        /// 检查名称是否以 #数字 结尾（明确标识为编号）
+        /// </summary>
+        private bool HasHashNumberSuffix(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            // 只检查是否以 #数字 结尾（明确标识为编号）
+            // 如果只是以数字结尾（如 BRC6804），不应该认为是编号
+            int hashIndex = name.LastIndexOf('#');
+            if (hashIndex >= 0 && hashIndex < name.Length - 1)
+            {
+                string numberPart = name.Substring(hashIndex + 1);
+                if (int.TryParse(numberPart, out _))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 如果名称已有数字后缀但不唯一，生成新的唯一编号
+        /// </summary>
+        private string EnsureUniqueNameWithNumber(string name, TreeNode parent, string currentConfigId = null, List<IConfig> savedConfigs = null)
+        {
+            // 提取基础名称（去掉数字后缀）
+            string baseName = ExtractBaseName(name);
+
+            // 获取所有已使用的名称（包括树中的节点和已保存的配置）
+            var usedNames = GetUsedNamesForParent(parent, currentConfigId, savedConfigs);
+
+            // 检查当前名称是否唯一
+            if (!usedNames.Contains(name))
+            {
+                return name; // 名称已唯一，直接返回
+            }
+
+            // 如果不唯一，生成新的唯一编号
+            return AddUniqueNumber(baseName, parent, currentConfigId, savedConfigs);
+        }
+
+        /// <summary>
+        /// 提取基础名称（去掉末尾的 #数字）
+        /// 只处理 #数字 格式，不处理纯数字结尾（避免误判型号中的数字）
+        /// </summary>
+        private string ExtractBaseName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return name;
+
+            // 只检查 #数字 格式（明确标识为编号）
+            int hashIndex = name.LastIndexOf('#');
+            if (hashIndex >= 0 && hashIndex < name.Length - 1)
+            {
+                string numberPart = name.Substring(hashIndex + 1);
+                if (int.TryParse(numberPart, out _))
+                {
+                    // 去掉 # 符号（保留前面的空格，如果有的话）
+                    return name.Substring(0, hashIndex).TrimEnd();
+                }
+            }
+
+            // 如果名称不以 #数字 结尾，返回原名称（可能是型号中的数字，如 BRC6804）
+            return name;
+        }
+
+        /// <summary>
+        /// 为基础名称添加唯一编号（格式：基础名称#编号）
+        /// </summary>
+        private string AddUniqueNumber(string baseName, TreeNode parent, string currentConfigId = null, List<IConfig> savedConfigs = null)
+        {
+            if (string.IsNullOrEmpty(baseName) || parent == null || parent.Children == null)
+                return baseName;
+
+            // 获取所有已使用的名称（包括树中的节点和已保存的配置）
+            var usedNames = GetUsedNamesForParent(parent, currentConfigId, savedConfigs);
+
+            // 提取已使用的编号（支持 #数字 和 数字 两种格式）
+            var usedNumbers = new HashSet<int>();
+            foreach (var usedName in usedNames)
+            {
+                if (usedName.StartsWith(baseName))
+                {
+                    string suffix = usedName.Substring(baseName.Length).TrimStart();
+
+                    // 检查 #数字 格式
+                    if (suffix.StartsWith("#"))
+                    {
+                        string numberPart = suffix.Substring(1);
+                        if (int.TryParse(numberPart, out int number))
+                        {
+                            usedNumbers.Add(number);
+                        }
+                    }
+                    // 兼容旧格式：直接以数字开头
+                    else if (int.TryParse(suffix, out int number))
+                    {
+                        usedNumbers.Add(number);
+                    }
+                }
+            }
+
+            // 查找最小可用编号（从1开始）
+            int availableNumber = 1;
+            while (usedNumbers.Contains(availableNumber))
+            {
+                availableNumber++;
+            }
+
+            return $"{baseName} #{availableNumber}";
+        }
+
+        /// <summary>
+        /// 获取父节点下所有已使用的名称（包括树中的节点和已保存的配置）
+        /// </summary>
+        /// <param name="savedConfigs">已保存的配置列表（可选，用于检查编号唯一性）</param>
+        private HashSet<string> GetUsedNamesForParent(TreeNode parent, string currentConfigId = null, List<IConfig> savedConfigs = null)
+        {
+            var usedNames = new HashSet<string>();
+
+            // 1. 从树中的兄弟节点获取名称（排除当前节点）
+            if (parent?.Children != null)
+            {
+                foreach (var siblingNode in parent.Children)
+                {
+                    if (siblingNode != null && !string.IsNullOrEmpty(siblingNode.Header))
+                    {
+                        // 排除当前正在保存的节点
+                        if (siblingNode.Config?.ConfigId != currentConfigId)
+                        {
+                            usedNames.Add(siblingNode.Header);
+                        }
+                    }
+                }
+            }
+
+            // 2. 从已保存的配置列表中获取名称（如果提供了列表）
+            if (savedConfigs != null && parent?.ConfigType != null)
+            {
+                // 获取同类型的配置
+                var configsOfSameType = savedConfigs
+                    .Where(c => c.GetType() == parent.ConfigType)
+                    .Where(c => c.ConfigId != currentConfigId) // 排除当前配置
+                    .ToList();
+
+                foreach (var config in configsOfSameType)
+                {
+                    // 直接使用 ConfigName，因为保存时 ConfigName 已经更新为包含编号的名称
+                    // 例如："B&K 4507B SN12345#1"
+                    string configName = config.ConfigName;
+                    if (!string.IsNullOrEmpty(configName))
+                    {
+                        usedNames.Add(configName);
+                    }
+                }
+            }
+
+            return usedNames;
+        }
 
     }
 }

@@ -7,6 +7,10 @@ using Astra.Messages;
 using System.Threading.Tasks;
 using Astra.Core.Access.Models;
 using Astra.UI.Helpers;
+using HandyControl.Controls;
+using PasswordBox = HandyControl.Controls.PasswordBox;
+using ComboBox = System.Windows.Controls.ComboBox;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace Astra.Views
 {

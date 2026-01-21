@@ -25,7 +25,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
     [TreeNodeConfig("传感器", "📡", typeof(SensorConfigView), typeof(SensorConfigViewModel))]
     public class SensorConfig : ConfigBase, INotifyPropertyChanged, ICloneable
     {
-        private string _sensorId;
         private SensorType _sensorType;
         private string _manufacturer;
         private string _model;
@@ -54,12 +53,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
         public event PropertyChangedEventHandler PropertyChanged;
 
         #region 属性
-
-        public string SensorId
-        {
-            get => _sensorId;
-            set => SetProperty(ref _sensorId, value);
-        }
 
         public SensorType SensorType
         {
@@ -392,7 +385,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
             // 如果反序列化时 JSON 中没有 ConfigId，会在反序列化完成后由其他机制设置
             // 这样确保反序列化时 ConfigId 不会被覆盖
 
-            _sensorId = Guid.NewGuid().ToString();
             _sensorType = SensorType.None;
             _manufacturer = "";
             _model = "";
@@ -442,6 +434,41 @@ namespace Astra.Plugins.DataAcquisition.Configs
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
+        /// <summary>
+        /// 获取配置的显示名称（用于树节点等UI显示）
+        /// 格式：厂家 + 型号 + 编号
+        /// </summary>
+        public override string GetDisplayName()
+        {
+            var parts = new List<string>();
+            
+            // 添加厂家
+            if (!string.IsNullOrWhiteSpace(Manufacturer))
+            {
+                parts.Add(Manufacturer);
+            }
+            
+            // 添加型号
+            if (!string.IsNullOrWhiteSpace(Model))
+            {
+                parts.Add(Model);
+            }
+            
+            // 添加编号（序列号）
+            if (!string.IsNullOrWhiteSpace(SerialNumber))
+            {
+                parts.Add(SerialNumber);
+            }
+            
+            // 如果所有部分都为空，使用 ConfigName 作为后备
+            if (parts.Count == 0)
+            {
+                return string.IsNullOrEmpty(ConfigName) ? "未命名传感器" : ConfigName;
+            }
+            
+            return string.Join(" ", parts);
+        }
+
         public override string ToString() => DisplayText;
 
         public override IConfig Clone()
@@ -454,7 +481,9 @@ namespace Astra.Plugins.DataAcquisition.Configs
             return Clone() as ICloneable;
         }
     }
+
+
+    #endregion
 }
 
-#endregion
 

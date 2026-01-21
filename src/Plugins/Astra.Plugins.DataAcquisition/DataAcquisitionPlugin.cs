@@ -1,4 +1,6 @@
 using Astra.Core.Configuration;
+using Astra.Core.Devices.Abstractions;
+using Astra.Core.Devices.Base;
 using Astra.Core.Devices.Management;
 using Astra.Core.Logs;
 using Astra.Core.Plugins.Abstractions;
@@ -7,6 +9,8 @@ using Astra.Core.Plugins.Messaging;
 using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
+using Astra.Plugins.DataAcquisition.Factories;
+using Astra.Plugins.DataAcquisition.Specifications;
 using Microsoft.Extensions.DependencyInjection;
 
 
@@ -20,7 +24,8 @@ namespace Astra.Plugins.DataAcquisition
         private IConfigurationManager? _configuManager;
         private IMessageBus _messageBus;
         private ILogger? _logger;
-        private readonly List<DataAcquisitionDevice> _devices = new();
+        private readonly List<IDataAcquisition> _devices = new();
+        private readonly List<IDeviceFactory> _factories = new();
         private bool _disposed;
 
         public string Id => "Astra.Plugins.DataAcquisition";
@@ -61,6 +66,12 @@ namespace Astra.Plugins.DataAcquisition
             }
 
             _logger?.Info($"[{Name}] 开始初始化插件", LogCategory.System);
+
+            // 初始化设备规格
+            DataAcquisitionSpecificationInitializer.Initialize();
+
+            // 初始化设备工厂
+            InitializeFactories();
 
             // 先加载传感器配置（需要在设备配置加载前完成，以便恢复传感器引用）
             await LoadSensorConfig(cancellationToken).ConfigureAwait(false);
@@ -103,39 +114,52 @@ namespace Astra.Plugins.DataAcquisition
             {
                 try
                 {
+                    // IDataAcquisition 设备都继承自 DeviceBase，因此也是 IDevice
+                    var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
+                    if (deviceAsIDevice == null)
+                    {
+                        _logger?.Error($"[{Name}] 设备 {device.DeviceId} 不是有效的 IDevice 类型", null, LogCategory.Device);
+                        failCount++;
+                        continue;
+                    }
+
                     var initResult = await device.InitializeAsync().ConfigureAwait(false);
 
                     if (initResult)
                     {
-                        var registerResult = _deviceManager.RegisterDevice(device);
+                        var registerResult = _deviceManager.RegisterDevice(deviceAsIDevice);
 
                         if (registerResult.Success)
                         {
                             successCount++;
-                            _logger?.Info($"[{Name}] 设备 {device.DeviceName} 注册成功", LogCategory.Device);
+                            _logger?.Info($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
 
                             // 如果配置了自动启动，则开始采集
-                            if (device.CurrentConfig is DataAcquisitionConfig config && config.AutoStart)
+                            if (device is DeviceBase<DataAcquisitionConfig> deviceBase)
                             {
-                                await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
+                                var config = deviceBase.CurrentConfig;
+                                if (config != null && config.AutoStart)
+                                {
+                                    await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
+                                }
                             }
                         }
                         else
                         {
                             failCount++;
-                            _logger?.Error($"[{Name}] 设备 {device.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
+                            _logger?.Error($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
                         }
                     }
                     else
                     {
                         failCount++;
-                        _logger?.Error($"[{Name}] 设备 {device.DeviceName} 初始化失败", null, LogCategory.Device);
+                        _logger?.Error($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 初始化失败", null, LogCategory.Device);
                     }
                 }
                 catch (Exception ex)
                 {
                     failCount++;
-                    _logger?.Error($"[{Name}] 启用设备 {device.DeviceName} 时发生异常: {ex.Message}", ex, LogCategory.Device);
+                    _logger?.Error($"[{Name}] 启用设备 {device.DeviceId} 时发生异常: {ex.Message}", ex, LogCategory.Device);
                 }
             }
 
@@ -155,7 +179,9 @@ namespace Astra.Plugins.DataAcquisition
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{Name}] 停止设备 {device.DeviceName} 时发生异常: {ex.Message}", ex, LogCategory.Device);
+                    var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
+                    var deviceName = deviceAsIDevice?.DeviceName ?? device.DeviceId;
+                    _logger?.Error($"[{Name}] 停止设备 {deviceName} 时发生异常: {ex.Message}", ex, LogCategory.Device);
                 }
             }));
 
@@ -166,15 +192,19 @@ namespace Astra.Plugins.DataAcquisition
             {
                 try
                 {
-                    var unregisterResult = _deviceManager.UnregisterDevice(device.DeviceId);
-                    if (unregisterResult.Success)
+                    var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
+                    if (deviceAsIDevice != null)
                     {
-                        _logger?.Info($"[{Name}] 设备 {device.DeviceName} 已注销", LogCategory.Device);
+                        var unregisterResult = _deviceManager.UnregisterDevice(device.DeviceId);
+                        if (unregisterResult.Success)
+                        {
+                            _logger?.Info($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 已注销", LogCategory.Device);
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{Name}] 注销设备 {device.DeviceName} 时发生异常: {ex.Message}", ex, LogCategory.Device);
+                    _logger?.Error($"[{Name}] 注销设备 {device.DeviceId} 时发生异常: {ex.Message}", ex, LogCategory.Device);
                 }
             }
 
@@ -249,12 +279,45 @@ namespace Astra.Plugins.DataAcquisition
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{Name}] 释放设备 {device.DeviceName} 时发生异常: {ex.Message}", ex, LogCategory.Device);
+                    var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
+                    var deviceName = deviceAsIDevice?.DeviceName ?? device.DeviceId;
+                    _logger?.Error($"[{Name}] 释放设备 {deviceName} 时发生异常: {ex.Message}", ex, LogCategory.Device);
                 }
             }
 
             _devices.Clear();
+            _factories.Clear();
             _disposed = true;
+        }
+
+        /// <summary>
+        /// 初始化设备工厂
+        /// </summary>
+        private void InitializeFactories()
+        {
+            _factories.Add(new BRCDataAcquisitionFactory());
+            _factories.Add(new MGSDataAcquisitionFactory());
+            
+            _logger?.Info($"[{Name}] 已注册 {_factories.Count} 个设备工厂", LogCategory.System);
+        }
+
+        /// <summary>
+        /// 选择工厂（根据配置的厂家选择对应的工厂）
+        /// </summary>
+        private IDeviceFactory? SelectFactory(DataAcquisitionConfig config)
+        {
+            // 优先查找精确匹配的工厂（厂家匹配）
+            if (!string.IsNullOrWhiteSpace(config.Manufacturer))
+            {
+                var exactMatch = _factories.FirstOrDefault(f => f.CanCreate(config));
+                if (exactMatch != null)
+                {
+                    return exactMatch;
+                }
+            }
+
+            // 如果没有匹配的工厂，返回 null（让调用者处理）
+            return null;
         }
 
         private async Task LoadSensorConfig(CancellationToken cancellationToken)
@@ -323,9 +386,23 @@ namespace Astra.Plugins.DataAcquisition
                         // 恢复配置中所有通道的传感器引用
                         config.RestoreSensorReferences(availableSensors);
 
-                        var device = new DataAcquisitionDevice(config, _messageBus, _logger);
+                        // 使用工厂模式创建设备（根据厂家选择对应的工厂）
+                        var factory = SelectFactory(config);
+                        if (factory == null)
+                        {
+                            _logger?.Warn($"[{Name}] 未找到可用于配置 {config.DeviceName} ({config.DeviceId}) 的设备工厂，厂家: {config.Manufacturer}", LogCategory.Device);
+                            continue;
+                        }
+
+                        var device = factory.Create(config, _context?.ServiceProvider) as IDataAcquisition;
+                        if (device == null)
+                        {
+                            _logger?.Warn($"[{Name}] 工厂 {factory.GetType().Name} 创建的设备类型不匹配", LogCategory.Device);
+                            continue;
+                        }
+
                         _devices?.Add(device);
-                        _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);
+                        _logger?.Info($"[{Name}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId}), 厂家: {config.Manufacturer}, 型号: {config.Model}", LogCategory.Device);
                     }
                     catch (Exception ex)
                     {

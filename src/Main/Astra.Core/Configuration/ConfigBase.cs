@@ -327,6 +327,17 @@ namespace Astra.Core.Configuration
             }
         }
 
+        /// <summary>
+        /// 获取配置的显示名称（用于树节点等UI显示）
+        /// 子类可以重写此方法以自定义显示名称格式
+        /// 默认返回 ConfigName
+        /// </summary>
+        /// <returns>配置的显示名称</returns>
+        public virtual string GetDisplayName()
+        {
+            return string.IsNullOrEmpty(ConfigName) ? "未命名配置" : ConfigName;
+        }
+
         public override string ToString()
         {
             return $"[{GetType().Name}] Id={ConfigId}, ConfigName={ConfigName}, Version={Version}";

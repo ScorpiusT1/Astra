@@ -5,6 +5,9 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:local="clr-namespace:Astra.Plugins.DataAcquisition.Views"
+             xmlns:converters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
+             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
+             d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionBaseConfigViewModel}"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
@@ -20,10 +23,17 @@
         <Style TargetType="ComboBox"
                BasedOn="{StaticResource ModernComboBoxStyle}" />
 
+        <!-- 值转换器 -->
+        <converters:IsNotNullConverter x:Key="IsNotNullConverter" />
+        <converters:HzToKHzConverter x:Key="HzToKHzConverter" />
+
     </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid Margin="20">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -44,8 +54,61 @@
                        Foreground="{DynamicResource TitleBrush}"
                        Margin="0,0,0,20" />
 
-            <!-- 设备名称 -->
+            <!-- 设备厂家 -->
             <Grid Grid.Row="1"
+                  Margin="0,0,0,15">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="设备厂家 *:"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding AvailableManufacturers}"
+                          SelectedItem="{Binding Manufacturer, UpdateSourceTrigger=PropertyChanged}"
+                          FontSize="13"
+                          Height="36"
+                          hc:InfoElement.Placeholder="请选择设备厂家" />
+            </Grid>
+
+            <!-- 设备型号 -->
+            <Grid Grid.Row="2"
+                  Margin="0,0,0,15">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="设备型号 *:"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding AvailableModels}"
+                          SelectedItem="{Binding Model, UpdateSourceTrigger=PropertyChanged}"
+                          IsEnabled="{Binding Manufacturer, Converter={StaticResource IsNotNullConverter}}"
+                          FontSize="13"
+                          Height="36"
+                          hc:InfoElement.Placeholder="请选择设备型号" />
+            </Grid>
+
+            <!-- 设备描述 -->
+            <TextBlock Grid.Row="3"
+                       Text="{Binding DeviceDescription}"
+                       FontSize="12"
+                       FontStyle="Italic"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,15"
+                       Visibility="{Binding DeviceDescription, Converter={StaticResource IsNotNullConverter}}" />
+
+            <!-- 设备名称 -->
+            <Grid Grid.Row="4"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140" />
@@ -58,14 +121,14 @@
                            Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
                 <TextBox Grid.Column="1"
-                         Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}"
+                         Text="{Binding ConfigName, UpdateSourceTrigger=PropertyChanged}"
                          FontSize="13"
                          Height="36"
                          hc:InfoElement.Placeholder="请输入设备名称" />
             </Grid>
 
             <!-- 序列号 -->
-            <Grid Grid.Row="2"
+            <Grid Grid.Row="5"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140" />
@@ -85,14 +148,14 @@
             </Grid>
 
             <!-- 采样率 -->
-            <Grid Grid.Row="3"
+            <Grid Grid.Row="6"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
-                           Text="采样率 (Hz):"
+                           Text="采样率 (kHz):"
                            FontSize="13"
                            FontWeight="SemiBold"
                            Foreground="{DynamicResource SecondaryTextBrush}"
@@ -105,14 +168,14 @@
                           hc:InfoElement.Placeholder="请选择采样率">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding StringFormat='{}{0:F3} Hz'}" />
+                            <TextBlock Text="{Binding Converter={StaticResource HzToKHzConverter}}" />
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
             </Grid>
 
-            <!-- 通道数量 -->
-            <Grid Grid.Row="4"
+            <!-- 通道数量（只读，根据型号自动设置） -->
+            <Grid Grid.Row="7"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140" />
@@ -124,22 +187,20 @@
                            FontWeight="SemiBold"
                            Foreground="{DynamicResource SecondaryTextBrush}"
                            VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1"
-                          ItemsSource="{Binding ChannelCountOptions}"
-                          SelectedItem="{Binding ChannelCount, UpdateSourceTrigger=PropertyChanged}"
+                <TextBlock Grid.Column="1"
+                           Text="{Binding ChannelCount, StringFormat='{}{0} 通道'}"
                           FontSize="13"
-                          Height="36"
-                          hc:InfoElement.Placeholder="请选择通道数量">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding StringFormat='{}{0} 通道'}" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontWeight="Medium">
+                    <TextBlock.ToolTip>
+                        <TextBlock Text="通道数量根据设备型号自动设置，切换型号时会自动调整" />
+                    </TextBlock.ToolTip>
+                </TextBlock>
             </Grid>
 
             <!-- 缓冲区大小 -->
-            <Grid Grid.Row="5"
+            <Grid Grid.Row="8"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140" />
@@ -159,7 +220,7 @@
             </Grid>
 
             <!-- 自动启动 -->
-            <CheckBox Grid.Row="6"
+            <CheckBox Grid.Row="9"
                       Content="插件启动时自动开始采集"
                       FontSize="13"
                       FontWeight="Medium"
@@ -167,7 +228,7 @@
                       Margin="0,0,0,15" />
 
             <!-- 启用状态 -->
-            <CheckBox Grid.Row="7"
+            <CheckBox Grid.Row="10"
                       Content="启用设备"
                       IsChecked="{Binding IsEnabled}"
                       FontSize="13"
@@ -175,7 +236,7 @@
                       Margin="0,0,0,15" />
 
             <!-- 分组和槽位 -->
-            <Grid Grid.Row="8"
+            <Grid Grid.Row="11"
                   Margin="0,0,0,15">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

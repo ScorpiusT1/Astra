@@ -65,6 +65,46 @@ namespace Astra.Core.Devices.Base
                     _config.SlotId = value;
             }
         }
+
+        /// <summary>
+        /// 设备厂家
+        /// </summary>
+        public string Manufacturer
+        {
+            get => _config?.Manufacturer ?? string.Empty;
+            set
+            {
+                if (_config != null)
+                    _config.Manufacturer = value;
+            }
+        }
+
+        /// <summary>
+        /// 设备型号
+        /// </summary>
+        public string Model
+        {
+            get => _config?.Model ?? string.Empty;
+            set
+            {
+                if (_config != null)
+                    _config.Model = value;
+            }
+        }
+
+        /// <summary>
+        /// 设备序列号
+        /// </summary>
+        public string SerialNumber
+        {
+            get => _config?.SerialNumber ?? string.Empty;
+            set
+            {
+                if (_config != null)
+                    _config.SerialNumber = value;
+            }
+        }
+
         public Dictionary<string, string> GetDeviceInfo() => _config?.GetDeviceInfo() ?? new Dictionary<string, string>();
 
         #endregion

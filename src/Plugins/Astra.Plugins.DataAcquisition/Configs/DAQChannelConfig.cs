@@ -29,6 +29,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private double _gain;
         private double _offset;
         private double _icpCurrent;
+        private double _triggerLevel;  // 触发电平（单位：mA）
+        private bool _iepeEnabled;      // IEPE使能
         private bool _enableAntiAliasingFilter;
         private double _antiAliasingCutoff;
         private string _measurementLocation;
@@ -108,6 +110,24 @@ namespace Astra.Plugins.DataAcquisition.Configs
         {
             get => _icpCurrent;
             set => SetProperty(ref _icpCurrent, value);
+        }
+
+        /// <summary>
+        /// 触发电平（单位：mA）
+        /// </summary>
+        public double TriggerLevel
+        {
+            get => _triggerLevel;
+            set => SetProperty(ref _triggerLevel, value);
+        }
+
+        /// <summary>
+        /// IEPE使能
+        /// </summary>
+        public bool IEPEEnabled
+        {
+            get => _iepeEnabled;
+            set => SetProperty(ref _iepeEnabled, value);
         }
 
         public bool EnableAntiAliasingFilter
@@ -390,6 +410,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
             _gain = 1.0;
             _offset = 0.0;
             _icpCurrent = 4.0;
+            _triggerLevel = 0.0;  // 默认触发电平 0mA
+            _iepeEnabled = false;  // 默认IEPE禁用
             _enableAntiAliasingFilter = true;
             _antiAliasingCutoff = 20000;
             _measurementLocation = "";
@@ -448,7 +470,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
             SensorConfigMode = SensorConfigMode.Independent;
             Sensor = (SensorConfig)sourceSensor.Clone();
-            Sensor.SensorId = $"{sourceSensor.SensorId}_Copy_{ChannelId}";
+            // 为新克隆的传感器设置新的 ConfigId（统一使用 ConfigId 作为唯一标识符）
+            Sensor.ConfigId = $"{sourceSensor.ConfigId}_Copy_{ChannelId}";
         }
 
         /// <summary>

@@ -6,7 +6,8 @@
              xmlns:local="clr-namespace:Astra.Plugins.DataAcquisition.Views"
              xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
              xmlns:configs="clr-namespace:Astra.Plugins.DataAcquisition.Configs"
-             xmlns:commons="clr-namespace:Astra.Plugins.DataAcquisition.Commons"
+             xmlns:converters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:hc="https://handyorg.github.io/handycontrol"
              d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionChannelConfigViewModel}"
              mc:Ignorable="d"
@@ -67,14 +68,9 @@
                             Value="{DynamicResource PrimaryBrush}" />
                     <Setter Property="BorderThickness"
                             Value="2" />
-                    <Setter Property="Background">
-                        <Setter.Value>
-                            <SolidColorBrush Color="#F5F7FA"
-                                             Opacity="0.8" />
-                        </Setter.Value>
-                    </Setter>
-                    <Setter Property="Effect"
-                            Value="{StaticResource ActiveShadow}" />
+                    <Setter Property="Background"
+                            Value="Transparent" />
+                   
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -131,7 +127,7 @@
         </Style>
 
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-        <commons:HzToKHzConverter x:Key="HzToKHzConverter" />
+        <converters:HzToKHzConverter x:Key="HzToKHzConverter" />
     </UserControl.Resources>
 
     <Grid Margin="20">
@@ -165,22 +161,15 @@
                                Opacity="0.8" />
                 </StackPanel>
 
-                <!-- 操作按钮 -->
+                <!-- 操作按钮（通道配置界面隐藏添加/删除功能） -->
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
-                            VerticalAlignment="Center">
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed">
                     <Button Content="添加通道"
                             Command="{Binding AddChannelCommand}"
                             Style="{DynamicResource PrimaryButtonStyle}"
                             Margin="0,0,8,0"
-                            Padding="18,10"
-                            FontSize="13"
-                            FontWeight="Medium" />
-                    <Button Content="删除选中"
-                            Command="{Binding DeleteChannelCommand}"
-                            CommandParameter="{Binding SelectedChannel}"
-                            IsEnabled="{Binding CanDeleteChannel}"
-                            Style="{DynamicResource DangerButtonStyle}"
                             Padding="18,10"
                             FontSize="13"
                             FontWeight="Medium" />
@@ -264,26 +253,6 @@
                                                    VerticalAlignment="Center" />
                                     </Border>
 
-                                    <!-- 通道别名 -->
-                                    <Grid Grid.Column="1"
-                                          VerticalAlignment="Center"
-                                          Margin="12,0,12,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
-                                                   Text="通道名:"
-                                                   FontSize="13"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource SecondaryTextBrush}"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,20,0" />
-                                        <TextBox Grid.Column="1"
-                                                 Text="{Binding ChannelName, UpdateSourceTrigger=PropertyChanged}"
-                                                 MinWidth="180"
-                                                 hc:InfoElement.Placeholder="请输入通道名" />
-                                    </Grid>
 
                                     <!-- 启用状态 -->
                                     <CheckBox Grid.Column="2"
@@ -294,19 +263,22 @@
                                               Margin="0,0,14,0"
                                               FontSize="13" />
 
-                                    <!-- 删除按钮 -->
+                                    <!-- 删除按钮（通道配置界面隐藏单通道删除） -->
                                     <Button Grid.Column="3"
                                             Content="删除"
                                             Command="{Binding DataContext.DeleteChannelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             Style="{StaticResource SmallButtonStyle}"
-                                            FontSize="12" />
+                                            FontSize="12"
+                                            Visibility="Collapsed" />
                                 </Grid>
 
                                 <!-- 基本参数 -->
                                 <Grid Grid.Row="1"
-                                      Margin="0,0,0,14">
+                                      Margin="0,0,0,15">
                                     <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
@@ -317,28 +289,18 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- 采样率 -->
+                                    <!-- 通道名称 -->
                                     <TextBlock Grid.Row="0"
                                                Grid.Column="0"
-                                               Text="采样率"
+                                               Text="通道名"
                                                Style="{StaticResource FieldLabelStyle}" />
-                                    <ComboBox Grid.Row="0"
-                                              Grid.Column="1"
-                                              VerticalAlignment="Center"
-                                              ItemsSource="{Binding DataContext.SampleRateOptions, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
-                                              SelectedItem="{Binding SampleRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              Text="{Binding SampleRate, Converter={StaticResource HzToKHzConverter}}"
-                                              Margin="0,0,14,0"
-                                              hc:BorderElement.CornerRadius="8"
-                                              FontSize="13"
-                                              Height="36"
-                                              hc:InfoElement.Placeholder="请选择或输入采样率">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource HzToKHzConverter}}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
+                                    <TextBox Grid.Row="0"
+                                             Grid.Column="1"
+                                             VerticalAlignment="Center"
+                                             Text="{Binding ChannelName, UpdateSourceTrigger=PropertyChanged}"
+                                             Margin="0,0,14,0"
+                                             Height="36"
+                                             hc:InfoElement.Placeholder="请输入通道名" />
 
                                     <!-- 传感器位置 -->
                                     <TextBlock Grid.Row="0"
@@ -349,7 +311,7 @@
                                              Grid.Column="3"
                                              VerticalAlignment="Center"
                                              Text="{Binding MeasurementLocation, UpdateSourceTrigger=PropertyChanged}"
-                                             Margin="0,0,0,10"
+                                             Margin="0,0,0,0"
                                              Height="36"
                                              hc:InfoElement.Placeholder="请输入测点位置" />
 
@@ -357,11 +319,13 @@
                                     <TextBlock Grid.Row="1"
                                                Grid.Column="0"
                                                Text="传感器"
-                                               Style="{StaticResource FieldLabelStyle}" />
+                                               Style="{StaticResource FieldLabelStyle}"
+                                               Margin="0,15,0,0" />
                                     <Grid Grid.Row="1"
                                           Grid.Column="1"
                                           Grid.ColumnSpan="3"
-                                          VerticalAlignment="Center">
+                                          VerticalAlignment="Center"
+                                          Margin="0,15,0,15">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -372,7 +336,7 @@
                                                   ItemsSource="{Binding DataContext.AvailableSensors, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
                                                   SelectedItem="{Binding Sensor, Mode=TwoWay}"
                                                   DisplayMemberPath="DisplayText"
-                                                  Margin="0,0,8,0"
+                                                  Margin="0,0,0,0"
                                                   Height="36"
                                                   hc:InfoElement.Placeholder="请选择传感器">
                                             <ComboBox.ItemTemplate>
@@ -420,6 +384,67 @@
                                                 Style="{StaticResource SmallButtonStyle}"
                                                 FontSize="12" />
                                     </Grid>
+
+                                    <!-- 触发方式（根据规格中的 AllowedCouplingModes 动态显示/隐藏） -->
+                                    <TextBlock Grid.Row="2"
+                                               Grid.Column="0"
+                                               Text="触发方式"
+                                               Style="{StaticResource FieldLabelStyle}"
+                                               Visibility="{Binding DataContext.HasCouplingModeOptions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <ComboBox Grid.Row="2"
+                                              Grid.Column="1"
+                                              ItemsSource="{Binding DataContext.CouplingModeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                              SelectedItem="{Binding CouplingMode, Mode=TwoWay}"
+                                              Margin="0,0,14,0"
+                                              Height="36"
+                                              Visibility="{Binding DataContext.HasCouplingModeOptions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}"
+                                              hc:InfoElement.Placeholder="选择耦合方式">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <!-- 直接使用枚举的 ToString 显示 AC/DC -->
+                                                <TextBlock Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <!-- 触发电平（根据规格中的 AllowedTriggerLevels 动态显示/隐藏） -->
+                                    <TextBlock Grid.Row="2"
+                                               Grid.Column="2"
+                                               Text="触发电平"
+                                               Style="{StaticResource FieldLabelStyle}"
+                                               Visibility="{Binding DataContext.HasTriggerLevelOptions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <ComboBox Grid.Row="2"
+                                              Grid.Column="3"
+                                              ItemsSource="{Binding DataContext.TriggerLevelOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                              SelectedItem="{Binding TriggerLevel, Mode=TwoWay}"
+                                              Margin="0,0,0,0"
+                                              Height="36"
+                                              Visibility="{Binding DataContext.HasTriggerLevelOptions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}"
+                                              hc:InfoElement.Placeholder="选择触发电平">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <TextBlock.Text>
+                                                        <Binding StringFormat="{}{0} mA" />
+                                                    </TextBlock.Text>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <!-- IEPE使能 -->
+                                    <TextBlock Grid.Row="3"
+                                               Grid.Column="0"
+                                               Text="IEPE使能"
+                                               Style="{StaticResource FieldLabelStyle}"
+                                               Margin="0,15,0,0" />
+                                    <CheckBox Grid.Row="3"
+                                              Grid.Column="1"
+                                              Content="启用IEPE"
+                                              IsChecked="{Binding IEPEEnabled, Mode=TwoWay}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,15,0,0"
+                                              FontSize="13" />
                                 </Grid>
 
                                 <!-- 传感器信息显示（如果有传感器） -->

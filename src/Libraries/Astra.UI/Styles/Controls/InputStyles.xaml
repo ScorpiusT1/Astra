@@ -4,196 +4,58 @@
 
     <CornerRadius x:Key="DefaultCornerRadius">10</CornerRadius>
 
-    <!-- ==================== TextBox 样式 ==================== -->
+    <!-- ==================== TextBox 样式（基于 HandyControl） ==================== -->
     <Style x:Key="ModernTextBoxStyle"
-           TargetType="TextBox">
-        <Setter Property="Padding"
-                Value="14,0" />
+           TargetType="TextBox"
+           BasedOn="{StaticResource TextBoxBaseStyle}">
+        <!-- 统一仅调整字体大小 / 高度 / 边框宽度 / 倒角 -->
         <Setter Property="FontSize"
                 Value="14" />
         <Setter Property="MinHeight"
-                Value="{DynamicResource InputControlHeight}" />
+                Value="44" />
         <Setter Property="Height"
-                Value="{DynamicResource InputControlHeight}" />
-        <Setter Property="VerticalContentAlignment"
-                Value="Center" />
-        <Setter Property="Background"
-                Value="{DynamicResource SurfaceBrush}" />
-        <Setter Property="Foreground"
-                Value="{DynamicResource PrimaryTextBrush}" />
-        <Setter Property="BorderBrush"
-                Value="{DynamicResource BorderBrush}" />
+                Value="44" />
         <Setter Property="BorderThickness"
                 Value="1.5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="border"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{StaticResource DefaultCornerRadius}">
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused"
-                                 Value="True">
-                            <Setter TargetName="border"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}" />
-                            <Setter TargetName="border"
-                                    Property="BorderThickness"
-                                    Value="2" />
-                            <Setter TargetName="border"
-                                    Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="{DynamicResource PrimaryColor}"
-                                                      Opacity="0.2"
-                                                      BlurRadius="12"
-                                                      ShadowDepth="0" />
-                                </Setter.Value>
-                            </Setter>
-                        </Trigger>
-                        <Trigger Property="IsMouseOver"
-                                 Value="True">
-                            <Setter TargetName="border"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource SecondaryBorderBrush}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="hc:BorderElement.CornerRadius"
+                Value="{StaticResource DefaultCornerRadius}" />
     </Style>
 
-    <!-- ==================== TextBox 样式 ==================== -->
+    <!-- 默认 TextBox 样式（同样基于 HandyControl） -->
     <Style x:Key="DefaultModernTextBoxStyle"
-           TargetType="TextBox">
-        <Setter Property="Padding"
-                Value="4,0" />
+           TargetType="TextBox"
+           BasedOn="{StaticResource TextBoxBaseStyle}">
         <Setter Property="FontSize"
                 Value="14" />
         <Setter Property="MinHeight"
-                Value="{DynamicResource InputControlHeight}" />
+                Value="44" />
         <Setter Property="Height"
-                Value="{DynamicResource InputControlHeight}" />
-        <Setter Property="VerticalContentAlignment"
-                Value="Center" />
-        <Setter Property="Background"
-                Value="{DynamicResource SurfaceBrush}" />
-        <Setter Property="Foreground"
-                Value="{DynamicResource PrimaryTextBrush}" />
-        <Setter Property="BorderBrush"
-                Value="{DynamicResource BorderBrush}" />
+                Value="44" />
         <Setter Property="BorderThickness"
                 Value="1.5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="border"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{StaticResource DefaultCornerRadius}">
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused"
-                                 Value="True">
-                            <Setter TargetName="border"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}" />
-                            <Setter TargetName="border"
-                                    Property="BorderThickness"
-                                    Value="2" />
-                            <Setter TargetName="border"
-                                    Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="{DynamicResource PrimaryColor}"
-                                                      Opacity="0.2"
-                                                      BlurRadius="12"
-                                                      ShadowDepth="0" />
-                                </Setter.Value>
-                            </Setter>
-                        </Trigger>
-                        <Trigger Property="IsMouseOver"
-                                 Value="True">
-                            <Setter TargetName="border"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource SecondaryBorderBrush}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="hc:BorderElement.CornerRadius"
+                Value="{StaticResource DefaultCornerRadius}" />
     </Style>
 
-    <!-- ==================== PasswordBox 样式 ==================== -->
+    <!-- ==================== PasswordBox 样式（基于 HandyControl） ==================== -->
     <Style x:Key="ModernPasswordBoxStyle"
-           TargetType="PasswordBox">
-        <Setter Property="Padding"
-                Value="14,0" />
+           TargetType="hc:PasswordBox"
+           BasedOn="{StaticResource PasswordBoxPlusBaseStyle}">
         <Setter Property="FontSize"
                 Value="14" />
-        <Setter Property="MinHeight"
-                Value="{DynamicResource InputControlHeight}" />
+
         <Setter Property="Height"
-                Value="{DynamicResource InputControlHeight}" />
-        <Setter Property="VerticalContentAlignment"
-                Value="Center" />
-        <Setter Property="Background"
-                Value="{DynamicResource SurfaceBrush}" />
-        <Setter Property="Foreground"
-                Value="{DynamicResource PrimaryTextBrush}" />
-        <Setter Property="BorderBrush"
-                Value="{DynamicResource BorderBrush}" />
+                Value="44" />
         <Setter Property="BorderThickness"
                 Value="1.5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="PasswordBox">
-                    <Border x:Name="border"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{StaticResource DefaultCornerRadius}">
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused"
-                                 Value="True">
-                            <Setter TargetName="border"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}" />
-                            <Setter TargetName="border"
-                                    Property="BorderThickness"
-                                    Value="2" />
-                            <Setter TargetName="border"
-                                    Property="Effect">
-                                <Setter.Value>
-                                    <DropShadowEffect Color="{DynamicResource PrimaryColor}"
-                                                      Opacity="0.2"
-                                                      BlurRadius="12"
-                                                      ShadowDepth="0" />
-                                </Setter.Value>
-                            </Setter>
-                        </Trigger>
-                        <Trigger Property="IsMouseOver"
-                                 Value="True">
-                            <Setter TargetName="border"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource SecondaryBorderBrush}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="hc:BorderElement.CornerRadius"
+                Value="{StaticResource DefaultCornerRadius}" />
+        <!-- 启用安全模式，并显示"眼睛"按钮方便查看密码 -->
+        <!--
+        <Setter Property="IsSafeEnabled"
+                Value="True" />-->
+        <Setter Property="ShowEyeButton"
+                Value="True" />
     </Style>
 
     <!-- ==================== ComboBoxItem 样式 ==================== -->
@@ -245,125 +107,33 @@
         </Setter>
     </Style>
 
-    <!-- ==================== ComboBox 样式 ==================== -->
+    <!-- ==================== ComboBox 样式（基于 HandyControl） ==================== -->
     <Style x:Key="ModernComboBoxStyle"
-           TargetType="ComboBox">
+           TargetType="ComboBox"
+           BasedOn="{StaticResource ComboBoxBaseStyle}">
         <Setter Property="FontSize"
                 Value="14" />
         <Setter Property="MinHeight"
-                Value="{DynamicResource InputControlHeight}" />
+                Value="44" />
         <Setter Property="Height"
-                Value="{DynamicResource InputControlHeight}" />
-        <Setter Property="Background"
-                Value="{DynamicResource SurfaceBrush}" />
-        <Setter Property="Foreground"
-                Value="{DynamicResource PrimaryTextBrush}" />
-        <Setter Property="BorderBrush"
-                Value="{DynamicResource BorderBrush}" />
+                Value="44" />
         <Setter Property="BorderThickness"
                 Value="1.5" />
-        <Setter Property="ItemContainerStyle"
-                Value="{StaticResource ModernComboBoxItemStyle}" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ComboBox">
-                    <Grid>
-                        <Border x:Name="MainBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{StaticResource DefaultCornerRadius}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="36" />
-                                </Grid.ColumnDefinitions>
+        <Setter Property="hc:BorderElement.CornerRadius"
+                Value="{StaticResource DefaultCornerRadius}" />
+    </Style>
 
-                                <ContentPresenter x:Name="ContentSite"
-                                                  Grid.Column="0"
-                                                  Content="{TemplateBinding SelectionBoxItem}"
-                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                                  Margin="14,0"
-                                                  VerticalAlignment="Center"
-                                                  IsHitTestVisible="False" />
-
-                                <Path x:Name="Arrow"
-                                      Grid.Column="1"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      Data="M 0 0 L 5 5 L 10 0 Z"
-                                      Fill="{DynamicResource SecondaryTextBrush}" />
-
-                                <ToggleButton Grid.ColumnSpan="2"
-                                              Focusable="False"
-                                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                                    <ToggleButton.Style>
-                                        <Style TargetType="ToggleButton">
-                                            <Setter Property="Background"
-                                                    Value="Transparent" />
-                                            <Setter Property="BorderThickness"
-                                                    Value="0" />
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="ToggleButton">
-                                                        <Border Background="{TemplateBinding Background}" />
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </ToggleButton.Style>
-                                </ToggleButton>
-                            </Grid>
-                        </Border>
-
-                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}"
-                               Placement="Bottom"
-                               AllowsTransparency="True"
-                               Focusable="False">
-                            <Border Background="{DynamicResource SurfaceBrush}"
-                                    BorderBrush="{DynamicResource PrimaryBrush}"
-                                    BorderThickness="1.5"
-                                    CornerRadius="{StaticResource DefaultCornerRadius}"
-                                    Margin="0,4,0,0"
-                                    Padding="4"
-                                    MinWidth="{TemplateBinding ActualWidth}">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                                      Opacity="0.15"
-                                                      BlurRadius="20"
-                                                      ShadowDepth="6" />
-                                </Border.Effect>
-                                <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                                    <StackPanel IsItemsHost="True" />
-                                </ScrollViewer>
-                            </Border>
-                        </Popup>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver"
-                                 Value="True">
-                            <Setter TargetName="MainBorder"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource SecondaryBorderBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsDropDownOpen"
-                                 Value="True">
-                            <Setter TargetName="MainBorder"
-                                    Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}" />
-                            <Setter TargetName="MainBorder"
-                                    Property="BorderThickness"
-                                    Value="2" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+    <!-- ==================== CheckBox 样式（基于 HandyControl） ==================== -->
+    <Style x:Key="ModernCheckBoxStyle"
+           TargetType="CheckBox"
+           BasedOn="{StaticResource CheckBoxBaseStyle}">
+        <Setter Property="FontSize"
+                Value="14" />
     </Style>
 
     <!-- ==================== DatePicker 样式 ==================== -->
     <Style x:Key="ModernDatePickerStyle"
-           TargetType="DatePicker" >
+           TargetType="DatePicker">
         <Setter Property="FontSize"
                 Value="14" />
         <Setter Property="MinHeight"
@@ -383,7 +153,7 @@
         <Setter Property="BorderThickness"
                 Value="1.5" />
     </Style>
-    
+
     <!-- DatePickerTextBox 样式 - 确保内部文本框样式一致 -->
     <Style x:Key="ModernDatePickerTextBoxStyle"
            TargetType="DatePickerTextBox">
@@ -420,7 +190,8 @@
 
     <!-- ==================== HandyControl DatePicker 样式 ==================== -->
     <Style x:Key="ModernHandyDatePickerStyle"
-           TargetType="hc:DatePicker" BasedOn="{StaticResource DatePickerBaseStyle}">
+           TargetType="hc:DatePicker"
+           BasedOn="{StaticResource DatePickerBaseStyle}">
         <Setter Property="Height"
                 Value="{DynamicResource InputControlHeight}" />
         <Setter Property="FontSize"

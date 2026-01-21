@@ -3,6 +3,7 @@ using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
 using Astra.Core.Devices.Common;
 using Astra.Core.Devices.Configuration;
+using Astra.Core.Devices.Specifications;
 using Astra.Core.Foundation.Common;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.ViewModels;
@@ -17,9 +18,8 @@ using System.Threading.Tasks;
 namespace Astra.Plugins.DataAcquisition.Devices
 {
     [TreeNodeConfig("采集卡", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
-    public class DataAcquisitionConfig : DeviceConfig, IPreSaveConfig, IPostLoadConfig
+    public class DataAcquisitionConfig : DeviceConfig, IPreSaveConfig, IPostLoadConfig, IDeviceSpecificationConstraint
     {
-        private string _serialNumber = string.Empty;
 
         private ObservableCollection<DAQChannelConfig> _channels;
         
@@ -144,23 +144,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
-        /// <summary>
-        /// 设备序列号
-        /// </summary>
-        public string SerialNumber
-        {
-            get => _serialNumber;
-            set
-            {
-                var oldValue = _serialNumber;
-                SetProperty(ref _serialNumber, value);
-
-                if (!string.Equals(oldValue, value, StringComparison.OrdinalIgnoreCase))
-                {
-                    DeviceId = GenerateDeviceId();
-                }
-            }
-        }
+        // 注意：SerialNumber 属性已在基类 DeviceConfig 中定义，无需重复定义
 
         private double _sampleRate = 51200.0;
         private int _channelCount = 8;
@@ -398,7 +382,143 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public override string GenerateDeviceId()
         {
-            return DeviceIdGenerator.Generate("DAQ", GroupId, SlotId, SerialNumber, DeviceName);
+            // 在设备ID中包含厂家和型号信息
+            var deviceIdentifier = string.IsNullOrEmpty(SerialNumber)
+                ? $"{Manufacturer}_{Model}"
+                : SerialNumber;
+
+            return DeviceIdGenerator.Generate("DAQ", GroupId, SlotId, deviceIdentifier, DeviceName);
+        }
+
+        /// <summary>
+        /// 实现 IDeviceSpecificationConstraint 接口
+        /// </summary>
+        public void ApplyConstraints(IDeviceSpecification specification)
+        {
+            // 限制通道数量（优先使用固定 ChannelCount 约束）
+            var fixedChannels = specification.GetConstraint<int>("ChannelCount", -1);
+            if (fixedChannels > 0)
+            {
+                ChannelCount = fixedChannels;
+            }
+            else
+            {
+                var maxChannels = specification.GetConstraint<int>("MaxChannels", int.MaxValue);
+                var minChannels = specification.GetConstraint<int>("MinChannels", 1);
+                if (ChannelCount > maxChannels)
+                {
+                    ChannelCount = maxChannels;
+                }
+                else if (ChannelCount < minChannels)
+                {
+                    ChannelCount = minChannels;
+                }
+            }
+
+            // 限制采样率
+            var maxSampleRate = specification.GetConstraint<double>("MaxSampleRate", double.MaxValue);
+            var minSampleRate = specification.GetConstraint<double>("MinSampleRate", 1000.0);
+            if (SampleRate > maxSampleRate)
+            {
+                SampleRate = maxSampleRate;
+            }
+            else if (SampleRate < minSampleRate)
+            {
+                SampleRate = minSampleRate;
+            }
+
+            // 限制缓冲区大小
+            var maxBufferSize = specification.GetConstraint<int>("MaxBufferSize", int.MaxValue);
+            var minBufferSize = specification.GetConstraint<int>("MinBufferSize", 1024);
+            if (BufferSize > maxBufferSize)
+            {
+                BufferSize = maxBufferSize;
+            }
+            else if (BufferSize < minBufferSize)
+            {
+                BufferSize = minBufferSize;
+            }
+        }
+
+        /// <summary>
+        /// 重写验证方法，根据规格验证
+        /// </summary>
+        protected override List<string> ValidateAgainstSpecification(IDeviceSpecification specification)
+        {
+            var errors = new List<string>();
+
+            var fixedChannels = specification.GetConstraint<int>("ChannelCount", -1);
+            if (fixedChannels > 0)
+            {
+                if (ChannelCount != fixedChannels)
+                {
+                    errors.Add($"通道数量必须为 {fixedChannels}（当前：{ChannelCount}）");
+                }
+            }
+            else
+            {
+                var maxChannels = specification.GetConstraint<int>("MaxChannels", int.MaxValue);
+                var minChannels = specification.GetConstraint<int>("MinChannels", 1);
+                if (ChannelCount < minChannels || ChannelCount > maxChannels)
+                {
+                    errors.Add($"通道数量必须在 {minChannels} 到 {maxChannels} 之间（当前：{ChannelCount}）");
+                }
+            }
+
+            var maxSampleRate = specification.GetConstraint<double>("MaxSampleRate", double.MaxValue);
+            var minSampleRate = specification.GetConstraint<double>("MinSampleRate", 1000.0);
+            if (SampleRate < minSampleRate || SampleRate > maxSampleRate)
+            {
+                errors.Add($"采样率必须在 {minSampleRate} 到 {maxSampleRate} Hz 之间（当前：{SampleRate}）");
+            }
+
+            var maxBufferSize = specification.GetConstraint<int>("MaxBufferSize", int.MaxValue);
+            var minBufferSize = specification.GetConstraint<int>("MinBufferSize", 1024);
+            if (BufferSize < minBufferSize || BufferSize > maxBufferSize)
+            {
+                errors.Add($"缓冲区大小必须在 {minBufferSize} 到 {maxBufferSize} 之间（当前：{BufferSize}）");
+            }
+
+            return errors;
+        }
+
+        /// <summary>
+        /// 获取配置的显示名称（用于树节点等UI显示）
+        /// 格式：厂家 + 型号 + 编号
+        /// </summary>
+        public override string GetDisplayName()
+        {
+            var parts = new List<string>();
+            
+            // 添加厂家
+            if (!string.IsNullOrWhiteSpace(Manufacturer))
+            {
+                parts.Add(Manufacturer);
+            }
+            
+            // 添加型号
+            if (!string.IsNullOrWhiteSpace(Model))
+            {
+                parts.Add(Model);
+            }
+            
+            // 添加编号（序列号）
+            if (!string.IsNullOrWhiteSpace(SerialNumber))
+            {
+                parts.Add(SerialNumber);
+            }
+            
+            // 如果所有部分都为空，使用 DeviceName 或 ConfigName 作为后备
+            if (parts.Count == 0)
+            {
+                if (!string.IsNullOrWhiteSpace(DeviceName))
+                {
+                    return DeviceName;
+                }
+                return string.IsNullOrEmpty(ConfigName) ? "未命名采集卡" : ConfigName;
+            }
+            
+            return string.Join(" ", parts);
         }
 
         public override OperationResult<bool> Validate()
