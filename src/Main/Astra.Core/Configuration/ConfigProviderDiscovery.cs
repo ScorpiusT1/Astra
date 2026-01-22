@@ -205,20 +205,12 @@ namespace Astra.Core.Configuration
 
         /// <summary>
         /// 获取配置目录（基于约定）
+        /// 现在统一使用 ConfigPathString.GetConfigDirectory() 方法
         /// </summary>
         private string GetConfigDirectory(Type configType)
         {
-            // 约定：配置文件目录 = BaseConfigDirectory + 配置类型的简单名称（去除 Config 后缀）
-            var configTypeName = configType.Name;
-            var directoryName = configTypeName.Replace("Config", ""); // 例如：DataAcquisitionConfig -> DataAcquisition
-            
-            // 特殊处理：如果是 DeviceConfig 的子类，放在 Devices 目录
-            if (typeof(DeviceConfig).IsAssignableFrom(configType))
-            {
-                return Path.Combine(ConfigPathString.BaseConfigDirectory, "Devices");
-            }
-            
-            return Path.Combine(ConfigPathString.BaseConfigDirectory, directoryName);
+            // 优先使用 ConfigPathString 的统一方法
+            return ConfigPathString.GetConfigDirectory(configType);
         }
 
         /// <summary>
@@ -243,6 +235,9 @@ namespace Astra.Core.Configuration
                 BindingFlags.Public | BindingFlags.Instance);
             
             propertyInfo?.SetValue(options, defaultFileName);
+
+            // 确保配置目录存在
+            ConfigPathString.EnsureConfigDirectoryExists(configType);
 
             return options;
         }

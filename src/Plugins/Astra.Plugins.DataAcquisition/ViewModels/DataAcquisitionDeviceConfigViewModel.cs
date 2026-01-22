@@ -346,10 +346,29 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 if (_model == value)
                     return;
 
-                // 保存原值
-                var oldValue = _model;
+                // ⚠️ 如果新值为空，不显示弹窗，直接允许设置为空
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    // 直接更新型号为空，不显示弹窗
+                    if (SetProperty(ref _model, value))
+                    {
+                        if (_config != null)
+                        {
+                            _config.Model = value;
+                        }
+                        
+                        // 通知规格相关属性更新
+                        OnPropertyChanged(nameof(DeviceSpecification));
+                        OnPropertyChanged(nameof(MaxChannels));
+                        OnPropertyChanged(nameof(MaxSampleRate));
+                        OnPropertyChanged(nameof(DeviceDescription));
+                        OnPropertyChanged(nameof(ChannelCountOptions));
+                        OnPropertyChanged(nameof(SampleRateOptions));
+                    }
+                    return;
+                }
 
-                // 如果已有配置的通道，显示警告（使用报警弹窗）
+                // 如果已有配置的通道，需要用户确认
                 if (HasConfiguredChannels)
                 {
                     var result = Astra.UI.Styles.Controls.ModernMessageBox.Show(
@@ -362,21 +381,28 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                         MessageBoxImage.Warning
                     );
 
+                    // 用户拒绝，不更新值，直接返回
+                    // 由于 ComboBox 的绑定可能已经更新了 UI，需要强制刷新以显示原值
                     if (result == MessageBoxResult.Cancel || result == MessageBoxResult.No)
                     {
-                        // 用户取消或拒绝，恢复原值
-                        // 由于 ComboBox 的绑定可能已经更新，我们需要强制恢复
-                        _model = oldValue;
-                        if (_config != null)
-                        {
-                            _config.Model = oldValue;
-                        }
-                        OnPropertyChanged(nameof(Model)); // 通知UI恢复原值
+                        // 使用 Dispatcher 延迟刷新，通过临时改变值再恢复来强制触发绑定更新
+                        var currentValue = _model; // 保存当前值（原值）
+                        System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+                            new Action(() =>
+                            {
+                                // 临时设置为 null，然后立即恢复，强制触发绑定更新
+                                _model = null;
+                                OnPropertyChanged(nameof(Model));
+                                _model = currentValue;
+                                OnPropertyChanged(nameof(Model));
+                            }),
+                            System.Windows.Threading.DispatcherPriority.Input
+                        );
                         return;
                     }
                 }
 
-                // 用户确认，更新型号
+                // 用户确认或无需确认，更新型号
                 if (SetProperty(ref _model, value))
                 {
                     if (_config != null)
@@ -567,6 +593,44 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 // 初始化可用厂家和型号列表
                 UpdateAvailableManufacturers();
                 UpdateAvailableModels();
+
+                // ✅ 如果是新创建的配置（厂商和型号都为空），设置默认值为第一个选项
+                if (string.IsNullOrWhiteSpace(_manufacturer) && _availableManufacturers != null && _availableManufacturers.Count > 0)
+                {
+                    var firstManufacturer = _availableManufacturers.FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(firstManufacturer))
+                    {
+                        _manufacturer = firstManufacturer;
+                        _config.Manufacturer = firstManufacturer;
+                        OnPropertyChanged(nameof(Manufacturer));
+                        
+                        // 更新可用型号列表
+                        UpdateAvailableModels();
+                        
+                        // 设置第一个型号
+                        if (_availableModels != null && _availableModels.Count > 0)
+                        {
+                            var firstModel = _availableModels.FirstOrDefault();
+                            if (!string.IsNullOrWhiteSpace(firstModel))
+                            {
+                                _model = firstModel;
+                                _config.Model = firstModel;
+                                OnPropertyChanged(nameof(Model));
+                            }
+                        }
+                    }
+                }
+                // 如果只有型号为空，但厂商已设置，设置第一个型号
+                else if (!string.IsNullOrWhiteSpace(_manufacturer) && string.IsNullOrWhiteSpace(_model) && _availableModels != null && _availableModels.Count > 0)
+                {
+                    var firstModel = _availableModels.FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(firstModel))
+                    {
+                        _model = firstModel;
+                        _config.Model = firstModel;
+                        OnPropertyChanged(nameof(Model));
+                    }
+                }
 
                 // 订阅配置变更事件（DeviceConfig 的 PropertyChanged）
                 _config.PropertyChanged += (sender, e) =>

@@ -244,13 +244,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 _isSyncingChannels = true;
                 try
                 {
+                    var oldValue = _channelCount;
                     _channelCount = newCount;
-                    OnPropertyChanged(new PropertyChangedEventArgs
-                    {
-                        PropertyName = nameof(ChannelCount),
-                        OldValue = _channelCount,
-                        NewValue = newCount
-                    });
+                    OnPropertyChanged(nameof(ChannelCount), oldValue, newCount);
                 }
                 finally
                 {
@@ -488,37 +484,15 @@ namespace Astra.Plugins.DataAcquisition.Devices
         /// </summary>
         public override string GetDisplayName()
         {
-            var parts = new List<string>();
+            // 优先使用 DeviceName，如果为空则使用 ConfigName
+            var fallbackName = !string.IsNullOrWhiteSpace(DeviceName) ? DeviceName : ConfigName;
             
-            // 添加厂家
-            if (!string.IsNullOrWhiteSpace(Manufacturer))
-            {
-                parts.Add(Manufacturer);
-            }
-            
-            // 添加型号
-            if (!string.IsNullOrWhiteSpace(Model))
-            {
-                parts.Add(Model);
-            }
-            
-            // 添加编号（序列号）
-            if (!string.IsNullOrWhiteSpace(SerialNumber))
-            {
-                parts.Add(SerialNumber);
-            }
-            
-            // 如果所有部分都为空，使用 DeviceName 或 ConfigName 作为后备
-            if (parts.Count == 0)
-            {
-                if (!string.IsNullOrWhiteSpace(DeviceName))
-                {
-                    return DeviceName;
-                }
-                return string.IsNullOrEmpty(ConfigName) ? "未命名采集卡" : ConfigName;
-            }
-            
-            return string.Join(" ", parts);
+            return ConfigDisplayNameHelper.BuildDisplayName(
+                Manufacturer,
+                Model,
+                SerialNumber,
+                fallbackName,
+                "未命名采集卡");
         }
 
         public override OperationResult<bool> Validate()

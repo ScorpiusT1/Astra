@@ -203,6 +203,13 @@ namespace Astra.ViewModels
             // ✅ 获取所有已注册的配置类型（基于 Provider，而不是扫描程序集）
             var allConfigTypes = await GetAllConfigTypesAsync();
 
+            // ✅ 按 Order 排序配置类型（确保根节点顺序稳定）
+            // Order 值越小越靠前，如果 Order 相同则按类型名称排序
+            allConfigTypes = allConfigTypes
+                .OrderBy(x => x.Attribute.Order >= 0 ? x.Attribute.Order : int.MaxValue) // Order < 0 的排在最后
+                .ThenBy(x => x.ConfigType.Name) // Order 相同时按类型名称排序
+                .ToList();
+
             // 按配置类型分组（确保每个类型至少有一个配置）
             var configTypeGroups = allConfigTypes.GroupBy(x => x.ConfigType);
 
@@ -242,6 +249,7 @@ namespace Astra.ViewModels
                     rootNode.Config = null;
                     rootNode.ConfigType = configType;
                     rootNode.Icon = attr.Icon ?? _defaultIcon;
+                    rootNode.Order = attr.Order; // ✅ 设置根节点的 Order，用于排序
 
                     rootNodes[attr.Category] = rootNode;
                 }
@@ -277,9 +285,18 @@ namespace Astra.ViewModels
 
 
             // ✅ 添加所有根节点（即使没有子节点也要显示，以便用户点击"+"号添加配置）
-            foreach (var rootNode in rootNodes.Values)
+            // ⚠️ 关键：按照 allConfigTypes 的顺序添加根节点，确保顺序稳定
+            // 因为 allConfigTypes 已经按照 Order 排序，所以直接按照这个顺序添加即可
+            // 使用 HashSet 确保每个 Category 只添加一次（防止多个配置类型有相同 Category 的情况）
+            var addedCategories = new HashSet<string>();
+            foreach (var configTypeInfo in allConfigTypes)
             {
-                TreeNodes.Add(rootNode);
+                var category = configTypeInfo.Attribute.Category;
+                if (!addedCategories.Contains(category) && rootNodes.TryGetValue(category, out var rootNode))
+                {
+                    TreeNodes.Add(rootNode);
+                    addedCategories.Add(category);
+                }
             }
         }
 
@@ -972,9 +989,93 @@ namespace Astra.ViewModels
                 var allConfigsResult = await _configManager.GetAllConfigsAsync();
                 var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
                 
+                // ✅ 生成新名称（保持原有编号，不根据索引重新分配）
+                // 编号应该保持稳定，只有新建节点或名称没有编号时才分配新编号
                 string newNodeName = GetNodeDisplayName(targetNode.Config, targetNode.Parent, savedConfigs);
                 targetNode.Config.ConfigName = newNodeName;
 
+                // ✅ 根据节点在树中的位置更新 UpdatedAt（保持拖拽后的顺序）
+                // ⚠️ 关键：需要更新并保存所有兄弟节点的 UpdatedAt，按照它们在树中的位置
+                // 但是编号保持不变，不根据索引重新分配
+                if (targetNode.Parent != null && targetNode.Parent.Children != null)
+                {
+                    var baseTime = DateTime.Now;
+                    var siblingsToSave = new List<TreeNode>();
+
+                    // 更新所有兄弟节点的 UpdatedAt（按照它们在树中的位置）
+                    for (int i = 0; i < targetNode.Parent.Children.Count; i++)
+                    {
+                        var siblingNode = targetNode.Parent.Children[i];
+                        if (siblingNode != null && siblingNode.Config != null)
+                        {
+                            // 更新内存中的 UpdatedAt
+                            siblingNode.Config.UpdatedAt = baseTime.AddMilliseconds(i);
+                            
+                            // 收集需要保存的节点（包括当前节点和所有兄弟节点）
+                            siblingsToSave.Add(siblingNode);
+                        }
+                    }
+
+                    // ✅ 保存所有兄弟节点（更新它们的 UpdatedAt 到文件）
+                    // 注意：名称和编号保持不变，不重新分配
+                    var successCount = 0;
+                    var errorCount = 0;
+                    
+                    foreach (var siblingNode in siblingsToSave)
+                    {
+                        try
+                        {
+                            // 保存节点配置（更新 UpdatedAt，但保持原有名称和编号）
+                            var saveResult = await _configManager.UpdateConfigAsync(siblingNode.Config);
+                            
+                            if (saveResult != null && saveResult.Success)
+                            {
+                                successCount++;
+                                
+                                // 如果是当前节点，更新节点名称显示（使用已生成的名称）
+                                if (siblingNode == targetNode)
+                                {
+                                    targetNode.Header = newNodeName;
+                                }
+                            }
+                            else
+                            {
+                                errorCount++;
+                                // 如果是当前节点保存失败，显示错误并返回
+                                if (siblingNode == targetNode)
+                                {
+                                    ToastHelper.ShowError($"保存配置失败: {saveResult?.Message ?? "未知错误"}");
+                                    return;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errorCount++;
+                            // 如果保存当前节点失败，显示错误并返回
+                            if (siblingNode == targetNode)
+                            {
+                                ToastHelper.ShowError($"保存配置失败: {ex.Message}");
+                                return;
+                            }
+                            // 对于其他兄弟节点，只记录错误，不中断流程
+                        }
+                    }
+
+                    // 显示保存结果
+                    if (errorCount == 0)
+                    {
+                        ToastHelper.ShowSuccess($"已保存: {targetNode.Header}");
+                    }
+                    else
+                    {
+                        ToastHelper.ShowWarning($"已保存当前配置，但有 {errorCount} 个兄弟节点保存失败");
+                    }
+                    
+                    return; // 已经保存完成，直接返回
+                }
+
+                // 如果没有父节点，只保存当前节点（不应该发生，但保留作为后备）
                 // 通过 IConfigurationManager 的非泛型入口更新当前配置
                 OperationResult rlt = await _configManager.UpdateConfigAsync(targetNode.Config);
 
@@ -1020,9 +1121,14 @@ namespace Astra.ViewModels
                 var timeOffset = 0;
                 
                 // 预先获取所有已保存的配置，用于检查编号唯一性（避免在循环中重复获取）
-                List<IConfig> savedConfigs = null;
+                var allConfigsResult = await _configManager.GetAllConfigsAsync();
+                var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
 
-                // 遍历所有根节点（按树中的顺序）
+                // ✅ 第一步：按照树中的顺序，为所有节点生成新名称并更新 Header（仅内存中）
+                // ⚠️ 关键：保持原有编号，不根据索引重新分配编号
+                // 编号应该保持稳定，只有新建节点或名称没有编号时才分配新编号
+                var nodesToSave = new List<(TreeNode Node, string NewName)>();
+                
                 foreach (var rootNode in TreeNodes)
                 {
                     // 遍历所有子节点（实际配置，按树中的顺序）
@@ -1030,58 +1136,69 @@ namespace Astra.ViewModels
                     {
                         if (childNode.Config != null)
                         {
-                            try
+                            // ⚠️ 关键：如果 ConfigName 中已有编号，直接使用它，不重新生成
+                            // 这样可以保持原有编号，不会因为拖拽而改变
+                            string newNodeName;
+                            
+                            if (!string.IsNullOrEmpty(childNode.Config.ConfigName) && HasHashNumberSuffix(childNode.Config.ConfigName))
                             {
-                                // 如果配置实现了 IPreSaveConfig 接口，执行预保存逻辑
-                                if (childNode.Config is Astra.Core.Configuration.IPreSaveConfig preSaveConfig)
-                                {
-                                    var preSaveResult = await preSaveConfig.PreSaveAsync(_configManager);
-                                    if (preSaveResult != null && !preSaveResult.Success)
-                                    {
-                                        errorCount++;
-                                        errors.Add($"{childNode.Config.ConfigName}: 预保存失败 - {preSaveResult.Message}");
-                                        continue; // 跳过保存主配置
-                                    }
-                                }
-
-                                // 根据节点在树中的位置设置 UpdatedAt（保持顺序）
-                                // 使用递增的时间偏移量，确保顺序正确
-                                childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
-                                timeOffset++;
-
-                                // 在保存前更新节点名称和配置名称，确保保存时名称已同步
-                                // 注意：DeviceName 现在是 ConfigName 的别名，更新 ConfigName 即可
-                                // 先异步获取所有已保存的配置，然后传递给 GetNodeDisplayName 以确保编号唯一
-                                // 注意：这里在循环外获取一次即可，避免重复获取
-                                if (savedConfigs == null)
-                                {
-                                    var allConfigsResult = await _configManager.GetAllConfigsAsync();
-                                    savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
-                                }
-                                
-                                string newNodeName = GetNodeDisplayName(childNode.Config, childNode.Parent, savedConfigs);
-                                childNode.Config.ConfigName = newNodeName;
-
-                                var result = await _configManager.UpdateConfigAsync(childNode.Config);
-
-                                if (result != null && result.Success)
-                                {
-                                    // 更新节点名称（设备名称已在保存前更新）
-                                    childNode.Header = newNodeName;
-                                    successCount++;
-                                }
-                                else
-                                {
-                                    errorCount++;
-                                    errors.Add($"{childNode.Config.ConfigName}: {result?.Message ?? "未知错误"}");
-                                }
+                                // ConfigName 中已有编号，直接使用它（但需要检查唯一性）
+                                newNodeName = EnsureUniqueNumber(childNode.Config.ConfigName, childNode.Parent, childNode.Config.ConfigId, savedConfigs);
                             }
-                            catch (Exception ex)
+                            else
+                            {
+                                // ConfigName 中没有编号，生成新名称（可能会添加编号）
+                                newNodeName = GetNodeDisplayName(childNode.Config, childNode.Parent, savedConfigs, preserveExistingNumber: false);
+                            }
+                            
+                            // 立即更新内存中的 Header 和 ConfigName
+                            childNode.Header = newNodeName;
+                            childNode.Config.ConfigName = newNodeName;
+                            
+                            nodesToSave.Add((childNode, newNodeName));
+                        }
+                    }
+                }
+
+                // ✅ 第二步：按照树中的顺序，保存所有配置
+                foreach (var (childNode, newNodeName) in nodesToSave)
+                {
+                    try
+                    {
+                        // 如果配置实现了 IPreSaveConfig 接口，执行预保存逻辑
+                        if (childNode.Config is Astra.Core.Configuration.IPreSaveConfig preSaveConfig)
+                        {
+                            var preSaveResult = await preSaveConfig.PreSaveAsync(_configManager);
+                            if (preSaveResult != null && !preSaveResult.Success)
                             {
                                 errorCount++;
-                                errors.Add($"{childNode.Config.ConfigName}: {ex.Message}");
+                                errors.Add($"{childNode.Config.ConfigName}: 预保存失败 - {preSaveResult.Message}");
+                                continue; // 跳过保存主配置
                             }
                         }
+
+                        // 根据节点在树中的位置设置 UpdatedAt（保持顺序）
+                        // 使用递增的时间偏移量，确保顺序正确
+                        childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
+                        timeOffset++;
+
+                        // 保存配置（名称已在第一步更新）
+                        var result = await _configManager.UpdateConfigAsync(childNode.Config);
+
+                        if (result != null && result.Success)
+                        {
+                            successCount++;
+                        }
+                        else
+                        {
+                            errorCount++;
+                            errors.Add($"{childNode.Config.ConfigName}: {result?.Message ?? "未知错误"}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        errors.Add($"{childNode.Config.ConfigName}: {ex.Message}");
                     }
                 }
 
@@ -1375,35 +1492,112 @@ namespace Astra.ViewModels
         /// 获取节点的显示名称
         /// 使用配置对象的 GetDisplayName() 方法（如果实现了 ConfigBase）
         /// 如果名称中没有编号，自动添加唯一编号
+        /// ⚠️ 关键：保持原有编号，不根据索引重新分配编号
         /// </summary>
         /// <param name="config">配置对象</param>
         /// <param name="parent">父节点（可选，用于生成唯一编号）</param>
         /// <param name="savedConfigs">已保存的配置列表（可选，用于检查编号唯一性）</param>
-        private string GetNodeDisplayName(IConfig config, TreeNode parent = null, List<IConfig> savedConfigs = null)
+        /// <param name="preserveExistingNumber">是否保持现有编号（如果 ConfigName 中已有编号）</param>
+        private string GetNodeDisplayName(IConfig config, TreeNode parent = null, List<IConfig> savedConfigs = null, bool preserveExistingNumber = true)
         {
             if (config == null)
                 return string.Empty;
 
             string displayName;
 
-            // 如果配置继承自 ConfigBase，使用 GetDisplayName() 方法
-            if (config is ConfigBase configBase)
+            // ⚠️ 关键：如果 preserveExistingNumber 为 true，且 ConfigName 中已有编号，直接使用 ConfigName
+            // 这样可以保持原有编号，不会因为 GetDisplayName() 返回的名称没有编号而重新分配
+            if (preserveExistingNumber && !string.IsNullOrEmpty(config.ConfigName) && HasHashNumberSuffix(config.ConfigName))
             {
-                displayName = configBase.GetDisplayName();
+                // ConfigName 中已有编号，直接使用它（但需要检查唯一性）
+                displayName = config.ConfigName;
             }
             else
             {
-                // 对于其他配置类型，使用 ConfigName
-                displayName = string.IsNullOrEmpty(config.ConfigName) ? "未命名配置" : config.ConfigName;
+                // 如果配置继承自 ConfigBase，使用 GetDisplayName() 方法
+                if (config is ConfigBase configBase)
+                {
+                    displayName = configBase.GetDisplayName();
+                }
+                else
+                {
+                    // 对于其他配置类型，使用 ConfigName
+                    displayName = string.IsNullOrEmpty(config.ConfigName) ? "未命名配置" : config.ConfigName;
+                }
             }
 
             // 如果提供了父节点，检查是否需要添加编号
+            // ⚠️ 关键：保持原有编号，不根据索引重新分配
+            // 如果名称已经有编号，就保持它；如果没有编号，才添加编号
             if (parent != null)
             {
                 displayName = EnsureUniqueNumber(displayName, parent, config.ConfigId, savedConfigs);
             }
 
             return displayName;
+        }
+
+        /// <summary>
+        /// 根据节点在树中的索引位置分配编号（确保按顺序）
+        /// ⚠️ 关键：使用节点索引而不是查找最小可用编号，确保编号按树中的顺序分配
+        /// </summary>
+        /// <param name="baseName">基础名称</param>
+        /// <param name="parent">父节点</param>
+        /// <param name="currentConfigId">当前配置ID</param>
+        /// <param name="nodeIndex">节点在父节点中的索引位置（从0开始）</param>
+        /// <param name="savedConfigs">已保存的配置列表</param>
+        private string EnsureUniqueNumberByIndex(string baseName, TreeNode parent, string currentConfigId, int nodeIndex, List<IConfig> savedConfigs = null)
+        {
+            if (string.IsNullOrEmpty(baseName) || parent == null || parent.Children == null)
+                return baseName;
+
+            // 提取基础名称（去掉可能存在的旧编号）
+            string cleanBaseName = ExtractBaseName(baseName);
+            if (string.IsNullOrEmpty(cleanBaseName))
+            {
+                cleanBaseName = baseName;
+            }
+
+            // 根据节点索引分配编号（索引从0开始，编号从1开始）
+            int targetNumber = nodeIndex + 1;
+
+            // 检查目标编号是否已被使用（考虑已保存的配置）
+            var usedNames = GetUsedNamesForParent(parent, currentConfigId, savedConfigs);
+            string targetName = $"{cleanBaseName} #{targetNumber}";
+
+            // 如果目标编号已被使用，需要调整
+            // 但通常情况下，由于我们按顺序处理，目标编号应该可用
+            // 如果不可用，说明有冲突，需要查找下一个可用编号
+            if (usedNames.Contains(targetName))
+            {
+                // 提取所有已使用的编号
+                var usedNumbers = new HashSet<int>();
+                foreach (var usedName in usedNames)
+                {
+                    if (usedName.StartsWith(cleanBaseName))
+                    {
+                        string suffix = usedName.Substring(cleanBaseName.Length).TrimStart();
+                        if (suffix.StartsWith("#"))
+                        {
+                            string numberPart = suffix.Substring(1);
+                            if (int.TryParse(numberPart, out int number))
+                            {
+                                usedNumbers.Add(number);
+                            }
+                        }
+                    }
+                }
+
+                // 从目标编号开始查找可用编号
+                int availableNumber = targetNumber;
+                while (usedNumbers.Contains(availableNumber))
+                {
+                    availableNumber++;
+                }
+                targetNumber = availableNumber;
+            }
+
+            return $"{cleanBaseName} #{targetNumber}";
         }
 
         /// <summary>
@@ -1454,6 +1648,7 @@ namespace Astra.ViewModels
 
         /// <summary>
         /// 如果名称已有数字后缀但不唯一，生成新的唯一编号
+        /// ⚠️ 关键：如果名称已唯一，保持原有编号；如果不唯一，才生成新编号
         /// </summary>
         private string EnsureUniqueNameWithNumber(string name, TreeNode parent, string currentConfigId = null, List<IConfig> savedConfigs = null)
         {
@@ -1461,15 +1656,17 @@ namespace Astra.ViewModels
             string baseName = ExtractBaseName(name);
 
             // 获取所有已使用的名称（包括树中的节点和已保存的配置）
+            // ⚠️ 注意：排除当前节点本身，避免自己和自己冲突
             var usedNames = GetUsedNamesForParent(parent, currentConfigId, savedConfigs);
 
-            // 检查当前名称是否唯一
+            // 检查当前名称是否唯一（排除自己）
             if (!usedNames.Contains(name))
             {
-                return name; // 名称已唯一，直接返回
+                // 名称已唯一，保持原有编号
+                return name;
             }
 
-            // 如果不唯一，生成新的唯一编号
+            // 如果不唯一，生成新的唯一编号（查找最小可用编号）
             return AddUniqueNumber(baseName, parent, currentConfigId, savedConfigs);
         }
 

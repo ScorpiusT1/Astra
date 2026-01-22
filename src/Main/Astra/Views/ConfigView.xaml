@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Astra.Views"
+             xmlns:localConverters="clr-namespace:Astra.Converters"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
              xmlns:models="clr-namespace:Astra.Models"
              xmlns:behaviors="clr-namespace:Astra.Behaviors"
@@ -15,6 +16,7 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <localConverters:TextTruncateConverter x:Key="TextTruncateConverter" DefaultMaxLength="30" />
     </UserControl.Resources>
     <Grid>
         <!-- 主内容区域 -->
@@ -102,19 +104,28 @@
                                                           ItemsSource="{Binding Children}">
                                     <Grid Margin="0,4">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" MinWidth="0" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Orientation="Horizontal"
-                                                    VerticalAlignment="Center">
+                                                    VerticalAlignment="Center"
+                                                    Grid.Column="0">
                                             <TextBlock Text="{Binding Icon}"
                                                        FontSize="14"
                                                        VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding Header}"
-                                                       Margin="6,0,0,0"
+                                            <TextBlock Margin="6,0,0,0"
                                                        FontWeight="SemiBold"
-                                                       VerticalAlignment="Center" />
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding Header, Converter={StaticResource TextTruncateConverter}, ConverterParameter=30}"
+                                                       ToolTip="{Binding Header}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="180">
+                                                <!-- 设置 ToolTip 立即显示，无延迟 -->
+                                                <ToolTipService.InitialShowDelay>0</ToolTipService.InitialShowDelay>
+                                                <ToolTipService.ShowDuration>5000</ToolTipService.ShowDuration>
+                                                <ToolTipService.BetweenShowDelay>0</ToolTipService.BetweenShowDelay>
+                                            </TextBlock>
                                         </StackPanel>
                                         <Button Grid.Column="1"
                                                 Style="{StaticResource AddButton}"

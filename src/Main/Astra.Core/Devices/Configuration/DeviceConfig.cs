@@ -60,15 +60,9 @@ namespace Astra.Core.Devices.Configuration
             {
                 if (ConfigName != value)
                 {
-                    var oldValue = ConfigName;
                     ConfigName = value;
                     // 触发 DeviceName 的属性变更通知（ConfigName 的变更通知由基类处理）
-                    OnPropertyChanged(new PropertyChangedEventArgs
-                    {
-                        PropertyName = nameof(DeviceName),
-                        OldValue = oldValue,
-                        NewValue = value
-                    });
+                    OnPropertyChanged(nameof(DeviceName));
                 }
             }
         }
@@ -107,38 +101,32 @@ namespace Astra.Core.Devices.Configuration
 
         #region 属性变更通知
 
+        /// <summary>
+        /// 属性变更事件（使用自定义事件参数，保持向后兼容）
+        /// </summary>
         public event EventHandler<PropertyChangedEventArgs> PropertyChanged;
 
-        protected virtual bool SetProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string propertyName = null)
+        /// <summary>
+        /// 重写 OnPropertyChanged 以同时触发自定义 PropertyChanged 事件
+        /// </summary>
+        protected override void OnPropertyChanged(string propertyName, object oldValue, object newValue)
         {
-            if (!EqualityComparer<T>.Default.Equals(field, value))
+            base.OnPropertyChanged(propertyName, oldValue, newValue);
+
+            // 同时触发自定义 PropertyChanged 事件以保持向后兼容
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs
             {
-                var oldValue = field;
-                field = value;
-                OnPropertyChanged(new PropertyChangedEventArgs
-                {
-                    PropertyName = propertyName,
-                    OldValue = oldValue,
-                    NewValue = value
-                });
-
-                return true;
-            }
-
-            return false;
-        }
-
-        protected virtual void OnPropertyChanged(PropertyChangedEventArgs e)
-        {
-            PropertyChanged?.Invoke(this, e);
+                PropertyName = propertyName,
+                OldValue = oldValue,
+                NewValue = newValue
+            });
 
             // 跳过 ModifiedAt 和 CreatedAt 的变更事件触发（避免循环）
-            if (e.PropertyName == nameof(ModifiedAt) || e.PropertyName == nameof(CreatedAt))
+            if (propertyName == nameof(ModifiedAt) || propertyName == nameof(CreatedAt))
                 return;
 
             // 直接赋值 ModifiedAt 字段，避免触发变更事件导致无限递归
             _modifiedAt = DateTime.Now;
-
         }
 
         #endregion
@@ -219,12 +207,7 @@ namespace Astra.Core.Devices.Configuration
                     {
                         var oldModel = _model;
                         _model = string.Empty;
-                        OnPropertyChanged(new PropertyChangedEventArgs
-                        {
-                            PropertyName = nameof(Model),
-                            OldValue = oldModel,
-                            NewValue = string.Empty
-                        });
+                        OnPropertyChanged(nameof(Model));
                     }
 
                     // 应用设备约束

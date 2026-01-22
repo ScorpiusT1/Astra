@@ -90,6 +90,7 @@
                            VerticalAlignment="Center" />
                 <ComboBox Grid.Column="1"
                           ItemsSource="{Binding AvailableModels}"
+                        
                           SelectedItem="{Binding Model, UpdateSourceTrigger=PropertyChanged}"
                           IsEnabled="{Binding Manufacturer, Converter={StaticResource IsNotNullConverter}}"
                           FontSize="13"
@@ -222,6 +223,7 @@
             <!-- 自动启动 -->
             <CheckBox Grid.Row="9"
                       Content="插件启动时自动开始采集"
+                      Visibility="Collapsed"
                       FontSize="13"
                       FontWeight="Medium"
                       IsChecked="{Binding AutoStart}"

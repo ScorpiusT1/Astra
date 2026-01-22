@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -7,8 +10,9 @@ namespace Astra.Core.Configuration
     /// <summary>
     /// 配置基类 - 提供IConfig的默认实现，减少重复代码（DRY原则）
     /// 符合里氏替换原则（LSP），子类可以安全替换基类
+    /// 自己实现 INotifyPropertyChanged 接口，不依赖外部库
     /// </summary>
-    public abstract class ConfigBase : IClonableConfig, IObservableConfig
+    public abstract class ConfigBase : IClonableConfig, IObservableConfig, INotifyPropertyChanged
     {
         private string _configId;
         private string _name;
@@ -115,6 +119,11 @@ namespace Astra.Core.Configuration
         /// 配置变更事件
         /// </summary>
         public event EventHandler<ConfigChangedEventArgs> ConfigChanged;
+
+        /// <summary>
+        /// 属性变更事件（INotifyPropertyChanged 接口）
+        /// </summary>
+        public event PropertyChangedEventHandler PropertyChanged;
 
         /// <summary>
         /// 无参构造函数（用于JSON反序列化）
@@ -302,10 +311,38 @@ namespace Astra.Core.Configuration
         }
 
         /// <summary>
-        /// 属性变更通知
+        /// 设置属性值并触发变更通知（类似 ObservableObject.SetProperty）
+        /// </summary>
+        protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+            {
+                return false;
+            }
+
+            var oldValue = field;
+            field = value;
+            OnPropertyChanged(propertyName, oldValue, value);
+            return true;
+        }
+
+        /// <summary>
+        /// 属性变更通知（触发 INotifyPropertyChanged 和 ConfigChanged 事件）
+        /// </summary>
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            OnPropertyChanged(propertyName, null, null);
+        }
+
+        /// <summary>
+        /// 属性变更通知（带旧值和新值，用于内部调用）
         /// </summary>
         protected virtual void OnPropertyChanged(string propertyName, object oldValue, object newValue)
         {
+            // 触发 INotifyPropertyChanged 事件
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            
+            // 触发 ConfigChanged 事件（带旧值和新值）
             ConfigChanged?.Invoke(this, new ConfigChangedEventArgs
             {
                 PropertyName = propertyName,

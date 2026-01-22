@@ -5,10 +5,8 @@ using Astra.Plugins.DataAcquisition.Views;
 using Astra.UI.Abstractions.Attributes;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,10 +18,10 @@ namespace Astra.Plugins.DataAcquisition.Configs
     #region 传感器配置（支持UI绑定）
 
     /// <summary>
-    /// 传感器配置（支持INotifyPropertyChanged）
+    /// 传感器配置（使用 ObservableObject 处理属性变更通知）
     /// </summary>
     [TreeNodeConfig("传感器", "📡", typeof(SensorConfigView), typeof(SensorConfigViewModel))]
-    public class SensorConfig : ConfigBase, INotifyPropertyChanged, ICloneable
+    public class SensorConfig : ConfigBase, ICloneable
     {
         private SensorType _sensorType;
         private string _manufacturer;
@@ -49,8 +47,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private string _notes;
         private bool _isThreeAxis; // 是否为三轴传感器（仅对加速度计有效）
         private bool _isUpdatingSensorType; // 防止循环更新的标志
-
-        public event PropertyChangedEventHandler PropertyChanged;
 
         #region 属性
 
@@ -417,22 +413,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
             this.ConfigId = configId;
         }
 
-        protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
-        {
-            if (EqualityComparer<T>.Default.Equals(field, value))
-            {
-                return false;
-            }
-            
-            field = value;
-            OnPropertyChanged(propertyName);
-            return true;
-        }
-
-        protected void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
 
         /// <summary>
         /// 获取配置的显示名称（用于树节点等UI显示）
@@ -440,40 +420,32 @@ namespace Astra.Plugins.DataAcquisition.Configs
         /// </summary>
         public override string GetDisplayName()
         {
-            var parts = new List<string>();
-            
-            // 添加厂家
-            if (!string.IsNullOrWhiteSpace(Manufacturer))
-            {
-                parts.Add(Manufacturer);
-            }
-            
-            // 添加型号
-            if (!string.IsNullOrWhiteSpace(Model))
-            {
-                parts.Add(Model);
-            }
-            
-            // 添加编号（序列号）
-            if (!string.IsNullOrWhiteSpace(SerialNumber))
-            {
-                parts.Add(SerialNumber);
-            }
-            
-            // 如果所有部分都为空，使用 ConfigName 作为后备
-            if (parts.Count == 0)
-            {
-                return string.IsNullOrEmpty(ConfigName) ? "未命名传感器" : ConfigName;
-            }
-            
-            return string.Join(" ", parts);
+            return ConfigDisplayNameHelper.BuildDisplayName(
+                Manufacturer,
+                Model,
+                SerialNumber,
+                ConfigName,
+                "未命名传感器");
         }
 
         public override string ToString() => DisplayText;
 
+        /// <summary>
+        /// 克隆配置（使用序列化方法实现深拷贝，确保所有属性正确复制）
+        /// </summary>
         public override IConfig Clone()
         {
-            return this.MemberwiseClone() as IConfig;
+            // 使用基类的序列化方法实现深拷贝
+            var json = Serialize();
+            var clone = Deserialize<SensorConfig>(json);
+
+            // 重置配置ID和元数据
+            if (clone != null)
+            {
+                clone.SetConfigId(Guid.NewGuid().ToString());
+            }
+
+            return clone;
         }
 
         object ICloneable.Clone()
