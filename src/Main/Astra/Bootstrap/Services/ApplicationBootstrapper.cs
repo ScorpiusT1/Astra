@@ -538,14 +538,15 @@ namespace Astra.Bootstrap.Services
                         // ⭐ 检查是否已取消
                         cancellationToken.ThrowIfCancellationRequested();
                         
+                        // ⚠️ 关键：将 loadedAssemblies 提升到外部作用域，以便在阶段2中使用
+                        var loadedAssemblies = new List<System.Reflection.Assembly>();
+                        
                         // ⭐ 阶段1：先只加载插件程序集（不初始化），用于扫描 ConfigProvider
                         // 这样可以确保所有 Provider 在插件初始化前已经注册
                         UpdateSplashScreen(70, "正在加载插件程序集...", null);
                         
                         if (sortedCount > 0)
                         {
-                            var loadedAssemblies = new List<System.Reflection.Assembly>();
-                            
                             // 逐个加载插件程序集（不初始化）
                             for (int i = 0; i < sortedDescriptors.Count; i++)
                             {
@@ -560,7 +561,7 @@ namespace Astra.Bootstrap.Services
                                         // 只加载程序集，不创建实例和初始化
                                         var assembly = System.Reflection.Assembly.LoadFrom(descriptor.AssemblyPath);
                                         loadedAssemblies.Add(assembly);
-                                        _context.Logger?.LogInfo($"已加载插件程序集: {descriptor.Name ?? descriptor.Id}");
+                                        _context.Logger?.LogInfo($"已加载插件程序集: {descriptor.Name ?? descriptor.Id} ({assembly.GetName().Name})");
                                     }
                                 }
                                 catch (Exception ex)
@@ -585,22 +586,46 @@ namespace Astra.Bootstrap.Services
                             {
                                 _context.Logger?.LogInfo("开始扫描所有程序集中的 ConfigProvider...");
                                 
-                                // 扫描所有已加载的程序集（包括主程序集和插件程序集）
-                                var allAssemblies = AppDomain.CurrentDomain.GetAssemblies()
+                                // ⚠️ 关键：确保已加载的插件程序集都被扫描
+                                // 先获取 AppDomain 中已有的程序集
+                                var appDomainAssemblies = AppDomain.CurrentDomain.GetAssemblies()
                                     .Where(a => !a.IsDynamic)
-                                    .ToList();
+                                    .ToDictionary(a => a.FullName ?? a.GetName().FullName, a => a);
+                                
+                                // 将阶段1中加载的插件程序集也加入扫描列表（如果它们不在 AppDomain 中）
+                                var assembliesToScan = new List<System.Reflection.Assembly>(appDomainAssemblies.Values);
+                                
+                                if (loadedAssemblies != null && loadedAssemblies.Count > 0)
+                                {
+                                    foreach (var loadedAssembly in loadedAssemblies)
+                                    {
+                                        var assemblyKey = loadedAssembly.FullName ?? loadedAssembly.GetName().FullName;
+                                        // 如果程序集不在 AppDomain 中，添加到扫描列表
+                                        if (!appDomainAssemblies.ContainsKey(assemblyKey))
+                                        {
+                                            assembliesToScan.Add(loadedAssembly);
+                                            _context.Logger?.LogInfo($"添加插件程序集到扫描列表: {loadedAssembly.GetName().Name}");
+                                        }
+                                    }
+                                }
+                                
+                                _context.Logger?.LogInfo($"准备扫描 {assembliesToScan.Count} 个程序集（AppDomain: {appDomainAssemblies.Count}, 插件: {loadedAssemblies?.Count ?? 0}）");
                                 
                                 var totalProviderCount = 0;
-                                foreach (var assembly in allAssemblies)
+                                foreach (var assembly in assembliesToScan)
                                 {
                                     try
                                     {
                                         var count = configProviderDiscovery.DiscoverAndRegisterProviders(assembly);
+                                        if (count > 0)
+                                        {
+                                            _context.Logger?.LogInfo($"从程序集 {assembly.GetName().Name} 注册了 {count} 个 ConfigProvider");
+                                        }
                                         totalProviderCount += count;
                                     }
                                     catch (Exception ex)
                                     {
-                                        _context.Logger?.LogWarning($"扫描程序集 {assembly.FullName} 时出错: {ex.Message}");
+                                        _context.Logger?.LogWarning($"扫描程序集 {assembly.FullName ?? assembly.GetName().FullName} 时出错: {ex.Message}");
                                     }
                                 }
                                 

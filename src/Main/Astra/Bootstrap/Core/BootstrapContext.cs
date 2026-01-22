@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -96,5 +98,33 @@ namespace Astra.Bootstrap.Core
         void LogInfo(string message);
         void LogWarning(string message);
         void LogError(string message, Exception exception = null);
+    }
+
+    /// <summary>
+    /// Microsoft.Extensions.Logging.ILogger 到 IBootstrapLogger 的适配器
+    /// </summary>
+    public class MicrosoftLoggerBootstrapAdapter : IBootstrapLogger
+    {
+        private readonly ILogger _logger;
+
+        public MicrosoftLoggerBootstrapAdapter(ILogger logger)
+        {
+            _logger = logger ?? NullLogger.Instance;
+        }
+
+        public void LogInfo(string message)
+        {
+            _logger.LogInformation(message);
+        }
+
+        public void LogWarning(string message)
+        {
+            _logger.LogWarning(message);
+        }
+
+        public void LogError(string message, Exception exception = null)
+        {
+            _logger.LogError(exception, message);
+        }
     }
 }

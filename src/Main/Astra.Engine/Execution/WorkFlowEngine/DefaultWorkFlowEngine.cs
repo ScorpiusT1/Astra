@@ -1,8 +1,9 @@
 using Astra.Core.Nodes.Models;
-using Astra.Core.Logs;
 using Astra.Engine.Execution.WorkFlowEngine;
 using Astra.Engine.Execution.Strategies;
 using Astra.Engine.Execution.Validators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -19,6 +20,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         private readonly IStrategyDetector _strategyDetector;
         private readonly IExecutionStrategyFactory _strategyFactory;
         private readonly IWorkFlowValidator _validator;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// 执行统计信息
@@ -51,14 +53,17 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// <param name="strategyDetector">策略检测器，如果为null则使用默认检测器</param>
         /// <param name="strategyFactory">策略工厂，如果为null则使用默认工厂</param>
         /// <param name="validator">工作流验证器，如果为null则使用默认验证器</param>
+        /// <param name="logger">日志记录器，如果为null则使用空日志器</param>
         public DefaultWorkFlowEngine(
             IStrategyDetector strategyDetector = null,
             IExecutionStrategyFactory strategyFactory = null,
-            IWorkFlowValidator validator = null)
+            IWorkFlowValidator validator = null,
+            ILogger logger = null)
         {
             _strategyDetector = strategyDetector ?? new DefaultStrategyDetector();
             _strategyFactory = strategyFactory ?? new DefaultExecutionStrategyFactory();
             _validator = validator ?? new DefaultWorkFlowValidator();
+            _logger = logger ?? NullLogger.Instance;
             Statistics = new WorkFlowExecutionStatistics();
         }
 
@@ -97,7 +102,8 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 // 4. 创建流程级 Logger 并注入到 ServiceProvider
                 await using var loggerScope = WorkFlowLoggerScope.Create(context, workflow);
                 var sp = new ScopedServiceProvider(context?.ServiceProvider);
-                sp.AddService(typeof(Logger), loggerScope.Logger);
+                // 将 ILogger 注入到 ServiceProvider，供其他组件使用
+                sp.AddService(typeof(ILogger), loggerScope.Logger);
 
                 // 5. 创建执行上下文
                 var executionContext = new WorkFlowExecutionContext
@@ -181,12 +187,11 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         private void LogStrategy(DetectedExecutionStrategy strategy)
         {
             // 使用结构化日志而非控制台输出
-            var logger = Logger.Create("WorkFlowEngine", Core.Logs.LogLevel.Info);
-            logger?.Info("=".PadRight(60, '='));
-            logger?.Info($"检测到执行策略: {strategy.Type}");
-            logger?.Info($"描述: {strategy.Description}");
-            logger?.Info($"原因: {strategy.Reason}");
-            logger?.Info("=".PadRight(60, '='));
+            _logger.LogInformation("=".PadRight(60, '='));
+            _logger.LogInformation("检测到执行策略: {StrategyType}", strategy.Type);
+            _logger.LogInformation("描述: {Description}", strategy.Description);
+            _logger.LogInformation("原因: {Reason}", strategy.Reason);
+            _logger.LogInformation("=".PadRight(60, '='));
         }
 
         /// <summary>

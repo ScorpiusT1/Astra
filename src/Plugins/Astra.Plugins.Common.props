@@ -1,0 +1,226 @@
+<Project>
+	<!-- 
+		Astra 插件通用构建配置
+		所有插件项目都应该导入此文件以统一构建逻辑
+	-->
+
+	<PropertyGroup>
+		<!-- 禁用在输出路径中追加目标框架 -->
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+		<!-- ⭐ 自动从程序集名称提取插件名称（去掉 "Astra.Plugins." 前缀） -->
+		<PluginName Condition="'$(PluginName)' == ''">$([System.String]::Copy('$(AssemblyName)').Replace('Astra.Plugins.', ''))</PluginName>
+
+		<!-- ⭐ 设置输出路径到主应用程序的 Plugins\{PluginName} 目录 -->
+		<!-- ⚠️ 关键：必须在 PropertyGroup 中直接设置，确保在项目加载时就生效，覆盖 Visual Studio 项目属性中的设置 -->
+		<!-- ⚠️ 关键：MSBuildThisFileDirectory 指向 Common.props 所在目录（src\Plugins\），向上两级到 src\，然后到 Bin -->
+		<!-- 注意：MSBuildThisFileDirectory 包含尾随斜杠，需要去掉尾随斜杠后再组合路径 -->
+		<!-- 使用 TrimEnd 去掉尾随斜杠，然后向上两级到 src\，再到 Bin -->
+		<BaseOutputPath Condition="'$(BaseOutputPath)' == ''">$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(MSBuildThisFileDirectory.TrimEnd('\')),  '..', 'Bin'))'))</BaseOutputPath>
+		<OutputPath Condition="'$(OutputPath)' == ''">$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(BaseOutputPath), '$(Configuration)', 'Plugins', '$(PluginName)'))'))</OutputPath>
+		<!-- ⚠️ 关键：中间文件（obj）应该生成在项目目录下，而不是输出目录下 -->
+		<IntermediateOutputPath Condition="'$(IntermediateOutputPath)' == ''">$(MSBuildProjectDirectory)\obj\$(Configuration)\</IntermediateOutputPath>
+		
+		<!-- ⭐ 阻止复制依赖项到输出目录 -->
+		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+		
+		<!-- ⚠️ 关键：阻止所有项目引用的 DLL 被复制到输出目录 -->
+		<!-- 这确保插件引用（如 Astra.UI.dll、Astra.Core.dll 等）不会被复制 -->
+		<CopyLocal>false</CopyLocal>
+		<Private>false</Private>
+	</PropertyGroup>
+	
+	<!-- ⚠️ 关键：全局设置所有项目引用不复制到输出目录 -->
+	<ItemDefinitionGroup>
+		<ProjectReference>
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+	</ItemDefinitionGroup>
+
+	<!-- ⭐ 在构建前强制设置输出路径（确保覆盖 Visual Studio 项目属性中的设置） -->
+	<Target Name="ForcePluginOutputPath" BeforeTargets="PrepareForBuild">
+		<PropertyGroup>
+			<!-- ⚠️ 关键：如果 BaseOutputPath 未设置，重新计算（使用 MSBuildThisFileDirectory 确保路径正确） -->
+			<!-- MSBuildThisFileDirectory 指向 Common.props 所在目录（src\Plugins\），使用 TrimEnd 去掉尾随斜杠，向上两级到 src\，然后到 Bin -->
+			<BaseOutputPath Condition="'$(BaseOutputPath)' == ''">$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(MSBuildThisFileDirectory.TrimEnd('\')), '..', 'Bin'))'))</BaseOutputPath>
+			<!-- ⚠️ 关键：规范化路径，确保路径正确 -->
+			<NormalizedBaseOutputPath>$([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))</NormalizedBaseOutputPath>
+			<OutputPath>$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(NormalizedBaseOutputPath), '$(Configuration)', 'Plugins', '$(PluginName)'))'))</OutputPath>
+			<OutDir>$(OutputPath)\</OutDir>
+		</PropertyGroup>
+		<Message Text="插件输出路径: $(OutputPath)" Importance="high" />
+		<Message Text="MSBuildThisFileDirectory: $(MSBuildThisFileDirectory)" Importance="normal" />
+		<Message Text="BaseOutputPath: $(BaseOutputPath)" Importance="normal" />
+		<Message Text="NormalizedBaseOutputPath: $(NormalizedBaseOutputPath)" Importance="normal" />
+		<Message Text="中间输出路径: $(IntermediateOutputPath)" Importance="normal" />
+	</Target>
+
+	<!-- ⭐ 自动将 .addin 文件复制到输出目录 -->
+	<ItemGroup>
+		<None Update="$(AssemblyName).addin">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<!-- 如果存在配置文件，也复制到输出目录 -->
+		<None Update="$(AssemblyName).config.json" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- ⭐ 构建后确保 DLL 文件在正确位置（如果输出路径被覆盖，则复制文件；如果已存在，则更新） -->
+	<Target Name="EnsurePluginDllInOutputPath" AfterTargets="Build">
+		<PropertyGroup>
+			<PluginDllName>$(AssemblyName).dll</PluginDllName>
+			<PluginPdbName>$(AssemblyName).pdb</PluginPdbName>
+			<PluginDepsName>$(AssemblyName).deps.json</PluginDepsName>
+			<!-- ⚠️ 关键：规范化路径，移除双反斜杠和多余的路径分隔符 -->
+			<NormalizedBaseOutputPath>$([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))</NormalizedBaseOutputPath>
+			<ExpectedOutputPath>$([System.IO.Path]::GetFullPath('$(NormalizedBaseOutputPath)\$(Configuration)\Plugins\$(PluginName)'))</ExpectedOutputPath>
+		</PropertyGroup>
+		
+		<!-- ⚠️ 关键：使用 MSBuild 的内置变量来查找实际的输出文件 -->
+		<!-- TargetPath 是 MSBuild 在构建后自动设置的，指向实际生成的 DLL 路径 -->
+		<PropertyGroup>
+			<!-- 如果 TargetPath 已设置，使用它（这是最可靠的方法） -->
+			<ActualDllPath Condition="'$(TargetPath)' != '' AND Exists('$(TargetPath)')">$(TargetPath)</ActualDllPath>
+			<!-- 否则尝试从 OutputPath 构建路径 -->
+			<ActualDllPath Condition="'$(ActualDllPath)' == '' AND '$(OutputPath)' != ''">$(OutputPath)\$(PluginDllName)</ActualDllPath>
+			<!-- 再尝试 OutDir -->
+			<ActualDllPath Condition="'$(ActualDllPath)' == '' AND '$(OutDir)' != ''">$(OutDir)$(PluginDllName)</ActualDllPath>
+		</PropertyGroup>
+		
+		<!-- 如果 TargetPath 不存在，尝试从多个可能的位置查找 DLL -->
+		<ItemGroup Condition="'$(ActualDllPath)' == '' OR !Exists('$(ActualDllPath)')">
+			<!-- 标准 .NET SDK 输出路径（包含目标框架） -->
+			<PossibleDllLocations Include="$(MSBuildProjectDirectory)\bin\$(Configuration)\$(TargetFramework)\$(PluginDllName)" />
+			<!-- 标准 .NET SDK 输出路径（不包含目标框架） -->
+			<PossibleDllLocations Include="$(MSBuildProjectDirectory)\bin\$(Configuration)\$(PluginDllName)" />
+			<!-- OutputPath 位置 -->
+			<PossibleDllLocations Include="$(OutputPath)\$(PluginDllName)" Condition="'$(OutputPath)' != ''" />
+			<!-- OutDir 位置 -->
+			<PossibleDllLocations Include="$(OutDir)\$(PluginDllName)" Condition="'$(OutDir)' != ''" />
+			<!-- BaseOutputPath 下的可能位置 -->
+			<PossibleDllLocations Include="$(BaseOutputPath)\$(Configuration)\$(PluginDllName)" />
+			<PossibleDllLocations Include="$(BaseOutputPath)\$(Configuration)\Plugins\$(PluginName)\$(PluginDllName)" />
+		</ItemGroup>
+		
+		<!-- 查找实际存在的 DLL 位置 -->
+		<ItemGroup Condition="'$(ActualDllPath)' == '' OR !Exists('$(ActualDllPath)')">
+			<FoundDll Include="@(PossibleDllLocations)" Condition="Exists('%(Identity)')" />
+		</ItemGroup>
+		
+		<!-- 确定最终的 DLL 路径 -->
+		<PropertyGroup>
+			<!-- 如果 ActualDllPath 存在，使用它 -->
+			<FinalDllPath Condition="'$(ActualDllPath)' != '' AND Exists('$(ActualDllPath)')">$(ActualDllPath)</FinalDllPath>
+			<!-- 否则使用第一个找到的 DLL -->
+			<FinalDllPath Condition="'$(FinalDllPath)' == '' AND @(FoundDll->Count()) > 0">%(FoundDll.Identity)</FinalDllPath>
+			<!-- 获取 DLL 所在目录 -->
+			<FinalDllDir Condition="'$(FinalDllPath)' != ''">$([System.IO.Path]::GetDirectoryName('$(FinalDllPath)'))</FinalDllDir>
+		</PropertyGroup>
+		
+		<!-- 规范化目标文件路径 -->
+		<PropertyGroup Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)')">
+			<DestinationDllPath>$([System.IO.Path]::Combine('$(ExpectedOutputPath)', '$(PluginDllName)'))</DestinationDllPath>
+			<DestinationPdbPath>$([System.IO.Path]::Combine('$(ExpectedOutputPath)', '$(PluginPdbName)'))</DestinationPdbPath>
+			<DestinationDepsPath>$([System.IO.Path]::Combine('$(ExpectedOutputPath)', '$(PluginDepsName)'))</DestinationDepsPath>
+			<SourcePdbPath Condition="'$(FinalDllDir)' != ''">$([System.IO.Path]::Combine('$(FinalDllDir)', '$(PluginPdbName)'))</SourcePdbPath>
+			<SourceDepsPath Condition="'$(FinalDllDir)' != ''">$([System.IO.Path]::Combine('$(FinalDllDir)', '$(PluginDepsName)'))</SourceDepsPath>
+		</PropertyGroup>
+		
+		<!-- 确保目标目录存在 -->
+		<MakeDir Directories="$(ExpectedOutputPath)" Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)')" />
+		
+		<!-- 复制 DLL 和相关文件（SkipUnchangedFiles=true 会自动检查文件是否更新） -->
+		<Copy SourceFiles="$(FinalDllPath)" 
+		      DestinationFiles="$(DestinationDllPath)" 
+		      SkipUnchangedFiles="true"
+		      Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)')" />
+		
+		<!-- 复制 PDB 文件 -->
+		<Copy SourceFiles="$(SourcePdbPath)" 
+		      DestinationFiles="$(DestinationPdbPath)" 
+		      SkipUnchangedFiles="true"
+		      Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)') AND Exists('$(SourcePdbPath)')" />
+		
+		<!-- 复制 deps.json 文件 -->
+		<Copy SourceFiles="$(SourceDepsPath)" 
+		      DestinationFiles="$(DestinationDepsPath)" 
+		      SkipUnchangedFiles="true"
+		      Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)') AND Exists('$(SourceDepsPath)')" />
+		
+		<!-- 显示操作结果 -->
+		<Message Text="插件 DLL 源路径: $(FinalDllPath)" 
+		         Condition="'$(FinalDllPath)' != ''" 
+		         Importance="normal" />
+		<Message Text="插件 DLL 目标路径: $(DestinationDllPath)" 
+		         Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)')" 
+		         Importance="normal" />
+		<Message Text="已更新插件 DLL 到: $(ExpectedOutputPath)" 
+		         Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)') AND Exists('$(DestinationDllPath)')" 
+		         Importance="high" />
+		<Message Text="警告: 未找到插件 DLL，期望位置: $(ExpectedOutputPath)，实际输出路径: $(OutputPath)，OutDir: $(OutDir)，TargetPath: $(TargetPath)" 
+		         Condition="'$(FinalDllPath)' == '' OR !Exists('$(FinalDllPath)')" 
+		         Importance="high" />
+		<Message Text="错误: 复制 DLL 失败，源路径: $(FinalDllPath)，目标路径: $(DestinationDllPath)" 
+		         Condition="'$(FinalDllPath)' != '' AND Exists('$(FinalDllPath)') AND !Exists('$(DestinationDllPath)')" 
+		         Importance="high" />
+	</Target>
+
+	<!-- ⭐ 构建后清理：只保留插件自己的 DLL 和 .addin 文件，删除所有引用的 DLL -->
+	<Target Name="CleanPluginOutput" AfterTargets="Build">
+		<PropertyGroup>
+			<NormalizedOutputPath>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</NormalizedOutputPath>
+		</PropertyGroup>
+		
+		<ItemGroup>
+			<!-- 获取插件自己的输出文件（使用完整路径） -->
+			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).dll" />
+			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).pdb" />
+			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).deps.json" />
+			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).addin" />
+			<!-- 如果存在配置文件，也保留 -->
+			<!-- <PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).config.json" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')" /> -->
+		</ItemGroup>
+
+		<ItemGroup>
+			<!-- 获取所有输出文件 -->
+			<AllOutputFiles Include="$(NormalizedOutputPath)\*.dll" />
+			<AllOutputFiles Include="$(NormalizedOutputPath)\*.pdb" />
+			<AllOutputFiles Include="$(NormalizedOutputPath)\*.deps.json" />
+			<AllOutputFiles Include="$(NormalizedOutputPath)\*.json" />
+			<AllOutputFiles Include="$(NormalizedOutputPath)\*.xml" />
+
+			<!-- 排除插件自己的文件，得到需要删除的文件 -->
+			<FilesToDelete Include="@(AllOutputFiles)" Exclude="@(PluginFiles)" />
+		</ItemGroup>
+
+		<!-- 删除不需要的文件（包括所有引用的 DLL） -->
+		<Delete Files="@(FilesToDelete)" ContinueOnError="true" />
+		
+		<!-- 统计删除的文件数量 -->
+		<PropertyGroup>
+			<DeletedFileCount>@(FilesToDelete->Count())</DeletedFileCount>
+		</PropertyGroup>
+
+		<PropertyGroup>
+			<CleanMessage>已清理插件输出目录，删除了 $(DeletedFileCount) 个文件，只保留插件文件: $(AssemblyName).dll, $(AssemblyName).pdb, $(AssemblyName).deps.json, $(AssemblyName).addin</CleanMessage>
+			<CleanMessage Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">$(CleanMessage), $(AssemblyName).config.json</CleanMessage>
+		</PropertyGroup>
+		<Message Text="$(CleanMessage)" Importance="high" Condition="$(DeletedFileCount) > 0" />
+	</Target>
+
+	<!-- ⭐ 将设备配置同步到 Bin/Configs/Devices 目录（如果存在配置文件） -->
+	<Target Name="CopyDeviceConfigToBin" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">
+		<PropertyGroup>
+			<!-- ⚠️ 关键：规范化 BaseOutputPath，确保路径正确 -->
+			<NormalizedBaseOutputPath>$([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))</NormalizedBaseOutputPath>
+			<DeviceConfigOutputDir>$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(NormalizedBaseOutputPath), '$(Configuration)', 'Configs', 'Devices'))'))</DeviceConfigOutputDir>
+			<DeviceConfigOutputFile>$([System.IO.Path]::Combine('$(DeviceConfigOutputDir)', '$(AssemblyName).config.json'))</DeviceConfigOutputFile>
+		</PropertyGroup>
+		<MakeDir Directories="$(DeviceConfigOutputDir)" />
+		<Copy SourceFiles="$(MSBuildProjectDirectory)\$(AssemblyName).config.json" DestinationFiles="$(DeviceConfigOutputFile)" SkipUnchangedFiles="true" />
+		<Message Text="已同步设备配置到 $(DeviceConfigOutputFile)" Importance="high" />
+	</Target>
+
+</Project>

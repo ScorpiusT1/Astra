@@ -336,7 +336,7 @@
                                                   ItemsSource="{Binding DataContext.AvailableSensors, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=OneWay}"
                                                   SelectedItem="{Binding Sensor, Mode=TwoWay}"
                                                   DisplayMemberPath="DisplayText"
-                                                  Margin="0,0,0,0"
+                                                  Margin="0,0,8,0"
                                                   Height="36"
                                                   hc:InfoElement.Placeholder="请选择传感器">
                                             <ComboBox.ItemTemplate>

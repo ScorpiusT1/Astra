@@ -1,5 +1,7 @@
-using Astra.Core.Logs;
+using Astra.Core.Logs.Extensions;
 using Astra.Core.Nodes.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Threading.Tasks;
 
@@ -28,23 +30,34 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// <returns>日志作用域实例</returns>
         public static WorkFlowLoggerScope Create(NodeContext context, WorkFlowNode workflow)
         {
+            ILogger logger = null;
+            
             try
             {
-                // 尝试从上下文获取现有日志器
-                var existing = context?.ServiceProvider?.GetService(typeof(Astra.Core.Logs.Logger)) as Astra.Core.Logs.Logger;
-                if (existing != null)
+                // 尝试从上下文获取 ILoggerFactory
+                var sp = context?.ServiceProvider;
+                if (sp != null)
                 {
-                    return new WorkFlowLoggerScope(existing, shouldDispose: false);
+                    var loggerFactory = sp.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
+                    if (loggerFactory != null)
+                    {
+                        // 使用工作流名称创建日志器
+                        var loggerName = !string.IsNullOrEmpty(workflow.Name) 
+                            ? $"Workflow.{workflow.Name}" 
+                            : $"Workflow.{workflow.Id}";
+                        logger = loggerFactory.CreateLogger(loggerName);
+                        return new WorkFlowLoggerScope(logger, shouldDispose: false);
+                    }
                 }
             }
             catch
             {
-                // 解析失败，创建新日志器
+                // 解析失败，使用空日志器
             }
 
-            // 创建新日志器
-            var newLogger = Astra.Core.Logs.Logger.CreateForWorkflow(workflow.Id, workflow.Name);
-            return new WorkFlowLoggerScope(newLogger, shouldDispose: true);
+            // 如果无法创建日志器，使用空日志器
+            logger = logger ?? NullLogger.Instance;
+            return new WorkFlowLoggerScope(logger, shouldDispose: false);
         }
 
         /// <summary>
@@ -58,14 +71,12 @@ namespace Astra.Engine.Execution.WorkFlowEngine
 
         /// <summary>
         /// 异步释放资源
-        /// 如果日志器是本作用域创建的，则关闭它
+        /// Microsoft.Extensions.Logging.ILogger 不需要手动关闭
         /// </summary>
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
-            if (_shouldDispose && _logger != null)
-            {
-                await _logger.ShutdownAsync();
-            }
+            // Microsoft.Extensions.Logging.ILogger 由 ILoggerFactory 管理生命周期，不需要手动关闭
+            return ValueTask.CompletedTask;
         }
     }
 }

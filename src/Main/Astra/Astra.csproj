@@ -45,6 +45,9 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="HandyControl" Version="3.5.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -65,5 +68,24 @@
   <ItemGroup>
     <Folder Include="Styles\" />
   </ItemGroup>
+
+  <!-- ⭐ 构建后自动构建所有插件项目 -->
+  <Target Name="BuildPlugins" AfterTargets="Build">
+    <PropertyGroup>
+      <PluginsDirectory>$(MSBuildThisFileDirectory)..\..\Plugins</PluginsDirectory>
+    </PropertyGroup>
+    
+    <ItemGroup>
+      <!-- 查找所有插件项目 -->
+      <PluginProjects Include="$(PluginsDirectory)\**\*.csproj" />
+    </ItemGroup>
+    
+    <!-- 构建所有插件项目 -->
+    <MSBuild Projects="@(PluginProjects)" 
+             Properties="Configuration=$(Configuration);Platform=$(Platform)"
+             ContinueOnError="false" />
+    
+    <Message Text="插件构建完成: @(PluginProjects)" Importance="high" />
+  </Target>
 
 </Project>

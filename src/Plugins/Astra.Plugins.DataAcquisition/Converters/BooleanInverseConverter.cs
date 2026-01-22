@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace Astra.Plugins.DataAcquisition.Commons
+namespace Astra.Plugins.DataAcquisition.Converters
 {
     /// <summary>
     /// 布尔值反转转换器

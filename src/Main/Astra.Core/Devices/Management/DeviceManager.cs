@@ -8,6 +8,8 @@ using Astra.Core.Devices.Events;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Extensions;
 using Astra.Core.Logs;
+using Astra.Core.Logs.Extensions;
+using Microsoft.Extensions.Logging;
 using Astra.Core.Foundation.Common;
 
 namespace Astra.Core.Devices.Management
@@ -22,7 +24,7 @@ namespace Astra.Core.Devices.Management
         private readonly List<string> _deviceOrder; // 维护设备ID的插入顺序
         private readonly object _lockObject = new object();
         private readonly object _orderLockObject = new object(); // 专门用于保护顺序列表的锁
-        private readonly ILogger _logger;
+        private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private readonly IDeviceUsageService _usageService;
         private readonly IDeviceEventPublisher _eventPublisher;
         private bool _isMonitoring;
@@ -35,7 +37,7 @@ namespace Astra.Core.Devices.Management
         public int MonitoringInterval { get; set; } = 5000;
 
         public DeviceManager(
-            ILogger logger = null,
+            Microsoft.Extensions.Logging.ILogger logger = null,
             IDeviceUsageService usageService = null,
             IDeviceEventPublisher eventPublisher = null)
         {
@@ -539,7 +541,7 @@ namespace Astra.Core.Devices.Management
                         }
                         catch (Exception ex)
                         {
-                            _logger?.Error($"监控异常: {ex.Message}", ex, LogCategory.System);
+                            _logger?.LogError($"监控异常: {ex.Message}", ex, LogCategory.System);
                         }
                     }
                 }, _monitoringCts.Token);

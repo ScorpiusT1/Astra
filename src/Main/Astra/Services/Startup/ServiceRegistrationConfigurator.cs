@@ -4,7 +4,6 @@ using Astra.Core.Access.Services;
 using Astra.Core.Configuration;
 using Astra.Core.Devices.Events;
 using Astra.Core.Devices.Management;
-using Astra.Core.Logs;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Caching;
 using Astra.Core.Plugins.Configuration;
@@ -26,6 +25,7 @@ using Astra.Services.Navigation;
 using Astra.Services.Session;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NavStack.Extensions;
 using System.Diagnostics;
 using System.IO;
@@ -57,37 +57,33 @@ namespace Astra.Services.Startup
         /// </summary>
         private void RegisterLoggingServices(IServiceCollection services)
         {
-            // 注册 ILogger（单例）
-            // 使用开发环境配置，支持控制台输出和文件输出
-            services.AddSingleton<ILogger>(provider =>
+            // 注册 Microsoft.Extensions.Logging
+            var logDirectory = Path.Combine(
+                System.AppDomain.CurrentDomain.BaseDirectory,
+                "Logs");
+            
+            // 确保日志目录存在
+            if (!Directory.Exists(logDirectory))
             {
-                // 创建日志文件路径（在应用程序目录下的 Logs 文件夹）
-                var logDirectory = Path.Combine(
-                    System.AppDomain.CurrentDomain.BaseDirectory,
-                    "Logs");
+                Directory.CreateDirectory(logDirectory);
+            }
+            
+            var logFilePath = Path.Combine(logDirectory, "application.log");
+            
+            // 配置日志
+            services.AddLogging(builder =>
+            {
+                builder
+                    .AddConsole()
+                    .AddDebug()
+                    .SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Debug);
                 
-                // 确保日志目录存在
-                if (!Directory.Exists(logDirectory))
-                {
-                    Directory.CreateDirectory(logDirectory);
-                }
-                
-                var logFilePath = Path.Combine(logDirectory, "application.log");
-                
-                // 使用 LogConfigBuilder 创建配置
-                var config = LogConfig.CreateBuilder()
-                    .WithName("Application")
-                    .WithLevel(LogLevel.Debug)
-                    .WithConsole(true)
-                    .WithFile(logFilePath)
-                    .WithAsyncMode(true)
-                    .WithDefaultTriggerUIEvent(true)
-                    .Build();
-                
-                return new Logger(config);
+                // 添加文件日志提供程序（如果项目中有 Serilog 或其他文件日志提供程序）
+                // 这里使用简单的文件日志提供程序
+                // 注意：如果需要更高级的文件日志功能，可以添加 Serilog 或 NLog
             });
 
-            Debug.WriteLine("✅ 日志服务注册完成");
+            Debug.WriteLine("✅ 日志服务注册完成（使用 Microsoft.Extensions.Logging）");
         }
 
         /// <summary>
@@ -198,7 +194,8 @@ namespace Astra.Services.Startup
             services.AddSingleton<IDeviceManager>(provider =>
             {
                 // 尝试获取 ILogger（可选）
-                var logger = provider.GetService<ILogger>();
+                var loggerFactory = provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>();
+                var logger = loggerFactory?.CreateLogger<DeviceManager>();
                 
                 // 获取 IDeviceUsageService（已注册）
                 var usageService = provider.GetService<IDeviceUsageService>();

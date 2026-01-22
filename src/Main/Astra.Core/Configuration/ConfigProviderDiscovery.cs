@@ -103,6 +103,10 @@ namespace Astra.Core.Configuration
                     // 这里简化：直接尝试注册，如果已存在则跳过
 
                     // 创建 Provider 实例
+                    var configDirectory = GetConfigDirectory(configType);
+                    _logger?.LogInformation("为配置类型 {ConfigType} 创建 Provider，配置目录: {ConfigDirectory}", 
+                        configType.Name, configDirectory);
+                    
                     var provider = CreateProviderInstance(providerType, configType);
                     if (provider == null)
                     {
@@ -114,8 +118,8 @@ namespace Astra.Core.Configuration
                     RegisterProviderGeneric(provider, configType);
 
                     registeredCount++;
-                    _logger?.LogInformation("自动注册 ConfigProvider: {ProviderType} -> {ConfigType}",
-                        providerType.Name, configType.Name);
+                    _logger?.LogInformation("自动注册 ConfigProvider: {ProviderType} -> {ConfigType}, 配置目录: {ConfigDirectory}",
+                        providerType.Name, configType.Name, configDirectory);
                 }
                 catch (Exception ex)
                 {
@@ -235,6 +239,20 @@ namespace Astra.Core.Configuration
                 BindingFlags.Public | BindingFlags.Instance);
             
             propertyInfo?.SetValue(options, defaultFileName);
+
+            // ⚠️ 关键：对于设备配置（DeviceConfig 的子类），启用自动搜索所有文件
+            // 这样可以支持插件配置文件（如 Astra.Plugins.DataAcquisition.config.json）
+            if (typeof(DeviceConfig).IsAssignableFrom(configType))
+            {
+                var autoSearchPropertyName = GetPropertyName<ConfigProviderOptions<ConfigBase>>(
+                    x => x.AutoSearchAllFiles);
+                var autoSearchProperty = optionsType.GetProperty(
+                    autoSearchPropertyName,
+                    BindingFlags.Public | BindingFlags.Instance);
+                autoSearchProperty?.SetValue(options, true);
+                
+                _logger?.LogInformation("为设备配置类型 {ConfigType} 启用自动搜索所有文件", configType.Name);
+            }
 
             // 确保配置目录存在
             ConfigPathString.EnsureConfigDirectoryExists(configType);

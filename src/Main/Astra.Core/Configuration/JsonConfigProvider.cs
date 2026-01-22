@@ -293,24 +293,48 @@ namespace Astra.Core.Configuration
             _configIndex.Clear();
             _fileFormatCache.Clear();
 
+            System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 开始构建配置索引，配置目录: {ConfigDirectory}, AutoSearchAllFiles: {Options.AutoSearchAllFiles}");
+
             // 如果启用自动扫描，则遍历目录下所有 json 文件
             if (Options.AutoSearchAllFiles)
             {
+                if (!Directory.Exists(ConfigDirectory))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 配置目录不存在: {ConfigDirectory}");
+                    return;
+                }
+
                 var files = Directory.GetFiles(ConfigDirectory, "*.json");
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 找到 {files.Length} 个 JSON 文件");
 
                 foreach (var filePath in files)
                 {
                     var fileName = Path.GetFileNameWithoutExtension(filePath);
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 处理文件: {fileName} ({filePath})");
+                    
                     var format = await DetectFileFormatAsync(filePath);
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 文件格式: {format}");
 
                     _fileFormatCache[fileName] = format;
 
                     var configs = await LoadConfigsFromFileAsync(filePath, format);
-                    if (configs == null) continue;
+                    if (configs == null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 文件 {fileName} 加载失败或为空");
+                        continue;
+                    }
+
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 从文件 {fileName} 加载了 {configs.Count} 个配置");
 
                     foreach (var config in configs)
                     {
                         var configId = config.ConfigId;  // ← 直接使用 ConfigId
+
+                        if (string.IsNullOrEmpty(configId))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 警告: 配置的 ConfigId 为空，跳过");
+                            continue;
+                        }
 
                         _configIndex[configId] = new ConfigMetadata
                         {
@@ -322,8 +346,11 @@ namespace Astra.Core.Configuration
                                 _ => ConfigStorageMode.Collection
                             }
                         };
+                        System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 已索引配置: {configId} (文件: {fileName})");
                     }
                 }
+
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 索引构建完成，共索引 {_configIndex.Count} 个配置");
             }
             else
             {
@@ -576,6 +603,8 @@ namespace Astra.Core.Configuration
             {
                 await EnsureIndexBuiltAsync();
 
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] GetAllAsync: 索引中有 {_configIndex.Count} 个配置");
+
                 var allConfigs = new List<T>();
                 var processedFiles = new HashSet<string>();
 
@@ -585,19 +614,34 @@ namespace Astra.Core.Configuration
                         continue;
 
                     var filePath = GetFilePath(metadata.FileName);
+                    System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 加载文件: {metadata.FileName} ({filePath})");
+                    
+                    if (!File.Exists(filePath))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 警告: 文件不存在: {filePath}");
+                        continue;
+                    }
+
                     var format = _fileFormatCache[metadata.FileName];
                     var configs = await LoadConfigsFromFileAsync(filePath, format);
 
                     if (configs != null)
                     {
+                        System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 从文件 {metadata.FileName} 加载了 {configs.Count} 个配置");
                         allConfigs.AddRange(configs);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] 从文件 {metadata.FileName} 加载配置失败");
                     }
                 }
 
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] GetAllAsync 完成，返回 {allConfigs.Count} 个配置");
                 return OperationResult<IEnumerable<T>>.Succeed(allConfigs);
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[JsonConfigProvider<{typeof(T).Name}>] GetAllAsync 异常: {ex.Message}\n{ex.StackTrace}");
                 return OperationResult<IEnumerable<T>>.Failure($"获取所有配置失败: {ex.Message}");
             }
         }

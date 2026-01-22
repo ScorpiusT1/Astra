@@ -2,7 +2,9 @@ using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
 using Astra.Core.Devices.Base;
 using Astra.Core.Logs;
+using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Messaging;
+using Microsoft.Extensions.Logging;
 using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Plugins.DataAcquisition.SDKs;
 using Astra.Plugins.DataAcquisition.ViewModels;
@@ -25,7 +27,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
     {
         private readonly BRCDataAcquisitionDeviceConnection _brcConnection;
         private readonly IMessageBus _messageBus;
-        private readonly ILogger _logger;
+        private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private readonly SemaphoreSlim _stateLock = new(1, 1);
         private readonly object _eventLock = new();
         private CancellationTokenSource _acquisitionCts;
@@ -46,7 +48,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         public BRCDataAcquisitionDevice(
             DataAcquisitionConfig config,
             IMessageBus messageBus = null,
-            ILogger logger = null)
+            Microsoft.Extensions.Logging.ILogger logger = null)
             : base(new BRCDataAcquisitionDeviceConnection(config, logger), config)
         {
             _brcConnection = (BRCDataAcquisitionDeviceConnection)_connection;
@@ -133,7 +135,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 _pauseEvent.Reset();
                 _state = AcquisitionState.Paused;
-                _logger?.Info($"[{DeviceName}] 已暂停数据采集", LogCategory.Device);
+                _logger?.LogInfo($"[{DeviceName}] 已暂停数据采集", LogCategory.Device);
             }
             finally
             {
@@ -151,7 +153,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 _pauseEvent.Set();
                 _state = AcquisitionState.Running;
-                _logger?.Info($"[{DeviceName}] 已恢复数据采集", LogCategory.Device);
+                _logger?.LogInfo($"[{DeviceName}] 已恢复数据采集", LogCategory.Device);
             }
             finally
             {
@@ -210,7 +212,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 _acquisitionTask = Task.Run(() => RunAcquisitionLoopAsync(linkedCts.Token), CancellationToken.None);
                 _state = AcquisitionState.Running;
-                _logger?.Info($"[{DeviceName}] BRC数据采集已启动", LogCategory.Device);
+                _logger?.LogInfo($"[{DeviceName}] BRC数据采集已启动", LogCategory.Device);
             }
             finally
             {
@@ -242,7 +244,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Warn($"[{DeviceName}] 停止BRC采集失败: {ex.Message}", LogCategory.Device);
+                    _logger?.LogWarn($"[{DeviceName}] 停止BRC采集失败: {ex.Message}", LogCategory.Device);
                 }
 
                 if (_acquisitionTask != null)
@@ -272,14 +274,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
                         {
                             floatChannel.TrimExcess(0.1);
                             var stats = floatChannel.GetMemoryStats();
-                            _logger?.Info($"[{DeviceName}] 通道 {channel.Name}: " +
+                            _logger?.LogInfo($"[{DeviceName}] 通道 {channel.Name}: " +
                                 $"样本数={stats.UsedSamples:N0}, " +
                                 $"内存={stats.UsedBytes / 1024.0 / 1024.0:F2}MB", LogCategory.Device);
                         }
                     }
                 }
 
-                _logger?.Info($"[{DeviceName}] BRC数据采集已停止", LogCategory.Device);
+                _logger?.LogInfo($"[{DeviceName}] BRC数据采集已停止", LogCategory.Device);
             }
             finally
             {
@@ -342,7 +344,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             catch (Exception ex)
             {
                 _state = AcquisitionState.Error;
-                _logger?.Error($"[{DeviceName}] 采集循环异常: {ex.Message}", ex, LogCategory.Device);
+                _logger?.LogError($"[{DeviceName}] 采集循环异常: {ex.Message}", ex, LogCategory.Device);
                 ErrorOccurred?.Invoke(this, ex);
             }
         }
@@ -435,7 +437,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
             catch (Exception ex)
             {
-                _logger?.Error($"[{DeviceName}] 写入数据到通道失败: {ex.Message}", ex, LogCategory.Device);
+                _logger?.LogError($"[{DeviceName}] 写入数据到通道失败: {ex.Message}", ex, LogCategory.Device);
             }
         }
 
@@ -485,7 +487,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 _channelMap[channelConfig.ChannelId] = dataChannel;
             }
 
-            _logger?.Info($"[{DeviceName}] 已初始化 {_channelMap.Count} 个数据通道", LogCategory.Device);
+            _logger?.LogInfo($"[{DeviceName}] 已初始化 {_channelMap.Count} 个数据通道", LogCategory.Device);
         }
 
         private int CalculateRingBufferSize(double sampleRate)
@@ -506,7 +508,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             var exception = new InvalidOperationException(message);
             ErrorOccurred?.Invoke(this, exception);
-            _logger?.Error($"[{DeviceName}] 初始化失败: {message}", exception, LogCategory.Device);
+            _logger?.LogError($"[{DeviceName}] 初始化失败: {message}", exception, LogCategory.Device);
         }
 
         public override void Dispose()

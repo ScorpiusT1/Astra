@@ -1,6 +1,7 @@
 using Astra.UI.Abstractions.Models;
-using Astra.UI.Logging;
 using Astra.UI.PropertyEditors;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,7 +16,7 @@ namespace Astra.UI.Controls
     {
         private PropertyEditorBase _editor;
         private PropertyDescriptor _propertyDescriptor;
-        private static IPropertyEditorLogger _logger = new DefaultPropertyEditorLogger();
+        private static ILogger _logger = NullLogger.Instance;
 
         static PropertyEditorHost()
         {
@@ -82,15 +83,15 @@ namespace Astra.UI.Controls
         /// <summary>
         /// 设置日志记录器（用于替换默认日志实现）
         /// </summary>
-        public static void SetLogger(IPropertyEditorLogger logger)
+        public static void SetLogger(ILogger logger)
         {
-            _logger = logger ?? new DefaultPropertyEditorLogger();
+            _logger = logger ?? NullLogger.Instance;
         }
 
         /// <summary>
         /// 获取当前日志记录器
         /// </summary>
-        public static IPropertyEditorLogger GetLogger() => _logger;
+        public static ILogger GetLogger() => _logger;
 
         private static void OnEditorTypeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -150,7 +151,7 @@ namespace Astra.UI.Controls
                 if (_editor == null)
                 {
                     var errorMessage = $"无法创建编辑器实例：类型 {EditorType?.Name} 不是 PropertyEditorBase 的派生类";
-                    _logger.Error(errorMessage);
+                    _logger.LogError(errorMessage);
                     ShowErrorContent(errorMessage);
                     return;
                 }
@@ -164,19 +165,19 @@ namespace Astra.UI.Controls
 
                     // 设置内容（布局属性应该由样式和父容器控制，不在这里设置）
                     Content = element;
-                    _logger.Debug($"成功初始化属性编辑器: {EditorType.Name}, 属性: {PropertyDescriptor?.Name}");
+                    _logger.LogDebug("成功初始化属性编辑器: {EditorType}, 属性: {PropertyName}", EditorType.Name, PropertyDescriptor?.Name);
                 }
                 else
                 {
                     var errorMessage = $"编辑器 {EditorType.Name} 创建的元素为 null";
-                    _logger.Warn(errorMessage);
+                    _logger.LogWarning(errorMessage);
                     Content = null;
                 }
             }
             catch (Exception ex)
             {
                 var errorMessage = $"初始化属性编辑器失败: {EditorType?.Name}";
-                _logger.Error(errorMessage, ex);
+                _logger.LogError(ex, errorMessage);
                 
                 var friendlyMessage = CreateFriendlyErrorMessage(ex);
                 ShowErrorContent(friendlyMessage);

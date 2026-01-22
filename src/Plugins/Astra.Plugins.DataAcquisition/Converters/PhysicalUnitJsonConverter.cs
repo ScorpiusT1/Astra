@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Astra.Plugins.DataAcquisition.Configs;
 
-namespace Astra.Plugins.DataAcquisition.Commons
+namespace Astra.Plugins.DataAcquisition.Converters
 {
     /// <summary>
     /// PhysicalUnit 的 JSON 转换器，支持从枚举值或字符串反序列化

@@ -6,6 +6,7 @@ using Astra.Core.Devices.Base;
 using Astra.Core.Devices.Configuration;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Logs;
+using Microsoft.Extensions.Logging;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
@@ -13,11 +14,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
     {
         private readonly object _syncRoot = new();
         private readonly DataAcquisitionConfig _config;
-        private readonly ILogger _logger;
+        private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private bool _connected;
         private bool _deviceExists;
 
-        public DataAcquisitionDeviceConnection(DataAcquisitionConfig config, ILogger logger = null)
+        public DataAcquisitionDeviceConnection(DataAcquisitionConfig config, Microsoft.Extensions.Logging.ILogger logger = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger;
@@ -70,12 +71,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     // 模拟设备建立连接时的初始化操作
                     Thread.Sleep(500);
                     _connected = true;
-                    _logger?.Info($"[{_config.DeviceName}] 连接成功", LogCategory.Device);
+                    _logger?.LogInformation($"[{_config.DeviceName}] 连接成功", LogCategory.Device);
                     return OperationResult.Succeed("采集卡连接成功");
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{_config.DeviceName}] 连接失败: {ex.Message}", ex, LogCategory.Device);
+                    _logger?.LogError($"[{_config.DeviceName}] 连接失败: {ex.Message}", ex, LogCategory.Device);
                     return OperationResult.Fail($"连接采集卡失败: {ex.Message}", ex, ErrorCodes.ConnectFailed);
                 }
             }
@@ -96,7 +97,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
 
                 _connected = false;
-                _logger?.Info($"[{_config.DeviceName}] 已断开连接", LogCategory.Device);
+                _logger?.LogInformation($"[{_config.DeviceName}] 已断开连接", LogCategory.Device);
                 return OperationResult.Succeed("采集卡断开成功");
             }
         }

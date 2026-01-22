@@ -7,7 +7,7 @@
              xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
              xmlns:configs="clr-namespace:Astra.Plugins.DataAcquisition.Configs"
              xmlns:converters="clr-namespace:Astra.UI.Converters;assembly=Astra.UI"
-             xmlns:commons="clr-namespace:Astra.Plugins.DataAcquisition.Commons"
+             xmlns:pluginConverters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
              mc:Ignorable="d"
              d:DesignHeight="600"
              d:DesignWidth="1000"
@@ -27,11 +27,11 @@
                BasedOn="{StaticResource ModernCalendarButtonStyle}" />
         <Style TargetType="hc:DatePicker"
                BasedOn="{StaticResource ModernHandyDatePickerStyle}" />
-        <commons:SensorTypeToStringConverter x:Key="SensorTypeToStringConverter" />
-        <commons:PhysicalUnitToStringConverter x:Key="PhysicalUnitToStringConverter" />
+        <pluginConverters:SensorTypeToStringConverter x:Key="SensorTypeToStringConverter" />
+        <pluginConverters:PhysicalUnitToStringConverter x:Key="PhysicalUnitToStringConverter" />
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBoolToVisibilityConverter" />
-        <commons:BooleanInverseConverter x:Key="BooleanInverseConverter" />
+        <pluginConverters:BooleanInverseConverter x:Key="BooleanInverseConverter" />
     </UserControl.Resources>
 
     <Grid Margin="20">
@@ -187,7 +187,7 @@
                                 <Binding Path="SelectedSensor.IsThreeAxis" 
                                          Mode="OneWay">
                                     <Binding.Converter>
-                                        <commons:BooleanInverseConverter />
+                                        <pluginConverters:BooleanInverseConverter />
                                     </Binding.Converter>
                                 </Binding>
                             </RadioButton.IsChecked>

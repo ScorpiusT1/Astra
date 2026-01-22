@@ -1,5 +1,5 @@
 ﻿using Astra.Core.Configuration;
-using Astra.Plugins.DataAcquisition.Commons;
+using Astra.Plugins.DataAcquisition.Converters;
 using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
 using Astra.UI.Abstractions.Attributes;

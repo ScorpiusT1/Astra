@@ -1,13 +1,17 @@
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Logs;
+using Astra.Core.Logs.Extensions;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using MSILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Astra.Core.Devices.Extensions
 {
     /// <summary>
     /// 设备日志扩展方法
     /// 提供设备相关的日志记录功能
+    /// 支持 Microsoft.Extensions.Logging.ILogger
     /// </summary>
     public static class DeviceLoggerExtensions
     {
@@ -18,8 +22,7 @@ namespace Astra.Core.Devices.Extensions
         /// </summary>
         /// <param name="logger">日志器</param>
         /// <param name="device">设备对象</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceConnecting(this ILogger logger, IDevice device, bool? triggerUIEvent = null)
+        public static void LogDeviceConnecting(this MSILogger logger, IDevice device)
         {
             if (logger == null || device == null)
                 return;
@@ -32,7 +35,7 @@ namespace Astra.Core.Devices.Extensions
                 { "action", "Connecting" }
             };
 
-            logger.Info($"设备连接中: {device.DeviceName} ({device.DeviceId})", LogCategory.System, data, triggerUIEvent);
+            logger.LogInfo($"设备连接中: {device.DeviceName} ({device.DeviceId})", LogCategory.System, data);
         }
 
         /// <summary>
@@ -41,8 +44,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="logger">日志器</param>
         /// <param name="device">设备对象</param>
         /// <param name="duration">连接耗时</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceConnected(this ILogger logger, IDevice device, TimeSpan? duration = null, bool? triggerUIEvent = null)
+        public static void LogDeviceConnected(this MSILogger logger, IDevice device, TimeSpan? duration = null)
         {
             if (logger == null || device == null)
                 return;
@@ -60,9 +62,9 @@ namespace Astra.Core.Devices.Extensions
                 data["duration_ms"] = duration.Value.TotalMilliseconds;
             }
 
-            logger.Info($"设备连接成功: {device.DeviceName} ({device.DeviceId})" + 
+            logger.LogInfo($"设备连接成功: {device.DeviceName} ({device.DeviceId})" + 
                        (duration.HasValue ? $" (耗时: {duration.Value.TotalMilliseconds:F2}ms)" : ""), 
-                       LogCategory.System, data, triggerUIEvent);
+                       LogCategory.System, data);
         }
 
         /// <summary>
@@ -72,8 +74,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="device">设备对象</param>
         /// <param name="ex">异常对象</param>
         /// <param name="duration">连接耗时</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceConnectFailed(this ILogger logger, IDevice device, Exception ex = null, TimeSpan? duration = null, bool? triggerUIEvent = null)
+        public static void LogDeviceConnectFailed(this MSILogger logger, IDevice device, Exception ex = null, TimeSpan? duration = null)
         {
             if (logger == null || device == null)
                 return;
@@ -92,7 +93,7 @@ namespace Astra.Core.Devices.Extensions
                 data["duration_ms"] = duration.Value.TotalMilliseconds;
             }
 
-            logger.Error($"设备连接失败: {device.DeviceName} ({device.DeviceId}) - {ex?.Message}", ex, LogCategory.System, data, triggerUIEvent);
+            logger.LogError($"设备连接失败: {device.DeviceName} ({device.DeviceId}) - {ex?.Message}", ex, LogCategory.System, data);
         }
 
         /// <summary>
@@ -100,8 +101,7 @@ namespace Astra.Core.Devices.Extensions
         /// </summary>
         /// <param name="logger">日志器</param>
         /// <param name="device">设备对象</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceDisconnected(this ILogger logger, IDevice device, bool? triggerUIEvent = null)
+        public static void LogDeviceDisconnected(this MSILogger logger, IDevice device)
         {
             if (logger == null || device == null)
                 return;
@@ -114,7 +114,7 @@ namespace Astra.Core.Devices.Extensions
                 { "action", "Disconnected" }
             };
 
-            logger.Info($"设备断开连接: {device.DeviceName} ({device.DeviceId})", LogCategory.System, data, triggerUIEvent);
+            logger.LogInfo($"设备断开连接: {device.DeviceName} ({device.DeviceId})", LogCategory.System, data);
         }
 
         #endregion
@@ -128,8 +128,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="device">设备对象</param>
         /// <param name="oldStatus">旧状态</param>
         /// <param name="newStatus">新状态</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceStatusChanged(this ILogger logger, IDevice device, DeviceStatus oldStatus, DeviceStatus newStatus, bool? triggerUIEvent = null)
+        public static void LogDeviceStatusChanged(this MSILogger logger, IDevice device, DeviceStatus oldStatus, DeviceStatus newStatus)
         {
             if (logger == null || device == null)
                 return;
@@ -144,19 +143,17 @@ namespace Astra.Core.Devices.Extensions
                 { "action", "StatusChanged" }
             };
 
-            var level = newStatus == DeviceStatus.Error || newStatus == DeviceStatus.Offline 
-                ? LogLevel.Warning 
-                : LogLevel.Info;
+            var isWarning = newStatus == DeviceStatus.Error || newStatus == DeviceStatus.Offline;
 
-            if (level == LogLevel.Warning)
+            if (isWarning)
             {
-                logger.Warn($"设备状态变更: {device.DeviceName} ({device.DeviceId}) - {oldStatus} -> {newStatus}", 
-                             LogCategory.System, data, triggerUIEvent);
+                logger.LogWarn($"设备状态变更: {device.DeviceName} ({device.DeviceId}) - {oldStatus} -> {newStatus}", 
+                             LogCategory.System, data);
             }
             else
             {
-                logger.Info($"设备状态变更: {device.DeviceName} ({device.DeviceId}) - {oldStatus} -> {newStatus}", 
-                           LogCategory.System, data, triggerUIEvent);
+                logger.LogInfo($"设备状态变更: {device.DeviceName} ({device.DeviceId}) - {oldStatus} -> {newStatus}", 
+                           LogCategory.System, data);
             }
         }
 
@@ -171,8 +168,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="device">设备对象</param>
         /// <param name="message">消息对象</param>
         /// <param name="success">是否成功</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceSend(this ILogger logger, IDevice device, DeviceMessage message, bool success, bool? triggerUIEvent = null)
+        public static void LogDeviceSend(this MSILogger logger, IDevice device, DeviceMessage message, bool success)
         {
             if (logger == null || device == null)
                 return;
@@ -193,11 +189,11 @@ namespace Astra.Core.Devices.Extensions
 
             if (success)
             {
-                logger.Debug($"设备发送数据: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data, triggerUIEvent);
+                logger.LogDebug($"设备发送数据: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data);
             }
             else
             {
-                logger.Warn($"设备发送数据失败: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data, triggerUIEvent);
+                logger.LogWarn($"设备发送数据失败: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data);
             }
         }
 
@@ -207,8 +203,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="logger">日志器</param>
         /// <param name="device">设备对象</param>
         /// <param name="message">消息对象</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceReceive(this ILogger logger, IDevice device, DeviceMessage message, bool? triggerUIEvent = null)
+        public static void LogDeviceReceive(this MSILogger logger, IDevice device, DeviceMessage message)
         {
             if (logger == null || device == null)
                 return;
@@ -226,7 +221,7 @@ namespace Astra.Core.Devices.Extensions
                 data["data_length"] = message.Data?.Length ?? 0;
             }
 
-            logger.Debug($"设备接收数据: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data, triggerUIEvent);
+            logger.LogDebug($"设备接收数据: {device.DeviceName} ({device.DeviceId})", LogCategory.Network, data);
         }
 
         #endregion
@@ -241,8 +236,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="errorMessage">错误消息</param>
         /// <param name="ex">异常对象</param>
         /// <param name="errorCode">错误代码</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceError(this ILogger logger, IDevice device, string errorMessage, Exception ex = null, int errorCode = -1, bool? triggerUIEvent = null)
+        public static void LogDeviceError(this MSILogger logger, IDevice device, string errorMessage, Exception ex = null, int errorCode = -1)
         {
             if (logger == null || device == null)
                 return;
@@ -257,7 +251,7 @@ namespace Astra.Core.Devices.Extensions
                 { "error_type", ex?.GetType().Name }
             };
 
-            logger.Error($"设备错误: {device.DeviceName} ({device.DeviceId}) - {errorMessage}", ex, LogCategory.System, data, triggerUIEvent);
+            logger.LogError($"设备错误: {device.DeviceName} ({device.DeviceId}) - {errorMessage}", ex, LogCategory.System, data);
         }
 
         #endregion
@@ -270,8 +264,7 @@ namespace Astra.Core.Devices.Extensions
         /// <param name="logger">日志器</param>
         /// <param name="device">设备对象</param>
         /// <param name="changedProperties">变更的属性列表</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceConfigChanged(this ILogger logger, IDevice device, List<string> changedProperties, bool? triggerUIEvent = null)
+        public static void LogDeviceConfigChanged(this MSILogger logger, IDevice device, List<string> changedProperties)
         {
             if (logger == null || device == null)
                 return;
@@ -284,8 +277,8 @@ namespace Astra.Core.Devices.Extensions
                 { "changed_properties", changedProperties }
             };
 
-            logger.Info($"设备配置变更: {device.DeviceName} ({device.DeviceId}) - 变更了 {changedProperties?.Count ?? 0} 个属性", 
-                       LogCategory.System, data, triggerUIEvent);
+            logger.LogInfo($"设备配置变更: {device.DeviceName} ({device.DeviceId}) - 变更了 {changedProperties?.Count ?? 0} 个属性", 
+                       LogCategory.System, data);
         }
 
         #endregion
@@ -297,8 +290,7 @@ namespace Astra.Core.Devices.Extensions
         /// </summary>
         /// <param name="logger">日志器</param>
         /// <param name="device">设备对象</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceRegistered(this ILogger logger, IDevice device, bool? triggerUIEvent = null)
+        public static void LogDeviceRegistered(this MSILogger logger, IDevice device)
         {
             if (logger == null || device == null)
                 return;
@@ -311,7 +303,7 @@ namespace Astra.Core.Devices.Extensions
                 { "action", "Registered" }
             };
 
-            logger.Info($"设备注册: {device.DeviceName} ({device.DeviceId})", LogCategory.System, data, triggerUIEvent);
+            logger.LogInfo($"设备注册: {device.DeviceName} ({device.DeviceId})", LogCategory.System, data);
         }
 
         /// <summary>
@@ -319,8 +311,7 @@ namespace Astra.Core.Devices.Extensions
         /// </summary>
         /// <param name="logger">日志器</param>
         /// <param name="deviceId">设备ID</param>
-        /// <param name="triggerUIEvent">是否触发UI更新事件</param>
-        public static void LogDeviceUnregistered(this ILogger logger, string deviceId, bool? triggerUIEvent = null)
+        public static void LogDeviceUnregistered(this MSILogger logger, string deviceId)
         {
             if (logger == null || string.IsNullOrEmpty(deviceId))
                 return;
@@ -331,7 +322,7 @@ namespace Astra.Core.Devices.Extensions
                 { "action", "Unregistered" }
             };
 
-            logger.Info($"设备注销: {deviceId}", LogCategory.System, data, triggerUIEvent);
+            logger.LogInfo($"设备注销: {deviceId}", LogCategory.System, data);
         }
 
         #endregion

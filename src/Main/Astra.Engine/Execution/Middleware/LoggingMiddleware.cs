@@ -1,6 +1,7 @@
-using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
 using Astra.Core.Nodes.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -14,7 +15,7 @@ namespace Astra.Engine.Execution.Middleware
     /// </summary>
     public class LoggingMiddleware : INodeMiddleware
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly string _fallbackLoggerName;
 
         /// <summary>
@@ -22,7 +23,7 @@ namespace Astra.Engine.Execution.Middleware
         /// </summary>
         /// <param name="logger">日志记录器实例，如果为null则从上下文解析</param>
         /// <param name="fallbackLoggerName">备用日志记录器名称，当无法从上下文解析时使用</param>
-        public LoggingMiddleware(Logger logger = null, string fallbackLoggerName = "NodePipeline")
+        public LoggingMiddleware(ILogger logger = null, string fallbackLoggerName = "NodePipeline")
         {
             _logger = logger;
             _fallbackLoggerName = fallbackLoggerName;
@@ -37,7 +38,7 @@ namespace Astra.Engine.Execution.Middleware
             CancellationToken cancellationToken,
             Func<CancellationToken, Task<ExecutionResult>> next)
         {
-            var logger = ResolveLogger(context) ?? Logger.Create(_fallbackLoggerName, Core.Logs.LogLevel.Info);
+            var logger = ResolveLogger(context) ?? NullLogger.Instance;
 
             logger.LogNodeStart(node);
             var stopwatch = Stopwatch.StartNew();
@@ -62,18 +63,25 @@ namespace Astra.Engine.Execution.Middleware
         /// 解析日志记录器
         /// 优先从DI容器解析，如果失败则使用备用记录器
         /// </summary>
-        private Logger ResolveLogger(NodeContext context)
+        private ILogger ResolveLogger(NodeContext context)
         {
             try
             {
-                // 优先从DI容器解析
+                // 优先从DI容器解析 ILoggerFactory
                 var sp = context?.ServiceProvider;
                 if (sp != null)
                 {
-                    var resolved = sp.GetService(typeof(Logger)) as Logger;
-                    if (resolved != null)
+                    var loggerFactory = sp.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
+                    if (loggerFactory != null)
                     {
-                        return resolved;
+                        return loggerFactory.CreateLogger(_fallbackLoggerName);
+                    }
+                    
+                    // 尝试直接解析 ILogger<LoggingMiddleware>
+                    var logger = sp.GetService(typeof(ILogger<LoggingMiddleware>)) as ILogger;
+                    if (logger != null)
+                    {
+                        return logger;
                     }
                 }
             }
@@ -81,7 +89,7 @@ namespace Astra.Engine.Execution.Middleware
             {
                 // 解析失败时降级为 fallback
             }
-            return _logger;
+            return _logger ?? NullLogger.Instance;
         }
     }
 }

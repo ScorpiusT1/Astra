@@ -6,9 +6,10 @@ using Astra.Core.Devices;
 using Astra.Core.Devices.Base;
 using Astra.Core.Devices.Configuration;
 using Astra.Core.Foundation.Common;
-using Astra.Core.Logs;
+using Microsoft.Extensions.Logging;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.SDKs;
+using Astra.Core.Logs;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
@@ -19,11 +20,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
     {
         private readonly object _syncRoot = new();
         private readonly DataAcquisitionConfig _config;
-        private readonly ILogger _logger;
+        private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private BRCSDK.BrcDevice _brcDevice;
         private BRCSDK.ModuleInfo _moduleInfo;
 
-        public BRCDataAcquisitionDeviceConnection(DataAcquisitionConfig config, ILogger logger = null)
+        public BRCDataAcquisitionDeviceConnection(DataAcquisitionConfig config, Microsoft.Extensions.Logging.ILogger logger = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger;
@@ -81,7 +82,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{_config.DeviceName}] 扫描设备失败: {ex.Message}", ex, LogCategory.Device);
+                    _logger?.LogError($"[{_config.DeviceName}] 扫描设备失败: {ex.Message}", ex, LogCategory.Device);
                     return false;
                 }
             }
@@ -127,12 +128,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     // 配置通道属性
                     ConfigureChannelProperties();
 
-                    _logger?.Info($"[{_config.DeviceName}] BRC采集卡连接成功: {_moduleInfo.DeviceId}", LogCategory.Device);
+                    _logger?.LogInformation($"[{_config.DeviceName}] BRC采集卡连接成功: {_moduleInfo.DeviceId}", LogCategory.Device);
                     return OperationResult.Succeed("BRC采集卡连接成功");
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{_config.DeviceName}] 连接失败: {ex.Message}", ex, LogCategory.Device);
+                    _logger?.LogError($"[{_config.DeviceName}] 连接失败: {ex.Message}", ex, LogCategory.Device);
                     return OperationResult.Fail($"连接BRC采集卡失败: {ex.Message}", ex, ErrorCodes.ConnectFailed);
                 }
             }
@@ -169,12 +170,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     _brcDevice = null;
                     _moduleInfo = null;
 
-                    _logger?.Info($"[{_config.DeviceName}] BRC采集卡已断开", LogCategory.Device);
+                    _logger?.LogInformation($"[{_config.DeviceName}] BRC采集卡已断开", LogCategory.Device);
                     return OperationResult.Succeed("BRC采集卡断开成功");
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error($"[{_config.DeviceName}] 断开失败: {ex.Message}", ex, LogCategory.Device);
+                    _logger?.LogError($"[{_config.DeviceName}] 断开失败: {ex.Message}", ex, LogCategory.Device);
                     return OperationResult.Fail($"断开BRC采集卡失败: {ex.Message}", ex, ErrorCodes.DisconnectFailed);
                 }
             }
@@ -208,7 +209,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                             .First();
                         
                         _brcDevice.SetModulePropertySampleRate(targetRate);
-                        _logger?.Info($"[{_config.DeviceName}] 采样率设置为: {targetRate} Hz", LogCategory.Device);
+                        _logger?.LogInformation($"[{_config.DeviceName}] 采样率设置为: {targetRate} Hz", LogCategory.Device);
                     }
                 }
 
@@ -220,7 +221,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
             catch (Exception ex)
             {
-                _logger?.Warn($"[{_config.DeviceName}] 配置模块属性失败: {ex.Message}", LogCategory.Device);
+                _logger?.LogWarning($"[{_config.DeviceName}] 配置模块属性失败: {ex.Message}", LogCategory.Device);
             }
         }
 
@@ -268,7 +269,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                             case Configs.CouplingMode.ICP:
                                 // BRC SDK不支持ICP模式，使用AC模式替代
                                 couplingMode = Configs.CouplingMode.AC;
-                                _logger?.Warn($"[{_config.DeviceName}] 通道{channelConfig.ChannelId}的ICP模式已转换为AC模式", LogCategory.Device);
+                                _logger?.LogWarning($"[{_config.DeviceName}] 通道{channelConfig.ChannelId}的ICP模式已转换为AC模式", LogCategory.Device);
                                 break;
                             default:
                                 couplingMode = Configs.CouplingMode.AC;
@@ -278,11 +279,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     }
                 }
 
-                _logger?.Info($"[{_config.DeviceName}] 已配置 {_config.Channels.Count(c => c.Enabled)} 个通道", LogCategory.Device);
+                _logger?.LogInformation($"[{_config.DeviceName}] 已配置 {_config.Channels.Count(c => c.Enabled)} 个通道", LogCategory.Device);
             }
             catch (Exception ex)
             {
-                _logger?.Warn($"[{_config.DeviceName}] 配置通道属性失败: {ex.Message}", LogCategory.Device);
+                _logger?.LogWarning($"[{_config.DeviceName}] 配置通道属性失败: {ex.Message}", LogCategory.Device);
             }
         }
 

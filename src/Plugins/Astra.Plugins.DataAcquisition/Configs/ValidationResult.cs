@@ -1,9 +1,5 @@
 ﻿namespace Astra.Plugins.DataAcquisition.Configs
 {
-    #region 传感器库管理
-
-    #endregion
-
     #region 验证结果
 
     public class ValidationResult

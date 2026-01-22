@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Windows.Data;
 using Astra.Plugins.DataAcquisition.Configs;
 
-namespace Astra.Plugins.DataAcquisition.Commons
+namespace Astra.Plugins.DataAcquisition.Converters
 {
     /// <summary>
     /// 传感器类型到中文显示的转换器
