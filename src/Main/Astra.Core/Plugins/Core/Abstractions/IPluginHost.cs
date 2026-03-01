@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Abstractions
+﻿﻿namespace Astra.Core.Plugins.Abstractions
 {
     /// <summary>
     /// 插件宿主接口

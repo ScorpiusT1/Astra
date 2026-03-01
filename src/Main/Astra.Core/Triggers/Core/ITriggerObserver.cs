@@ -1,4 +1,4 @@
-﻿using Astra.Core.Triggers.Args;
+﻿﻿using Astra.Core.Triggers.Args;
 
 namespace Astra.Core.Triggers
 {

@@ -1,4 +1,4 @@
-namespace Astra.Core.Devices.Serialization
+﻿namespace Astra.Core.Devices.Serialization
 {
     /// <summary>
     /// 配置序列化接口

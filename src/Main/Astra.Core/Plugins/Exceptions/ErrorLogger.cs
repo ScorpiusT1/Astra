@@ -1,4 +1,4 @@
-using Astra.Core.Plugins.Exceptions;
+﻿using Astra.Core.Plugins.Exceptions;
 using System;
 using System.Collections.Generic;
 using System.IO;

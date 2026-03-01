@@ -78,6 +78,29 @@ namespace Astra.Plugins.DataAcquisition
 
             _logger?.LogInfo($"[{Name}] 开始初始化插件", LogCategory.System);
 
+            // ✅ 将本插件的配置类型注册到主机的 IConfigurationManager，以便配置管理界面能显示并加载/保存
+            if (_configuManager != null)
+            {
+                try
+                {
+                    _configuManager.RegisterProvider<SensorConfig>();
+                    _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 SensorConfig", LogCategory.System);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarn($"[{Name}] 注册 SensorConfig 到 ConfigurationManager 失败: {ex.Message}", LogCategory.System);
+                }
+                try
+                {
+                    _configuManager.RegisterProvider<DataAcquisitionConfig>();
+                    _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 DataAcquisitionConfig", LogCategory.System);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarn($"[{Name}] 注册 DataAcquisitionConfig 到 ConfigurationManager 失败: {ex.Message}", LogCategory.System);
+                }
+            }
+
             // 初始化设备规格
             DataAcquisitionSpecificationInitializer.Initialize();
 
@@ -351,7 +374,7 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 // 直接获取所有传感器配置（Provider 已在启动时自动注册）
-                var result = await _configuManager.GetAllConfigsAsync<SensorConfig>();
+                var result = await _configuManager.GetAllAsync<SensorConfig>();
                 
                 if (result?.Success == true && result.Data != null)
                 {
@@ -384,7 +407,7 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 // 直接获取所有设备配置（Provider 已在启动时自动注册）
-                var result = await _configuManager.GetAllConfigsAsync<DataAcquisitionConfig>();
+                var result = await _configuManager.GetAllAsync<DataAcquisitionConfig>();
 
                 if (result == null || result.Data == null || result.Data.Count() == 0)
                 {
@@ -393,7 +416,7 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 // 获取所有传感器配置，用于恢复传感器引用
-                var sensorResult = await _configuManager.GetAllConfigsAsync<SensorConfig>();
+                var sensorResult = await _configuManager.GetAllAsync<SensorConfig>();
                 var availableSensors = sensorResult?.Data?.ToList() ?? new List<SensorConfig>();
 
                 foreach (var config in result.Data)
@@ -543,26 +566,15 @@ namespace Astra.Plugins.DataAcquisition
 
                 switch (changeType)
                 {
-                    case ConfigChangeType.Created:
-                    case ConfigChangeType.Added:
-                    case ConfigChangeType.Imported:
-                        // 创建新设备
-                        await CreateDeviceFromConfigAsync(config).ConfigureAwait(false);
-                        break;
-
-                    case ConfigChangeType.Updated:
-                        // 更新已存在的设备配置
-                        await UpdateDeviceConfigAsync(config).ConfigureAwait(false);
-                        break;
-
                     case ConfigChangeType.Deleted:
                         // 删除设备
                         await RemoveDeviceAsync(config.DeviceId).ConfigureAwait(false);
                         break;
 
-                    case ConfigChangeType.Reloaded:
-                        // 重新加载所有设备（通常不需要处理，因为初始化时已经加载）
-                        _logger?.LogInfo($"[{Name}] 配置重新加载事件，忽略处理", LogCategory.System);
+                    case ConfigChangeType.Updated:
+                    default:
+                        // 新增或更新：不存在则创建，存在则更新配置
+                        await UpdateDeviceConfigAsync(config).ConfigureAwait(false);
                         break;
                 }
             }
@@ -591,7 +603,7 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 // 获取所有传感器配置，用于恢复传感器引用
-                var sensorResult = await _configuManager?.GetAllConfigsAsync<SensorConfig>();
+                var sensorResult = await _configuManager?.GetAllAsync<SensorConfig>();
                 var availableSensors = sensorResult?.Data?.ToList() ?? new List<SensorConfig>();
 
                 // 恢复配置中所有通道的传感器引用
@@ -680,7 +692,7 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 // 获取所有传感器配置，用于恢复传感器引用
-                var sensorResult = await _configuManager?.GetAllConfigsAsync<SensorConfig>();
+                var sensorResult = await _configuManager?.GetAllAsync<SensorConfig>();
                 var availableSensors = sensorResult?.Data?.ToList() ?? new List<SensorConfig>();
 
                 // 恢复配置中所有通道的传感器引用

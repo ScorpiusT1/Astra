@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Manifest
+﻿﻿namespace Astra.Core.Plugins.Manifest
 {
     public class RuntimeInfo
     {

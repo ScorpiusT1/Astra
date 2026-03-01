@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 
 namespace Astra.Core.Plugins.Messaging

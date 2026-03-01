@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Astra.Core.Devices.Configuration;
 using Astra.Core.Devices.Interfaces;
 

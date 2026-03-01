@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Devices.Attributes
+﻿﻿namespace Astra.Core.Devices.Attributes
 {
     /// <summary>
     /// 设备调试界面特性

@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Devices.Interfaces
+﻿﻿namespace Astra.Core.Devices.Interfaces
 {
     /// <summary>
     /// 设备核心接口

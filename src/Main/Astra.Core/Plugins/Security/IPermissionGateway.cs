@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Astra.Core.Plugins.Models;
 
 namespace Astra.Core.Plugins.Security

@@ -1,4 +1,4 @@
-using Astra.Core.Devices.Interfaces;
+﻿using Astra.Core.Devices.Interfaces;
 using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
 using Microsoft.Extensions.Logging;

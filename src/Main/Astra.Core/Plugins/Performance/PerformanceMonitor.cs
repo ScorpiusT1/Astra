@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -22,47 +22,7 @@ namespace Astra.Core.Plugins.Performance
         Task<SystemPerformanceMetrics> GetSystemMetricsAsync();
     }
 
-    /// <summary>
-    /// 性能指标数据
-    /// </summary>
-    public class PerformanceMetrics
-    {
-        public string PluginId { get; set; }
-        public DateTime Timestamp { get; set; }
-        public long MemoryUsage { get; set; }
-        public double CpuUsage { get; set; }
-        public Dictionary<string, OperationMetrics> Operations { get; set; } = new();
-        public TimeSpan TotalExecutionTime { get; set; }
-        public int TotalOperations { get; set; }
-        public double AverageOperationTime { get; set; }
-    }
-
-    /// <summary>
-    /// 操作指标
-    /// </summary>
-    public class OperationMetrics
-    {
-        public string OperationName { get; set; }
-        public int CallCount { get; set; }
-        public TimeSpan TotalTime { get; set; }
-        public TimeSpan AverageTime { get; set; }
-        public TimeSpan MinTime { get; set; }
-        public TimeSpan MaxTime { get; set; }
-        public DateTime LastCall { get; set; }
-    }
-
-    /// <summary>
-    /// 系统性能指标
-    /// </summary>
-    public class SystemPerformanceMetrics
-    {
-        public DateTime Timestamp { get; set; }
-        public long TotalMemory { get; set; }
-        public long AvailableMemory { get; set; }
-        public double CpuUsage { get; set; }
-        public int PluginCount { get; set; }
-        public Dictionary<string, PerformanceMetrics> PluginMetrics { get; set; } = new();
-    }
+  
 
     /// <summary>
     /// 性能监控器实现

@@ -1,4 +1,4 @@
-using Astra.Core.Plugins.Models;
+﻿using Astra.Core.Plugins.Models;
 using System;
 using System.Collections.Generic;
 

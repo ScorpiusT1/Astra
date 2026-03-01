@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Models
+﻿﻿namespace Astra.Core.Plugins.Models
 {
     /// <summary>
     /// 依赖信息

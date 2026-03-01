@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Astra.Core.Plugins.Abstractions;
 
 namespace Astra.Core.Plugins.Services

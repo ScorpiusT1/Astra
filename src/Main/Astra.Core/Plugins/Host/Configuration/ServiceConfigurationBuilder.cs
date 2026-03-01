@@ -1,4 +1,4 @@
-using Astra.Core.Plugins.Manifest.Serializers;
+﻿using Astra.Core.Plugins.Manifest.Serializers;
 using Astra.Core.Plugins.Validation;
 using System;
 using System.Collections.Generic;

@@ -1,5 +1,5 @@
-﻿using Astra.Core.Configuration;
 using Astra.Core.Foundation.Common;
+using Astra.Core.Plugins.UI;
 using Astra.Models;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Helpers;
@@ -12,7 +12,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
 using System.Windows.Controls;
 
 namespace Astra.ViewModels
@@ -20,8 +19,10 @@ namespace Astra.ViewModels
     public partial class ConfigViewModel : ObservableObject
     {
         private readonly IServiceProvider _serviceProvider;
+        private readonly IPluginViewFactory _pluginViewFactory;
         private readonly string _defaultIcon = "📁";
         private readonly IConfigurationManager? _configManager;
+        private readonly IConfigurationImportExportService? _importExport;
 
         // ✅ 缓存已创建的 View 和 ViewModel，避免切换节点时丢失未保存的数据
         private readonly Dictionary<string, (UserControl View, object ViewModel)> _viewCache = new Dictionary<string, (UserControl, object)>();
@@ -37,10 +38,35 @@ namespace Astra.ViewModels
 
         public event EventHandler<Control?>? ContentControlChanged;
 
+        /// <summary>
+        /// 无参构造函数（设计时或未通过 DI 创建时使用，从 App.ServiceProvider 解析服务）。
+        /// </summary>
         public ConfigViewModel()
         {
             _serviceProvider = App.ServiceProvider;
+            _pluginViewFactory = _serviceProvider?.GetService<IPluginViewFactory>();
             _configManager = _serviceProvider?.GetService<IConfigurationManager>();
+            _importExport = _serviceProvider?.GetService<IConfigurationImportExportService>();
+
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+            {
+                InitializeConfigTree();
+            });
+        }
+
+        /// <summary>
+        /// 构造函数注入（供 DI 使用，便于单测与显式依赖）。
+        /// </summary>
+        public ConfigViewModel(
+            IConfigurationManager configManager,
+            IPluginViewFactory pluginViewFactory,
+            IConfigurationImportExportService importExport,
+            IServiceProvider serviceProvider = null)
+        {
+            _serviceProvider = serviceProvider ?? App.ServiceProvider;
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _pluginViewFactory = pluginViewFactory ?? throw new ArgumentNullException(nameof(pluginViewFactory));
+            _importExport = importExport ?? throw new ArgumentNullException(nameof(importExport));
 
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
@@ -82,6 +108,23 @@ namespace Astra.ViewModels
             {
                 ClearNodeSelection(rootNode);
             }
+        }
+
+        /// <summary>
+        /// 刷新配置树（供视图在加载时若树为空则调用，或外部显式刷新）。
+        /// </summary>
+        public Task RefreshTreeAsync()
+        {
+            return InitializeConfigTree();
+        }
+
+        /// <summary>
+        /// 恢复当前选中节点对应的右侧配置界面（切换导航后再次进入配置页时调用，使右侧面板重新显示之前的内容）。
+        /// </summary>
+        public void RestoreSelectedConfigContent()
+        {
+            if (SelectedNode != null)
+                LoadConfigView(SelectedNode);
         }
 
         /// <summary>
@@ -138,11 +181,11 @@ namespace Astra.ViewModels
             {
                 // ✅ 使用 ConfigurationManager 获取所有已注册的配置类型
                 // 这样可以确保只获取有 Provider 的配置类型
-                var result = await _configManager.GetAllConfigTypesAsync();
+                var registeredTypes = _configManager.GetRegisteredTypes();
 
-                if (result?.Success == true && result.Data != null)
+                if (registeredTypes != null)
                 {
-                    foreach (var configType in result.Data)
+                    foreach (var configType in registeredTypes)
                     {
                         try
                         {
@@ -189,7 +232,7 @@ namespace Astra.ViewModels
                 }
             }
 
-            var result = await _configManager?.GetAllConfigsAsync();
+            var result = await _configManager?.GetAllAsync();
 
             var loadedConfigs = result?.Data?.ToList() ?? new List<IConfig>();
 
@@ -396,26 +439,24 @@ namespace Astra.ViewModels
                 // ✅ 生成缓存键（基于配置ID，确保同一配置复用同一个View和ViewModel）
                 string cacheKey = node.Config?.ConfigId ?? node.Id;
 
-                // ✅ 如果缓存中已有该节点的 View 和 ViewModel，需要检查并更新 Config 引用
+                // ✅ 如果缓存中已有该节点的 View 和 ViewModel，需要检查并更新与 node.Config 兼容的引用
                 if (_viewCache.TryGetValue(cacheKey, out var cached))
                 {
-                    // ⚠️ 关键：如果 node.Config 的引用已改变，需要更新 ViewModel 中的 Config 引用
-                    // 这样可以确保 ViewModel 始终使用最新的 node.Config，避免数据丢失
                     if (node.Config != null && cached.ViewModel != null)
                     {
-                        // 尝试更新 ViewModel 的 Config 属性
                         var viewModelType = cached.ViewModel.GetType();
-                        var configProperty = viewModelType.GetProperty("Config");
-
-                        if (configProperty != null)
+                        foreach (var prop in viewModelType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                         {
-                            var currentConfig = configProperty.GetValue(cached.ViewModel);
-
-                            // 如果 Config 引用不同，更新它
-                            if (!ReferenceEquals(currentConfig, node.Config))
+                            if (!prop.CanWrite || prop.SetMethod == null) continue;
+                            if (!prop.PropertyType.IsInstanceOfType(node.Config)) continue;
+                            var current = prop.GetValue(cached.ViewModel);
+                            if (ReferenceEquals(current, node.Config)) break;
+                            try
                             {
-                                configProperty.SetValue(cached.ViewModel, node.Config);
+                                prop.SetValue(cached.ViewModel, node.Config);
                             }
+                            catch { /* 忽略 */ }
+                            break;
                         }
                     }
 
@@ -423,195 +464,26 @@ namespace Astra.ViewModels
                     return;
                 }
 
-                UserControl? configView = null;
-
-                if (node.ViewType != null)
-                {
-                    try
-                    {
-                        var viewTypeFromPluginContext = node.ViewType;
-                        var viewAssemblyFromPluginContext = viewTypeFromPluginContext.Assembly;
-                        var assemblyName = viewAssemblyFromPluginContext.GetName();
-                        var assemblyLocation = viewAssemblyFromPluginContext.Location;
-
-                        Type viewTypeToUse = viewTypeFromPluginContext;
-                        var defaultContextAssembly = AssemblyLoadContext.Default.Assemblies
-                            .FirstOrDefault(a => a.GetName().Name == assemblyName.Name &&
-                                               a.GetName().Version?.ToString() == assemblyName.Version?.ToString());
-
-                        if (defaultContextAssembly != null && defaultContextAssembly != viewAssemblyFromPluginContext)
-                        {
-                            // 默认上下文中存在该程序集，尝试获取相同类型
-                            try
-                            {
-                                var defaultContextViewType = defaultContextAssembly.GetType(viewTypeFromPluginContext.FullName);
-                                if (defaultContextViewType != null)
-                                {
-                                    viewTypeToUse = defaultContextViewType;
-                                }
-                            }
-                            catch (Exception typeEx)
-                            {
-                                // 忽略类型获取错误，继续使用原始类型
-                            }
-                        }
-
-                        // 如果 Location 为空（可能在内存中加载的），尝试从插件目录查找
-                        if (string.IsNullOrEmpty(assemblyLocation))
-                        {
-                            // 尝试从 ServiceProvider 获取插件目录信息
-                            try
-                            {
-                                var pluginHost = _serviceProvider?.GetService<Astra.Core.Plugins.Abstractions.IPluginHost>();
-                                if (pluginHost != null)
-                                {
-                                    var plugin = pluginHost.LoadedPlugins.FirstOrDefault(p => p.GetType().Assembly == viewAssemblyFromPluginContext);
-                                    if (plugin != null && !string.IsNullOrEmpty(plugin.GetType().Assembly.Location))
-                                    {
-                                        assemblyLocation = plugin.GetType().Assembly.Location;
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                // 忽略获取程序集路径的错误
-                            }
-                        }
-
-                        // 如果默认上下文中没有程序集，尝试加载到默认上下文（用于资源访问）
-                        if (defaultContextAssembly == null && !string.IsNullOrEmpty(assemblyLocation) && File.Exists(assemblyLocation))
-                        {
-                            try
-                            {
-                                // 使用 LoadFrom 将程序集加载到默认上下文
-                                defaultContextAssembly = Assembly.LoadFrom(assemblyLocation);
-
-                                // 再次尝试从默认上下文获取类型
-                                try
-                                {
-                                    var defaultContextViewType = defaultContextAssembly.GetType(viewTypeFromPluginContext.FullName);
-                                    if (defaultContextViewType != null)
-                                    {
-                                        viewTypeToUse = defaultContextViewType;
-                                    }
-                                }
-                                catch (Exception typeEx2)
-                                {
-                                    // 忽略类型获取错误
-                                }
-                            }
-                            catch (Exception loadEx)
-                            {
-                                // 如果加载失败，继续尝试创建 View（可能已经在默认上下文中了）
-                            }
-                        }
-                        // ⚠️ UserControl 的构造函数是无参的，不应该传入 node.Config
-                        // node.Config 应该传递给 ViewModel，而不是 View
-                        // ⚠️ 关键：使用默认上下文中的类型（如果有），这样 WPF 才能访问资源
-                        // ⚠️ 更关键：在创建 View 之前，确保使用默认上下文中的程序集进行反射
-                        // 使用 AssemblyLoadContext.EnterContextualReflection 确保 WPF 使用正确的程序集
-                        var targetAssemblyForReflection = defaultContextAssembly ?? viewAssemblyFromPluginContext;
-
-                        if (targetAssemblyForReflection != null)
-                        {
-                            using (AssemblyLoadContext.EnterContextualReflection(targetAssemblyForReflection))
-                            {
-                                configView = Activator.CreateInstance(viewTypeToUse) as UserControl;
-                            }
-                        }
-                        else
-                        {
-                            configView = Activator.CreateInstance(viewTypeToUse) as UserControl;
-                        }
-                    }
-                    catch (Exception createEx)
-                    {
-                        // 捕获创建 View 时的异常（通常是 InitializeComponent 失败）
-                        var innerEx = createEx.InnerException ?? createEx;
-                        var errorMsg = $"创建 View {node.ViewType.Name} 失败: {innerEx.Message}";
-
-                        ToastHelper.ShowError(errorMsg);
-                        return;
-                    }
-                }
-
-                if (configView == null || node.ViewModelType == null)
+                if (node.ViewType == null || node.ViewModelType == null)
                 {
                     return;
                 }
 
-                // ✅ 智能创建 ViewModel 实例：查找匹配的构造函数
-                // 优先查找接受具体配置类型的构造函数，如果不存在则查找接受 IConfig 的构造函数
-                object viewModel = null;
-
-                try
+                if (_pluginViewFactory == null)
                 {
-                    if (node.Config != null)
-                    {
-                        var configType = node.Config.GetType();
-                        var viewModelType = node.ViewModelType;
-
-                        // 查找接受具体配置类型的构造函数（例如：DataAcquisitionConfig）
-                        var concreteConstructor = viewModelType.GetConstructor(new[] { configType });
-                        if (concreteConstructor != null)
-                        {
-                            viewModel = Activator.CreateInstance(viewModelType, node.Config);
-                        }
-                        else
-                        {
-                            // 如果不存在，查找接受 IConfig 的构造函数
-                            var interfaceConstructor = viewModelType.GetConstructor(new[] { typeof(IConfig) });
-                            if (interfaceConstructor != null)
-                            {
-                                viewModel = Activator.CreateInstance(viewModelType, node.Config);
-                            }
-                            else
-                            {
-                                // 如果都不存在，尝试无参构造函数
-                                var parameterlessConstructor = viewModelType.GetConstructor(Type.EmptyTypes);
-                                if (parameterlessConstructor != null)
-                                {
-                                    viewModel = Activator.CreateInstance(viewModelType);
-
-                                    // 尝试通过属性设置 Config（如果 ViewModel 有 Config 属性）
-                                    var configProperty = viewModelType.GetProperty("Config") ??
-                                                        viewModelType.GetProperty("SelectedSensor") ??
-                                                        viewModelType.GetProperty("SelectedConfig");
-                                    if (configProperty != null)
-                                    {
-                                        configProperty.SetValue(viewModel, node.Config);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (viewModel == null)
-                    {
-                        var errorMsg = $"无法创建 ViewModel 实例: {node.ViewModelType.Name}，未找到合适的构造函数";
-                        ToastHelper.ShowError(errorMsg);
-                        return;
-                    }
-                }
-                catch (Exception vmEx)
-                {
-                    // 捕获创建 ViewModel 时的异常
-                    var innerEx = vmEx.InnerException ?? vmEx;
-                    var errorMsg = $"创建 ViewModel {node.ViewModelType.Name} 失败: {innerEx.Message}";
-
-                    ToastHelper.ShowError(errorMsg);
+                    ToastHelper.ShowError("插件视图工厂未注册，无法加载配置界面");
                     return;
                 }
 
-                configView.DataContext = viewModel;
-
-                // ✅ 将创建的 View 和 ViewModel 添加到缓存中
-                if (configView != null && viewModel != null)
+                var (configView, viewModel) = _pluginViewFactory.CreateView(node.ViewType, node.ViewModelType, node.Config);
+                if (configView == null || viewModel == null)
                 {
-                    _viewCache[cacheKey] = (configView, viewModel);
+                    ToastHelper.ShowError($"创建配置界面失败: {node.ViewType.Name}");
+                    return;
                 }
 
-                ContentControlChanged?.Invoke(this, configView);
+                _viewCache[cacheKey] = ((UserControl)configView, viewModel);
+                ContentControlChanged?.Invoke(this, (UserControl)configView);
             }
             catch (Exception ex)
             {
@@ -835,7 +707,7 @@ namespace Astra.ViewModels
                 {
                     try
                     {
-                        var deleteResult = await _configManager.DeleteConfigAsync(cfg);
+                        var deleteResult = await _configManager.DeleteAsync(cfg);
                         if (deleteResult == null || !deleteResult.Success)
                         {
                             MessageBoxHelper.ShowError($"删除配置失败: {deleteResult?.Message ?? "未知错误"}", "错误");
@@ -972,21 +844,11 @@ namespace Astra.ViewModels
                     return;
                 }
 
-                // 如果配置实现了 IPreSaveConfig 接口，执行预保存逻辑
-                if (targetNode.Config is Astra.Core.Configuration.IPreSaveConfig preSaveConfig)
-                {
-                    var preSaveResult = await preSaveConfig.PreSaveAsync(_configManager);
-                    if (preSaveResult != null && !preSaveResult.Success)
-                    {
-                        ToastHelper.ShowError($"预保存配置失败: {preSaveResult.Message}");
-                        return;
-                    }
-                }
 
                 // 在保存前更新节点名称和配置名称，确保保存时名称已同步
                 // 注意：DeviceName 现在是 ConfigName 的别名，更新 ConfigName 即可
                 // 先异步获取所有已保存的配置，然后传递给 GetNodeDisplayName 以确保编号唯一
-                var allConfigsResult = await _configManager.GetAllConfigsAsync();
+                var allConfigsResult = await _configManager.GetAllAsync();
                 var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
                 
                 // ✅ 生成新名称（保持原有编号，不根据索引重新分配）
@@ -1026,7 +888,7 @@ namespace Astra.ViewModels
                         try
                         {
                             // 保存节点配置（更新 UpdatedAt，但保持原有名称和编号）
-                            var saveResult = await _configManager.UpdateConfigAsync(siblingNode.Config);
+                            var saveResult = await _configManager.SaveAsync(siblingNode.Config);
                             
                             if (saveResult != null && saveResult.Success)
                             {
@@ -1076,8 +938,8 @@ namespace Astra.ViewModels
                 }
 
                 // 如果没有父节点，只保存当前节点（不应该发生，但保留作为后备）
-                // 通过 IConfigurationManager 的非泛型入口更新当前配置
-                OperationResult rlt = await _configManager.UpdateConfigAsync(targetNode.Config);
+                // 通过 IConfigurationManager 的非泛型入口保存当前配置
+                OperationResult rlt = await _configManager.SaveAsync(targetNode.Config);
 
                 if (rlt == null || !rlt.Success)
                 {
@@ -1121,7 +983,7 @@ namespace Astra.ViewModels
                 var timeOffset = 0;
                 
                 // 预先获取所有已保存的配置，用于检查编号唯一性（避免在循环中重复获取）
-                var allConfigsResult = await _configManager.GetAllConfigsAsync();
+                var allConfigsResult = await _configManager.GetAllAsync();
                 var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
 
                 // ✅ 第一步：按照树中的顺序，为所有节点生成新名称并更新 Header（仅内存中）
@@ -1164,26 +1026,14 @@ namespace Astra.ViewModels
                 foreach (var (childNode, newNodeName) in nodesToSave)
                 {
                     try
-                    {
-                        // 如果配置实现了 IPreSaveConfig 接口，执行预保存逻辑
-                        if (childNode.Config is Astra.Core.Configuration.IPreSaveConfig preSaveConfig)
-                        {
-                            var preSaveResult = await preSaveConfig.PreSaveAsync(_configManager);
-                            if (preSaveResult != null && !preSaveResult.Success)
-                            {
-                                errorCount++;
-                                errors.Add($"{childNode.Config.ConfigName}: 预保存失败 - {preSaveResult.Message}");
-                                continue; // 跳过保存主配置
-                            }
-                        }
-
+                    {                      
                         // 根据节点在树中的位置设置 UpdatedAt（保持顺序）
                         // 使用递增的时间偏移量，确保顺序正确
                         childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
                         timeOffset++;
 
                         // 保存配置（名称已在第一步更新）
-                        var result = await _configManager.UpdateConfigAsync(childNode.Config);
+                        var result = await _configManager.SaveAsync(childNode.Config);
 
                         if (result != null && result.Success)
                         {
@@ -1229,7 +1079,7 @@ namespace Astra.ViewModels
 
         /// <summary>
         /// 导入配置命令（根节点右键菜单使用）
-        /// 重构后：使用 ConfigImportExportHelper 简化逻辑，提高可读性和可维护性
+        /// 使用 IConfigurationImportExportService，仅导入当前根节点对应类型的配置，冲突时生成新 ID 保留两者。
         /// </summary>
         [RelayCommand]
         private async Task ImportConfigurations(TreeNode? node)
@@ -1242,9 +1092,7 @@ namespace Astra.ViewModels
                     return;
                 }
 
-                // 获取导入导出助手
-                var helper = _serviceProvider?.GetService<ConfigImportExportHelper>();
-                if (helper == null)
+                if (_importExport == null)
                 {
                     ToastHelper.ShowError("导入导出服务未初始化");
                     return;
@@ -1287,33 +1135,28 @@ namespace Astra.ViewModels
                     return;
                 }
 
-                // ✅ 使用 ConfigImportExportHelper 简化导入逻辑
+                var allImportedConfigs = new List<IConfig>();
+                var errors = new List<string>();
                 var successCount = 0;
                 var failureCount = 0;
-                var errors = new List<string>();
-                var allImportedConfigs = new List<IConfig>();
 
-                // 处理每个文件
+                var options = new ImportOptions
+                {
+                    TypeFilter = new[] { targetNode.ConfigType },
+                    ConflictResolution = ConflictResolution.KeepBoth,
+                    ValidateBeforeImport = true
+                };
+
                 foreach (var filePath in filePaths)
                 {
                     try
                     {
-                        // 使用助手类导入配置（类型验证和反序列化逻辑已封装）
-                        var result = await helper.ImportConfigsFromFileAsync(
-                            filePath,
-                            targetNode.ConfigType,
-                            generateNewId: true);
-
-                        if (result.Success && result.Data != null)
-                        {
-                            allImportedConfigs.AddRange(result.Data);
-                            successCount += result.Data.Count;
-                        }
-                        else
-                        {
-                            failureCount++;
-                            errors.Add($"{Path.GetFileName(filePath)}: {result.Message}");
-                        }
+                        var importResult = await _importExport.ImportAsync(filePath, options);
+                        allImportedConfigs.AddRange(importResult.ImportedConfigs);
+                        successCount += importResult.ImportedCount;
+                        failureCount += importResult.FailureCount;
+                        foreach (var kv in importResult.Failures)
+                            errors.Add($"{Path.GetFileName(filePath)} - {kv.Key}: {kv.Value}");
                     }
                     catch (Exception ex)
                     {
@@ -1445,12 +1288,10 @@ namespace Astra.ViewModels
                 }
 
                 var exportFilePath = saveFileDialog.FileName;
-                var exportDirectory = Path.GetDirectoryName(exportFilePath);
 
-                // 获取所有子节点的配置
                 var configs = targetNode.Children
                     .Where(child => child.Config != null)
-                    .Select(child => child.Config)
+                    .Select(child => child.Config!)
                     .ToList();
 
                 if (configs.Count == 0)
@@ -1459,20 +1300,14 @@ namespace Astra.ViewModels
                     return;
                 }
 
-                // ✅ 使用 ConfigImportExportHelper 简化导出逻辑
-                var helper = _serviceProvider?.GetService<ConfigImportExportHelper>();
-                if (helper == null)
+                if (_importExport == null)
                 {
                     ToastHelper.ShowError("导入导出服务未初始化");
                     return;
                 }
 
-                var result = await helper.ExportConfigsToFileAsync(
-                    configs,
-                    exportFilePath,
-                    ExportFormat.JsonArray);
+                var result = await _importExport.ExportConfigsAsync(configs, exportFilePath);
 
-                // 显示导出结果
                 if (result.Success)
                 {
                     ToastHelper.ShowSuccess($"已成功导出 {configs.Count} 个配置");

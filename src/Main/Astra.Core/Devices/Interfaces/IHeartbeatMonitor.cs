@@ -1,4 +1,4 @@
-﻿using Astra.Core.Foundation.Common;
+﻿﻿using Astra.Core.Foundation.Common;
 
 namespace Astra.Core.Devices.Interfaces
 {

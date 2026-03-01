@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Triggers.Configuration
+﻿﻿namespace Astra.Core.Triggers.Configuration
 {
     /// <summary>
     /// 防重复触发配置

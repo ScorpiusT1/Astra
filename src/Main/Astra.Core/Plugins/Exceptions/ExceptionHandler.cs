@@ -1,4 +1,4 @@
-using Astra.Core.Plugins.Exceptions;
+﻿using Astra.Core.Plugins.Exceptions;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -7,42 +7,39 @@ using System.Threading.Tasks;
 namespace Astra.Core.Plugins.Exceptions
 {
     /// <summary>
-    /// 异常处理策略
+    /// 寮傚父澶勭悊绛栫暐
     /// </summary>
     public enum ExceptionHandlingStrategy
     {
         /// <summary>
-        /// 忽略异常，继续执行
-        /// </summary>
+        /// 蹇界暐寮傚父锛岀户缁墽琛?        /// </summary>
         Ignore,
         /// <summary>
-        /// 记录异常并继续
-        /// </summary>
+        /// 璁板綍寮傚父骞剁户缁?        /// </summary>
         LogAndContinue,
         /// <summary>
-        /// 重试操作
+        /// 閲嶈瘯鎿嶄綔
         /// </summary>
         Retry,
         /// <summary>
-        /// 回退到备用方案
-        /// </summary>
+        /// 鍥為€€鍒板鐢ㄦ柟妗?        /// </summary>
         Fallback,
         /// <summary>
-        /// 停止插件
+        /// 鍋滄鎻掍欢
         /// </summary>
         StopPlugin,
         /// <summary>
-        /// 停止整个系统
+        /// 鍋滄鏁翠釜绯荤粺
         /// </summary>
         StopSystem,
         /// <summary>
-        /// 抛出异常
+        /// 鎶涘嚭寮傚父
         /// </summary>
         Throw
     }
 
     /// <summary>
-    /// 异常处理配置
+    /// 寮傚父澶勭悊閰嶇疆
     /// </summary>
     public class ExceptionHandlingConfig
     {
@@ -59,8 +56,7 @@ namespace Astra.Core.Plugins.Exceptions
     }
 
     /// <summary>
-    /// 异常处理器接口
-    /// </summary>
+    /// 寮傚父澶勭悊鍣ㄦ帴鍙?    /// </summary>
     public interface IExceptionHandler
     {
         Task<T> HandleAsync<T>(Func<Task<T>> operation, string operationName, string pluginId = null, ExceptionHandlingConfig config = null);
@@ -70,8 +66,7 @@ namespace Astra.Core.Plugins.Exceptions
     }
 
     /// <summary>
-    /// 异常处理器实现
-    /// </summary>
+    /// 寮傚父澶勭悊鍣ㄥ疄鐜?    /// </summary>
     public class ExceptionHandler : IExceptionHandler
     {
         private readonly Dictionary<Type, Func<PluginSystemException, Task>> _handlers = new();
@@ -88,7 +83,7 @@ namespace Astra.Core.Plugins.Exceptions
         public async Task<T> HandleAsync<T>(Func<Task<T>> operation, string operationName, string pluginId = null, ExceptionHandlingConfig config = null)
         {
             config ??= new ExceptionHandlingConfig();
-            
+
             for (int attempt = 0; attempt <= config.MaxRetryAttempts; attempt++)
             {
                 try
@@ -99,12 +94,12 @@ namespace Astra.Core.Plugins.Exceptions
                     }
 
                     var result = await operation();
-                    
+
                     if (config.EnableCircuitBreaker)
                     {
                         _circuitBreaker.RecordSuccess();
                     }
-                    
+
                     return result;
                 }
                 catch (Exception ex) when (ex is PluginSystemException)
@@ -115,7 +110,7 @@ namespace Astra.Core.Plugins.Exceptions
                     pluginEx.Context["MaxAttempts"] = config.MaxRetryAttempts;
 
                     await HandlePluginException(pluginEx, config, attempt);
-                    
+
                     if (attempt == config.MaxRetryAttempts)
                     {
                         throw;
@@ -130,7 +125,7 @@ namespace Astra.Core.Plugins.Exceptions
                     pluginEx.Context["MaxAttempts"] = config.MaxRetryAttempts;
 
                     await HandlePluginException(pluginEx, config, attempt);
-                    
+
                     if (attempt == config.MaxRetryAttempts)
                     {
                         throw pluginEx;
@@ -168,28 +163,28 @@ namespace Astra.Core.Plugins.Exceptions
 
         private async Task HandlePluginException(PluginSystemException ex, ExceptionHandlingConfig config, int attempt)
         {
-            // 记录异常
+            // 璁板綍寮傚父
             await _logger.LogErrorAsync(ex);
 
-            // 执行自定义处理器
+            // 鎵ц鑷畾涔夊鐞嗗櫒
             if (_handlers.TryGetValue(ex.GetType(), out var handler))
             {
                 await handler(ex);
             }
 
-            // 执行恢复操作
+            // 鎵ц鎭㈠鎿嶄綔
             if (_recoveryActions.TryGetValue(ex.GetType(), out var recoveryAction))
             {
                 await recoveryAction(ex);
             }
 
-            // 执行回退操作
+            // 鎵ц鍥為€€鎿嶄綔
             if (config.FallbackAction != null)
             {
                 await config.FallbackAction(ex);
             }
 
-            // 记录到熔断器
+            // 璁板綍鍒扮啍鏂櫒
             if (config.EnableCircuitBreaker)
             {
                 _circuitBreaker.RecordFailure();
@@ -200,14 +195,13 @@ namespace Astra.Core.Plugins.Exceptions
         {
             var delay = TimeSpan.FromMilliseconds(
                 config.RetryDelay.TotalMilliseconds * Math.Pow(config.BackoffMultiplier, attempt));
-            
+
             return delay > config.MaxRetryDelay ? config.MaxRetryDelay : delay;
         }
     }
 
     /// <summary>
-    /// 熔断器模式实现
-    /// </summary>
+    /// 鐔旀柇鍣ㄦā寮忓疄鐜?    /// </summary>
     public class CircuitBreaker
     {
         private int _failureCount = 0;
@@ -228,17 +222,16 @@ namespace Astra.Core.Plugins.Exceptions
         {
             _failureCount++;
             _lastFailureTime = DateTime.UtcNow;
-            
-            if (_failureCount >= 5) // 默认阈值
-            {
+
+            if (_failureCount >= 5) // 榛樿闃堝€?            {
                 _state = CircuitBreakerState.Open;
-            }
         }
+        
 
         public void TryReset()
         {
-            if (_state == CircuitBreakerState.Open && 
-                DateTime.UtcNow - _lastFailureTime > TimeSpan.FromMinutes(1)) // 默认超时
+            if (_state == CircuitBreakerState.Open &&
+                DateTime.UtcNow - _lastFailureTime > TimeSpan.FromMinutes(1)) // 榛樿瓒呮椂
             {
                 _state = CircuitBreakerState.HalfOpen;
             }
@@ -249,6 +242,9 @@ namespace Astra.Core.Plugins.Exceptions
     {
         Closed,
         Open,
-        HalfOpen
+        HalfOpen,
     }
 }
+
+
+

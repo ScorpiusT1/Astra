@@ -29,9 +29,9 @@ namespace Astra.Engine.Execution.NodeExecutor
         /// <summary>
         /// 添加日志中间件
         /// </summary>
-        /// <param name="logger">日志记录器，如果为null则从上下文解析</param>
+        /// <param name="logger">日志记录器（Microsoft.Extensions.Logging.ILogger），如果为 null 则从上下文解析</param>
         /// <param name="fallbackLoggerName">备用日志记录器名称</param>
-        public ExecutorBuilder WithLogging(Logger logger = null, string fallbackLoggerName = "NodePipeline")
+        public ExecutorBuilder WithLogging(Microsoft.Extensions.Logging.ILogger logger = null, string fallbackLoggerName = "NodePipeline")
         {
             _middlewares.Add(new LoggingMiddleware(logger, fallbackLoggerName));
             return this;

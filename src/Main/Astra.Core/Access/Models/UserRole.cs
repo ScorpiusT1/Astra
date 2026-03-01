@@ -1,4 +1,4 @@
-namespace Astra.Core.Access.Models
+﻿namespace Astra.Core.Access.Models
 {
     /// <summary>
     /// 用户角色枚举

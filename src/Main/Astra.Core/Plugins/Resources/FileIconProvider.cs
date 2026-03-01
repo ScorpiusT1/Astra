@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Resources
+﻿﻿namespace Astra.Core.Plugins.Resources
 {
     public class FileIconProvider : IIconProvider
     {

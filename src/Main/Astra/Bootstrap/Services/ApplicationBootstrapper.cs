@@ -1,4 +1,4 @@
-﻿// ⭐ 已移除 using Astra.Bootstrap.Core;（不再需要 IBootstrapTask）
+// ⭐ 已移除 using Astra.Bootstrap.Core;（不再需要 IBootstrapTask）
 using Astra.Bootstrap.Core;
 using Astra.Bootstrap.UI;
 using Astra.Core.Plugins.Abstractions;
@@ -577,67 +577,7 @@ namespace Astra.Bootstrap.Services
                         await Task.Delay(50, cancellationToken);
                         
                         // ⭐ 阶段2：扫描所有程序集并注册 ConfigProvider
-                        UpdateSplashScreen(75, "正在扫描并注册配置提供者...", null);
-                        
-                        try
-                        {
-                            var configProviderDiscovery = _context.ServiceProvider?.GetService<Astra.Core.Configuration.ConfigProviderDiscovery>();
-                            if (configProviderDiscovery != null)
-                            {
-                                _context.Logger?.LogInfo("开始扫描所有程序集中的 ConfigProvider...");
-                                
-                                // ⚠️ 关键：确保已加载的插件程序集都被扫描
-                                // 先获取 AppDomain 中已有的程序集
-                                var appDomainAssemblies = AppDomain.CurrentDomain.GetAssemblies()
-                                    .Where(a => !a.IsDynamic)
-                                    .ToDictionary(a => a.FullName ?? a.GetName().FullName, a => a);
-                                
-                                // 将阶段1中加载的插件程序集也加入扫描列表（如果它们不在 AppDomain 中）
-                                var assembliesToScan = new List<System.Reflection.Assembly>(appDomainAssemblies.Values);
-                                
-                                if (loadedAssemblies != null && loadedAssemblies.Count > 0)
-                                {
-                                    foreach (var loadedAssembly in loadedAssemblies)
-                                    {
-                                        var assemblyKey = loadedAssembly.FullName ?? loadedAssembly.GetName().FullName;
-                                        // 如果程序集不在 AppDomain 中，添加到扫描列表
-                                        if (!appDomainAssemblies.ContainsKey(assemblyKey))
-                                        {
-                                            assembliesToScan.Add(loadedAssembly);
-                                            _context.Logger?.LogInfo($"添加插件程序集到扫描列表: {loadedAssembly.GetName().Name}");
-                                        }
-                                    }
-                                }
-                                
-                                _context.Logger?.LogInfo($"准备扫描 {assembliesToScan.Count} 个程序集（AppDomain: {appDomainAssemblies.Count}, 插件: {loadedAssemblies?.Count ?? 0}）");
-                                
-                                var totalProviderCount = 0;
-                                foreach (var assembly in assembliesToScan)
-                                {
-                                    try
-                                    {
-                                        var count = configProviderDiscovery.DiscoverAndRegisterProviders(assembly);
-                                        if (count > 0)
-                                        {
-                                            _context.Logger?.LogInfo($"从程序集 {assembly.GetName().Name} 注册了 {count} 个 ConfigProvider");
-                                        }
-                                        totalProviderCount += count;
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _context.Logger?.LogWarning($"扫描程序集 {assembly.FullName ?? assembly.GetName().FullName} 时出错: {ex.Message}");
-                                    }
-                                }
-                                
-                                _context.Logger?.LogInfo($"ConfigProvider 扫描完成，共注册了 {totalProviderCount} 个 Provider");
-                                UpdateSplashScreen(80, $"已注册 {totalProviderCount} 个配置提供者", null);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _context.Logger?.LogWarning($"扫描 ConfigProvider 失败: {ex.Message}，不影响启动流程");
-                        }
-                        
+                        UpdateSplashScreen(80, "正在初始化配置管理器...", null);
                         await Task.Delay(50, cancellationToken);
                         
                         // ⭐ 阶段3：初始化并启用所有插件（此时 ConfigProvider 已全部注册）

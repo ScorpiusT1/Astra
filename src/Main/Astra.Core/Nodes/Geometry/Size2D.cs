@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace Astra.Core.Nodes.Geometry
 {

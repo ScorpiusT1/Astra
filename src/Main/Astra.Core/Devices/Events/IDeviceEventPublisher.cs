@@ -1,4 +1,4 @@
-using Astra.Core.Devices.Interfaces;
+﻿using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Management;
 using System.Collections.Generic;
 using System.Threading.Tasks;

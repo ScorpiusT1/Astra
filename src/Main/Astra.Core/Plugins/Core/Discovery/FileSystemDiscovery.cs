@@ -1,4 +1,5 @@
-﻿using Astra.Core.Plugins.Models;
+using Astra.Core.Plugins.Caching;
+using Astra.Core.Plugins.Models;
 using Astra.Core.Plugins.Manifest.Serializers;
 using System;
 using System.Collections.Generic;
@@ -12,17 +13,19 @@ namespace Astra.Core.Plugins.Discovery
     /// <summary>
     /// 基于文件系统的插件发现器。
     /// - 支持从指定目录递归查找 <c>*.addin</c> 清单文件并解析为 <see cref="PluginDescriptor"/>；
-    /// - 利用 <c>ICacheManager</c> 对目录级别的发现结果做短期缓存；
+    /// - 利用 <c>ICacheManager</c> 对目录级别的发现结果做短期缓存（可选，传 null 则禁用缓存）；
     /// - 使用 <see cref="FileSystemWatcher"/> 监听目录变化，自动失效缓存，保证热更新生效。
     /// </summary>
     public class FileSystemDiscovery : IPluginDiscovery
     {
         private readonly List<IManifestSerializer> _serializers = new();
+        private readonly ICacheManager? _cacheManager;
 		private static readonly ConcurrentDictionary<string, FileSystemWatcher> _watchers = new();
 
-        public FileSystemDiscovery(IEnumerable<IManifestSerializer> serializers)
+        public FileSystemDiscovery(IEnumerable<IManifestSerializer> serializers, ICacheManager? cacheManager = null)
         {
             _serializers.AddRange(serializers);
+            _cacheManager = cacheManager;
         }
 
 		/// <summary>
@@ -38,17 +41,16 @@ namespace Astra.Core.Plugins.Discovery
             if (!Directory.Exists(searchPath))
                 return descriptors;
 
-			// 优先从缓存读取（按目录为键），减少频繁 IO/反序列化
+		// 优先从缓存读取（按目录为键），减少频繁 IO/反序列化
+		if (_cacheManager != null)
+		{
 			try
 			{
-				var cache = Astra.Core.Plugins.Services.ServiceLocator.ResolveOrDefault<Astra.Core.Plugins.Caching.ICacheManager>();
-				if (cache != null)
-				{
-					var cached = await cache.GetAsync<IEnumerable<PluginDescriptor>>($"descriptors:{searchPath}");
-					if (cached != null) return cached;
-				}
+				var cached = await _cacheManager.GetAsync<IEnumerable<PluginDescriptor>>($"descriptors:{searchPath}");
+				if (cached != null) return cached;
 			}
 			catch { }
+		}
 
 			// 查找所有 .addin 文件
             var addinFiles = Directory.GetFiles(searchPath, "*.addin", SearchOption.AllDirectories);
@@ -72,19 +74,18 @@ namespace Astra.Core.Plugins.Discovery
                 }
             }
 
-			// 将本次结果写入缓存，设置适度过期时间以兼顾新鲜度与性能
+		// 将本次结果写入缓存，设置适度过期时间以兼顾新鲜度与性能
+		if (_cacheManager != null)
+		{
 			try
 			{
-				var cache = Astra.Core.Plugins.Services.ServiceLocator.ResolveOrDefault<Astra.Core.Plugins.Caching.ICacheManager>();
-				if (cache != null)
+				await _cacheManager.SetAsync($"descriptors:{searchPath}", descriptors, new CacheOptions
 				{
-					await cache.SetAsync($"descriptors:{searchPath}", descriptors, new Astra.Core.Plugins.Caching.CacheOptions
-					{
-						Expiration = TimeSpan.FromMinutes(5)
-					});
-				}
+					Expiration = TimeSpan.FromMinutes(5)
+				});
 			}
 			catch { }
+		}
 
 			return descriptors;
         }
@@ -105,18 +106,15 @@ namespace Astra.Core.Plugins.Discovery
 					NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
 				};
 
-				FileSystemEventHandler handler = async (s, e) =>
+			FileSystemEventHandler handler = async (s, e) =>
+			{
+				if (_cacheManager == null) return;
+				try
 				{
-					try
-					{
-						var cache = Astra.Core.Plugins.Services.ServiceLocator.ResolveOrDefault<Astra.Core.Plugins.Caching.ICacheManager>();
-						if (cache != null)
-						{
-							await cache.RemoveAsync($"descriptors:{searchPath}");
-						}
-					}
-					catch { }
-				};
+					await _cacheManager.RemoveAsync($"descriptors:{searchPath}");
+				}
+				catch { }
+			};
 
 				watcher.Created += handler;
 				watcher.Changed += handler;

@@ -1,4 +1,4 @@
-using Astra.Core.Configuration;
+﻿using Astra.Core.Configuration;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Converters;
 using CommunityToolkit.Mvvm.ComponentModel;

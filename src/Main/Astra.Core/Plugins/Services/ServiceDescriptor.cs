@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Services
+﻿﻿namespace Astra.Core.Plugins.Services
 {
     /// <summary>
     /// 增强的服务描述符

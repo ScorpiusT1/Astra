@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Nodes.Models
+﻿﻿namespace Astra.Core.Nodes.Models
 {
     // ===== 2. 日志条目 =====
 

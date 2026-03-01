@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -39,6 +39,7 @@
     <ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
     <ProjectReference Include="..\..\Libraries\NavStack\NavStack.csproj" />
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
+    <ProjectReference Include="..\Astra.Infrastructure\Astra.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,23 +70,6 @@
     <Folder Include="Styles\" />
   </ItemGroup>
 
-  <!-- ⭐ 构建后自动构建所有插件项目 -->
-  <Target Name="BuildPlugins" AfterTargets="Build">
-    <PropertyGroup>
-      <PluginsDirectory>$(MSBuildThisFileDirectory)..\..\Plugins</PluginsDirectory>
-    </PropertyGroup>
-    
-    <ItemGroup>
-      <!-- 查找所有插件项目 -->
-      <PluginProjects Include="$(PluginsDirectory)\**\*.csproj" />
-    </ItemGroup>
-    
-    <!-- 构建所有插件项目 -->
-    <MSBuild Projects="@(PluginProjects)" 
-             Properties="Configuration=$(Configuration);Platform=$(Platform)"
-             ContinueOnError="false" />
-    
-    <Message Text="插件构建完成: @(PluginProjects)" Importance="high" />
-  </Target>
+  <!-- ⭐ 插件需手动构建：在解决方案中单独生成各插件项目，或使用 msbuild 指定插件 .csproj。主程序构建时不再自动生成插件。 -->
 
 </Project>

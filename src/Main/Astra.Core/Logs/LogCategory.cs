@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Logs
+﻿﻿namespace Astra.Core.Logs
 {
     /// <summary>
     /// 日志分类枚举

@@ -1,4 +1,4 @@
-using Astra.Core.Plugins.Abstractions;
+﻿using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Performance;
 using System.Collections.Concurrent;
 

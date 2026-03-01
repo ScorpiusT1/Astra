@@ -25,7 +25,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         private IReadOnlyList<double> _triggerLevelOptions;
 
         /// <summary>
-        /// 规格中定义的可用耦合方式（AC/DC等）
+        /// 规格�?定义的可用耦合方式（AC/DC等）
         /// </summary>
         public IReadOnlyList<CouplingMode> CouplingModeOptions
         {
@@ -40,7 +40,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         }
 
         /// <summary>
-        /// 规格中定义的可用触发电平（单位：mA）
+        /// 规格�?定义的可用触发电平（单位：mA�?
         /// </summary>
         public IReadOnlyList<double> TriggerLevelOptions
         {
@@ -55,12 +55,12 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         }
 
         /// <summary>
-        /// 是否存在耦合方式约束（用于控制界面显示）
+        /// �?否存在耦合方式约束（用于控制界面显示）
         /// </summary>
         public bool HasCouplingModeOptions => CouplingModeOptions != null && CouplingModeOptions.Count > 0;
 
         /// <summary>
-        /// 是否存在触发电平约束（用于控制界面显示）
+        /// �?否存在触发电平约束（用于控制界面显示�?
         /// </summary>
         public bool HasTriggerLevelOptions => TriggerLevelOptions != null && TriggerLevelOptions.Count > 0;
 
@@ -79,7 +79,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         };
 
         /// <summary>
-        /// 采样率选项列表（常见采样频率，单位：Hz）
+        /// 采样率选项列表（常见采样�?�率，单位：Hz�?
         /// </summary>
         public IReadOnlyList<double> SampleRateOptions { get; } = new List<double>
         {
@@ -111,10 +111,10 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         {
             _config = config;
 
-            // 初始化规格选项
+            // 初�?�化规格选项
             UpdateSpecificationOptions();
 
-            // 获取配置管理器服务
+            // 获取配置管理器服�?
             try
             {
                 var appType = System.Type.GetType("Astra.App, Astra");
@@ -127,7 +127,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
                     if (_configManager == null)
                     {
-                        System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 从服务提供者获取配置管理器失败");
+                        System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 从服务提供者获取配�?管理器失�?");
                     }
                 }
                 else
@@ -143,7 +143,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             InitializeChannels();
             LoadSensorsAsync();
 
-            // 监听配置的属性变化
+            // 监听配置的属性变�?
             if (_config != null)
             {
                 _config.PropertyChanged += Config_PropertyChanged;
@@ -151,18 +151,18 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         }
 
         /// <summary>
-        /// 更新规格选项（当设备型号变化时调用）
+        /// 更新规格选项（当设�?�型号变化时调用�?
         /// </summary>
         private void UpdateSpecificationOptions()
         {
-            // 从设备规格注册表中获取当前设备的规格，用于通道级别的约束选项
+            // 从�?��?��?�格注册表中获取当前设�?�的规格，用于通道级别的约束选项
             _deviceSpecification = DeviceSpecificationRegistry.GetSpecification(
                 DeviceType.DataAcquisition,
                 _config?.Manufacturer ?? string.Empty,
                 _config?.Model ?? string.Empty
             );
 
-            // 初始化耦合方式和触发电平选项（如果规格中有定义）
+            // 初�?�化耦合方式和触发电平选项（�?�果规格�?有定义）
             IReadOnlyList<CouplingMode> couplingModes = null;
             IReadOnlyList<double> triggerLevels = null;
 
@@ -181,32 +181,32 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 }
             }
 
-            // 更新属性（会自动触发 HasCouplingModeOptions 和 HasTriggerLevelOptions 的变更通知）
+            // 更新属性（会自动触�? HasCouplingModeOptions �? HasTriggerLevelOptions 的变更通知�?
             CouplingModeOptions = couplingModes;
             TriggerLevelOptions = triggerLevels;
         }
 
         /// <summary>
-        /// 加载传感器列表
+        /// 加载传感器列�?
         /// </summary>
         private async void LoadSensorsAsync()
         {
             if (_configManager == null)
             {
-                System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 配置管理器为空，无法加载传感器列表");
+                System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 配置管理器为空，无法加载传感器列�?");
                 return;
             }
 
             try
             {
                 System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 开始加载传感器列表...");
-                var result = await _configManager.GetAllConfigsAsync<SensorConfig>();
+                var result = await _configManager.GetAllAsync<SensorConfig>();
 
                 if (result.Success && result.Data != null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 成功加载 {result.Data.Count()} 个传感器配置");
+                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 成功加载 {result.Data.Count()} �?传感器配�?");
 
-                    // 保存当前通道中已选择的传感器ID和引用映射
+                    // 保存当前通道�?已选择的传感器ID和引用映�?
                     var channelSensorMap = new Dictionary<string, DAQChannelConfig>();
                     if (_config?.Channels != null)
                     {
@@ -220,7 +220,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                         }
                     }
 
-                    // 创建传感器ID到传感器对象的映射
+                    // 创建传感器ID到传感器对象的映�?
                     var sensorIdMap = result.Data.ToDictionary(s => s.ConfigId, s => s);
 
                     // 在UI线程上更新传感器列表
@@ -233,47 +233,47 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                             AvailableSensors.Add(sensor);
                         }
 
-                        // 恢复所有通道的传感器引用（根据保存的 SensorId 从传感器库中查找）
+                        // 恢�?�所有通道的传感器引用（根�?保存�? SensorId 从传感器库中查找�?
                         if (_config != null)
                         {
                             _config.RestoreSensorReferences(AvailableSensors);
                         }
 
-                        System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 传感器列表已更新，当前有 {AvailableSensors.Count} 个传感器");
+                        System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 传感器列表已更新，当前有 {AvailableSensors.Count} �?传感�?");
                     });
                 }
                 else
                 {
-                    ToastHelper.ShowError($"[DataAcquisitionChannelConfigViewModel] 加载传感器列表失败: Success={result.Success}");
+                    ToastHelper.ShowError($"[DataAcquisitionChannelConfigViewModel] 加载传感器列表失�?: Success={result.Success}");
                 }
             }
             catch (Exception ex)
             {
-                ToastHelper.ShowError($"[DataAcquisitionChannelConfigViewModel] 加载传感器列表异常: {ex.Message}");
+                ToastHelper.ShowError($"[DataAcquisitionChannelConfigViewModel] 加载传感器列表异�?: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// 初始化通道集合
+        /// 初�?�化通道集合
         /// </summary>
         private void InitializeChannels()
         {
             if (_config == null)
                 return;
 
-            // 取消之前的监听
+            // 取消之前的监�?
             if (_config.Channels != null)
             {
                 _config.Channels.CollectionChanged -= Channels_CollectionChanged;
             }
 
-            // 确保通道集合已初始化
+            // �?保通道集合已初始化
             if (_config.Channels == null)
             {
                 _config.Channels = new ObservableCollection<DAQChannelConfig>();
             }
 
-            // 如果通道集合为空但 ChannelCount > 0，根据 ChannelCount 初始化通道
+            // 如果通道集合为空�? ChannelCount > 0，根�? ChannelCount 初�?�化通道
             if (_config.Channels.Count == 0 && _config.ChannelCount > 0)
             {
                 for (int i = 0; i < _config.ChannelCount; i++)
@@ -307,7 +307,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             OnPropertyChanged(nameof(Channels));
             OnPropertyChanged(nameof(CanDeleteChannel));
 
-            // 如果删除操作后集合为空，清除选中状态
+            // 如果删除操作后集合为空，清除选中状�?
             if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove)
             {
                 if (_config?.Channels?.Count == 0)
@@ -318,7 +318,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         }
 
         /// <summary>
-        /// 配置属性变化处理
+        /// 配置属性变化�?�理
         /// </summary>
         private void Config_PropertyChanged(object sender, Core.Devices.PropertyChangedEventArgs e)
         {
@@ -328,14 +328,14 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             }
             else if (e.PropertyName == nameof(DataAcquisitionConfig.SampleRate))
             {
-                // 基础配置的采样率变化时，通知 UI 更新通道显示
-                // 通道的采样率已由 DataAcquisitionConfig 自动同步
+                // 基�?�配置的采样率变化时，通知 UI 更新通道显示
+                // 通道的采样率已由 DataAcquisitionConfig �?动同�?
                 OnPropertyChanged(nameof(Channels));
             }
             else if (e.PropertyName == nameof(DataAcquisitionConfig.Manufacturer) || 
                      e.PropertyName == nameof(DataAcquisitionConfig.Model))
             {
-                // 当设备厂家或型号变化时，重新从规格中读取选项
+                // 当�?��?�厂家或型号变化时，重新从�?�格�?读取选项
                 UpdateSpecificationOptions();
             }
         }
@@ -370,7 +370,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         public ObservableCollection<DAQChannelConfig> Channels => _config?.Channels;
 
         /// <summary>
-        /// 是否可以删除通道
+        /// �?否可以删除通道
         /// </summary>
         public bool CanDeleteChannel => SelectedChannel != null && Channels?.Count > 0;
 
@@ -383,13 +383,13 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             if (_config == null)
                 return;
 
-            // 确保通道集合已初始化
+            // �?保通道集合已初始化
             if (_config.Channels == null)
             {
                 _config.Channels = new ObservableCollection<DAQChannelConfig>();
             }
 
-            // 获取下一个通道ID（从集合大小+1计算，确保连续）
+            // 获取下一�?通道ID（从集合大小+1计算，确保连�?�?
             int nextChannelId = _config.Channels.Count + 1;
 
             // 创建新通道
@@ -430,21 +430,21 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 开始删除通道: ChannelId={channelToDelete.ChannelId}, ChannelName={channelToDelete.ChannelName}");
 
-            // 保存删除前的选中状态
+            // 保存删除前的选中状�?
             bool wasSelected = SelectedChannel == channelToDelete;
 
-            // 从集合中删除（ObservableCollection会自动触发CollectionChanged事件）
+            // 从集合中删除（ObservableCollection会自动触发CollectionChanged事件�?
             bool removed = _config.Channels.Remove(channelToDelete);
 
             if (!removed)
             {
                 System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 删除通道失败: 从集合中移除失败");
-                return; // 如果删除失败，直接返回
+                return; // 如果删除失败，直接返�?
             }
 
-            System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 通道已从集合中删除，剩余通道数: {_config.Channels.Count}");
+            System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 通道已从集合�?删除，剩余通道�?: {_config.Channels.Count}");
 
-            // 如果删除的是当前选中的通道，清除选中状态
+            // 如果删除的是当前选中的通道，清除选中状�?
             if (wasSelected)
             {
                 SelectedChannel = null;
@@ -454,7 +454,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             for (int i = 0; i < _config.Channels.Count; i++)
             {
                 _config.Channels[i].ChannelId = i + 1;
-                // 如果通道名称是默认格式（通道 X），则更新名称
+                // 如果通道名称�?默�?�格式（通道 X），则更新名�?
                 if (string.IsNullOrWhiteSpace(_config.Channels[i].ChannelName) ||
                     _config.Channels[i].ChannelName.StartsWith("通道 "))
                 {
@@ -462,26 +462,26 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 }
             }
 
-            // 强制通知 UI 更新（确保ItemsControl刷新）
-            // 注意：由于ObservableCollection的CollectionChanged事件已经触发，
-            // Channels_CollectionChanged方法会处理通知，但这里再次通知确保UI刷新
+            // 强制通知 UI 更新（确保ItemsControl刷新�?
+            // 注意：由于ObservableCollection的CollectionChanged事件已经触发�?
+            // Channels_CollectionChanged方法会�?�理通知，但这里再�?�通知�?保UI刷新
             OnPropertyChanged(nameof(Channels));
             OnPropertyChanged(nameof(CanDeleteChannel));
 
-            // 通知命令可执行状态变化
+            // 通知命令�?执�?�状态变�?
             DeleteChannelCommand.NotifyCanExecuteChanged();
 
-            // 如果还有通道且之前选中的通道被删除了，选中第一个通道
+            // 如果还有通道且之前选中的通道�?删除了，选中�?一�?通道
             if (_config.Channels.Count > 0 && wasSelected)
             {
                 SelectedChannel = _config.Channels[0];
             }
 
-            System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 通道删除完成，当前通道数: {_config.Channels.Count}");
+            System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 通道删除完成，当前通道�?: {_config.Channels.Count}");
         }
 
         /// <summary>
-        /// 清除传感器绑定命令
+        /// 清除传感器绑定命�?
         /// </summary>
         [RelayCommand]
         private void ClearSensor(DAQChannelConfig channel)
@@ -493,7 +493,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         }
 
         /// <summary>
-        /// 打开传感器配置命令
+        /// 打开传感器配�?命令
         /// </summary>
         [RelayCommand]
         private void OpenSensorConfig(SensorConfig sensor)
@@ -503,28 +503,28 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             try
             {
-                // 尝试获取配置管理器服务
+                // 尝试获取配置管理器服�?
                 var appType = System.Type.GetType("Astra.App, Astra");
                 if (appType != null)
                 {
                     var serviceProviderProperty = appType.GetProperty("ServiceProvider", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                     var serviceProvider = serviceProviderProperty?.GetValue(null) as IServiceProvider;
 
-                    // 尝试获取配置视图模型服务来打开传感器配置
-                    // 这里可以根据实际系统的导航方式来实现
-                    // 例如：通过消息总线、事件或服务来打开配置窗口
-                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 打开传感器配置: {sensor.ConfigName} (ID: {sensor.ConfigId})");
+                    // 尝试获取配置视图模型服务来打开传感器配�?
+                    // 这里�?以根�?实际系统的�?�航方式来实�?
+                    // 例�?�：通过消息总线、事件或服务来打开配置窗口
+                    System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 打开传感器配�?: {sensor.ConfigName} (ID: {sensor.ConfigId})");
 
-                    // TODO: 根据实际系统架构实现打开传感器配置界面的逻辑
-                    // 例如：
-                    // - 使用消息总线发送打开配置的消息
+                    // TODO: 根据实际系统架构实现打开传感器配�?界面的逻辑
+                    // 例�?�：
+                    // - 使用消息总线发送打开配置的消�?
                     // - 使用导航服务打开配置窗口
-                    // - 使用对话框服务显示配置对话框
+                    // - 使用对话框服务显示配�?对话�?
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 打开传感器配置失败: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 打开传感器配�?失败: {ex.Message}");
             }
         }
 
@@ -534,7 +534,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         partial void OnSelectedChannelChanged(DAQChannelConfig value)
         {
             OnPropertyChanged(nameof(CanDeleteChannel));
-            // 通知删除命令的可执行状态变化
+            // 通知删除命令的可执�?�状态变�?
             DeleteChannelCommand?.NotifyCanExecuteChanged();
         }
     }

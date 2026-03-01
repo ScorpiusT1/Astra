@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Devices.Buffers
+﻿﻿namespace Astra.Core.Devices.Buffers
 {
     /// <summary>
     /// 缓冲区状态

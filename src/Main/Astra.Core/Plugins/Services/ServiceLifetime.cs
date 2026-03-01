@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Services
+﻿﻿namespace Astra.Core.Plugins.Services
 {
     public enum ServiceLifetime
     {

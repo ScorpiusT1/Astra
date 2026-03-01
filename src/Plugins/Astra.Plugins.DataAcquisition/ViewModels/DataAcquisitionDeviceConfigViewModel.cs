@@ -1,4 +1,4 @@
-using Astra.Core.Configuration;
+﻿using Astra.Core.Configuration;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Configuration;
 using Astra.Core.Devices.Specifications;
@@ -685,12 +685,12 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 };
 
                 // 订阅 ConfigBase 的 ConfigChanged 事件（监听 ConfigName 变更）
-                if (_config is Astra.Core.Configuration.ConfigBase configBase)
+                if (_config is ConfigBase configBase)
                 {
                     configBase.ConfigChanged += (sender, e) =>
                     {
                         // 当 ConfigName 变更时，同时通知 ConfigName 和 DeviceName 变更（因为 DeviceName 是 ConfigName 的别名）
-                        if (e.PropertyName == nameof(Astra.Core.Configuration.ConfigBase.ConfigName))
+                        if (e.PropertyName == nameof(ConfigBase.ConfigName))
                         {
                             OnPropertyChanged(nameof(ConfigName));
                             OnPropertyChanged(nameof(DeviceName));

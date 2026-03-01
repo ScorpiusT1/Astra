@@ -1,25 +1,21 @@
-using System;
-using System.Linq;
+﻿using Astra.Core.Plugins.Abstractions;
+using Astra.Core.Plugins.Caching;
+using Astra.Core.Plugins.Concurrency;
 using Astra.Core.Plugins.Configuration;
-using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Discovery;
-using Astra.Core.Plugins.Lifecycle;
 using Astra.Core.Plugins.Exceptions;
 using Astra.Core.Plugins.Health;
-using Astra.Core.Plugins.Management;
+using Astra.Core.Plugins.Loading;
 using Astra.Core.Plugins.Manifest.Serializers;
+using Astra.Core.Plugins.Memory;
 using Astra.Core.Plugins.Messaging;
+using Astra.Core.Plugins.Performance;
 using Astra.Core.Plugins.Recovery;
 using Astra.Core.Plugins.Security;
 using Astra.Core.Plugins.Services;
-using Astra.Core.Plugins.Validation;
-using Astra.Core.Plugins.Performance;
-using Astra.Core.Plugins.Memory;
-using Astra.Core.Plugins.Loading;
-using Astra.Core.Plugins.Concurrency;
-using Astra.Core.Plugins.Caching;
-using Microsoft.Extensions.DependencyInjection;
 using Astra.Core.Plugins.Services.Adapters;
+using Astra.Core.Plugins.Validation;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Astra.Core.Plugins.Host
 {
@@ -40,8 +36,7 @@ namespace Astra.Core.Plugins.Host
         {
             var serviceRegistry = CreateServiceRegistry(config.Services);
 			var performanceServices = CreatePerformanceServices(config.Performance);
-			ServiceLocator.Initialize(serviceRegistry);
-            
+
             var baseHost = new PluginHost(
                 serviceRegistry.Resolve<IPluginDiscovery>(),
                 serviceRegistry,
@@ -166,9 +161,7 @@ namespace Astra.Core.Plugins.Host
 				registry.RegisterSingleton<ICacheManager>(perf.CacheManager);
 			}
 			
-			ServiceLocator.Initialize(registry);
-
-			// 根据 Host 安全配置补充验证规则（签名与白名单）
+		// 根据 Host 安全配置补充验证规则（签名与白名单）
 			try
 			{
 				var validator = registry.Resolve<IPluginValidator>();
@@ -475,7 +468,7 @@ namespace Astra.Core.Plugins.Host
 				registry.Resolve<Security.IPermissionGateway>(),
 				registry.Resolve<Security.ISecurityAuditLogger>()));
             registry.RegisterSingleton<IConfigurationStore>(new ConfigurationStore());
-            registry.RegisterSingleton(new PluginLifecycleManager());
+         
 
             // 注册异常处理服务
             registry.RegisterSingleton<IErrorLogger>(new FileErrorLogger("plugin-system.log"));

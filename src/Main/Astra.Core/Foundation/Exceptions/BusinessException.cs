@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 // ⚠️ 迁移说明：
 //   - 新创建：业务异常类

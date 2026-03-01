@@ -1,4 +1,4 @@
-using Astra.Core.Plugins.Abstractions;
+﻿using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Exceptions;
 using System;
 using System.Collections.Generic;
@@ -227,90 +227,6 @@ namespace Astra.Core.Plugins.Health
                 return HealthStatus.Unhealthy;
 
             return HealthStatus.Degraded;
-        }
-    }
-
-    /// <summary>
-    /// 插件健康检查
-    /// </summary>
-    public class PluginHealthCheck : IHealthCheck
-    {
-        private readonly IPluginHost _host;
-        private readonly string _pluginId;
-
-        public string Name => $"Plugin-{_pluginId}";
-
-        public PluginHealthCheck(IPluginHost host, string pluginId)
-        {
-            _host = host;
-            _pluginId = pluginId;
-        }
-
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
-        {
-            var startTime = DateTime.UtcNow;
-
-            try
-            {
-                var plugin = _host.LoadedPlugins.FirstOrDefault(p => p.Id == _pluginId);
-                if (plugin == null)
-                {
-                    return HealthCheckResult.Unhealthy(Name, "Plugin not found");
-                }
-
-                // 这里可以添加更复杂的健康检查逻辑
-                // 例如：检查插件是否响应、检查资源使用情况等
-
-                var duration = DateTime.UtcNow - startTime;
-                return HealthCheckResult.Healthy(Name, "Plugin is running", duration);
-            }
-            catch (Exception ex)
-            {
-                var duration = DateTime.UtcNow - startTime;
-                return HealthCheckResult.Unhealthy(Name, "Plugin health check failed", ex, duration);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 系统资源健康检查
-    /// </summary>
-    public class SystemResourceHealthCheck : IHealthCheck
-    {
-        public string Name => "SystemResources";
-
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
-        {
-            var startTime = DateTime.UtcNow;
-
-            try
-            {
-                var process = System.Diagnostics.Process.GetCurrentProcess();
-                var memoryUsage = process.WorkingSet64;
-                var cpuUsage = process.TotalProcessorTime;
-
-                var data = new Dictionary<string, object>
-                {
-                    ["MemoryUsageMB"] = memoryUsage / 1024 / 1024,
-                    ["CpuTime"] = cpuUsage.TotalMilliseconds,
-                    ["ThreadCount"] = process.Threads.Count
-                };
-
-                var duration = DateTime.UtcNow - startTime;
-                return new HealthCheckResult
-                {
-                    Name = Name,
-                    Status = HealthStatus.Healthy,
-                    Message = "System resources are normal",
-                    Duration = duration,
-                    Data = data
-                };
-            }
-            catch (Exception ex)
-            {
-                var duration = DateTime.UtcNow - startTime;
-                return HealthCheckResult.Unhealthy(Name, "System resource check failed", ex, duration);
-            }
         }
     }
 }

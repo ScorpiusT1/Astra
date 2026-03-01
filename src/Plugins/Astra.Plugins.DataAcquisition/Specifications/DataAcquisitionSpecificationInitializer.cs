@@ -1,4 +1,4 @@
-using Astra.Core.Devices;
+﻿using Astra.Core.Devices;
 using Astra.Core.Devices.Specifications;
 using Astra.Plugins.DataAcquisition.Configs;
 using System.Collections.Generic;

@@ -25,15 +25,6 @@ namespace Astra.Core.Logs.Extensions
             if (logger == null || node == null)
                 return;
 
-            var nodeInfo = new NodeLogInfo
-            {
-                NodeId = node.Id,
-                NodeType = node.NodeType,
-                NodeName = node.Name,
-                Action = "Started",
-                Parameters = node.Parameters
-            };
-
             var data = new Dictionary<string, object>
             {
                 { "node_id", node.Id },

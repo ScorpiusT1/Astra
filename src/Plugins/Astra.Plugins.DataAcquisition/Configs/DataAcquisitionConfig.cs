@@ -1,4 +1,4 @@
-﻿using Astra.Core.Configuration;
+using Astra.Core.Configuration;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
 using Astra.Core.Devices.Common;
@@ -17,8 +17,8 @@ using System.Threading.Tasks;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
-    [TreeNodeConfig("采集卡", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
-    public class DataAcquisitionConfig : DeviceConfig, IPreSaveConfig, IPostLoadConfig, IDeviceSpecificationConstraint
+    [TreeNodeConfig("数据采集", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
+    public class DataAcquisitionConfig : DeviceConfig,IDeviceSpecificationConstraint
     {
 
         private ObservableCollection<DAQChannelConfig> _channels;
@@ -42,8 +42,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 恢复所有通道的传感器引用（在配置加载后调用）
-        /// 从传感器库中根据保存的传感器ID查找并绑定传感器对象
+        /// 恢复所有通道的传感器引用（在配置加载后调用，从传感器库根据保存的传感器ID查找并绑定传感器对象）
         /// </summary>
         public void RestoreSensorReferences(IEnumerable<SensorConfig> availableSensors)
         {
@@ -57,17 +56,17 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 实现 IPreSaveConfig 接口：在保存配置前保存通道中的独立模式传感器配置
+        /// 实现 IPreSaveConfig：保存前同步独立传感器到配置库
         /// </summary>
         public async Task<OperationResult> PreSaveAsync(IConfigurationManager configManager)
         {
             if (configManager == null)
-                return OperationResult.Failure("配置管理器未初始化");
+                return OperationResult.Failure("配置管理器不能为空");
 
             if (_channels == null || _channels.Count == 0)
                 return OperationResult.Succeed();
 
-            // 收集所有独立模式的传感器配置
+            // 仅处理独立模式的传感器
             var independentSensors = _channels
                 .Where(c => c?.Sensor != null && c.SensorConfigMode == SensorConfigMode.Independent)
                 .Select(c => c.Sensor)
@@ -76,16 +75,16 @@ namespace Astra.Plugins.DataAcquisition.Devices
             if (independentSensors.Count == 0)
                 return OperationResult.Succeed();
 
-            // 确保所有传感器配置有效
+            // 遍历独立传感器
             foreach (var sensor in independentSensors)
             {
-                // ✅ 使用 SetConfigId 方法替代反射
+                // 若未设置 ConfigId 则生成
                 if (sensor is ConfigBase sensorConfigBase && string.IsNullOrEmpty(sensorConfigBase.ConfigId))
                 {
                     sensorConfigBase.SetConfigId(Guid.NewGuid().ToString());
                 }
 
-                // 确保传感器配置有名称
+                // 若传感器无显示名则自动生成
                 if (string.IsNullOrEmpty(sensor.ConfigName))
                 {
                     var channel = _channels.FirstOrDefault(c => c.Sensor == sensor);
@@ -93,58 +92,58 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
             }
 
-            // 批量保存，收集错误
+            // 收集保存错误
             var errors = new List<string>();
             foreach (var sensor in independentSensors)
             {
                 try
                 {
-                    var result = await configManager.UpdateConfigAsync(sensor);
+                    var result = await configManager.SaveAsync(sensor);
                     if (result != null && !result.Success)
                     {
-                        errors.Add($"传感器 '{sensor.ConfigName}': {result.Message}");
+                        errors.Add($"传感器 '{sensor.ConfigName}' 保存失败: {result.Message}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"传感器 '{sensor.ConfigName}': {ex.Message}");
+                    errors.Add($"传感器 '{sensor.ConfigName}' 保存异常: {ex.Message}");
                 }
             }
 
             return errors.Count > 0
-                ? OperationResult.Failure($"保存独立模式传感器配置失败:\n{string.Join("\n", errors)}")
+                ? OperationResult.Failure($"保存独立传感器失败:\n{string.Join("\n", errors)}")
                 : OperationResult.Succeed();
         }
 
         /// <summary>
-        /// 实现 IPostLoadConfig 接口：在配置加载后恢复传感器引用
+        /// 实现 IPostLoadConfig：加载后恢复传感器引用
         /// </summary>
         public async Task<OperationResult> PostLoadAsync(IConfigurationManager configManager)
         {
             if (configManager == null)
-                return OperationResult.Failure("配置管理器未初始化");
+                return OperationResult.Failure("配置管理器不能为空");
 
             if (_channels == null)
                 return OperationResult.Succeed();
 
             try
             {
-                // 获取所有传感器配置
-                var sensorResult = await configManager.GetAllConfigsAsync<SensorConfig>();
+                // 加载传感器配置列表
+                var sensorResult = await configManager.GetAllAsync<SensorConfig>();
                 var availableSensors = sensorResult?.Data?.ToList() ?? new List<SensorConfig>();
 
-                // 恢复传感器引用
+                // 恢复通道内传感器引用
                 RestoreSensorReferences(availableSensors);
 
                 return OperationResult.Succeed();
             }
             catch (Exception ex)
             {
-                return OperationResult.Failure($"加载后处理失败: {ex.Message}");
+                return OperationResult.Failure($"加载传感器配置失败: {ex.Message}");
             }
         }
 
-        // 注意：SerialNumber 属性已在基类 DeviceConfig 中定义，无需重复定义
+        // 注意：SerialNumber 等属性定义在基类 DeviceConfig 中
 
         private double _sampleRate = 51200.0;
         private int _channelCount = 8;
@@ -169,7 +168,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 同步采样率到所有通道
+        /// 将当前采样率同步到所有通道
         /// </summary>
         private void SyncSampleRateToChannels()
         {
@@ -183,7 +182,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 通道配置集合
+        /// 通道列表
         /// </summary>
         public ObservableCollection<DAQChannelConfig> Channels
         {
@@ -206,7 +205,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 通道数量（从通道集合自动计算）
+        /// 通道数量（根据型号动态约束）
         /// </summary>
         [HotUpdatable]
         public int ChannelCount
@@ -216,14 +215,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
             {
                 if (SetProperty(ref _channelCount, value))
                 {
-                    // 当手动设置通道数量时，调整通道集合
+                    // 按目标数量增删通道
                     SyncChannelsToCount(value);
                 }
             }
         }
 
         /// <summary>
-        /// 通道集合变化事件处理
+        /// 通道集合变更时同步通道数
         /// </summary>
         private void Channels_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
@@ -231,7 +230,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 更新通道数量（从通道集合计算）
+        /// 根据通道集合数量更新 ChannelCount
         /// </summary>
         private void UpdateChannelCount()
         {
@@ -256,7 +255,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 同步通道集合到指定的数量
+        /// 将通道数量同步到目标值（增删通道）
         /// </summary>
         private void SyncChannelsToCount(int targetCount)
         {
@@ -273,7 +272,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 if (targetCount > currentCount)
                 {
-                    // 添加通道
+                    // 增加通道
                     for (int i = currentCount; i < targetCount; i++)
                     {
                         _channels.Add(CreateChannel(i + 1));
@@ -281,14 +280,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
                 else if (targetCount < currentCount)
                 {
-                    // 删除多余的通道
+                    // 移除多余通道
                     while (_channels.Count > targetCount)
                     {
                         _channels.RemoveAt(_channels.Count - 1);
                     }
                 }
 
-                // 重新编号所有通道
+                // 重新编号通道
                 RenumberChannels();
             }
             finally
@@ -298,7 +297,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 创建通道配置（提取公共逻辑，消除重复代码）
+        /// 创建并返回新通道实例
         /// </summary>
         private DAQChannelConfig CreateChannel(int channelId)
         {
@@ -312,7 +311,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 重新编号所有通道
+        /// 重新编号通道 ID
         /// </summary>
         private void RenumberChannels()
         {
@@ -337,9 +336,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 单帧缓冲区大小（采样点）
+        /// 缓冲区大小（采样点）
         /// </summary>
-        [RequireRestart("缓冲区大小变更需要重新建立采集缓存")]
+        [RequireRestart("缓冲区大小变更需要重新建立采集缓冲")]
         public int BufferSize
         {
             get => _bufferSize;
@@ -347,7 +346,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 插件启动时是否自动开始采集
+        /// 插件启用时是否自动开始采集
         /// </summary>
         public bool AutoStart
         {
@@ -356,7 +355,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 克隆配置（使用基类的序列化方法，更简洁且不易出错）
+        /// 深拷贝配置（使用基类的序列化方法，更简洁且不易出错）
         /// </summary>
         public override DeviceConfig Clone()
         {
@@ -378,7 +377,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public override string GenerateDeviceId()
         {
-            // 在设备ID中包含厂家和型号信息
+            // 在设备ID中包含厂商和型号信息
             var deviceIdentifier = string.IsNullOrEmpty(SerialNumber)
                 ? $"{Manufacturer}_{Model}"
                 : SerialNumber;
@@ -437,7 +436,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 重写验证方法，根据规格验证
+        /// 重写验证方法，根据规格校验
         /// </summary>
         protected override List<string> ValidateAgainstSpecification(IDeviceSpecification specification)
         {
@@ -457,7 +456,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 var minChannels = specification.GetConstraint<int>("MinChannels", 1);
                 if (ChannelCount < minChannels || ChannelCount > maxChannels)
                 {
-                    errors.Add($"通道数量必须在 {minChannels} 到 {maxChannels} 之间（当前：{ChannelCount}）");
+                    errors.Add($"通道数量必须在 {minChannels} 与 {maxChannels} 之间（当前：{ChannelCount}）");
                 }
             }
 
@@ -465,14 +464,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
             var minSampleRate = specification.GetConstraint<double>("MinSampleRate", 1000.0);
             if (SampleRate < minSampleRate || SampleRate > maxSampleRate)
             {
-                errors.Add($"采样率必须在 {minSampleRate} 到 {maxSampleRate} Hz 之间（当前：{SampleRate}）");
+                errors.Add($"采样率必须在 {minSampleRate} 与 {maxSampleRate} Hz 之间（当前：{SampleRate}）");
             }
 
             var maxBufferSize = specification.GetConstraint<int>("MaxBufferSize", int.MaxValue);
             var minBufferSize = specification.GetConstraint<int>("MinBufferSize", 1024);
             if (BufferSize < minBufferSize || BufferSize > maxBufferSize)
             {
-                errors.Add($"缓冲区大小必须在 {minBufferSize} 到 {maxBufferSize} 之间（当前：{BufferSize}）");
+                errors.Add($"缓冲区大小必须在 {minBufferSize} 与 {maxBufferSize} 之间（当前：{BufferSize}）");
             }
 
             return errors;
@@ -480,11 +479,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         /// <summary>
         /// 获取配置的显示名称（用于树节点等UI显示）
-        /// 格式：厂家 + 型号 + 编号
+        /// 格式：厂商 + 型号 + 编号
         /// </summary>
         public override string GetDisplayName()
         {
-            // 优先使用 DeviceName，如果为空则使用 ConfigName
+            // 若 DeviceName 为空则回退到 ConfigName
             var fallbackName = !string.IsNullOrWhiteSpace(DeviceName) ? DeviceName : ConfigName;
             
             return ConfigDisplayNameHelper.BuildDisplayName(
@@ -492,28 +491,28 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 Model,
                 SerialNumber,
                 fallbackName,
-                "未命名采集卡");
+                "数据采集");
         }
 
         public override OperationResult<bool> Validate()
         {
             var errors = new List<string>();
 
-            // 基类验证
+            // 基类校验
             var baseResult = base.Validate();
             if (!baseResult.Success && !string.IsNullOrWhiteSpace(baseResult.ErrorMessage))
             {
                 errors.Add(baseResult.ErrorMessage);
             }
 
-            // 本地验证
+            // 本类校验
             if (SampleRate <= 0) errors.Add("采样率必须大于 0 Hz");
             if (ChannelCount <= 0) errors.Add("通道数量必须大于 0");
             if (BufferSize <= 0) errors.Add("缓冲区大小必须大于 0");
 
             return errors.Count > 0
                 ? OperationResult<bool>.Failure(string.Join(Environment.NewLine, errors))
-                : OperationResult<bool>.Succeed(true, "采集卡配置验证通过");
+                : OperationResult<bool>.Succeed(true, "校验通过");
         }
     }
 }

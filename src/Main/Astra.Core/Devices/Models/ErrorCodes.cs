@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Devices
+﻿﻿namespace Astra.Core.Devices
 {
     /// <summary>
     /// 统一错误码

@@ -1,4 +1,4 @@
-using Astra.Plugins.DataAcquisition.Configs;
+﻿using Astra.Plugins.DataAcquisition.Configs;
 
 namespace Astra.Plugins.DataAcquisition.ViewModels
 {

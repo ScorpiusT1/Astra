@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Triggers.Enums
+﻿﻿namespace Astra.Core.Triggers.Enums
 {
     /// <summary>
     /// 工作模式

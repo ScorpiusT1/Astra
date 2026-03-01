@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Astra.Core.Plugins.Models;
 using Astra.Core.Plugins.Exceptions;
 using Microsoft.Extensions.Logging;

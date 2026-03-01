@@ -1,4 +1,4 @@
-﻿
+﻿﻿
 using Astra.Core.Plugins.Services;
 
 namespace Astra.Core.Plugins.Abstractions

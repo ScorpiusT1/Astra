@@ -1,0 +1,5 @@
+# 确保含中文的 .cs 文件使用 UTF-8 带 BOM，避免在 Windows/VS 中乱码
+root = false
+
+[*.cs]
+charset = utf-8-bom

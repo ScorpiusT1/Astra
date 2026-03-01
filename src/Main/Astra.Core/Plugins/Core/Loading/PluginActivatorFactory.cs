@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using Astra.Core.Plugins.Abstractions;

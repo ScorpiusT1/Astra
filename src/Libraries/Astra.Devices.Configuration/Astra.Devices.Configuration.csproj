@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Astra.Configuration.Base\Astra.Configuration.Base.csproj" />
+    <ProjectReference Include="..\Astra.Devices.Abstractions\Astra.Devices.Abstractions.csproj" />
+    <ProjectReference Include="..\Astra.Foundation.Abstractions\Astra.Foundation.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>
+

@@ -1,4 +1,4 @@
-namespace Astra.Core.Devices.Management
+﻿namespace Astra.Core.Devices.Management
 {
     /// <summary>
     /// 设备使用服务全局访问器

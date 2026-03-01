@@ -1,4 +1,4 @@
-using Astra.Core.Devices;
+﻿using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
 using Astra.Core.Devices.Base;
 using Astra.Core.Logs;

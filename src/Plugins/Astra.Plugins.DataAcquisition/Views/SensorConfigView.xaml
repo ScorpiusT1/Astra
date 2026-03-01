@@ -1,4 +1,4 @@
-<UserControl x:Class="Astra.Plugins.DataAcquisition.Views.SensorConfigView"
+﻿<UserControl x:Class="Astra.Plugins.DataAcquisition.Views.SensorConfigView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"

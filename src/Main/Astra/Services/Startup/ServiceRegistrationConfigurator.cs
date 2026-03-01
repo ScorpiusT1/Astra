@@ -1,7 +1,6 @@
-using Astra.Core.Access.Data;
-using Astra.Core.Access.Extensions;
 using Astra.Core.Access.Services;
-using Astra.Core.Configuration;
+using Astra.Infrastructure.Access.Extensions;
+using Astra.Core.Triggers.Configuration;
 using Astra.Core.Devices.Events;
 using Astra.Core.Devices.Management;
 using Astra.Core.Plugins.Abstractions;
@@ -31,6 +30,8 @@ using System.Diagnostics;
 using System.IO;
 using Astra.Core.Plugins.Loading;
 using Astra.Core.Plugins.Discovery;
+using Astra.Core.Plugins.UI;
+using Astra.Core.Configuration;
 
 namespace Astra.Services.Startup
 {
@@ -91,14 +92,8 @@ namespace Astra.Services.Startup
         /// </summary>
         private void RegisterAccessGuardServices(IServiceCollection services)
         {
+            // AddAccessGuard 已注册所有服务（DbContext、IUserRepository、IUserManagementService 等）
             services.AddAccessGuard();
-
-            // 明确注册 UserManagementService，解决构造函数歧义问题
-            services.AddScoped<IUserManagementService>(provider =>
-            {
-                var context = provider.GetRequiredService<AccessGuardDbContext>();
-                return new UserManagementService(context);
-            });
 
             Debug.WriteLine("✅ Access 服务注册完成");
         }
@@ -126,11 +121,12 @@ namespace Astra.Services.Startup
             services.AddSingleton<MainView>();
             
             // 其他视图可以保持 Transient（每次导航时创建新实例）
-            services.AddTransient<ConfigView>();
-            services.AddTransient<DebugView>();
-            services.AddTransient<HomeView>();
-            services.AddTransient<SequenceView>();
-            services.AddTransient<PermissionView>();
+            // ⭐ ConfigView 注册为单例，切换导航再回到配置页时保留树选中状态和右侧已输入的配置内容
+            services.AddSingleton<ConfigView>();
+            services.AddSingleton<DebugView>();
+            services.AddSingleton<HomeView>();
+            services.AddSingleton<SequenceView>();
+            services.AddSingleton<PermissionView>();
            
             Debug.WriteLine("✅ 视图注册完成");
         }
@@ -210,54 +206,30 @@ namespace Astra.Services.Startup
         }
 
         /// <summary>
-        /// 注册设备配置服务
+        /// 注册设备配置服务，同时完成主程序配置 Provider 的注册
         /// </summary>
         private void RegisterDeviceConfigServices(IServiceCollection services)
-        {         
-            // ==================== 重构后的配置管理器 ====================
-            
-            // 1. 注册配置缓存服务（单一职责原则）
-            services.AddSingleton<IConfigurationCacheService>(provider =>
+        {
+            services.AddSingleton<IConfigurationManager>(provider =>
             {
-                return new ConfigurationCacheService(enabled: true);
+                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigurationManager>>();
+                var manager = new ConfigurationManager(logger);
+
+                // ── 主程序配置 Provider ───────────────────────────────────────
+                // 注册测试执行配置（全局单例，存储在 Configs/TestExecution 目录）
+                manager.RegisterProvider<TestExecutionConfig>();
+
+                return manager;
             });
 
-            // 2. 注册配置事件服务（单一职责原则）
-            services.AddSingleton<IConfigurationEventService, ConfigurationEventService>();
-
-            // 3. 注册配置导入导出服务（单一职责原则）
             services.AddSingleton<IConfigurationImportExportService>(provider =>
             {
-                // 尝试获取 ILogger，如果不存在则传入 null
+                var manager = provider.GetRequiredService<IConfigurationManager>();
                 var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigurationImportExportService>>();
-                return new ConfigurationImportExportService(logger);
+                return new ConfigurationImportExportService(manager, logger);
             });
 
-            // 4. 注册配置事务服务（单一职责原则）
-            services.AddSingleton<IConfigurationTransactionService, ConfigurationTransactionService>();
-
-            // 5. 注册重构后的配置管理器（依赖倒置原则）
-            // ⭐ 通过构造函数注入所有依赖的服务
-            services.AddSingleton<IConfigurationManager, ConfigurationManager>();
-            
-            // 6. 注册配置导入导出助手类（简化导入导出逻辑）
-            services.AddSingleton<ConfigImportExportHelper>(provider =>
-            {
-                var configManager = provider.GetRequiredService<IConfigurationManager>();
-                var importExportService = provider.GetRequiredService<IConfigurationImportExportService>();
-                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigImportExportHelper>>();
-                return new ConfigImportExportHelper(configManager, importExportService, logger);
-            });
-
-            // 7. 注册配置提供者自动发现服务
-            services.AddSingleton<ConfigProviderDiscovery>(provider =>
-            {
-                var configManager = provider.GetRequiredService<IConfigurationManager>();
-                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<ConfigProviderDiscovery>>();
-                return new ConfigProviderDiscovery(configManager, logger);
-            });
-
-            Debug.WriteLine("✅ 配置管理器注册完成（包括重构后的 ConfigurationManager）");
+            Debug.WriteLine("✅ 配置管理器注册完成（含主程序配置 Provider、导入导出服务）");
         }
 
         /// <summary>
@@ -469,9 +441,7 @@ namespace Astra.Services.Startup
                     },
                     Security = new SecurityConfiguration
                     {
-                        RequireSignature = false,
-                        EnableSandbox = true,
-                        SandboxType = SandboxType.AppDomain
+                        RequireSignature = false
                     }
                 };
 
@@ -481,8 +451,14 @@ namespace Astra.Services.Startup
                 var pluginHost = PluginHostFactory.CreateDefaultHost(services, config, provider);
                 
                 Debug.WriteLine("✅ IPluginHost 已通过工厂方法创建并注册到 ServiceProvider");
-                
+
                 return pluginHost;
+            });
+
+            services.AddSingleton<IPluginViewFactory>(provider =>
+            {
+                var host = provider.GetRequiredService<IPluginHost>();
+                return new Astra.Services.PluginViewFactory(host);
             });
         }
 
@@ -495,7 +471,8 @@ namespace Astra.Services.Startup
             services.AddTransient<ViewModels.UserMenuViewModel>();
             services.AddTransient<ViewModels.MainViewModel>();
             services.AddSingleton<ViewModels.MainViewViewModel>();
-            services.AddTransient<ViewModels.ConfigViewModel>();
+            // ⭐ ConfigViewModel 注册为单例，与 ConfigView 一致，切换界面时保留配置树、选中节点及右侧表单已输入字符
+            services.AddSingleton<ViewModels.ConfigViewModel>();
             services.AddTransient<ViewModels.DebugViewModel>();
             // ⭐ SequenceViewModel 注册为单例，确保切换界面时画布数据不丢失
             services.AddSingleton<ViewModels.SequenceViewModel>();

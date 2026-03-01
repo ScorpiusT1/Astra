@@ -1,4 +1,4 @@
-﻿﻿using Astra.Core.Nodes.Geometry;
+﻿using Astra.Core.Nodes.Geometry;
 using System.Diagnostics;
 using Astra.Core.Logs;
 using Newtonsoft.Json;

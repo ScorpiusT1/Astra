@@ -1,4 +1,4 @@
-using Astra.Core.Devices;
+﻿using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Management;
 using Astra.Core.Plugins.Messaging;

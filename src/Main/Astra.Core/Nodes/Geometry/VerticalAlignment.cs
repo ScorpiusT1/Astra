@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Nodes.Geometry
+﻿﻿namespace Astra.Core.Nodes.Geometry
 {
     public enum VerticalAlignment
     {

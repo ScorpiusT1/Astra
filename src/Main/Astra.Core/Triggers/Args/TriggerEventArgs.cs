@@ -1,4 +1,4 @@
-﻿using Astra.Core.Triggers.Enums;
+﻿﻿using Astra.Core.Triggers.Enums;
 
 namespace Astra.Core.Triggers.Args
 {

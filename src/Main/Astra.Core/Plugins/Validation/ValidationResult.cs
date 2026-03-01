@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Plugins.Validation
+﻿﻿namespace Astra.Core.Plugins.Validation
 {
     /// <summary>
     /// 验证结果：包含是否通过与错误列表。

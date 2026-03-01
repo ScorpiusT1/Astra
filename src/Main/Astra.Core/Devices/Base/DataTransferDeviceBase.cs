@@ -9,11 +9,10 @@ using System.Threading.Tasks;
 namespace Astra.Core.Devices.Base
 {
     /// <summary>
-    /// 数据传输设备基类
-    /// 继承 DeviceBase，并实现数据传输相关接口（同步、异步和批量）
-    /// 子类需要实现核心的数据传输方法（Send、Receive等）
+    /// 鏁版嵁浼犺緭璁惧鍩虹被
+    /// 缁ф壙 DeviceBase锛屽苟瀹炵幇鏁版嵁浼犺緭鐩稿叧鎺ュ彛锛堝悓姝ャ€佸紓姝ュ拰鎵归噺锛?    /// 瀛愮被闇€瑕佸疄鐜版牳蹇冪殑鏁版嵁浼犺緭鏂规硶锛圫end銆丷eceive绛夛級
     /// </summary>
-    /// <typeparam name="TConfig">设备配置类型，必须继承自 DeviceConfig</typeparam>
+    /// <typeparam name="TConfig">璁惧閰嶇疆绫诲瀷锛屽繀椤荤户鎵胯嚜 DeviceConfig</typeparam>
     public abstract class DataTransferDeviceBase<TConfig> : DeviceBase<TConfig>,
         IDataTransfer,
         IAsyncDataTransfer,
@@ -31,7 +30,7 @@ namespace Astra.Core.Devices.Base
         {
         }
 
-        #region IDataTransfer 接口实现
+        #region IDataTransfer 鎺ュ彛瀹炵幇
 
         public int SendTimeout
         {
@@ -46,17 +45,16 @@ namespace Astra.Core.Devices.Base
         }
 
         /// <summary>
-        /// 发送消息（子类必须实现）
-        /// </summary>
+        /// 鍙戦€佹秷鎭紙瀛愮被蹇呴』瀹炵幇锛?        /// </summary>
         public abstract OperationResult Send(DeviceMessage message);
 
         /// <summary>
-        /// 接收消息（子类必须实现）
+        /// 鎺ユ敹娑堟伅锛堝瓙绫诲繀椤诲疄鐜帮級
         /// </summary>
         public abstract OperationResult<DeviceMessage> Receive();
 
         /// <summary>
-        /// 从指定通道接收消息（子类必须实现）
+        /// 浠庢寚瀹氶€氶亾鎺ユ敹娑堟伅锛堝瓙绫诲繀椤诲疄鐜帮級
         /// </summary>
         public abstract OperationResult<DeviceMessage> Receive(string channelId);
 
@@ -67,8 +65,7 @@ namespace Astra.Core.Devices.Base
         }
 
         /// <summary>
-        /// 触发数据接收事件（子类在接收到数据时调用）
-        /// </summary>
+        /// 瑙﹀彂鏁版嵁鎺ユ敹浜嬩欢锛堝瓙绫诲湪鎺ユ敹鍒版暟鎹椂璋冪敤锛?        /// </summary>
         protected virtual void OnDataReceived(DataReceivedEventArgs e)
         {
             _dataReceived?.Invoke(this, e);
@@ -76,18 +73,17 @@ namespace Astra.Core.Devices.Base
 
         #endregion
 
-        #region IAsyncDataTransfer 接口实现
+        #region IAsyncDataTransfer 鎺ュ彛瀹炵幇
 
         /// <summary>
-        /// 异步发送消息（默认使用同步方法包装，子类可重写以提供真正的异步实现）
-        /// </summary>
+        /// 寮傛鍙戦€佹秷鎭紙榛樿浣跨敤鍚屾鏂规硶鍖呰锛屽瓙绫诲彲閲嶅啓浠ユ彁渚涚湡姝ｇ殑寮傛瀹炵幇锛?        /// </summary>
         public virtual Task<OperationResult> SendAsync(DeviceMessage message, CancellationToken cancellationToken = default)
         {
             return Task.Run(() => Send(message), cancellationToken);
         }
 
         /// <summary>
-        /// 异步接收消息（默认使用同步方法包装，子类可重写以提供真正的异步实现）
+        /// 寮傛鎺ユ敹娑堟伅锛堥粯璁や娇鐢ㄥ悓姝ユ柟娉曞寘瑁咃紝瀛愮被鍙噸鍐欎互鎻愪緵鐪熸鐨勫紓姝ュ疄鐜帮級
         /// </summary>
         public virtual Task<OperationResult<DeviceMessage>> ReceiveAsync(CancellationToken cancellationToken = default)
         {
@@ -95,7 +91,7 @@ namespace Astra.Core.Devices.Base
         }
 
         /// <summary>
-        /// 异步从指定通道接收消息（默认使用同步方法包装，子类可重写以提供真正的异步实现）
+        /// 寮傛浠庢寚瀹氶€氶亾鎺ユ敹娑堟伅锛堥粯璁や娇鐢ㄥ悓姝ユ柟娉曞寘瑁咃紝瀛愮被鍙噸鍐欎互鎻愪緵鐪熸鐨勫紓姝ュ疄鐜帮級
         /// </summary>
         public virtual Task<OperationResult<DeviceMessage>> ReceiveAsync(string channelId, CancellationToken cancellationToken = default)
         {
@@ -104,15 +100,15 @@ namespace Astra.Core.Devices.Base
 
         #endregion
 
-        #region IBatchDataTransfer 接口实现
+        #region IBatchDataTransfer 鎺ュ彛瀹炵幇
 
         /// <summary>
-        /// 批量发送消息（默认实现：循环调用 Send，子类可重写以提供更高效的批量实现）
+        /// 鎵归噺鍙戦€佹秷鎭紙榛樿瀹炵幇锛氬惊鐜皟鐢?Send锛屽瓙绫诲彲閲嶅啓浠ユ彁渚涙洿楂樻晥鐨勬壒閲忓疄鐜帮級
         /// </summary>
         public virtual OperationResult<int> BatchSend(IEnumerable<DeviceMessage> messages)
         {
             if (messages == null)
-                return OperationResult<int>.Failure("消息列表不能为空", ErrorCodes.InvalidData);
+                return OperationResult<int>.Failure("娑堟伅鍒楄〃涓嶈兘涓虹┖", ErrorCodes.InvalidData);
 
             int successCount = 0;
             foreach (var message in messages)
@@ -121,16 +117,16 @@ namespace Astra.Core.Devices.Base
                 if (result.Success)
                     successCount++;
             }
-            return OperationResult<int>.Succeed(successCount, $"批量发送完成: 成功 {successCount}/{messages.Count()}");
+            return OperationResult<int>.Succeed(successCount, $"鎵归噺鍙戦€佸畬鎴? 鎴愬姛 {successCount}/{messages.Count()}");
         }
 
         /// <summary>
-        /// 批量接收消息（默认实现：循环调用 Receive，子类可重写以提供更高效的批量实现）
+        /// 鎵归噺鎺ユ敹娑堟伅锛堥粯璁ゅ疄鐜帮細寰幆璋冪敤 Receive锛屽瓙绫诲彲閲嶅啓浠ユ彁渚涙洿楂樻晥鐨勬壒閲忓疄鐜帮級
         /// </summary>
         public virtual OperationResult<IEnumerable<DeviceMessage>> BatchReceive(int count)
         {
             if (count <= 0)
-                return OperationResult<IEnumerable<DeviceMessage>>.Failure("接收数量必须大于0", ErrorCodes.InvalidData);
+                return OperationResult<IEnumerable<DeviceMessage>>.Failure("鎺ユ敹鏁伴噺蹇呴』澶т簬0", ErrorCodes.InvalidData);
 
             var messages = new List<DeviceMessage>();
             for (int i = 0; i < count; i++)
@@ -141,16 +137,16 @@ namespace Astra.Core.Devices.Base
                 else
                     break;
             }
-            return OperationResult<IEnumerable<DeviceMessage>>.Succeed(messages, $"批量接收完成: 成功 {messages.Count}/{count}");
+            return OperationResult<IEnumerable<DeviceMessage>>.Succeed(messages, $"鎵归噺鎺ユ敹瀹屾垚: 鎴愬姛 {messages.Count}/{count}");
         }
 
         /// <summary>
-        /// 从指定通道批量接收消息（默认实现：循环调用 Receive，子类可重写以提供更高效的批量实现）
+        /// 浠庢寚瀹氶€氶亾鎵归噺鎺ユ敹娑堟伅锛堥粯璁ゅ疄鐜帮細寰幆璋冪敤 Receive锛屽瓙绫诲彲閲嶅啓浠ユ彁渚涙洿楂樻晥鐨勬壒閲忓疄鐜帮級
         /// </summary>
         public virtual OperationResult<IEnumerable<DeviceMessage>> BatchReceive(IEnumerable<string> channelIds)
         {
             if (channelIds == null)
-                return OperationResult<IEnumerable<DeviceMessage>>.Failure("通道ID列表不能为空", ErrorCodes.InvalidData);
+                return OperationResult<IEnumerable<DeviceMessage>>.Failure("閫氶亾ID鍒楄〃涓嶈兘涓虹┖", ErrorCodes.InvalidData);
 
             var messages = new List<DeviceMessage>();
             foreach (var channelId in channelIds)
@@ -159,16 +155,16 @@ namespace Astra.Core.Devices.Base
                 if (result.Success)
                     messages.Add(result.Data);
             }
-            return OperationResult<IEnumerable<DeviceMessage>>.Succeed(messages, $"批量接收完成: 成功 {messages.Count}/{channelIds.Count()}");
+            return OperationResult<IEnumerable<DeviceMessage>>.Succeed(messages, $"鎵归噺鎺ユ敹瀹屾垚: 鎴愬姛 {messages.Count}/{channelIds.Count()}");
         }
 
         #endregion
 
-        #region 资源释放
+        #region 璧勬簮閲婃斁
 
         public override void Dispose()
         {
-            // 调用基类的 Dispose
+            // 璋冪敤鍩虹被鐨?Dispose
             base.Dispose();
         }
 

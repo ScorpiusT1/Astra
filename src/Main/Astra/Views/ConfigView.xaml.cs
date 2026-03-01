@@ -18,12 +18,22 @@ namespace Astra.Views
             Loaded += ConfigView_Loaded;
         }
 
-        private void ConfigView_Loaded(object sender, System.Windows.RoutedEventArgs e)
+        private async void ConfigView_Loaded(object sender, System.Windows.RoutedEventArgs e)
         {
-            if(DataContext is ConfigViewModel viewModel)
+            if (DataContext is ConfigViewModel viewModel)
             {
                 viewModel.ContentControlChanged -= ViewModel_ContentControlChanged;
                 viewModel.ContentControlChanged += ViewModel_ContentControlChanged;
+                // 若程序加载后树为空（例如插件尚未注册配置类型），在视图显示时再刷新一次
+                if (viewModel.TreeNodes.Count == 0)
+                {
+                    await viewModel.RefreshTreeAsync();
+                }
+                else if (viewModel.SelectedNode != null)
+                {
+                    // 切换导航后再次进入配置页时，恢复右侧之前选中的配置界面
+                    viewModel.RestoreSelectedConfigContent();
+                }
             }
         }
 

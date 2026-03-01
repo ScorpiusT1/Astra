@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using MSLogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -145,7 +145,7 @@ namespace Astra.Core.Logs.Extensions
             return customLevel switch
             {
                 LogLevel.Debug => MSLogLevel.Debug,
-                LogLevel.Info => MSLogLevel.Information,
+                LogLevel.Information => MSLogLevel.Information,
                 LogLevel.Warning => MSLogLevel.Warning,
                 LogLevel.Error => MSLogLevel.Error,
                 LogLevel.Critical => MSLogLevel.Critical,

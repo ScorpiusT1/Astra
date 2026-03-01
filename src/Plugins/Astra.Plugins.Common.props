@@ -21,8 +21,8 @@
 		<!-- ⚠️ 关键：中间文件（obj）应该生成在项目目录下，而不是输出目录下 -->
 		<IntermediateOutputPath Condition="'$(IntermediateOutputPath)' == ''">$(MSBuildProjectDirectory)\obj\$(Configuration)\</IntermediateOutputPath>
 		
-		<!-- ⭐ 阻止复制依赖项到输出目录 -->
-		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+		<!-- ⭐ 将 NuGet 包依赖复制到插件输出目录（各插件自带依赖，避免版本冲突；项目引用仍不复制，由主程序提供） -->
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		
 		<!-- ⚠️ 关键：阻止所有项目引用的 DLL 被复制到输出目录 -->
 		<!-- 这确保插件引用（如 Astra.UI.dll、Astra.Core.dll 等）不会被复制 -->
@@ -167,48 +167,7 @@
 		         Importance="high" />
 	</Target>
 
-	<!-- ⭐ 构建后清理：只保留插件自己的 DLL 和 .addin 文件，删除所有引用的 DLL -->
-	<Target Name="CleanPluginOutput" AfterTargets="Build">
-		<PropertyGroup>
-			<NormalizedOutputPath>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</NormalizedOutputPath>
-		</PropertyGroup>
-		
-		<ItemGroup>
-			<!-- 获取插件自己的输出文件（使用完整路径） -->
-			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).dll" />
-			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).pdb" />
-			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).deps.json" />
-			<PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).addin" />
-			<!-- 如果存在配置文件，也保留 -->
-			<!-- <PluginFiles Include="$(NormalizedOutputPath)\$(AssemblyName).config.json" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')" /> -->
-		</ItemGroup>
-
-		<ItemGroup>
-			<!-- 获取所有输出文件 -->
-			<AllOutputFiles Include="$(NormalizedOutputPath)\*.dll" />
-			<AllOutputFiles Include="$(NormalizedOutputPath)\*.pdb" />
-			<AllOutputFiles Include="$(NormalizedOutputPath)\*.deps.json" />
-			<AllOutputFiles Include="$(NormalizedOutputPath)\*.json" />
-			<AllOutputFiles Include="$(NormalizedOutputPath)\*.xml" />
-
-			<!-- 排除插件自己的文件，得到需要删除的文件 -->
-			<FilesToDelete Include="@(AllOutputFiles)" Exclude="@(PluginFiles)" />
-		</ItemGroup>
-
-		<!-- 删除不需要的文件（包括所有引用的 DLL） -->
-		<Delete Files="@(FilesToDelete)" ContinueOnError="true" />
-		
-		<!-- 统计删除的文件数量 -->
-		<PropertyGroup>
-			<DeletedFileCount>@(FilesToDelete->Count())</DeletedFileCount>
-		</PropertyGroup>
-
-		<PropertyGroup>
-			<CleanMessage>已清理插件输出目录，删除了 $(DeletedFileCount) 个文件，只保留插件文件: $(AssemblyName).dll, $(AssemblyName).pdb, $(AssemblyName).deps.json, $(AssemblyName).addin</CleanMessage>
-			<CleanMessage Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">$(CleanMessage), $(AssemblyName).config.json</CleanMessage>
-		</PropertyGroup>
-		<Message Text="$(CleanMessage)" Importance="high" Condition="$(DeletedFileCount) > 0" />
-	</Target>
+	<!-- ⭐ 依赖已保留在插件目录：NuGet 包会随 CopyLocalLockFileAssemblies=true 复制到 Plugins\<PluginName>\，由 PluginAssemblyLoadContext 从插件目录解析；项目引用仍不复制，由主程序提供。 -->
 
 	<!-- ⭐ 将设备配置同步到 Bin/Configs/Devices 目录（如果存在配置文件） -->
 	<Target Name="CopyDeviceConfigToBin" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">

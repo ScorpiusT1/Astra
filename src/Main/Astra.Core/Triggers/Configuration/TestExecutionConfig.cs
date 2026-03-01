@@ -1,12 +1,17 @@
-﻿using Astra.Core.Triggers.Enums;
+using Astra.Core.Configuration.Base;
+using Astra.Core.Triggers.Enums;
 
 namespace Astra.Core.Triggers.Configuration
 {
     /// <summary>
     /// 测试执行配置
     /// </summary>
-    public class TestExecutionConfig
+    public class TestExecutionConfig : ConfigBase
     {
+        public TestExecutionConfig() : base() { }
+
+        public TestExecutionConfig(string configId) : base(configId) { }
+
         /// <summary>执行模式</summary>
         public TestExecutionMode ExecutionMode { get; set; } = TestExecutionMode.Serial;
 
