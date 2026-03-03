@@ -6,47 +6,155 @@
              xmlns:controls="clr-namespace:Astra.UI.Controls;assembly=Astra.UI"
              xmlns:local="clr-namespace:Astra.Views"
              xmlns:viewmodels="clr-namespace:Astra.ViewModels"
+             xmlns:models="clr-namespace:Astra.Models"
+             xmlns:behaviors="clr-namespace:Astra.Behaviors"
+             xmlns:converters="clr-namespace:Astra.UI.Converters;assembly=Astra.UI"
              d:DataContext="{d:DesignInstance Type=viewmodels:DebugViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
 
-    <Grid Margin="24">
+    <UserControl.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 标题区域 -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource CardBrush}"
-                CornerRadius="12"
-                Padding="24"
-                Margin="0,0,0,24">
-            <StackPanel>
-                <TextBlock Text="调试工具"
-                           FontSize="24"
-                           FontWeight="Bold"
-                           Foreground="{DynamicResource PrimaryTextBrush}"
-                           Margin="0,0,0,8" />
-                <TextBlock Text="强大的调试和诊断工具，快速定位问题"
-                           FontSize="14"
-                           Foreground="{DynamicResource SecondaryTextBrush}" />
-            </StackPanel>
-        </Border>
+        <!-- 主内容区域：左侧调试树 + 右侧调试面板 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-        <!-- 内容区域 -->
-        <Border Grid.Row="1"
-                Background="{DynamicResource CardBrush}"
-                CornerRadius="12"
-                Padding="24">
-            <StackPanel>
-                <TextBlock Text="调试工具功能开发中..."
-                           FontSize="18"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
-             
-            </StackPanel>
-        </Border>
+            <!-- 左侧调试树 -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 标题行 -->
+                    <TextBlock Grid.Row="0"
+                               Text="调试树"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource PrimaryTextBrush}"
+                               Margin="16,16,16,12"
+                               VerticalAlignment="Center" />
+
+                    <!-- 树状列表（可滚动） -->
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <TreeView x:Name="DebugTreeView"
+                                  ItemsSource="{Binding DebugTreeNodes}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Padding="8">
+                            <TreeView.ItemContainerStyle>
+                                <Style TargetType="TreeViewItem"
+                                       BasedOn="{StaticResource TreeNodeStyle}">
+                                    <Setter Property="IsExpanded"
+                                            Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                    <Setter Property="IsSelected"
+                                            Value="{Binding IsSelected, Mode=TwoWay}" />
+                                    <Setter Property="behaviors:TreeViewItemBehaviors.SelectedCommand"
+                                            Value="{Binding DataContext.NodeSelectedCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" />
+                                    <Setter Property="behaviors:TreeViewItemBehaviors.SelectedCommandParameter"
+                                            Value="{Binding}" />
+                                </Style>
+                            </TreeView.ItemContainerStyle>
+
+                            <TreeView.Resources>
+                                <HierarchicalDataTemplate DataType="{x:Type models:TreeNode}"
+                                                          ItemsSource="{Binding Children}">
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" MinWidth="0" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal"
+                                                    VerticalAlignment="Center"
+                                                    Grid.Column="0">
+                                            <!-- 状态小圆点（呼吸灯效果，颜色来自 Colors.xaml） -->
+                                            <Ellipse Width="8"
+                                                     Height="8"
+                                                     Margin="0,0,6,0">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Opacity" Value="0.7" />
+                                                        <!-- 默认离线为危险色 -->
+                                                        <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
+                                                        <Style.Triggers>
+                                                            <!-- 根节点（Tag 为空）不显示状态灯 -->
+                                                            <DataTrigger Binding="{Binding Tag}" Value="{x:Null}">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                            <!-- 在线：绿色 -->
+                                                            <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                                                <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                                                            </DataTrigger>
+                                                            <!-- 离线或未知：保持红色 -->
+                                                            <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                                                                <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                            <!-- 呼吸动画 -->
+                                                            <EventTrigger RoutedEvent="Loaded">
+                                                                <BeginStoryboard>
+                                                                    <Storyboard RepeatBehavior="Forever"
+                                                                                AutoReverse="True">
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                         From="0.4"
+                                                                                         To="1.0"
+                                                                                         Duration="0:0:1.2" />
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </EventTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+
+                                            <TextBlock Text="{Binding Icon}"
+                                                       FontSize="14"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Margin="6,0,0,0"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding Header}"
+                                                       ToolTip="{Binding Header}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxWidth="180">
+                                                <ToolTipService.InitialShowDelay>0</ToolTipService.InitialShowDelay>
+                                                <ToolTipService.ShowDuration>5000</ToolTipService.ShowDuration>
+                                                <ToolTipService.BetweenShowDelay>0</ToolTipService.BetweenShowDelay>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </HierarchicalDataTemplate>
+                            </TreeView.Resources>
+                        </TreeView>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 右侧调试面板 -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0"
+                    Margin="20"
+                    CornerRadius="8">
+                <ContentControl x:Name="DebugContentRegion"
+                                Margin="0" />
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

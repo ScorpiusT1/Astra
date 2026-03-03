@@ -9,6 +9,7 @@ using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
 using Astra.UI.Abstractions.Attributes;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,6 +19,8 @@ using System.Threading.Tasks;
 namespace Astra.Plugins.DataAcquisition.Devices
 {
     [TreeNodeConfig("数据采集", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
+    [ConfigUI(typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
+  
     public class DataAcquisitionConfig : DeviceConfig,IDeviceSpecificationConstraint
     {
 
@@ -30,6 +33,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             InitializeDeviceInfo(DeviceType.DataAcquisition);
             _channels = new ObservableCollection<DAQChannelConfig>();
+            _channels.CollectionChanged -= Channels_CollectionChanged;
             _channels.CollectionChanged += Channels_CollectionChanged;
 
             // 初始化默认通道
@@ -206,19 +210,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         /// <summary>
         /// 通道数量（根据型号动态约束）
+        /// 注意：不在 setter 中自动增删通道，避免在反序列化/克隆等场景产生副作用。
+        /// 需要调整通道集合时，请显式调用 <see cref="SyncChannelsToCount(int)"/>。
         /// </summary>
         [HotUpdatable]
         public int ChannelCount
         {
             get => _channelCount;
-            set
-            {
-                if (SetProperty(ref _channelCount, value))
-                {
-                    // 按目标数量增删通道
-                    SyncChannelsToCount(value);
-                }
-            }
+            set => SetProperty(ref _channelCount, value);
         }
 
         /// <summary>
@@ -333,6 +332,33 @@ namespace Astra.Plugins.DataAcquisition.Devices
             {
                 _channels.Add(CreateChannel(i + 1));
             }
+
+            NormalizeChannels();
+        }
+
+        /// <summary>
+        /// 统一规范化通道的编号和默认名称，确保 ChannelId 为 1..N
+        /// </summary>
+        private void NormalizeChannels()
+        {
+            if (_channels == null)
+                return;
+
+            for (int i = 0; i < _channels.Count; i++)
+            {
+                var channel = _channels[i];
+                if (channel == null)
+                    continue;
+
+                int expectedId = i + 1;
+                channel.ChannelId = expectedId;
+
+                // 仅在名称为空时补默认名，避免覆盖用户自定义的名称
+                if (string.IsNullOrWhiteSpace(channel.ChannelName))
+                {
+                    channel.ChannelName = $"通道 {expectedId}";
+                }
+            }
         }
 
         /// <summary>
@@ -355,22 +381,30 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 深拷贝配置（使用基类的序列化方法，更简洁且不易出错）
+        /// 深拷贝配置（基于序列化，但显式保留通道的 Id 与名称，避免反序列化期间的副作用影响）
         /// </summary>
         public override DeviceConfig Clone()
         {
             // 使用基类的序列化方法实现深拷贝
             var json = Serialize();
-            var clone = ConfigBase.Deserialize<DataAcquisitionConfig>(json);
+            var clone = Deserialize<DataAcquisitionConfig>(json);
+
+            if (clone != null && _channels != null && clone._channels != null)
+            {
+                var count = Math.Min(_channels.Count, clone._channels.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    // 强制让克隆后的通道 Id / 名称 与 原配置完全一致
+                    clone._channels[i].ChannelId = _channels[i].ChannelId;
+                    clone._channels[i].ChannelName = _channels[i].ChannelName;
+                }
+            }
 
             // 重置配置ID和元数据
             if (clone is ConfigBase cloneConfigBase)
             {
                 cloneConfigBase.SetConfigId(Guid.NewGuid().ToString());
             }
-
-            // 注意：传感器引用不复制，因为它是通过 SensorId 序列化的
-            // 反序列化时会根据 SensorId 重新加载传感器引用
 
             return clone;
         }
@@ -409,6 +443,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     ChannelCount = minChannels;
                 }
             }
+
+            // 显式根据最终的 ChannelCount 调整通道集合，避免在属性 setter 中产生隐式副作用
+            SyncChannelsToCount(ChannelCount);
 
             // 限制采样率
             var maxSampleRate = specification.GetConstraint<double>("MaxSampleRate", double.MaxValue);
@@ -478,20 +515,19 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
-        /// 获取配置的显示名称（用于树节点等UI显示）
-        /// 格式：厂商 + 型号 + 编号
+        /// 获取配置的显示名称（用于树节点等 UI 显示）
+        /// 要求：设备厂家名 + 设备型号（序号由外层 GetNodeDisplayName/EnsureUniqueNumber 追加）
         /// </summary>
         public override string GetDisplayName()
         {
-            // 若 DeviceName 为空则回退到 ConfigName
-            var fallbackName = !string.IsNullOrWhiteSpace(DeviceName) ? DeviceName : ConfigName;
-            
+            // 只根据厂家和型号生成基础名称，例如：“BRC BRC6804”
+            // 若两者缺失，则回退到默认名称“数据采集”
             return ConfigDisplayNameHelper.BuildDisplayName(
                 Manufacturer,
                 Model,
-                SerialNumber,
-                fallbackName,
-                "数据采集");
+                serialNumber: null,
+                configName: null,
+                defaultName: "数据采集");
         }
 
         public override OperationResult<bool> Validate()
@@ -509,6 +545,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             if (SampleRate <= 0) errors.Add("采样率必须大于 0 Hz");
             if (ChannelCount <= 0) errors.Add("通道数量必须大于 0");
             if (BufferSize <= 0) errors.Add("缓冲区大小必须大于 0");
+            if (string.IsNullOrEmpty(SerialNumber)) errors.Add("序列号不能为空");
 
             return errors.Count > 0
                 ? OperationResult<bool>.Failure(string.Join(Environment.NewLine, errors))

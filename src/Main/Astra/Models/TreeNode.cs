@@ -52,6 +52,13 @@ namespace Astra.Models
         [ObservableProperty]
         private bool _canDrop;
 
+        /// <summary>
+        /// 调试树中使用：表示设备是否在线，用于状态指示灯。
+        /// 对于非设备节点可以保持默认值。
+        /// </summary>
+        [ObservableProperty]
+        private bool _isOnline;
+
         public Type? ConfigType { get; set; }
         
         public IConfig? Config { get; set; }

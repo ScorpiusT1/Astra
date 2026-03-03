@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -32,29 +32,23 @@ namespace Astra.UI.Abstractions.Attributes
         public int Order { get; set; }
     }
 
+    /// <summary>
+    /// 配置界面 UI 映射特性：仅负责配置类型到 View/ViewModel 的映射，
+    /// 不关心树结构（分类、图标等由 TreeNodeConfigAttribute 管理）。
+    /// </summary>
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
-    public class TreeNodeDebugAttribute : Attribute
+    public class ConfigUIAttribute : Attribute
     {
-        public TreeNodeDebugAttribute(string category, string? icon, Type view, Type ViewModel, int order = -1, string? header = null)
+        public ConfigUIAttribute(Type viewType, Type? viewModelType = null)
         {
-            Category = category;
-            Header = header;
-            ViewType = view;
-            ViewModelType = ViewModel;
-            Icon = icon;
-            Order = order;
+            ViewType = viewType;
+            ViewModelType = viewModelType;
         }
 
-        public string? Header { get; set; }
+        public Type ViewType { get; }
 
-        public string? Icon { get; set; }
-
-        public Type ViewModelType { get; set; }
-
-        public Type ViewType { get; set; }
-
-        public string Category { get; set; }
-
-        public int Order { get; set; }
+        public Type? ViewModelType { get; }
     }
+
+    // TreeNodeDebugAttribute 已废弃，调试界面分组改为使用配置类型上的 TreeNodeConfigAttribute
 }

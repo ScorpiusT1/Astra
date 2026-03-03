@@ -25,6 +25,7 @@
 	  <!-- ⭐ 程序集信息 -->
 	  <AssemblyTitle>Astra</AssemblyTitle>
 	  <NeutralLanguage>zh-CN</NeutralLanguage>
+	  <ApplicationIcon>Assets\Icons\astra.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,6 +33,10 @@
     <EmbeddedResource Remove="Examples\**" />
     <None Remove="Examples\**" />
     <Page Remove="Examples\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Icons\astra.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -49,6 +54,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.10" />
+    <PackageReference Include="ScottPlot.WPF" Version="5.1.57" />
   </ItemGroup>
 
   <ItemGroup>

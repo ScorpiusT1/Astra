@@ -1,4 +1,4 @@
-﻿using Astra.Core.Configuration;
+using Astra.Core.Configuration;
 using Astra.Plugins.DataAcquisition.Converters;
 using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
@@ -21,6 +21,7 @@ namespace Astra.Plugins.DataAcquisition.Configs
     /// 传感器配置（使用 ObservableObject 处理属性变更通知）
     /// </summary>
     [TreeNodeConfig("传感器", "📡", typeof(SensorConfigView), typeof(SensorConfigViewModel))]
+    [ConfigUI(typeof(SensorConfigView), typeof(SensorConfigViewModel))]
     public class SensorConfig : ConfigBase, ICloneable
     {
         private SensorType _sensorType;
@@ -415,17 +416,17 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
 
         /// <summary>
-        /// 获取配置的显示名称（用于树节点等UI显示）
-        /// 格式：厂家 + 型号 + 编号
+        /// 获取配置的显示名称（用于树节点等 UI 显示）
+        /// 要求：设备型号（序号由外层追加）
         /// </summary>
         public override string GetDisplayName()
         {
-            return ConfigDisplayNameHelper.BuildDisplayName(
-                Manufacturer,
-                Model,
-                SerialNumber,
-                ConfigName,
-                "未命名传感器");
+            // 仅使用型号构成基础名称，例如：“4507B”
+            if (!string.IsNullOrWhiteSpace(Model))
+                return Model;
+
+            // 如果型号为空，则回退到“未命名传感器”
+            return "未命名传感器";
         }
 
         public override string ToString() => DisplayText;

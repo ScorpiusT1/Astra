@@ -83,7 +83,12 @@ namespace Astra.Plugins.DataAcquisition
             {
                 try
                 {
-                    _configuManager.RegisterProvider<SensorConfig>();
+                    // 传感器配置：配置文件名使用插件 Id（若无 Id 则回退到类型名）
+                    var sensorOptions = new Astra.Core.Configuration.Providers.ConfigProviderOptions<SensorConfig>
+                    {
+                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(SensorConfig) : Id
+                    };
+                    _configuManager.RegisterProvider<SensorConfig>(options: sensorOptions);
                     _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 SensorConfig", LogCategory.System);
                 }
                 catch (Exception ex)
@@ -92,7 +97,12 @@ namespace Astra.Plugins.DataAcquisition
                 }
                 try
                 {
-                    _configuManager.RegisterProvider<DataAcquisitionConfig>();
+                    // 采集卡配置：配置文件名同样使用插件 Id（不同配置类型在各自目录下，文件名可复用）
+                    var daqOptions = new Astra.Core.Configuration.Providers.ConfigProviderOptions<DataAcquisitionConfig>
+                    {
+                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(DataAcquisitionConfig) : Id
+                    };
+                    _configuManager.RegisterProvider<DataAcquisitionConfig>(options: daqOptions);
                     _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 DataAcquisitionConfig", LogCategory.System);
                 }
                 catch (Exception ex)
@@ -162,35 +172,26 @@ namespace Astra.Plugins.DataAcquisition
 
                     var initResult = await device.InitializeAsync().ConfigureAwait(false);
 
-                    if (initResult)
+                    // 无论初始化是否成功，都尝试注册设备，保持在设备管理器中可见
+                    var registerResult = _deviceManager.RegisterDevice(deviceAsIDevice);
+
+                    if (registerResult.Success)
                     {
-                        var registerResult = _deviceManager.RegisterDevice(deviceAsIDevice);
+                        successCount++;
 
-                        if (registerResult.Success)
+                        if (initResult)
                         {
-                            successCount++;
                             _logger?.LogInfo($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
-
-                            // 如果配置了自动启动，则开始采集
-                            if (device is DeviceBase<DataAcquisitionConfig> deviceBase)
-                            {
-                                var config = deviceBase.CurrentConfig;
-                                if (config != null && config.AutoStart)
-                                {
-                                    await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
-                                }
-                            }
                         }
                         else
                         {
-                            failCount++;
-                            _logger?.LogError($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
+                            _logger?.LogWarn($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 初始化失败，已以离线状态注册", LogCategory.Device);
                         }
                     }
                     else
                     {
                         failCount++;
-                        _logger?.LogError($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 初始化失败", null, LogCategory.Device);
+                        _logger?.LogError($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
                     }
                 }
                 catch (Exception ex)
@@ -364,16 +365,12 @@ namespace Astra.Plugins.DataAcquisition
         {
             try
             {
-                // ✅ Provider 已通过 ConfigProviderDiscovery 自动发现并注册
-                // 无需手动注册，直接获取配置即可
-                
                 if (_configuManager == null)
                 {
                     _logger?.LogWarn($"[{Name}] ConfigurationManager 未初始化，跳过传感器配置加载", LogCategory.System);
                     return;
                 }
 
-                // 直接获取所有传感器配置（Provider 已在启动时自动注册）
                 var result = await _configuManager.GetAllAsync<SensorConfig>();
                 
                 if (result?.Success == true && result.Data != null)
@@ -397,16 +394,12 @@ namespace Astra.Plugins.DataAcquisition
             {
                 _devices?.Clear();
 
-                // ✅ Provider 已通过 ConfigProviderDiscovery 自动发现并注册
-                // 无需手动注册，直接获取配置即可
-
                 if (_configuManager == null)
                 {
                     _logger?.LogError($"[{Name}] ConfigurationManager 未初始化，无法加载设备配置", null, LogCategory.System);
                     return;
                 }
 
-                // 直接获取所有设备配置（Provider 已在启动时自动注册）
                 var result = await _configuManager.GetAllAsync<DataAcquisitionConfig>();
 
                 if (result == null || result.Data == null || result.Data.Count() == 0)
@@ -449,56 +442,6 @@ namespace Astra.Plugins.DataAcquisition
                         _logger?.LogError($"[{Name}] 加载设备配置失败: {ex.Message}", ex, LogCategory.Device);
                     }
                 }
-
-                //// 查找配置文件
-                //var configFileName = "Astra.Plugins.DataAcquisition.config.json";
-
-                //string fileName = Path.Combine(Core.Configuration.ConfigPathString.DeviceConfigDirectory, configFileName);
-
-                //var configData = await Core.Configuration.ConfigPathString.LoadAsync<ConfigCollection<DataAcquisitionConfig>>(fileName, cancellationToken).ConfigureAwait(false);
-
-                //if (configData?.Configs == null || configData.Configs.Count == 0)
-                //{
-                //    _logger?.Warn($"[{ConfigName}] 配置文件中没有设备配置", LogCategory.System);
-                //    return;
-                //}
-
-                //// 先注册配置到 ConfigurationManager，然后根据配置创建设备实例
-                //// 注意：配置独立于设备，先有配置才能创建设备
-                //foreach (var config in configData.Configs)
-                //{
-                //    try
-                //    {
-                //        // 1. 先将配置注册到 ConfigurationManager（配置独立于设备）
-                //        if (_configurationManager != null)
-                //        {
-                //            // 传递标准配置文件路径（无论从哪个位置加载，都使用标准路径注册）
-                //            // 这样确保同一类型配置使用相同的路径，后续保存时统一保存到标准位置
-                //            var registerResult = _configurationManager.RegisterConfig(config, fileName);
-
-
-                //            if (registerResult.Success)
-                //            {
-                //                _logger?.Info($"[{ConfigName}] 配置已注册到 ConfigurationManager: {config.DeviceName} (ID: {config.ConfigId}), 路径: {fileName}", LogCategory.System);
-                //            }
-                //            else
-                //            {
-                //                _logger?.Warn($"[{ConfigName}] 配置注册到 ConfigurationManager 失败: {config.DeviceName} - {registerResult.ErrorMessage}", LogCategory.System);
-                //                // 即使注册失败，仍然尝试创建设备（向后兼容）
-                //            }
-                //        }
-
-                //        // 2. 根据配置创建设备实例
-                //        var device = new DataAcquisitionDevice(config, _messageBus, _logger);
-                //        _devices?.Add(device);
-
-                //        _logger?.Info($"[{ConfigName}] 已加载设备配置: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);
-                //    }
-                //    catch (Exception ex)
-                //    {
-                //        _logger?.Error($"[{ConfigName}] 加载设备配置失败: {ex.Message}", ex, LogCategory.Device);
-                //    }
-                //}
             }
             catch (Exception ex)
             {
@@ -617,6 +560,7 @@ namespace Astra.Plugins.DataAcquisition
                     return;
                 }
 
+                
                 var device = factory.Create(config, _context?.ServiceProvider) as IDataAcquisition;
                 if (device == null)
                 {
@@ -628,38 +572,29 @@ namespace Astra.Plugins.DataAcquisition
                 _devices.Add(device);
                 _logger?.LogInfo($"[{Name}] 已创建新设备: {config.DeviceName} (ID: {config.DeviceId})", LogCategory.Device);
 
-                // 如果插件已启用，初始化并注册设备
+                // 如果插件已启用，初始化并注册设备（不再自动开始采集）
                 if (_deviceManager != null)
                 {
                     var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
                     if (deviceAsIDevice != null)
                     {
                         var initResult = await device.InitializeAsync().ConfigureAwait(false);
-                        if (initResult)
+                        var registerResult = _deviceManager.RegisterDevice(deviceAsIDevice);
+
+                        if (registerResult.Success)
                         {
-                            var registerResult = _deviceManager.RegisterDevice(deviceAsIDevice);
-                            if (registerResult.Success)
+                            if (initResult)
                             {
                                 _logger?.LogInfo($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
-
-                                // 如果配置了自动启动，则开始采集
-                                if (device is DeviceBase<DataAcquisitionConfig> deviceBase)
-                                {
-                                    var deviceConfig = deviceBase.CurrentConfig;
-                                    if (deviceConfig != null && deviceConfig.AutoStart)
-                                    {
-                                        await device.StartAcquisitionAsync().ConfigureAwait(false);
-                                    }
-                                }
                             }
                             else
                             {
-                                _logger?.LogError($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
+                                _logger?.LogWarn($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 初始化失败，已以离线状态注册", LogCategory.Device);
                             }
                         }
                         else
                         {
-                            _logger?.LogError($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 初始化失败", null, LogCategory.Device);
+                            _logger?.LogError($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
                         }
                     }
                 }

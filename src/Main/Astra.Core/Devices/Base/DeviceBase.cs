@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Astra.Core.Devices.Configuration;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Foundation.Common;
+using Newtonsoft.Json;
 
 namespace Astra.Core.Devices.Base
 {

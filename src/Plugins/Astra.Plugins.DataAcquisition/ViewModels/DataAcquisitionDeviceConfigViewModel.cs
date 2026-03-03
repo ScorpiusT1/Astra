@@ -459,7 +459,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             }
 
             var maxChannels = DeviceSpecification.GetConstraint<int>("MaxChannels", 32);
-            var minChannels = DeviceSpecification.GetConstraint<int>("MinChannels", 1);
+            var minChannels = DeviceSpecification.GetConstraint<int>("MinChannels", 2);
             
             // 如果当前通道数超出范围，自动调整为最大值
             if (_config.ChannelCount > maxChannels || _config.ChannelCount < minChannels)

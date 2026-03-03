@@ -1,3 +1,4 @@
+using Astra.Core.Devices.Configuration;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Plugins.UI;
 using Astra.Models;
@@ -164,13 +165,13 @@ namespace Astra.ViewModels
 
 
         /// <summary>
-        /// 获取所有已注册的配置类型及其 TreeNodeConfigAttribute
+        /// 获取所有已注册的配置类型及其 TreeNodeConfigAttribute / ConfigUIAttribute
         /// ✅ 重构：基于已注册的 Provider 类型，而不是扫描程序集
         /// 这样可以确保只显示有 Provider 的配置类型，避免配置未注册的错误
         /// </summary>
-        private async Task<List<(Type ConfigType, TreeNodeConfigAttribute Attribute)>> GetAllConfigTypesAsync()
+        private async Task<List<(Type ConfigType, TreeNodeConfigAttribute TreeAttribute, ConfigUIAttribute? UiAttribute)>> GetAllConfigTypesAsync()
         {
-            var configTypes = new List<(Type, TreeNodeConfigAttribute)>();
+            var configTypes = new List<(Type, TreeNodeConfigAttribute, ConfigUIAttribute?)>();
 
             if (_configManager == null)
             {
@@ -189,11 +190,13 @@ namespace Astra.ViewModels
                     {
                         try
                         {
-                            // 获取配置类型的 TreeNodeConfigAttribute
-                            var attr = configType.GetCustomAttribute<TreeNodeConfigAttribute>();
-                            if (attr != null)
+                            // 获取配置类型的 TreeNodeConfigAttribute（树结构）
+                            var treeAttr = configType.GetCustomAttribute<TreeNodeConfigAttribute>();
+                            if (treeAttr != null)
                             {
-                                configTypes.Add((configType, attr));
+                                // 获取可选的 ConfigUIAttribute（UI 映射）
+                                var uiAttr = configType.GetCustomAttribute<ConfigUIAttribute>();
+                                configTypes.Add((configType, treeAttr, uiAttr));
                             }
                         }
                         catch (Exception ex)
@@ -249,7 +252,7 @@ namespace Astra.ViewModels
             // ✅ 按 Order 排序配置类型（确保根节点顺序稳定）
             // Order 值越小越靠前，如果 Order 相同则按类型名称排序
             allConfigTypes = allConfigTypes
-                .OrderBy(x => x.Attribute.Order >= 0 ? x.Attribute.Order : int.MaxValue) // Order < 0 的排在最后
+                .OrderBy(x => x.TreeAttribute.Order >= 0 ? x.TreeAttribute.Order : int.MaxValue) // Order < 0 的排在最后
                 .ThenBy(x => x.ConfigType.Name) // Order 相同时按类型名称排序
                 .ToList();
 
@@ -259,7 +262,9 @@ namespace Astra.ViewModels
             foreach (var typeGroup in configTypeGroups)
             {
                 var configType = typeGroup.Key;
-                var attr = typeGroup.First().Attribute;
+                var first      = typeGroup.First();
+                var treeAttr   = first.TreeAttribute;
+                var uiAttr     = first.UiAttribute;
 
                 // 查找该类型的现有配置实例
                 // ⚠️ 关键：优先使用已存在树节点中的 Config（保留未保存的修改）
@@ -282,19 +287,19 @@ namespace Astra.ViewModels
                 }
 
                 // ✅ 获取或创建根节点（即使没有配置也要创建根节点，显示"+"号）
-                if (!rootNodes.TryGetValue(attr.Category, out TreeNode? rootNode))
+                if (!rootNodes.TryGetValue(treeAttr.Category, out TreeNode? rootNode))
                 {
-                    rootNode = GetTreeNode(attr.Category);
+                    rootNode = GetTreeNode(treeAttr.Category);
 
                     // 设置根节点属性
                     rootNode.ShowAddButton = true;
                     rootNode.ShowDeleteButton = false;
                     rootNode.Config = null;
                     rootNode.ConfigType = configType;
-                    rootNode.Icon = attr.Icon ?? _defaultIcon;
-                    rootNode.Order = attr.Order; // ✅ 设置根节点的 Order，用于排序
+                    rootNode.Icon = treeAttr.Icon ?? _defaultIcon;
+                    rootNode.Order = treeAttr.Order; // ✅ 设置根节点的 Order，用于排序
 
-                    rootNodes[attr.Category] = rootNode;
+                    rootNodes[treeAttr.Category] = rootNode;
                 }
 
                 // 按照 UpdatedAt 排序（保持保存时的顺序）
@@ -311,13 +316,14 @@ namespace Astra.ViewModels
                     TreeNode childNode = new TreeNode
                     {
                         Header = GetNodeDisplayName(config, rootNode),
-                        Icon = attr.Icon ?? _defaultIcon,
-                        ViewModelType = attr.ViewModelType,
-                        ViewType = attr.ViewType,
+                        Icon = treeAttr.Icon ?? _defaultIcon,
+                        // 优先使用 ConfigUIAttribute 提供的 View/ViewModel，其次回退到 TreeNodeConfigAttribute
+                        ViewModelType = uiAttr?.ViewModelType ?? treeAttr.ViewModelType,
+                        ViewType = uiAttr?.ViewType ?? treeAttr.ViewType,
                         ShowAddButton = false,
                         ShowDeleteButton = true,
                         Config = config,
-                        Order = attr.Order,
+                        Order = treeAttr.Order,
                         ConfigType = configType,
                         Parent = rootNode,
                     };
@@ -334,7 +340,7 @@ namespace Astra.ViewModels
             var addedCategories = new HashSet<string>();
             foreach (var configTypeInfo in allConfigTypes)
             {
-                var category = configTypeInfo.Attribute.Category;
+                var category = configTypeInfo.TreeAttribute.Category;
                 if (!addedCategories.Contains(category) && rootNodes.TryGetValue(category, out var rootNode))
                 {
                     TreeNodes.Add(rootNode);
@@ -685,6 +691,9 @@ namespace Astra.ViewModels
             }
 
             node.Children.Add(newNode);
+
+            // 新增配置后自动选中该节点并打开右侧配置界面，避免用户再手动点击一次
+            NodeSelected(newNode);
         }
 
         /// <summary>
@@ -844,6 +853,18 @@ namespace Astra.ViewModels
                     return;
                 }
 
+                // ⭐ 先执行配置验证（例如设备名称、厂家、型号、规格等）
+                if (targetNode.Config is DeviceConfig deviceConfig)
+                {
+                    var validateResult = deviceConfig.Validate();
+                    if (!validateResult.Success)
+                    {
+                        // 直接提示验证错误并中止保存
+                        ToastHelper.ShowError($"配置验证失败:\n{validateResult.ErrorMessage}");
+                        return;
+                    }
+                }
+
 
                 // 在保存前更新节点名称和配置名称，确保保存时名称已同步
                 // 注意：DeviceName 现在是 ConfigName 的别名，更新 ConfigName 即可
@@ -863,6 +884,8 @@ namespace Astra.ViewModels
                 {
                     var baseTime = DateTime.Now;
                     var siblingsToSave = new List<TreeNode>();
+                    var successCount = 0;
+                    var errorCount = 0;
 
                     // 更新所有兄弟节点的 UpdatedAt（按照它们在树中的位置）
                     for (int i = 0; i < targetNode.Parent.Children.Count; i++)
@@ -870,6 +893,24 @@ namespace Astra.ViewModels
                         var siblingNode = targetNode.Parent.Children[i];
                         if (siblingNode != null && siblingNode.Config != null)
                         {
+                            // 对每个兄弟配置执行验证，只有通过验证的才参与保存
+                            if (siblingNode.Config is DeviceConfig siblingDeviceConfig)
+                            {
+                                var validateResult = siblingDeviceConfig.Validate();
+                                if (!validateResult.Success)
+                                {
+                                    errorCount++;
+                                    // 对当前节点的验证失败立即提示并中止
+                                    if (siblingNode == targetNode)
+                                    {
+                                        ToastHelper.ShowError($"配置验证失败:\n{validateResult.ErrorMessage}");
+                                        return;
+                                    }
+                                    // 其他兄弟节点验证失败仅记录，不保存
+                                    continue;
+                                }
+                            }
+
                             // 更新内存中的 UpdatedAt
                             siblingNode.Config.UpdatedAt = baseTime.AddMilliseconds(i);
                             
@@ -879,10 +920,7 @@ namespace Astra.ViewModels
                     }
 
                     // ✅ 保存所有兄弟节点（更新它们的 UpdatedAt 到文件）
-                    // 注意：名称和编号保持不变，不重新分配
-                    var successCount = 0;
-                    var errorCount = 0;
-                    
+                    // 注意：名称和编号保持不变，不重新分配                    
                     foreach (var siblingNode in siblingsToSave)
                     {
                         try
@@ -986,9 +1024,8 @@ namespace Astra.ViewModels
                 var allConfigsResult = await _configManager.GetAllAsync();
                 var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
 
-                // ✅ 第一步：按照树中的顺序，为所有节点生成新名称并更新 Header（仅内存中）
-                // ⚠️ 关键：保持原有编号，不根据索引重新分配编号
-                // 编号应该保持稳定，只有新建节点或名称没有编号时才分配新编号
+                // ✅ 第一步：验证所有配置，并按照树中的顺序为通过验证的节点生成新名称并更新 Header（仅内存中）
+                // ⚠️ 关键：保持原有编号，不根据索引重新分配编号；编号应该保持稳定，只有新建节点或名称没有编号时才分配新编号
                 var nodesToSave = new List<(TreeNode Node, string NewName)>();
                 
                 foreach (var rootNode in TreeNodes)
@@ -998,6 +1035,19 @@ namespace Astra.ViewModels
                     {
                         if (childNode.Config != null)
                         {
+                            // 先对配置执行验证（例如设备名称、厂家、型号、规格等）
+                            if (childNode.Config is DeviceConfig deviceConfig)
+                            {
+                                var validateResult = deviceConfig.Validate();
+                                if (!validateResult.Success)
+                                {
+                                    errorCount++;
+                                    errors.Add($"{deviceConfig.ConfigName ?? "未命名配置"}: {validateResult.ErrorMessage}");
+                                    // 验证失败的配置不参与后续重命名和保存
+                                    continue;
+                                }
+                            }
+
                             // ⚠️ 关键：如果 ConfigName 中已有编号，直接使用它，不重新生成
                             // 这样可以保持原有编号，不会因为拖拽而改变
                             string newNodeName;
@@ -1022,35 +1072,50 @@ namespace Astra.ViewModels
                     }
                 }
 
-                // ✅ 第二步：按照树中的顺序，保存所有配置
-                foreach (var (childNode, newNodeName) in nodesToSave)
+                // 在 UI 线程上先设置 UpdatedAt（轻量操作），避免在后台线程修改绑定属性
+                foreach (var (childNode, _) in nodesToSave)
                 {
-                    try
-                    {                      
-                        // 根据节点在树中的位置设置 UpdatedAt（保持顺序）
-                        // 使用递增的时间偏移量，确保顺序正确
-                        childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
-                        timeOffset++;
-
-                        // 保存配置（名称已在第一步更新）
-                        var result = await _configManager.SaveAsync(childNode.Config);
-
-                        if (result != null && result.Success)
-                        {
-                            successCount++;
-                        }
-                        else
-                        {
-                            errorCount++;
-                            errors.Add($"{childNode.Config.ConfigName}: {result?.Message ?? "未知错误"}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        errorCount++;
-                        errors.Add($"{childNode.Config.ConfigName}: {ex.Message}");
-                    }
+                    childNode.Config.UpdatedAt = baseTime.AddMilliseconds(timeOffset);
+                    timeOffset++;
                 }
+
+                // ✅ 第二步：在后台线程按照树中的顺序保存所有配置，避免阻塞 UI 线程
+                var saveResult = await Task.Run(() =>
+                {
+                    var localSuccess = 0;
+                    var localError = 0;
+                    var localErrors = new List<string>();
+
+                    foreach (var (childNode, _) in nodesToSave)
+                    {
+                        try
+                        {
+                            // 同步等待异步保存完成（在后台线程中不会阻塞 UI）
+                            var result = _configManager.SaveAsync(childNode.Config).GetAwaiter().GetResult();
+
+                            if (result != null && result.Success)
+                            {
+                                localSuccess++;
+                            }
+                            else
+                            {
+                                localError++;
+                                localErrors.Add($"{childNode.Config.ConfigName}: {result?.Message ?? "未知错误"}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            localError++;
+                            localErrors.Add($"{childNode.Config.ConfigName}: {ex.Message}");
+                        }
+                    }
+
+                    return (Success: localSuccess, Error: localError, Errors: localErrors);
+                }).ConfigureAwait(true);
+
+                successCount += saveResult.Success;
+                errorCount += saveResult.Error;
+                errors.AddRange(saveResult.Errors);
 
                 // 显示结果
                 if (errorCount == 0)

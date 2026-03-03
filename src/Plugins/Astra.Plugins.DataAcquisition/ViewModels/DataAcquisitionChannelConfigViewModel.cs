@@ -1,4 +1,4 @@
-﻿using Astra.Core.Configuration;
+using Astra.Core.Configuration;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Specifications;
 using Astra.Plugins.DataAcquisition.Configs;
@@ -254,7 +254,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         }
 
         /// <summary>
-        /// 初�?�化通道集合
+        /// 初始化通道集合
         /// </summary>
         private void InitializeChannels()
         {
@@ -267,13 +267,13 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 _config.Channels.CollectionChanged -= Channels_CollectionChanged;
             }
 
-            // �?保通道集合已初始化
+            // 确保通道集合已初始化
             if (_config.Channels == null)
             {
                 _config.Channels = new ObservableCollection<DAQChannelConfig>();
             }
 
-            // 如果通道集合为空�? ChannelCount > 0，根�? ChannelCount 初�?�化通道
+            // 如果通道集合为空且 ChannelCount > 0，根据 ChannelCount 初始化通道
             if (_config.Channels.Count == 0 && _config.ChannelCount > 0)
             {
                 for (int i = 0; i < _config.ChannelCount; i++)
@@ -288,6 +288,24 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
                     _config.Channels.Add(channel);
                     OnPropertyChanged(nameof(CanDeleteChannel));
+                }
+            }
+
+            // 无论是新建还是从配置加载，统一修正通道的 Id 和默认名称
+            for (int i = 0; i < _config.Channels.Count; i++)
+            {
+                var channel = _config.Channels[i];
+                if (channel == null)
+                    continue;
+
+                // Id 始终为 1..N
+                //int expectedId = i + 1;
+                //channel.ChannelId = expectedId;
+
+                // 仅在名称为空时才补默认名称，避免覆盖用户自定义的通道名
+                if (string.IsNullOrWhiteSpace(channel.ChannelName))
+                {
+                    channel.ChannelName = $"通道 {channel.ChannelId}";
                 }
             }
 
@@ -389,7 +407,6 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 _config.Channels = new ObservableCollection<DAQChannelConfig>();
             }
 
-            // 获取下一�?通道ID（从集合大小+1计算，确保连�?�?
             int nextChannelId = _config.Channels.Count + 1;
 
             // 创建新通道
@@ -450,15 +467,26 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 SelectedChannel = null;
             }
 
-            // 重新编号所有通道
+            // 重新编号所有通道，并仅在“原本是默认名或为空”的情况下更新名称
             for (int i = 0; i < _config.Channels.Count; i++)
             {
-                _config.Channels[i].ChannelId = i + 1;
-                // 如果通道名称�?默�?�格式（通道 X），则更新名�?
-                if (string.IsNullOrWhiteSpace(_config.Channels[i].ChannelName) ||
-                    _config.Channels[i].ChannelName.StartsWith("通道 "))
+                var channelConfig = _config.Channels[i];
+                if (channelConfig == null)
+                    continue;
+
+                // 记录删除前的默认名（例如“通道 3”），用于判断是否系统自动生成
+                var oldId = channelConfig.ChannelId;
+                var oldDefaultName = $"通道 {oldId}";
+
+                // 重新编号为 1..N
+                channelConfig.ChannelId = i + 1;
+
+                // 仅当通道名为空，或恰好等于旧的默认名称时，才按新编号生成默认名
+                // 避免覆盖用户自定义的名称（哪怕是以“通道 ”开头）
+                if (string.IsNullOrWhiteSpace(channelConfig.ChannelName) ||
+                    channelConfig.ChannelName == oldDefaultName)
                 {
-                    _config.Channels[i].ChannelName = $"通道 {i + 1}";
+                    channelConfig.ChannelName = $"通道 {channelConfig.ChannelId}";
                 }
             }
 

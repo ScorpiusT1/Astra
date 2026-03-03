@@ -38,6 +38,8 @@ namespace Astra.Core.Configuration
                 NullValueHandling = NullValueHandling.Include,
                 DefaultValueHandling = DefaultValueHandling.Include,
                 DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                // 严格配置版本同样使用 Replace，确保集合属性完全按 JSON 重建
+                ObjectCreationHandling = ObjectCreationHandling.Replace
             };
 
             if (!Directory.Exists(ConfigDirectory))

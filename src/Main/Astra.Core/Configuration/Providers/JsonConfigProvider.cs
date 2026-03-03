@@ -1,4 +1,4 @@
-﻿using Astra.Core.Foundation.Common;
+using Astra.Core.Foundation.Common;
 using System.Collections.Concurrent;
 using System.Linq;
 using Newtonsoft.Json;
@@ -35,6 +35,9 @@ namespace Astra.Core.Configuration.Providers
                 NullValueHandling = NullValueHandling.Include,
                 DefaultValueHandling = DefaultValueHandling.Include,
                 DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                // 对于配置类，反序列化时始终用 JSON 覆盖集合属性，避免构造函数里初始化的默认集合残留或被“部分合并”
+                // 这样像 DataAcquisitionConfig.Channels 这类集合会完全按文件里的内容重建，不会夹杂默认“通道 1/2/3/4”。
+                ObjectCreationHandling = ObjectCreationHandling.Replace
             };
             if (!Directory.Exists(ConfigDirectory))
                 Directory.CreateDirectory(ConfigDirectory);
