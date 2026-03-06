@@ -15,6 +15,15 @@ using PhysicalUnitEnum = Astra.Plugins.DataAcquisition.Configs.PhysicalUnit;
 
 namespace Astra.Plugins.DataAcquisition.Configs
 {
+    public enum SensorConversionMode
+    {
+        /// <summary>物理量 = 测试值 / 灵敏度</summary>
+        DivideBySensitivity,
+
+        /// <summary>物理量 = 测试值 × 灵敏度</summary>
+        MultiplyBySensitivity
+    }
+
     #region 传感器配置（支持UI绑定）
 
     /// <summary>
@@ -48,6 +57,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private string _notes;
         private bool _isThreeAxis; // 是否为三轴传感器（仅对加速度计有效）
         private bool _isUpdatingSensorType; // 防止循环更新的标志
+        private SensorConversionMode _conversionMode; // 传感器转换方式
+        private double _unitConversionFactor;         // 单位换算系数（例如 G->m/s²）
 
         #region 属性
 
@@ -193,6 +204,63 @@ namespace Astra.Plugins.DataAcquisition.Configs
             OnPropertyChanged(nameof(PhysicalUnit));
         }
 
+        /// <summary>
+        /// 根据灵敏度单位（以及可选的传感器类型）推断物理单位
+        /// 例如：mV/g、pC/g、V/g → G；mV/Pa、pC/Pa、V/Pa → Pascal；mV/N、pC/N、V/N → Newton
+        /// 对于 mV/V、V/V 这类比值，需要结合传感器类型才能判断（位移、速度、转速、应变等）
+        /// 返回值为 PhysicalUnit 的枚举名称字符串（如 "G"、"Pascal"），无法判断时返回 null
+        /// </summary>
+        public static string GetPhysicalUnitFromSensitivityUnit(string sensitivityUnit, SensorType? sensorType = null)
+        {
+            if (string.IsNullOrWhiteSpace(sensitivityUnit))
+                return null;
+
+            var unit = sensitivityUnit.Trim();
+
+            // 直接根据灵敏度单位分母判断
+            if (unit.EndsWith("/g", StringComparison.OrdinalIgnoreCase))
+                return PhysicalUnitEnum.G.ToString();
+
+            if (unit.EndsWith("/Pa", StringComparison.OrdinalIgnoreCase))
+                return PhysicalUnitEnum.Pascal.ToString();
+
+            if (unit.EndsWith("/N", StringComparison.OrdinalIgnoreCase))
+                return PhysicalUnitEnum.Newton.ToString();
+
+            // mV/V、V/V 等比值类型，需要结合传感器类型判断
+            if (sensorType.HasValue)
+            {
+                switch (sensorType.Value)
+                {
+                    case SensorType.Accelerometer:
+                        return PhysicalUnitEnum.G.ToString();
+                    case SensorType.Microphone:
+                    case SensorType.Pressure:
+                        return PhysicalUnitEnum.Pascal.ToString();
+                    case SensorType.Force:
+                        return PhysicalUnitEnum.Newton.ToString();
+                    case SensorType.Displacement:
+                        return PhysicalUnitEnum.MilliMeter.ToString();
+                    case SensorType.Velocity:
+                        return PhysicalUnitEnum.MeterPerSecond.ToString();
+                    case SensorType.Tachometer:
+                        return PhysicalUnitEnum.RPM.ToString();
+                    case SensorType.StrainGauge:
+                        return PhysicalUnitEnum.MicroStrain.ToString();
+                    case SensorType.Voltage:
+                        return PhysicalUnitEnum.Volt.ToString();
+                    case SensorType.Current:
+                        return PhysicalUnitEnum.Ampere.ToString();
+                    case SensorType.Temperature:
+                        return PhysicalUnitEnum.Celsius.ToString();
+                    default:
+                        break;
+                }
+            }
+
+            return null;
+        }
+
         public string Manufacturer
         {
             get => _manufacturer;
@@ -306,16 +374,24 @@ namespace Astra.Plugins.DataAcquisition.Configs
             set => SetProperty(ref _calibrationFactor, value);
         }
 
+        /// <summary>转换方式：测试值与灵敏度的关系</summary>
+        public SensorConversionMode ConversionMode
+        {
+            get => _conversionMode;
+            set => SetProperty(ref _conversionMode, value);
+        }
+
+        /// <summary>单位换算系数（例如 G→m/s² 时为 9.81）</summary>
+        public double UnitConversionFactor
+        {
+            get => _unitConversionFactor;
+            set => SetProperty(ref _unitConversionFactor, value);
+        }
+
         public DateTime? CalibrationDate
         {
             get => _calibrationDate;
             set => SetProperty(ref _calibrationDate, value);
-        }
-
-        public DateTime? NextCalibrationDate
-        {
-            get => _nextCalibrationDate;
-            set => SetProperty(ref _nextCalibrationDate, value);
         }
 
         public string Notes
@@ -401,6 +477,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
             _frequencyRangeMin = 1;
             _frequencyRangeMax = 10000;
             _calibrationFactor = 1.0;
+            _conversionMode = SensorConversionMode.DivideBySensitivity;
+            _unitConversionFactor = 1.0;
             _notes = "";
             _isThreeAxis = false; // 默认为单轴
         }
@@ -417,16 +495,18 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         /// <summary>
         /// 获取配置的显示名称（用于树节点等 UI 显示）
-        /// 要求：设备型号（序号由外层追加）
+        /// 要求：设备厂家名 + 设备型号（序号由外层追加）
         /// </summary>
         public override string GetDisplayName()
         {
-            // 仅使用型号构成基础名称，例如：“4507B”
-            if (!string.IsNullOrWhiteSpace(Model))
-                return Model;
-
-            // 如果型号为空，则回退到“未命名传感器”
-            return "未命名传感器";
+            // 仅使用厂家和型号构成基础名称，例如：“B&K 4507B”
+            // 如果两者都为空，则回退到“未命名传感器”
+            return ConfigDisplayNameHelper.BuildDisplayName(
+                Manufacturer,
+                Model,
+                serialNumber: null,
+                configName: null,
+                defaultName: "未命名传感器");
         }
 
         public override string ToString() => DisplayText;

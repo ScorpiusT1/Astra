@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
@@ -514,8 +514,31 @@ namespace Astra.Plugins.DataAcquisition.Configs
             // 应用硬件参数
             double adjustedVoltage = (voltage - Offset) / Gain;
 
-            // 应用传感器灵敏度
-            double physicalValue = (adjustedVoltage / Sensor.Sensitivity) * Sensor.CalibrationFactor;
+            double physicalValue;
+
+            // 避免除以0
+            if (Sensor.Sensitivity == 0)
+            {
+                physicalValue = 0;
+            }
+            else
+            {
+                // 按配置的转换方式应用传感器灵敏度
+                if (Sensor.ConversionMode == SensorConversionMode.DivideBySensitivity)
+                {
+                    physicalValue = adjustedVoltage / Sensor.Sensitivity;
+                }
+                else
+                {
+                    physicalValue = adjustedVoltage * Sensor.Sensitivity;
+                }
+
+                // 校准系数
+                physicalValue *= Sensor.CalibrationFactor;
+
+                // 单位换算（例如 G -> m/s²）
+                physicalValue *= Sensor.UnitConversionFactor;
+            }
 
             return physicalValue;
         }

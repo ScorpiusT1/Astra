@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="Astra.Plugins.DataAcquisition.Views.SensorConfigView"
+<UserControl x:Class="Astra.Plugins.DataAcquisition.Views.SensorConfigView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -28,7 +28,6 @@
         <Style TargetType="hc:DatePicker"
                BasedOn="{StaticResource ModernHandyDatePickerStyle}" />
         <pluginConverters:SensorTypeToStringConverter x:Key="SensorTypeToStringConverter" />
-        <pluginConverters:PhysicalUnitToStringConverter x:Key="PhysicalUnitToStringConverter" />
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:InvertedBooleanToVisibilityConverter x:Key="InvertedBoolToVisibilityConverter" />
         <pluginConverters:BooleanInverseConverter x:Key="BooleanInverseConverter" />
@@ -370,32 +369,8 @@
                     </Grid>
                 </Grid>
 
-                <!-- 物理单位 -->
-                <Grid Grid.Row="7"
-                      Margin="0,0,0,15">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="物理单位:"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource SecondaryTextBrush}"
-                               VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1"
-                              x:Name="PhysicalUnitComboBox"
-                              ItemsSource="{Binding PhysicalUnitOptions}"
-                              DisplayMemberPath="DisplayText"
-                              SelectedValuePath="FullName"
-                              SelectedValue="{Binding SelectedSensor.PhysicalUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                              FontSize="13"
-                              Height="36"
-                              hc:InfoElement.Placeholder="请选择物理单位" />
-                </Grid>
-
                 <!-- 测量范围 -->
-                <Grid Grid.Row="8"
+                <Grid Grid.Row="7"
                       Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="140" />
@@ -432,7 +407,7 @@
                 </Grid>
 
                 <!-- 频率范围 -->
-                <Grid Grid.Row="9"
+                <Grid Grid.Row="8"
                       Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="140" />
@@ -469,7 +444,7 @@
                 </Grid>
 
                 <!-- 校准因子 -->
-                <Grid Grid.Row="10"
+                <Grid Grid.Row="9"
                       Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="140" />
@@ -488,7 +463,7 @@
                 </Grid>
 
                 <!-- 校准日期 -->
-                <Grid Grid.Row="11"
+                <Grid Grid.Row="10"
                       Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="140" />
@@ -501,7 +476,6 @@
                                Foreground="{DynamicResource SecondaryTextBrush}"
                                VerticalAlignment="Center" />
                     <hc:DatePicker x:Name="CalibrationDatePicker"
-                                   
                                    Grid.Column="1"
                                    SelectedDate="{Binding SelectedSensor.CalibrationDate, UpdateSourceTrigger=PropertyChanged}"
                                    FontSize="13"
@@ -509,15 +483,30 @@
                                    Height="44"
                                    VerticalAlignment="Center"
                                    hc:InfoElement.Placeholder="请选择日期">
-                        <!--<hc:DatePicker.Resources>
-                            --><!-- CalendarButton 样式 - 确保年份和月份选择器可见 --><!--
-                            <Style TargetType="CalendarButton"
-                                   BasedOn="{StaticResource ModernCalendarButtonStyle}" />
-                        </hc:DatePicker.Resources>-->
                     </hc:DatePicker>
                 </Grid>
 
-                <!-- 下次校准日期 -->
+                <!-- 转换方式 -->
+                <Grid Grid.Row="11"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="转换方式:"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding ConversionModeOptions}"
+                              SelectedItem="{Binding SelectedSensor.ConversionMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              FontSize="13"
+                              Height="36" />
+                </Grid>
+
+                <!-- 单位换算系数 -->
                 <Grid Grid.Row="12"
                       Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
@@ -525,25 +514,16 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0"
-                               Text="下次校准日期:"
+                               Text="单位换算系数:"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource SecondaryTextBrush}"
                                VerticalAlignment="Center" />
-                    <hc:DatePicker x:Name="NextCalibrationDatePicker"
-                                   Grid.Column="1"
-                                   
-                                   SelectedDate="{Binding SelectedSensor.NextCalibrationDate, UpdateSourceTrigger=PropertyChanged}"
-                                   FontSize="13"
-                                   Height="44"
-                                   VerticalAlignment="Center"
-                                   hc:InfoElement.Placeholder="请选择日期">
-                        <!--<hc:DatePicker.Resources>
-                            --><!-- CalendarButton 样式 - 确保年份和月份选择器可见 --><!--
-                            <Style TargetType="CalendarButton"
-                                   BasedOn="{StaticResource ModernCalendarButtonStyle}" />
-                        </hc:DatePicker.Resources>-->
-                    </hc:DatePicker>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.UnitConversionFactor, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13"
+                             Height="36"
+                             hc:InfoElement.Placeholder="例如 1 或 9.81" />
                 </Grid>
 
                 <!-- 备注 -->
