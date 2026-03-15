@@ -85,6 +85,14 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private bool _isUserMenuOpen;
 
+        /// <summary> 标题栏显示的应用标题 </summary>
+        [ObservableProperty]
+        private string _applicationTitle = "NVH自动化测试平台";
+
+        /// <summary> 标题栏显示的版本号 </summary>
+        [ObservableProperty]
+        private string _applicationVersion;
+
         #endregion
 
         public ObservableCollection<NavigationMenuItem> MenuItems { get; }
@@ -116,6 +124,7 @@ namespace Astra.ViewModels
 			_telemetry = telemetry;
 
             MenuItems = new ObservableCollection<NavigationMenuItem>();
+            ApplicationVersion = AssemblyInfo.Version;
 
 			// 初始时尝试订阅；若区域尚未注册，可在 App 启动后调用 EnsureRegionSubscriptions 再订阅
 			EnsureRegionSubscriptions();

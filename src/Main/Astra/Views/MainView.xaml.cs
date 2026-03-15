@@ -1,4 +1,4 @@
-﻿﻿﻿using Astra.UI.Styles.Windows;
+using Astra.UI.Styles.Windows;
 using NavStack.Core;
 using NavStack.Services;
 using System;
@@ -11,6 +11,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
@@ -38,6 +39,28 @@ namespace Astra.Views
 
             // 在Loaded事件中设置Frame，确保控件已完全初始化
             Loaded += OnLoaded;
+        }
+
+        /// <summary>
+        /// 状态指示灯 Loaded 时在代码中启动呼吸动画，避免 NonClientAreaContent 名称作用域导致找不到 TargetName 的问题。
+        /// </summary>
+        private void StatusIndicatorBorder_Loaded(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (sender is not System.Windows.Controls.Border border)
+                return;
+            var anim = new DoubleAnimation(0.45, 1, TimeSpan.FromSeconds(1.8))
+            {
+                AutoReverse = true,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+            Storyboard.SetTarget(anim, border);
+            Storyboard.SetTargetProperty(anim, new System.Windows.PropertyPath(System.Windows.UIElement.OpacityProperty));
+            var sb = new Storyboard
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            sb.Children.Add(anim);
+            sb.Begin();
         }
 
         private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)

@@ -5,6 +5,7 @@
         xmlns:converters="clr-namespace:Astra.Converters"
         xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
         Title="用户登录"
+        helpers:WindowIconHelper.IconGeometryKey="AppLogoGeometry"
         SizeToContent="Height"
         Width="450"
         WindowStartupLocation="CenterOwner"

@@ -1,4 +1,4 @@
-﻿using Astra.ViewModels;
+using Astra.ViewModels;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
 using NavStack.Configuration;
@@ -62,30 +62,20 @@ namespace Astra.Models
                 {
                     Title = "首页",
                     NavigationKey = NavigationKeys.Home,
-                    Icon = "🏠", // 或者使用 "⌂" 或 "◉"
+                    Icon = "Home", // FontAwesome
                     Order = 1,
                     Description = "系统首页",
                     Group = "Core",
                     RequiredPermissionLevel = 0, // 所有用户可访问
                     PermissionDeniedMessage = "您没有权限访问首页"
                 },
-                 new NavigationMenuItem
-                {
-                    Title = "序列",
-                    NavigationKey = NavigationKeys.Sequence,
-                    Icon = "📋", // 或者使用 "☰" 或 "≡"
-                    Order = 2,
-                    Description = "配置测试序列",
-                    Group = "Core",
-                    RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
-                    PermissionDeniedMessage = "需要工程师或管理员权限才能配置测试序列"
-                },
+              
                 new NavigationMenuItem
                 {
                     Title = "配置",
                     NavigationKey = NavigationKeys.Config,
-                    Icon = "⚙️", // 或者使用 "⚙" 或 "◈"
-                    Order = 3,
+                    Icon = "Cog", // FontAwesome (设置/齿轮)
+                    Order = 2,
                     Description = "系统配置",
                     Group = "Core",
                     RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
@@ -95,18 +85,29 @@ namespace Astra.Models
                 {
                     Title = "调试",
                     NavigationKey = NavigationKeys.Debug,
-                    Icon = "🔧", // 或者使用 "⚒" 或 "◊"
-                    Order = 4,
+                    Icon = "Wrench", // FontAwesome
+                    Order = 3,
                     Description = "调试和诊断工具",
                     Group = "Core",
                     RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
                     PermissionDeniedMessage = "需要工程师或管理员权限才能使用调试功能"
                 },
+                  new NavigationMenuItem
+                {
+                    Title = "序列",
+                    NavigationKey = NavigationKeys.Sequence,
+                    Icon = "List", // FontAwesome
+                    Order = 4,
+                    Description = "配置测试序列",
+                    Group = "Core",
+                    RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
+                    PermissionDeniedMessage = "需要工程师或管理员权限才能配置测试序列"
+                },
                 new NavigationMenuItem
                 {
                     Title = "权限",
                     NavigationKey = NavigationKeys.Permission,
-                    Icon = "👥", // 或者使用 "☺" 或 "◯"
+                    Icon = "Users", // FontAwesome
                     Order = 50,
                     Description = "管理用户权限",
                     Group = "Core",

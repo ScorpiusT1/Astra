@@ -1,6 +1,8 @@
 using Astra.Core.Access;
 using Astra.Core.Access.Models;
+using Astra.Messages;
 using Astra.Services.Session;
+using Astra;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -30,6 +32,11 @@ namespace Astra.ViewModels
         public UserMenuViewModel UserMenu { get; }
 
         // ⭐ 代理导航相关属性和命令（使XAML绑定更简洁）
+        /// <summary>
+        /// 窗口标题（任务栏/标题栏显示：应用名 + 版本号）
+        /// </summary>
+        public string WindowTitle => $"{Navigation?.ApplicationTitle ?? ""} {Navigation?.ApplicationVersion ?? ""}".Trim();
+
         /// <summary>
         /// 菜单项集合（代理到 Navigation.MenuItems）
         /// </summary>
@@ -89,6 +96,18 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private int _remainingLogoutSeconds;
 
+        /// <summary>
+        /// 状态指示灯 ToolTip 文案，可通过发送 <see cref="StatusIndicatorMessage"/> 更新。
+        /// </summary>
+        [ObservableProperty]
+        private string _statusIndicatorToolTip = "软件运行中";
+
+        /// <summary>
+        /// 状态指示灯对应的软件状态，决定颜色（Running=绿、Connecting=青、Warning=橙、Error=红）。
+        /// </summary>
+        [ObservableProperty]
+        private SoftwareStatus _statusIndicatorStatus = SoftwareStatus.Running;
+
         public MainViewViewModel(
             MainViewModel navigationViewModel,
             UserMenuViewModel userMenuViewModel,
@@ -104,6 +123,7 @@ namespace Astra.ViewModels
             // UserSessionService使用消息机制通知状态变化
             _messenger.Register<UserSessionChangedMessage>(this, OnUserSessionChanged);
             _messenger.Register<AutoLogoutWarningMessage>(this, OnAutoLogoutWarning);
+            _messenger.Register<StatusIndicatorMessage>(this, OnStatusIndicatorMessage);
 
             System.Diagnostics.Debug.WriteLine("[MainViewViewModel] 复合ViewModel初始化完成");
         }
@@ -137,6 +157,17 @@ namespace Astra.ViewModels
             {
                 ShowLogoutCountdown = false;
             }
+        }
+
+        /// <summary>
+        /// 处理状态指示灯更新消息，刷新状态（颜色）与 ToolTip 文案。
+        /// </summary>
+        private void OnStatusIndicatorMessage(object recipient, StatusIndicatorMessage message)
+        {
+            if (message == null) return;
+            StatusIndicatorStatus = message.Status;
+            if (message.Text != null)
+                StatusIndicatorToolTip = message.Text;
         }
 
         /// <summary>
@@ -184,6 +215,7 @@ namespace Astra.ViewModels
             // 取消注册消息
             _messenger.Unregister<UserSessionChangedMessage>(this);
             _messenger.Unregister<AutoLogoutWarningMessage>(this);
+            _messenger.Unregister<StatusIndicatorMessage>(this);
 
             Navigation?.Dispose();
             UserMenu?.Dispose();
