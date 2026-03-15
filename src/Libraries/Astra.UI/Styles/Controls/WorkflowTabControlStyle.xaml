@@ -188,8 +188,8 @@
                                                 Visibility="{TemplateBinding ShowTabListButton, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <Button.Content>
                                                 <!-- 使用 Path 绘制非实心向下箭头 -->
-                                                <Path Data="M 0 2 L 4 6 L 8 2" 
-                                                      Stroke="{DynamicResource PrimaryTextBrush}" 
+<Path Data="{StaticResource ChevronDownGeometry}"
+                                                      Stroke="{DynamicResource PrimaryTextBrush}"
                                                       StrokeThickness="2" 
                                                       StrokeStartLineCap="Round"
                                                       StrokeEndLineCap="Round"

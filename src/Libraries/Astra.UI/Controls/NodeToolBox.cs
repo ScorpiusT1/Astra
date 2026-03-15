@@ -1,4 +1,4 @@
-﻿using Astra.UI.Adapters;
+using Astra.UI.Adapters;
 using Astra.UI.Services;
 using System;
 using System.Collections;
@@ -1262,6 +1262,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnHideDelayTimerTick(object sender, EventArgs e)
         {
+            if (_hideDelayTimer == null) return;
             _hideDelayTimer.Stop();
 
             if (!IsMouseInToolboxArea())
@@ -1275,6 +1276,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void StartHideDelay()
         {
+            if (_hideDelayTimer == null) return;
             _hideDelayTimer.Stop();
             _hideDelayTimer.Interval = TimeSpan.FromMilliseconds(PanelHideDelay);
             _hideDelayTimer.Start();
@@ -1285,6 +1287,7 @@ namespace Astra.UI.Controls
         /// </summary>
         private void CancelHideDelay()
         {
+            if (_hideDelayTimer == null) return;
             if (_hideDelayTimer.IsEnabled)
             {
                 _hideDelayTimer.Stop();

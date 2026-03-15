@@ -1,4 +1,4 @@
-﻿<Window x:Class="Astra.Bootstrap.UI.SplashScreenView"
+<Window x:Class="Astra.Bootstrap.UI.SplashScreenView"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -19,32 +19,33 @@
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
 
     <Window.Resources>
-        <!-- 渐变动画 -->
-        <Storyboard x:Key="FadeInAnimation">
-            <DoubleAnimation Storyboard.TargetName="MainBorder"
-                             Storyboard.TargetProperty="Opacity"
-                             From="0"
-                             To="1"
-                             Duration="0:0:0.5" />
-        </Storyboard>
-
-        <!-- 脉冲动画（Logo） -->
-        <Storyboard x:Key="PulseAnimation"
-                    RepeatBehavior="Forever">
-            <DoubleAnimation Storyboard.TargetName="LogoScale"
-                             Storyboard.TargetProperty="ScaleX"
-                             From="1"
-                             To="1.05"
-                             Duration="0:0:1"
-                             AutoReverse="True" />
-            <DoubleAnimation Storyboard.TargetName="LogoScale"
-                             Storyboard.TargetProperty="ScaleY"
-                             From="1"
-                             To="1.05"
-                             Duration="0:0:1"
-                             AutoReverse="True" />
-        </Storyboard>
-
+        <ResourceDictionary>
+            <!-- AppLogoGeometry 已统一放在 Astra.UI IconGeometries.xaml，由 Application 合并 -->
+            <!-- 渐变动画 -->
+            <Storyboard x:Key="FadeInAnimation">
+                <DoubleAnimation Storyboard.TargetName="MainBorder"
+                                 Storyboard.TargetProperty="Opacity"
+                                 From="0"
+                                 To="1"
+                                 Duration="0:0:0.5" />
+            </Storyboard>
+            <!-- 脉冲动画（Logo） -->
+            <Storyboard x:Key="PulseAnimation"
+                        RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetName="LogoScale"
+                                 Storyboard.TargetProperty="ScaleX"
+                                 From="1"
+                                 To="1.05"
+                                 Duration="0:0:1"
+                                 AutoReverse="True" />
+                <DoubleAnimation Storyboard.TargetName="LogoScale"
+                                 Storyboard.TargetProperty="ScaleY"
+                                 From="1"
+                                 To="1.05"
+                                 Duration="0:0:1"
+                                 AutoReverse="True" />
+            </Storyboard>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Window.Triggers>
@@ -80,7 +81,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Logo 区域 -->
+                <!-- Logo 区域（app-logo.svg 完整 WPF 矢量化，无第三方库） -->
                 <Grid Grid.Row="0">
                     <Viewbox Width="150"
                              Height="150"
@@ -91,38 +92,7 @@
                                             ScaleX="1"
                                             ScaleY="1" />
                         </Viewbox.RenderTransform>
-
-                        <Canvas Width="100"
-                                Height="100">
-                            <!-- 外圈 -->
-                            <Ellipse Width="100"
-                                     Height="100"
-                                     StrokeThickness="3"
-                                     Stroke="{DynamicResource PrimaryBrush}" />
-
-                            <!-- 内圈 -->
-                            <Ellipse Width="70"
-                                     Height="70"
-                                     Canvas.Left="15"
-                                     Canvas.Top="15">
-                                <Ellipse.Fill>
-                                    <RadialGradientBrush>
-                                        <GradientStop Color="{DynamicResource PrimaryColor}"
-                                                      Offset="0" />
-                                        <GradientStop Color="{DynamicResource DarkPrimaryColor}"
-                                                      Offset="1" />
-                                    </RadialGradientBrush>
-                                </Ellipse.Fill>
-                            </Ellipse>
-
-                            <!-- Logo 文字 -->
-                            <TextBlock Text="{Binding LogoText, FallbackValue='AS'}"
-                                       FontSize="32"
-                                       FontWeight="Bold"
-                                       Foreground="{DynamicResource ReverseTextBrush}"
-                                       Canvas.Left="32"
-                                       Canvas.Top="30" />
-                        </Canvas>
+                        <ContentControl Content="{StaticResource AppLogoGeometry}" />
                     </Viewbox>
                 </Grid>
 

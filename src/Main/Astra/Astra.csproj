@@ -25,7 +25,7 @@
 	  <!-- ⭐ 程序集信息 -->
 	  <AssemblyTitle>Astra</AssemblyTitle>
 	  <NeutralLanguage>zh-CN</NeutralLanguage>
-	  <ApplicationIcon>Assets\Icons\astra.ico</ApplicationIcon>
+	  <ApplicationIcon>Assets\Icons\app-as-logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,7 +36,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\Icons\astra.ico" />
+    <None Remove="Assets\Icons\app-as-logo.ico" />
+    <None Remove="Assets\Icons\app-logo.png" />
+    <None Remove="Assets\Icons\app-logo.svg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Icons\app-as-logo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Icons\app-as-logo.ico" />
+    <Resource Include="Assets\Icons\app-logo.ico" />
+    <Resource Include="Assets\Icons\app-logo.png" />
+    <Resource Include="Assets\Icons\app-logo.svg" />
   </ItemGroup>
 
   <ItemGroup>
