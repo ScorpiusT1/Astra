@@ -229,7 +229,7 @@ namespace NVHDataBridge.IO.TDMS
             }
 
             // 高效写入
-            WriteValueOptimized(value);
+            WriteSingleValue(meta, value);
 
             // 智能刷新
             SmartFlush(false);
@@ -256,7 +256,7 @@ namespace NVHDataBridge.IO.TDMS
             }
 
             // 超高效批量写入（关键优化）
-            WriteArrayOptimized(values);
+            WriteArrayValues(meta, values);
 
             // 智能刷新（根据模式决定）
             SmartFlush(values.Length > 1000);
@@ -285,7 +285,7 @@ namespace NVHDataBridge.IO.TDMS
                     meta.RawData.Count++;
                 }
 
-                WriteValueOptimized(channel.Value);
+                WriteSingleValue(meta, channel.Value);
             }
 
             SmartFlush(false);
@@ -314,7 +314,7 @@ namespace NVHDataBridge.IO.TDMS
                     meta.RawData.Count += channel.Values.Length;
                 }
 
-                WriteArrayOptimized(channel.Values);
+                WriteArrayValues(meta, channel.Values);
                 totalCount += channel.Values.Length;
             }
 
@@ -430,9 +430,9 @@ namespace NVHDataBridge.IO.TDMS
                 meta.RawData.Count += buffer.Count;
             }
 
-            // 超高效写入
+            // 按通道规范写入原始数据
             T[] data = buffer.GetArray();
-            WriteArrayOptimized(data);
+            WriteArrayValues(meta, data);
 
             _segmentDataCount += buffer.Count;
             buffer.Clear();
@@ -496,7 +496,7 @@ namespace NVHDataBridge.IO.TDMS
                     }
                 }
 
-                WriteArrayOptimized(chunk);
+                WriteArrayValues(meta, chunk);
 
                 offset += chunkCount;
                 _segmentDataCount += chunkCount;
@@ -554,15 +554,15 @@ namespace NVHDataBridge.IO.TDMS
                 meta.RawData.Count += data.Count;
             }
 
-            // 超高效写入
+            // 按通道规范写入原始数据
             if (data is T[] array)
             {
-                WriteArrayOptimized(array);
+                WriteArrayValues(meta, array);
             }
             else
             {
                 T[] tempArray = data.ToArray();
-                WriteArrayOptimized(tempArray);
+                WriteArrayValues(meta, tempArray);
             }
 
             _segmentDataCount += data.Count;
@@ -591,7 +591,7 @@ namespace NVHDataBridge.IO.TDMS
                     meta.RawData.Count += channel.Values.Length;
                 }
 
-                WriteArrayOptimized(channel.Values);
+                WriteArrayValues(meta, channel.Values);
                 totalCount += channel.Values.Length;
             }
 
@@ -664,37 +664,35 @@ namespace NVHDataBridge.IO.TDMS
         #region 超高效核心写入方法（关键优化）
 
         /// <summary>
-        /// 优化的单值写入（使用Buffer.BlockCopy，性能提升5倍）
+        /// 单值写入：通过 TDMSReader.Writer 按通道格式写 RawData
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WriteValueOptimized<T>(T value) where T : struct
+        private void WriteSingleValue<T>(Reader.Metadata meta, T value) where T : struct
         {
-            int size = Marshal.SizeOf<T>();
-            byte[] buffer = new byte[size];
+            if (meta?.RawData == null) throw new InvalidOperationException("元数据 RawData 未初始化。");
 
-            // 使用Buffer.BlockCopy替代Marshal（性能提升）
-            T[] tempArray = new T[] { value };
-            Buffer.BlockCopy(tempArray, 0, buffer, 0, size);
-
-            _writer.BaseStream.Write(buffer, 0, size);
+            // Writer.WriteRawData 会根据 RawData.DataType 等信息，以 TDMS 规范格式写入
+            _writer.WriteRawData(meta.RawData, new object[] { value });
         }
 
         /// <summary>
-        /// 超高效数组写入（Buffer.BlockCopy，性能提升10倍+）
+        /// 数组批量写入：通过 TDMSReader.Writer 按通道格式写 RawData
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WriteArrayOptimized<T>(T[] values) where T : struct
+        private void WriteArrayValues<T>(Reader.Metadata meta, T[] values) where T : struct
         {
             if (values == null || values.Length == 0) return;
 
-            int elementSize = Marshal.SizeOf<T>();
-            int totalSize = elementSize * values.Length;
+            if (meta?.RawData == null) throw new InvalidOperationException("元数据 RawData 未初始化。");
 
-            // 直接使用Buffer.BlockCopy（最快的方式）
-            byte[] buffer = new byte[totalSize];
-            Buffer.BlockCopy(values, 0, buffer, 0, totalSize);
+            // 将值装箱为 object[]，交给 Writer.WriteRawData 根据 DataType 写入
+            var objects = new object[values.Length];
+            for (int i = 0; i < values.Length; i++)
+            {
+                objects[i] = values[i];
+            }
 
-            _writer.BaseStream.Write(buffer, 0, totalSize);
+            _writer.WriteRawData(meta.RawData, objects);
         }
 
         /// <summary>
