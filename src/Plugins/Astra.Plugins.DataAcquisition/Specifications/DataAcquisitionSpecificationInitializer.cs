@@ -29,9 +29,9 @@ namespace Astra.Plugins.DataAcquisition.Specifications
                 Constraints = new Dictionary<string, object>
                 {
                     ["ChannelCount"] = 4,
-                    ["MaxSampleRate"] = 102400.0,
+                    ["MaxSampleRate"] = 1024000.0,
                     ["MinSampleRate"] = 1000.0,
-                    ["MaxBufferSize"] = 16384,
+                    ["MaxBufferSize"] = 65536,
                     ["MinBufferSize"] = 1024,
                     ["AllowedSampleRates"] = new List<double>
                     {
@@ -70,11 +70,11 @@ namespace Astra.Plugins.DataAcquisition.Specifications
                 Description = "BRC厂家数据采集卡，16通道，最高102.4kHz采样率",
                 Constraints = new Dictionary<string, object>
                 {
-                    ["ChannelCount"] = 16,
+                    ["ChannelCount"] = 32,
                     ["MaxSampleRate"] = 102400.0,
                     ["MinSampleRate"] = 1000.0,
-                    ["MaxBufferSize"] = 32768,
-                    ["MinBufferSize"] = 2048,
+                    ["MaxBufferSize"] = 65536,
+                    ["MinBufferSize"] = 1024,
                     ["AllowedSampleRates"] = new List<double>
                     {
                         1000.0, 2000.0, 4000.0, 8000.0, 10240.0, 12800.0,
@@ -109,70 +109,31 @@ namespace Astra.Plugins.DataAcquisition.Specifications
                 Description = "MGS厂家数据采集卡，32通道，最高204.8kHz采样率",
                 Constraints = new Dictionary<string, object>
                 {
-                    ["ChannelCount"] = 32,
-                    ["MaxSampleRate"] = 204800.0,
+                    ["ChannelCount"] = 8,
+                    ["MaxSampleRate"] = 1024000.0,
                     ["MinSampleRate"] = 1000.0,
                     ["MaxBufferSize"] = 65536,
-                    ["MinBufferSize"] = 4096,
+                    ["MinBufferSize"] = 1024,
                     ["AllowedSampleRates"] = new List<double>
                     {
                         1000.0, 2000.0, 4000.0, 8000.0, 10240.0, 12800.0,
                         16000.0, 20000.0, 25600.0, 32000.0, 40000.0, 51200.0,
                         64000.0, 80000.0, 102400.0, 128000.0, 160000.0, 204800.0
                     },
-                    //["AllowedCouplingModes"] = new List<CouplingMode>
-                    //{
-                    //    CouplingMode.AC,
-                    //    CouplingMode.DC
-                    //},
-                    //["AllowedTriggerLevels"] = new List<double>
-                    //{
-                    //    0.0,
-                    //    4.0
-                    //}
+                    ["AllowedCouplingModes"] = new List<CouplingMode>
+                    {
+                        CouplingMode.AC,
+                        CouplingMode.DC
+                    },
+                    ["AllowedTriggerLevels"] = new List<double>
+                    {
+                        0.0,
+                        4.0
+                    }
                 },
                 Capabilities = new Dictionary<string, object>
                 {
                     ["SupportsSyncSampling"] = false
-                }
-            });
-
-            // MGS 型号2
-            specifications.Add(new DeviceSpecification
-            {
-                DeviceType = DeviceType.DataAcquisition,
-                Manufacturer = "MGS",
-                Model = "Model2",
-                DisplayName = "MGS - 型号2",
-                Description = "MGS厂家数据采集卡，64通道，最高409.6kHz采样率",
-                Constraints = new Dictionary<string, object>
-                {
-                    ["ChannelCount"] = 64,
-                    ["MaxSampleRate"] = 409600.0,
-                    ["MinSampleRate"] = 1000.0,
-                    ["MaxBufferSize"] = 131072,
-                    ["MinBufferSize"] = 8192,
-                    ["AllowedSampleRates"] = new List<double>
-                    {
-                        1000.0, 2000.0, 4000.0, 8000.0, 10240.0, 12800.0,
-                        16000.0, 20000.0, 25600.0, 32000.0, 40000.0, 51200.0,
-                        64000.0, 80000.0, 102400.0, 128000.0, 160000.0, 204800.0,
-                        256000.0, 320000.0, 409600.0
-                    },
-                    //["AllowedCouplingModes"] = new List<CouplingMode>
-                    //{
-                    //    CouplingMode.AC,
-                    //    CouplingMode.DC
-                    //},
-                    //["AllowedTriggerLevels"] = new List<double>
-                    //{
-                    //    0.0,
-                    //    4.0
-                    //}
-                },
-                Capabilities = new Dictionary<string, object>
-                {
-                    ["SupportsSyncSampling"] = true
                 }
             });
 

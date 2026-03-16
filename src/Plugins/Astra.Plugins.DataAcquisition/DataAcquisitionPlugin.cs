@@ -1,6 +1,7 @@
 using Astra.Core.Configuration;
 using Astra.Core.Devices.Abstractions;
 using Astra.Core.Devices.Base;
+using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Management;
 using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
@@ -21,6 +22,11 @@ namespace Astra.Plugins.DataAcquisition
 {
     public class DataAcquisitionPlugin : IPlugin
     {
+        /// <summary>
+        /// 当前已初始化的插件实例（单例场景下用于提供全局访问），仅供同一插件程序集内部使用。
+        /// </summary>
+        internal static DataAcquisitionPlugin? Current { get; private set; }
+
         private IPluginContext _context;
         private IDeviceManager? _deviceManager;
 
@@ -40,6 +46,8 @@ namespace Astra.Plugins.DataAcquisition
         public async Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            // 记录当前实例，便于同一程序集内部（如属性提供者）访问设备列表
+            Current = this;
 
             // ⭐ 从 _context.ServiceProvider 获取服务
             // 这样可以确保插件系统和主应用使用同一个服务实例
@@ -83,10 +91,10 @@ namespace Astra.Plugins.DataAcquisition
             {
                 try
                 {
-                    // 传感器配置：配置文件名使用插件 Id（若无 Id 则回退到类型名）
+                    // 传感器配置：配置文件名使用“插件Id.Sensor.config”（若无 Id 则回退到类型名）
                     var sensorOptions = new Astra.Core.Configuration.Providers.ConfigProviderOptions<SensorConfig>
                     {
-                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(SensorConfig) : Id
+                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(SensorConfig) : $"{Id}.Sensor.config"
                     };
                     _configuManager.RegisterProvider<SensorConfig>(options: sensorOptions);
                     _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 SensorConfig", LogCategory.System);
@@ -97,10 +105,10 @@ namespace Astra.Plugins.DataAcquisition
                 }
                 try
                 {
-                    // 采集卡配置：配置文件名同样使用插件 Id（不同配置类型在各自目录下，文件名可复用）
+                    // 采集卡配置：配置文件名同样使用“插件Id.config”（不同配置类型在各自目录下，文件名可复用）
                     var daqOptions = new Astra.Core.Configuration.Providers.ConfigProviderOptions<DataAcquisitionConfig>
                     {
-                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(DataAcquisitionConfig) : Id
+                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(DataAcquisitionConfig) : $"{Id}.config"
                     };
                     _configuManager.RegisterProvider<DataAcquisitionConfig>(options: daqOptions);
                     _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 DataAcquisitionConfig", LogCategory.System);
@@ -449,6 +457,29 @@ namespace Astra.Plugins.DataAcquisition
             }
         }
 
+        private IDataAcquisition? GetDataAcquisitionDevice(ConfigBase configBase)
+        {
+            if(_devices == null || _devices.Count == 0)
+            {
+                return null;
+            }
+
+            foreach(var device in _devices)
+            {
+                if(device is not IConfigurable<DataAcquisitionConfig> configurable)
+                {
+                    continue;
+                }
+
+                if(configurable.CurrentConfig.ConfigId == configBase.ConfigId)
+                {
+                    return device;
+                }
+            }
+
+            return null;
+        }
+
         #region 配置变更事件订阅
 
         /// <summary>
@@ -617,7 +648,8 @@ namespace Astra.Plugins.DataAcquisition
             try
             {
                 // 查找对应的设备
-                var device = _devices.FirstOrDefault(d => d.DeviceId == config.DeviceId);
+                var device = GetDataAcquisitionDevice(config);
+
                 if (device == null)
                 {
                     _logger?.LogWarn($"[{Name}] 未找到设备 {config.DeviceName} ({config.DeviceId})，尝试创建新设备", LogCategory.Device);
@@ -721,6 +753,15 @@ namespace Astra.Plugins.DataAcquisition
             {
                 _logger?.LogError($"[{Name}] 删除设备失败: {ex.Message}", ex, LogCategory.Device);
             }
+        }
+
+        /// <summary>
+        /// 向外部提供当前所有采集设备的只读视图，主要用于属性编辑器等读取设备列表。
+        /// </summary>
+        internal IReadOnlyList<IDataAcquisition> GetAllDataAcquisitions()
+        {
+            // 返回只读包装，避免外部修改内部列表
+            return _devices.AsReadOnly();
         }
 
         #endregion

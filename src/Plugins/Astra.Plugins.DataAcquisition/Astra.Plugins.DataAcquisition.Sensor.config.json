@@ -1,0 +1,39 @@
+{
+  "Configs": [
+    {
+      "SensorType": 0,
+      "Manufacturer": "MGS",
+      "Model": "M1",
+      "SerialNumber": "S1",
+      "Sensitivity": 1.0,
+      "SensitivityUnit": "mV/V",
+      "SensitivityX": 1.0,
+      "SensitivityY": 1.0,
+      "SensitivityZ": 1.0,
+      "SensitivityUnitX": "mV/V",
+      "SensitivityUnitY": "mV/V",
+      "SensitivityUnitZ": "mV/V",
+      "PhysicalUnit": "mV/V",
+      "MeasurementRangeMin": 0.0,
+      "MeasurementRangeMax": 100.0,
+      "FrequencyRangeMin": 1.0,
+      "FrequencyRangeMax": 10000.0,
+      "CalibrationFactor": 1.0,
+      "ConversionMode": 0,
+      "UnitConversionFactor": 1.0,
+      "CalibrationDate": null,
+      "Notes": "",
+      "DisplayText": "MGS M1 #1 (M1 S/N:S1)",
+      "IsThreeAxis": false,
+      "IsThreeAxisSensor": false,
+      "SupportsAxisSelection": false,
+      "ConfigId": "5a7708b7-6e26-42d0-8e64-f5f670c44e7e",
+      "ConfigName": "MGS M1 #1",
+      "CreatedAt": "0001-01-01T00:00:00",
+      "UpdatedAt": "2026-03-16T20:14:37.6834103+08:00",
+      "Version": 1,
+      "ConfigTypeName": "Astra.Plugins.DataAcquisition.Configs.SensorConfig, Astra.Plugins.DataAcquisition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+    }
+  ],
+  "LastModified": "2026-03-16T20:14:37.6852039+08:00"
+}

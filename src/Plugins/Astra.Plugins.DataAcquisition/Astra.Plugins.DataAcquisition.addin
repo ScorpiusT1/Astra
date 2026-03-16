@@ -13,12 +13,20 @@
 		<Runtime>
 			<Assembly>Astra.Plugins.DataAcquisition.dll</Assembly>
 			<TypeName>Astra.Plugins.DataAcquisition.DataAcquisitionPlugin</TypeName>
-			<TargetFramework>net8.0-windows</TargetFramework>
+				<TargetFramework>net8.0-windows</TargetFramework>
 		</Runtime>
 		<Dependencies />
 		<Permissions>
 			<Required />
 		</Permissions>
 	</Addin>
+	<Nodes>
+		<NodeInfo
+			Name="多采集卡采集"
+			TypeName="Astra.Plugins.DataAcquisition.Nodes.MultiDataAcquisitionNode"
+			IconCode="Plug"			
+			Description="在一个节点中同时启动多个采集卡的采集"
+			Category="数据采集" />
+	</Nodes>
 </AddinManifest>
 

@@ -2,6 +2,7 @@ using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
 using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Plugins.DataAcquisition.Devices;
+using Astra.Plugins.DataAcquisition.SDKs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -172,12 +173,6 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         [ObservableProperty]
         private string _selectedSerialNumber;
 
-        [RelayCommand]
-        public void Save()
-        {
-            // 占位实现：后续可扩展为导出当前缓存的波形数据
-            AddLogMessage("保存数据功能尚未实现");
-        }
 
         [RelayCommand]
         public void ResetStatistics()
@@ -221,6 +216,17 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             // 扫描序列号命令
             ScanSerialNumbersCommand = new AsyncRelayCommand(ScanSerialNumbersAsync);
+
+            AvailableSerialNumbers?.Clear();
+
+            if (_device?.CurrentConfig is DataAcquisitionConfig cfg)
+            {
+                if (!string.IsNullOrWhiteSpace(cfg.SerialNumber))
+                {
+                    AvailableSerialNumbers.Add(cfg.SerialNumber);
+                    SelectedSerialNumber = cfg.SerialNumber;
+                }
+            }
         }
 
         /// <summary>
@@ -356,7 +362,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                     var ys = new double[effectiveCount];
                     for (int i = 0; i < effectiveCount; i++)
                     {
-                        int idx = i * channelCount + ch;
+                        int idx = i + ch * effectiveCount;
                         if (idx < floatData.Length)
                             ys[i] = floatData[idx];
                     }
@@ -392,7 +398,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             if (_device != null)
             {
                 CurrentState = _device.GetState();
-                
+
                 StatusMessage = CurrentState switch
                 {
                     AcquisitionState.Idle => "空闲",
@@ -475,17 +481,34 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         {
             AvailableSerialNumbers.Clear();
 
-            if (_device?.CurrentConfig is DataAcquisitionConfig cfg)
+            List<string> snList = new List<string>();
+
+            await Task.Run(() =>
             {
-                if (!string.IsNullOrWhiteSpace(cfg.SerialNumber))
-                {
-                    AvailableSerialNumbers.Add(cfg.SerialNumber);
-                    SelectedSerialNumber = cfg.SerialNumber;
-                }
+                var moduleInfos = BRCSDK.ScanModules();
+
+                snList = moduleInfos.Select(m => m.DeviceId).ToList();
+            });
+           
+
+            foreach(var sn in snList)
+            {
+                AvailableSerialNumbers.Add(sn);
             }
 
-            // 在此处接入真实硬件扫描逻辑，将扫描得到的 SN 添加到 AvailableSerialNumbers 中
-            await Task.CompletedTask;
+            SelectedSerialNumber = AvailableSerialNumbers.FirstOrDefault();
+
+            //if (_device?.CurrentConfig is DataAcquisitionConfig cfg)
+            //{
+            //    if (!string.IsNullOrWhiteSpace(cfg.SerialNumber))
+            //    {
+            //        AvailableSerialNumbers.Add(cfg.SerialNumber);
+            //        SelectedSerialNumber = cfg.SerialNumber;
+            //    }
+            //}
+
+            //// 在此处接入真实硬件扫描逻辑，将扫描得到的 SN 添加到 AvailableSerialNumbers 中
+            //await Task.CompletedTask;
         }
 
         public void AddLogMessage(string message)

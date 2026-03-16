@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,7 +26,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public BRCDataAcquisitionDeviceConnection(DataAcquisitionConfig config, Microsoft.Extensions.Logging.ILogger logger = null)
         {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
+            //_config = config ?? throw new ArgumentNullException(nameof(config));
+
+            _config = config ?? new DataAcquisitionConfig();
             _logger = logger;
             AutoReconnectEnabled = true;
         }
