@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Geometry;
+using Astra.Core.Nodes.Geometry;
 using Astra.Core.Nodes.Models;
 using Astra.UI.Commands;
 using System;
@@ -109,6 +109,12 @@ namespace Astra.UI.Controls
         {
             // 当节点数据切换时重新分配端口 ID，保证 Edge 可通过端口ID定位到正确端口
             EnsurePortIds();
+
+            // 同步节点模型上的 Icon 到控件的 Icon 属性，便于样式中直接绑定 NodeControl.Icon
+            if (e.NewValue is Node node)
+            {
+                Icon = node.Icon;
+            }
         }
 
         /// <summary>
@@ -283,6 +289,55 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
+        /// 节点图标代码（与 Node.Icon 对应），用于样式中直接绑定
+        /// </summary>
+        public static readonly DependencyProperty IconProperty =
+            DependencyProperty.Register("Icon", typeof(string), typeof(NodeControl),
+                new PropertyMetadata(null, OnIconChanged));
+
+        public string Icon
+        {
+            get { return (string)GetValue(IconProperty); }
+            set { SetValue(IconProperty, value); }
+        }
+
+        private static void OnIconChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var control = d as NodeControl;
+            if (control == null)
+                return;
+
+            // 当控件上的 Icon 发生变化时，尝试同步回节点模型，保持数据一致
+            if (control.DataContext is Node node)
+            {
+                var newIcon = e.NewValue as string;
+                if (node.Icon != newIcon)
+                {
+                    node.Icon = newIcon;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 双击节点时执行的命令（通常由外部绑定，用于弹窗等）
+        /// 命令参数默认传递 DataContext（节点模型）
+        /// </summary>
+        public static readonly DependencyProperty NodeDoubleClickCommandProperty =
+            DependencyProperty.Register(
+                nameof(NodeDoubleClickCommand),
+                typeof(ICommand),
+                typeof(NodeControl),
+                new PropertyMetadata(null));
+
+        public ICommand NodeDoubleClickCommand
+        {
+            get => (ICommand)GetValue(NodeDoubleClickCommandProperty);
+            set => SetValue(NodeDoubleClickCommandProperty, value);
+        }
+
+      
+
+        /// <summary>
         /// 节点状态 - 使用 NodeExecutionState 枚举
         /// </summary>
         public static readonly DependencyProperty StatusProperty =
@@ -403,6 +458,22 @@ namespace Astra.UI.Controls
             get { return (bool)GetValue(IsSelectedProperty); }
             set { SetValue(IsSelectedProperty, value); }
         }
+
+        /// <summary>
+        /// 双击节点事件（用于代码级订阅）
+        /// </summary>
+        public static readonly RoutedEvent NodeDoubleClickEvent =
+            EventManager.RegisterRoutedEvent(
+                nameof(NodeDoubleClick),
+                RoutingStrategy.Bubble,
+                typeof(RoutedEventHandler),
+                typeof(NodeControl));
+
+        public event RoutedEventHandler NodeDoubleClick
+        {
+            add => AddHandler(NodeDoubleClickEvent, value);
+            remove => RemoveHandler(NodeDoubleClickEvent, value);
+        }
         
         private static void OnIsSelectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -445,6 +516,23 @@ namespace Astra.UI.Controls
         private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _parentCanvas ??= FindParentCanvas(this);
+
+            // 优先处理双击：用于弹出节点配置窗口等
+            if (e.ClickCount == 2)
+            {
+                // 触发路由事件
+                RaiseEvent(new RoutedEventArgs(NodeDoubleClickEvent, this));
+
+                // 执行命令（如果已绑定）
+                if (NodeDoubleClickCommand?.CanExecute(DataContext) == true)
+                {
+                    NodeDoubleClickCommand.Execute(DataContext);
+                }
+
+                // 双击时不进入拖拽逻辑
+                e.Handled = true;
+                return;
+            }
 
             // 如果点击在端口上，优先进入“连线”模式而不是拖拽
             var hitPort = FindHitPort(e.OriginalSource as DependencyObject);

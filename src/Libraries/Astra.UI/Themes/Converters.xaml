@@ -33,6 +33,7 @@
     <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
     <converters:BrushToColorConverter x:Key="BrushToColorConverter" />
     <converters:IconConverter x:Key="IconConverter" />
+    <converters:IconTypeToVisibilityConverter x:Key="IconTypeToVisibilityConverter" />
 
 </ResourceDictionary>
 

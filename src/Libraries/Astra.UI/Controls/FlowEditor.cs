@@ -1,7 +1,8 @@
-﻿using Astra.UI.Services;
+using Astra.UI.Services;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
 using Astra.UI.Commands;
+using Astra.UI.Windows;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -318,6 +319,11 @@ namespace Astra.UI.Controls
                         }
                     }
                 }
+
+                // 订阅节点双击事件（NodeControl.NodeDoubleClick 会冒泡到画布）
+                _infiniteCanvas.AddHandler(
+                    NodeControl.NodeDoubleClickEvent,
+                    new RoutedEventHandler(OnNodeControlDoubleClick));
             }
 
             // 订阅事件
@@ -446,6 +452,33 @@ namespace Astra.UI.Controls
             System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnCanvasDrop] 处理拖放：WorkflowTab '{workflowTab?.Name ?? "null"}'");
             var dropPosition = e.GetPosition(_infiniteCanvas);
             TryHandleNodeDrop(e, dropPosition);
+        }
+
+        #endregion
+
+        #region 节点双击弹窗
+
+        /// <summary>
+        /// 处理节点控件的双击事件（由 NodeControl 冒泡而来）
+        /// 默认行为：弹出节点属性编辑窗口（内嵌 PropertyEditorControl）
+        /// </summary>
+        private void OnNodeControlDoubleClick(object sender, RoutedEventArgs e)
+        {
+            if (e.OriginalSource is NodeControl nodeControl &&
+                nodeControl.DataContext is Node node)
+            {
+                var window = new NodePropertyEditorWindow(node)
+                {
+                    Owner = Application.Current?.MainWindow,
+                    Title = string.IsNullOrWhiteSpace(node.Name)
+                        ? "节点属性"
+                        : $"节点属性 - {node.Name}"
+                };
+
+                window.ShowDialog();
+
+                e.Handled = true;
+            }
         }
 
         #endregion
@@ -1439,6 +1472,14 @@ namespace Astra.UI.Controls
                 if (!string.IsNullOrWhiteSpace(toolItem.Description))
                 {
                     instance.Description = toolItem.Description;
+                }
+
+                // 如果工具项有图标代码，则同步到节点的 Icon 属性
+                // 这样画布中的节点图标可以与工具面板保持一致
+                if (toolItem is Astra.UI.Models.ToolItem typedTool &&
+                    !string.IsNullOrWhiteSpace(typedTool.IconCode))
+                {
+                    instance.Icon = typedTool.IconCode;
                 }
 
                 return instance;

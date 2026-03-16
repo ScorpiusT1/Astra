@@ -1,5 +1,6 @@
 using Astra.UI.Adapters;
 using Astra.UI.Services;
+using FontAwesome.Sharp;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -251,6 +252,11 @@ namespace Astra.UI.Controls
         /// 节点类型 - 用于创建节点对象的类型信息（可以是 Type 对象或类型名称字符串）
         /// </summary>
         object NodeType { get; set; }
+
+        /// <summary>
+        /// 工具所属的小组名称（用于在同一类别中对工具进行分组显示）
+        /// </summary>
+        string GroupName { get; set; }
 
         /// <summary>
         /// 是否被选中
@@ -2051,7 +2057,7 @@ namespace Astra.UI.Controls
         #region 拖拽预览窗口管理
 
         /// <summary>
-        /// 显示拖拽预览窗口
+        /// 显示拖拽预览窗口（使用与工具项/节点一致的 FontAwesome 图标）
         /// </summary>
         private void ShowDragPreview(IToolItem tool)
         {
@@ -2083,31 +2089,31 @@ namespace Astra.UI.Controls
             };
             
             // 创建与 NodeControl 相同的样式
-            // 🔧 Border 保持基础尺寸，通过 ScaleTransform 缩放以保持样式一致性
+            // Border 保持基础尺寸，通过 ScaleTransform 缩放以保持样式一致性
             var mainBorder = new Border
             {
-                Width = baseWidth,    // 保持基础宽度
-                Height = baseHeight,  // 保持基础高度
+                Width = baseWidth,
+                Height = baseHeight,
                 Background = (Brush)TryFindResource("SurfaceBrush") ?? new SolidColorBrush(Colors.White),
                 CornerRadius = new CornerRadius(6),
-                RenderTransformOrigin = new Point(0, 0)  // 从左上角缩放
+                RenderTransformOrigin = new Point(0, 0)
             };
             
-            // 🔧 使用 LayoutTransform 进行缩放，保持字体、图标等样式的视觉一致性
+            // 使用 LayoutTransform 进行缩放，保持字体、图标等样式的视觉一致性
             _dragPreviewScaleTransform = new ScaleTransform(initialScale, initialScale);
             mainBorder.LayoutTransform = _dragPreviewScaleTransform;
             
-            // 🔧 应用 BorderClipHelper 以正确裁剪圆角内容
+            // 应用 BorderClipHelper 以正确裁剪圆角内容
             Astra.UI.Helpers.BorderClipHelper.SetClipToBounds(mainBorder, true);
             
-            _dragPreviewBorder = mainBorder;    // 保存引用用于后续调整
+            _dragPreviewBorder = mainBorder;
             
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });  // 图标区
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // 文字区
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // 时间区
             
-            // 图标区域
+            // 图标区域（与工具面板、节点一致：FontAwesome 图标）
             var iconBorder = new Border
             {
                 Background = (Brush)TryFindResource("PrimaryBrush") ?? new SolidColorBrush(Color.FromRgb(0, 120, 215)),
@@ -2123,33 +2129,16 @@ namespace Astra.UI.Controls
                 VerticalAlignment = VerticalAlignment.Center
             };
             
-            var iconCanvas = new Canvas
+            var iconBlock = new IconBlock
             {
-                Width = 24,
-                Height = 24
+                Icon = GetIconFromTool(tool),
+                Foreground = (Brush)TryFindResource("SurfaceBrush") ?? new SolidColorBrush(Colors.White),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 18
             };
             
-            // 创建图标路径
-            var iconPath = new System.Windows.Shapes.Path
-            {
-                Stroke = (Brush)TryFindResource("SurfaceBrush") ?? new SolidColorBrush(Colors.White),
-                StrokeThickness = 2,
-                StrokeLineJoin = PenLineJoin.Round,
-                StrokeStartLineCap = PenLineCap.Round,
-                StrokeEndLineCap = PenLineCap.Round
-            };
-            
-            // 默认图标（通知图标）
-            string iconData = "M15 17H20L18.5951 15.5951C18.2141 15.2141 18 14.6973 18 14.1585V11C18 8.38757 16.3304 6.16509 14 5.34142V5C14 3.89543 13.1046 3 12 3C10.8954 3 10 3.89543 10 5V5.34142C7.66962 6.16509 6 8.38757 6 11V14.1585C6 14.6973 5.78595 15.2141 5.40493 15.5951L4 17H9M15 17V18C15 19.6569 13.6569 21 12 21C10.3431 21 9 19.6569 9 18V17M15 17H9";
-            
-            try
-            {
-                iconPath.Data = Geometry.Parse(iconData);
-            }
-            catch { }
-            
-            iconCanvas.Children.Add(iconPath);
-            iconViewbox.Child = iconCanvas;
+            iconViewbox.Child = iconBlock;
             iconBorder.Child = iconViewbox;
             grid.Children.Add(iconBorder);
             
@@ -2193,6 +2182,31 @@ namespace Astra.UI.Controls
             
             // 初始化位置
             UpdateDragPreviewPosition();
+        }
+
+        /// <summary>
+        /// 从工具项的 IconCode 解析 FontAwesome 图标（与 XAML 中 IconConverter 规则一致）
+        /// </summary>
+        private IconChar GetIconFromTool(IToolItem tool)
+        {
+            if (tool == null || string.IsNullOrWhiteSpace(tool.IconCode))
+            {
+                return IconChar.Circle;
+            }
+
+            try
+            {
+                if (Enum.TryParse(tool.IconCode, true, out IconChar icon))
+                {
+                    return icon;
+                }
+            }
+            catch
+            {
+                // 忽略解析异常，走默认分支
+            }
+
+            return IconChar.Circle;
         }
 
         /// <summary>

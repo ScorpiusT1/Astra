@@ -135,6 +135,8 @@ namespace Astra.UI.Services
                         IconCode = iconCode, // 支持 FontAwesome 或文件路径
                         Description = nodeInfo.Description ?? string.Empty,
                         NodeType = nodeInfo.TypeName, // 使用类型名称字符串，FlowEditor 会动态解析
+                        // 组名：为空或空白时不设置，避免在 UI 中占用多余的组头空间
+                        GroupName = string.IsNullOrWhiteSpace(nodeInfo.Group) ? null : nodeInfo.Group,
                         IsEnabled = true
                     };
 

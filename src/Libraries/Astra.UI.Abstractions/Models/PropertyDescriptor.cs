@@ -1,4 +1,4 @@
-﻿using Astra.UI.Abstractions.Attributes;
+using Astra.UI.Abstractions.Attributes;
 using System;
 using System.ComponentModel;
 using System.Reflection;
@@ -137,7 +137,7 @@ namespace Astra.UI.Abstractions.Models
                                                 {
                                                     var validValues = string.Join(", ", Enum.GetNames(PropertyType));
                                                     conversionError = $"'{stringValue}' 不是有效的 {PropertyType.Name} 值。有效值: {validValues}";
-                                                    throw;
+                                                    throw new InvalidOperationException(conversionError);
                                                 }
                                             }
                                             else if (typeof(IConvertible).IsAssignableFrom(PropertyType))
@@ -151,12 +151,12 @@ namespace Astra.UI.Abstractions.Models
                                                 catch (FormatException)
                                                 {
                                                     conversionError = $"无法将 '{stringValue}' 转换为 {PropertyType.Name} 类型（格式错误）";
-                                                    throw;
+                                                    throw new InvalidOperationException(conversionError);
                                                 }
                                                 catch (OverflowException)
                                                 {
                                                     conversionError = $"无法将 '{stringValue}' 转换为 {PropertyType.Name} 类型（数值超出范围）";
-                                                    throw;
+                                                    throw new InvalidOperationException(conversionError);
                                                 }
                                             }
                                             else
@@ -167,10 +167,11 @@ namespace Astra.UI.Abstractions.Models
                                         }
                                         catch (Exception convertEx)
                                         {
-                                            // 如果已经有友好的错误消息，使用它；否则使用异常消息
+                                            // 如果已经有友好的错误消息，使用它；否则提供统一的中文提示
                                             if (string.IsNullOrEmpty(conversionError))
                                             {
-                                                conversionError = $"类型转换失败: {convertEx.Message}";
+                                                // 不直接使用 convertEx.Message，避免出现英文系统错误信息
+                                                conversionError = $"类型转换失败: 输入的值不是有效的 {PropertyType.Name} 类型。";
                                             }
                                             
                                             // 设置错误提示并恢复原值

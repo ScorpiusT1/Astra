@@ -12,6 +12,7 @@ namespace Astra.UI.Models
         private string _iconCode;
         private string _description;
         private object _nodeType;
+        private string _groupName;
         private bool _isSelected;
         private bool _isEnabled = true;
 
@@ -66,6 +67,22 @@ namespace Astra.UI.Models
                 {
                     _nodeType = value;
                     OnPropertyChanged(nameof(NodeType));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 工具所属的小组名称（用于在同一类别中对工具进行分组显示）
+        /// </summary>
+        public string GroupName
+        {
+            get => _groupName;
+            set
+            {
+                if (_groupName != value)
+                {
+                    _groupName = value;
+                    OnPropertyChanged(nameof(GroupName));
                 }
             }
         }

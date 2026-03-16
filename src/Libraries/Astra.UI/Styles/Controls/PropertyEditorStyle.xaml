@@ -189,12 +189,13 @@
         <Grid HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <!-- 错误行去掉，避免出现第二处重复错误显示 -->
+                <!--<RowDefinition Height="Auto" />-->
             </Grid.RowDefinitions>
 
             <!-- 输入框 -->
             <TextBox Grid.Row="0"
-                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True}"
+                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      ToolTip="{Binding Description}"
                      IsReadOnly="{Binding IsReadOnly}"
                      IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
@@ -230,93 +231,7 @@
                 </TextBox.Resources>
             </TextBox>
 
-            <!-- 错误消息 -->
-            <Border Grid.Row="1"
-                    Margin="0,4,0,0"
-                    Padding="8,5"
-                    CornerRadius="4"
-                    HorizontalAlignment="Stretch">
-                <Border.Style>
-                    <Style TargetType="Border">
-                        <Setter Property="Visibility"
-                                Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ValidationSeverity}"
-                                         Value="Error">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource DangerColor}"
-                                                         Opacity="0.1" />
-                                    </Setter.Value>
-                                </Setter>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding ValidationSeverity}"
-                                         Value="Warning">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource WarningColor}"
-                                                         Opacity="0.1" />
-                                    </Setter.Value>
-                                </Setter>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding ValidationSeverity}"
-                                         Value="Info">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource InfoColor}"
-                                                         Opacity="0.1" />
-                                    </Setter.Value>
-                                </Setter>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding HasErrors}"
-                                         Value="True">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource DangerColor}"
-                                                         Opacity="0.1" />
-                                    </Setter.Value>
-                                </Setter>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Border.Style>
-
-                <TextBlock Text="{Binding ErrorMessage}"
-                           FontSize="11"
-                           TextWrapping="Wrap">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Foreground"
-                                    Value="{DynamicResource ThirdlyTextBrush}" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding ValidationSeverity}"
-                                             Value="Error">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource DangerBrush}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding ValidationSeverity}"
-                                             Value="Warning">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource WarningBrush}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding ValidationSeverity}"
-                                             Value="Info">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource InfoBrush}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-            </Border>
+            <!-- 下方错误消息区域移除，只保留输入框本身的红色高亮 -->
         </Grid>
     </DataTemplate>
 
@@ -341,11 +256,12 @@
         <Grid HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <!-- 错误行去掉，避免出现第二处重复错误显示 -->
+                <!--<RowDefinition Height="Auto" />-->
             </Grid.RowDefinitions>
 
             <TextBox Grid.Row="0"
-                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, ValidatesOnDataErrors=True}"
+                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      ToolTip="{Binding Description}"
                      IsReadOnly="{Binding IsReadOnly}"
                      IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"
@@ -374,71 +290,7 @@
                 </TextBox.Resources>
             </TextBox>
 
-            <!-- 错误消息 -->
-            <Border Grid.Row="1"
-                    Margin="0,4,0,0"
-                    Padding="8,5"
-                    CornerRadius="4"
-                    HorizontalAlignment="Stretch">
-                <Border.Style>
-                    <Style TargetType="Border">
-                        <Setter Property="Visibility"
-                                Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ValidationSeverity}"
-                                         Value="Error">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource DangerColor}"
-                                                         Opacity="0.1" />
-                                    </Setter.Value>
-                                </Setter>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding ValidationSeverity}"
-                                         Value="Warning">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Setter Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="{DynamicResource WarningColor}"
-                                                         Opacity="0.1" />
-                                    </Setter.Value>
-                                </Setter>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Border.Style>
-
-                <TextBlock Text="{Binding ErrorMessage}"
-                           FontSize="11"
-                           TextWrapping="Wrap">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Foreground"
-                                    Value="{DynamicResource ThirdlyTextBrush}" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding ValidationSeverity}"
-                                             Value="Error">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource DangerBrush}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding ValidationSeverity}"
-                                             Value="Warning">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource WarningBrush}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding ValidationSeverity}"
-                                             Value="Info">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource InfoBrush}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-            </Border>
+            <!-- 下方错误消息区域移除，只保留输入框本身的红色高亮 -->
         </Grid>
     </DataTemplate>
 

@@ -93,7 +93,7 @@
                                     <!-- TabPanel（标签页列表） -->
                                     <Border Grid.Column="1"
                                             BorderBrush="{DynamicResource BorderBrush}"
-                                            BorderThickness="1"
+                                            BorderThickness="0,0,0,1"
                                             VerticalAlignment="Stretch"
                                             Visibility="{TemplateBinding ShowTabPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <ScrollViewer HorizontalScrollBarVisibility="Auto"

@@ -1,0 +1,153 @@
+<Window x:Class="Astra.UI.Windows.NodePropertyEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:Astra.UI.Controls"
+        xmlns:helpers="clr-namespace:Astra.UI.Helpers"
+        Title="节点属性"
+        SizeToContent="Manual"
+        Width="820"
+        Height="600"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Background="Transparent"
+        AllowsTransparency="True"
+        ShowInTaskbar="False">
+
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource SurfaceBrush}"
+            CornerRadius="16"
+            BorderBrush="{DynamicResource PrimaryBrush}"
+            BorderThickness="1.5"
+            helpers:BorderClipHelper.ClipToBounds="True"
+            MouseLeftButtonDown="RootBorder_MouseLeftButtonDown">
+        <Border.RenderTransform>
+            <TranslateTransform />
+        </Border.RenderTransform>
+        <Border.Effect>
+            <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                              Opacity="0.2"
+                              BlurRadius="32"
+                              ShadowDepth="6" />
+        </Border.Effect>
+
+        <Grid Margin="32,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 标题 -->
+            <StackPanel Grid.Row="0"
+                        Margin="0,0,0,16">
+                <TextBlock Text="🧩 节点属性"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                <TextBlock Text="{Binding TargetNode.Name, RelativeSource={RelativeSource AncestorType=Window}}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           Margin="0,6,0,0"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <!-- 右上角关闭按钮 -->
+            <Button x:Name="CloseButton"
+                    Grid.Row="0"
+                    Grid.RowSpan="2"
+                    Margin="0,-8,-8,0"
+                    Style="{DynamicResource CloseButtonStyle}"
+                    Click="CancelButton_Click" />
+
+            <!-- 属性编辑器主体 -->
+            <ui:PropertyEditorControl x:Name="PropertyEditor"
+                                      Grid.Row="1"
+                                      Margin="0,0,0,16"
+                                      ShowSearchBox="False"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch" />
+
+            <!-- 底部确认 / 取消按钮 -->
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button Content="取消"
+                        Width="120"
+                        Height="44"
+                        Margin="0,0,12,0"
+                        Click="CancelButton_Click"
+                        Background="{DynamicResource ThirdlyRegionBrush}"
+                        Foreground="{DynamicResource PrimaryTextBrush}"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        BorderThickness="0"
+                        Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="border"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="10"
+                                                Padding="20,10">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver"
+                                                     Value="True">
+                                                <Setter TargetName="border"
+                                                        Property="Background"
+                                                        Value="{DynamicResource SecondaryRegionBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button Content="确定"
+                        Width="120"
+                        Height="44"
+                        Click="OkButton_Click"
+                        Background="{DynamicResource PrimaryBrush}"
+                        Foreground="{DynamicResource ReverseTextBrush}"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        BorderThickness="0"
+                        Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="border"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="10"
+                                                Padding="20,10">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver"
+                                                     Value="True">
+                                                <Setter TargetName="border"
+                                                        Property="Background"
+                                                        Value="{DynamicResource DarkPrimaryBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
+

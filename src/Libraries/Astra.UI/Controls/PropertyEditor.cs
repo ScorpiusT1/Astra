@@ -1,4 +1,4 @@
-﻿using Astra.UI.Abstractions.Interfaces;
+using Astra.UI.Abstractions.Interfaces;
 using Astra.UI.Abstractions.Models;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -458,8 +458,10 @@ namespace Astra.UI.Controls
                 }
                 else
                 {
+                    // 只显示显式标记了 DisplayAttribute 的属性，且可浏览
                     properties = _selectedObject.GetType()
                         .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                        .Where(p => p.GetCustomAttribute<System.ComponentModel.DataAnnotations.DisplayAttribute>() != null)
                         .Select(p => new PropertyDescriptor(_selectedObject, p))
                         .Where(p => p.IsBrowsable);
                 }
