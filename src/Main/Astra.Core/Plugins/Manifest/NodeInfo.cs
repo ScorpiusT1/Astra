@@ -1,4 +1,4 @@
-﻿using System.Xml.Serialization;
+using System.Xml.Serialization;
 
 namespace Astra.Core.Plugins.Manifest
 {
@@ -37,6 +37,13 @@ namespace Astra.Core.Plugins.Manifest
         /// </summary>
         [XmlAttribute("Category")]
         public string Category { get; set; }
+
+        /// <summary>
+        /// 节点组名（可选）- 用于在同一类别下对工具进行二级分组显示
+        /// 例如：在“数据采集”类别下再按“通用节点”、“供应商A”、“供应商B”进行分组。
+        /// </summary>
+        [XmlAttribute("Group")]
+        public string Group { get; set; }
     }
 }
 

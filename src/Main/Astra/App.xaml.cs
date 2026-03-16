@@ -5,11 +5,19 @@
 //   - ApplicationStartupService: 启动流程
 //   - ServiceRegistrationConfigurator: 服务注册
 
-using Astra.Services.Startup;
+using Astra.Core.Plugins.Abstractions;
+using Astra.Services.Monitoring;
 using Astra.Services.Session;
+using Astra.Services.Startup;
 using Astra.UI.Helpers;
 using Astra.UI.Styles.Controls;
+using Astra.Utilities;
+using Astra.ViewModels;
+using Astra.Views;
+using FontAwesome.Sharp;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NavStack.Regions;
 using NavStack.Services;
 using System;
@@ -18,13 +26,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-using Astra.ViewModels;
-using Astra.Utilities;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using Astra.Services.Monitoring;
-using Astra.Views;
-using Astra.Core.Plugins.Abstractions;
 
 
 namespace Astra
@@ -111,7 +112,7 @@ namespace Astra
                     {
                         try
                         {
-                            var health = ServiceProvider.GetService<IHealthCheckService>() 
+                            var health = ServiceProvider.GetService<IHealthCheckService>()
                                 ?? new BasicHealthCheckService(ServiceProvider);
                             var telemetry = ServiceProvider.GetService<ITelemetryService>();
                             var result = await health.CheckAsync();

@@ -95,6 +95,7 @@ namespace Astra.ViewModels
 
         #endregion
 
+
         public ObservableCollection<NavigationMenuItem> MenuItems { get; }
 		private NavigationMenuItem _lastSelectedItem;
 
@@ -125,9 +126,10 @@ namespace Astra.ViewModels
 
             MenuItems = new ObservableCollection<NavigationMenuItem>();
             ApplicationVersion = AssemblyInfo.Version;
+            ApplicationTitle = AssemblyInfo.ProductName;
 
-			// 初始时尝试订阅；若区域尚未注册，可在 App 启动后调用 EnsureRegionSubscriptions 再订阅
-			EnsureRegionSubscriptions();
+            // 初始时尝试订阅；若区域尚未注册，可在 App 启动后调用 EnsureRegionSubscriptions 再订阅
+            EnsureRegionSubscriptions();
 
             // 监听用户会话变化
             _messenger.Register<UserSessionChangedMessage>(this, OnUserSessionChanged);
