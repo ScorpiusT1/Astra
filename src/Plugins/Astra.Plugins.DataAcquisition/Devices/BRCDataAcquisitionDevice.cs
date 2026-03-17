@@ -17,6 +17,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using System.Collections.Generic;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
@@ -52,6 +53,22 @@ namespace Astra.Plugins.DataAcquisition.Devices
         public BRCDataAcquisitionDevice(DataAcquisitionConfig currentConfig)
             : this(currentConfig, null, null)
         {
+        }
+
+        /// <summary>
+        /// 当上位机通过配置管理器更新采集卡配置（点击保存）且不需要重启设备时，
+        /// 基类会调用此方法应用“可热更新”的配置属性。
+        /// 这里同步把最新配置传递给连接层，使 BRCDataAcquisitionDeviceConnection
+        /// 在后续 DeviceExists/Connect/Configure 调用中使用最新参数。
+        /// </summary>
+        /// <param name="newConfig">最新的采集配置</param>
+        /// <param name="changedProps">发生变更的属性名称列表</param>
+        protected override void ApplyHotUpdateProperties(DataAcquisitionConfig newConfig, List<string> changedProps)
+        {
+            base.ApplyHotUpdateProperties(newConfig, changedProps);
+
+            // 将最新配置同步给连接管理类，保证扫描设备和属性配置使用最新参数
+            _brcConnection?.UpdateConfig(newConfig);
         }
 
         protected override async Task OnInitializeAsync()

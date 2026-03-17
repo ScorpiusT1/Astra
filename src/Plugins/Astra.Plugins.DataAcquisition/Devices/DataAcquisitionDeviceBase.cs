@@ -158,14 +158,18 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public async Task StartAcquisitionAsync(CancellationToken cancellationToken = default)
         {
+            // 先在锁外完成初始化，避免在持有 _stateLock 时再次调用 InitializeAsync 导致自死锁
+            if (!_initialized)
+            {
+                if (!await InitializeAsync().ConfigureAwait(false))
+                    throw new InvalidOperationException("采集卡初始化失败");
+            }
+
             await _stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (_state == AcquisitionState.Running)
                     throw new InvalidOperationException("采集已在运行状态");
-
-                if (!_initialized && !await InitializeAsync().ConfigureAwait(false))
-                    throw new InvalidOperationException("采集卡初始化失败");
 
                 cancellationToken.ThrowIfCancellationRequested();
 

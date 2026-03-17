@@ -19,7 +19,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
     public class BRCDataAcquisitionDeviceConnection : DeviceConnectionBase
     {
         private readonly object _syncRoot = new();
-        private readonly DataAcquisitionConfig _config;
+        private DataAcquisitionConfig _config;
         private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private BRCSDK.BrcDevice _brcDevice;
         private BRCSDK.ModuleInfo _moduleInfo;
@@ -31,6 +31,17 @@ namespace Astra.Plugins.DataAcquisition.Devices
             _config = config ?? new DataAcquisitionConfig();
             _logger = logger;
             AutoReconnectEnabled = true;
+        }
+
+        /// <summary>
+        /// 在设备配置热更新时同步更新连接层使用的配置。
+        /// 仅用于运行时配置变更（点击保存后由设备调用），不做线程安全检查，
+        /// 调用方需保证与采集流程的并发关系。
+        /// </summary>
+        /// <param name="config">最新的采集卡配置</param>
+        public void UpdateConfig(DataAcquisitionConfig config)
+        {
+            _config = config ?? new DataAcquisitionConfig();
         }
 
         protected override bool DoCheckAlive()

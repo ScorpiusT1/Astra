@@ -56,6 +56,8 @@
                             Padding="8">
                         <StackPanel Orientation="Horizontal">
                             <ComboBox Width="160"
+                                      IsEditable="True"
+                                      IsReadOnly="True"
                                       ItemsSource="{Binding AvailableSerialNumbers}"
                                       SelectedItem="{Binding SelectedSerialNumber, Mode=TwoWay}" />
                             <Button Content="扫描"
