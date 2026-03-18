@@ -82,31 +82,31 @@ namespace Astra.Plugins.DataAcquisition.Views
                 if (vmChannel != null && !string.IsNullOrWhiteSpace(vmChannel.Name))
                     channelName = vmChannel.Name;
 
-                Signal signal = plt.Add.Signal(ys, sampleRate);
+                Signal signal = plt.Add.Signal(ys, 1.0 / sampleRate);
                 signal.LegendText = channelName;
             }
 
             if (dataByChannel.Count > 0)
             {
                 plt.Axes.AutoScale();
-                plt.Legend.Location = Alignment.UpperRight;
+                plt.Legend.Alignment = Alignment.UpperRight;
             }
 
             WaveformPlot.Refresh();
         }
 
-        private static void SetFont(WpfPlot wpfPlot, string font = "微软雅黑")
+        private void SetFont(WpfPlot wpfPlot, string font = "微软雅黑")
         {
-            if (wpfPlot == null) return;
-
             var multiPlot = wpfPlot.Multiplot;
 
-            if (multiPlot == null)
+            if (multiPlot == null || multiPlot.Subplots == null)
             {
                 return;
             }
 
-            for (int i = 0; i < multiPlot.Subplots.Count; i++)
+            int count = multiPlot.Subplots.Count;
+
+            for (int i = 0; i < count; i++)
             {
                 var plot = multiPlot.GetPlot(i);
                 plot.Font.Set(font);
