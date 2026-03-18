@@ -323,6 +323,24 @@ namespace Astra.UI.ViewModels
         [ObservableProperty]
         private double _zoomPercentage = 100.0;
 
+        partial void OnZoomPercentageChanged(double value)
+        {
+            // 将当前缩放值写回当前子流程的数据结构，做到每个子流程各自记住缩放
+            if (CurrentTab != null && CurrentTab.Type == WorkflowType.Sub)
+            {
+                var subWorkflow = CurrentTab.GetSubWorkflow();
+                if (subWorkflow != null)
+                {
+                    if (subWorkflow.Variables == null)
+                    {
+                        subWorkflow.Variables = new Dictionary<string, object>();
+                    }
+
+                    subWorkflow.Variables["ZoomPercentage"] = value;
+                }
+            }
+        }
+
         /// <summary>
         /// 是否锁定画布
         /// </summary>
@@ -392,8 +410,12 @@ namespace Astra.UI.ViewModels
             CurrentTab = null;
             IsMasterWorkflow = false;
 
-            // 创建默认子流程
+            // 创建默认子流程（初始空工程）
             AddNewWorkflow(WorkflowType.Sub);
+
+            // 新项目认为是“未修改”状态，避免第一次点打开就提示保存
+            ClearAllModifiedFlags();
+            _commandManager?.Clear();
         }
 
         /// <summary>
@@ -741,6 +763,40 @@ namespace Astra.UI.ViewModels
 
             // 同步到画布
             SyncTabToCanvas(tab);
+
+            // 根据目标标签页的子流程变量还原缩放百分比（每个子流程独立缩放）
+            if (tab.Type == WorkflowType.Sub)
+            {
+                var subWorkflow = tab.GetSubWorkflow();
+                if (subWorkflow != null && subWorkflow.Variables != null && subWorkflow.Variables.TryGetValue("ZoomPercentage", out var zoomObj))
+                {
+                    if (zoomObj is double d)
+                    {
+                        ZoomPercentage = d;
+                    }
+                    else if (zoomObj is float f)
+                    {
+                        ZoomPercentage = f;
+                    }
+                    else if (zoomObj is int i)
+                    {
+                        ZoomPercentage = i;
+                    }
+                    else if (zoomObj is long l)
+                    {
+                        ZoomPercentage = l;
+                    }
+                    else if (zoomObj is string s && double.TryParse(s, out var parsed))
+                    {
+                        ZoomPercentage = parsed;
+                    }
+                }
+                else
+                {
+                    // 没有保存过则使用默认值
+                    ZoomPercentage = 100.0;
+                }
+            }
 
             Debug.WriteLine($"[SwitchWorkflow] === 切换完成 ===");
             Debug.WriteLine($"[SwitchWorkflow]   CurrentTab: {CurrentTab.Name}, Nodes 哈希: {CurrentTab.Nodes.GetHashCode()}, 节点数: {CurrentTab.Nodes.Count}");
@@ -1568,6 +1624,13 @@ namespace Astra.UI.ViewModels
 
             if (subWorkflowTab != null)
             {
+                // 标记主流程和被删除的子流程为已修改
+                if (MasterWorkflow != null)
+                {
+                    MasterWorkflow.IsModified = true;
+                }
+                subWorkflowTab.IsModified = true;
+
                 // 如果当前正在编辑这个子流程，需要先切换到其他标签页
                 if (CurrentTab == subWorkflowTab)
                 {
@@ -1787,8 +1850,12 @@ namespace Astra.UI.ViewModels
                 // 清除所有修改标记
                 ClearAllModifiedFlags();
 
-                MessageBoxHelper.ShowSuccess($"项目已成功加载: {Path.GetFileName(filePath)}", "打开成功");
+                // 使用 Toast 提示打开成功（不再弹模态对话框）
+                ToastHelper.ShowSuccess($"项目已成功加载: {Path.GetFileName(filePath)}");
                 Debug.WriteLine($"[SequenceViewModel] 项目已成功加载: {filePath}");
+
+                // 打开成功后，将当前命令历史视为“已保存基线”
+                _commandManager?.Clear();
             }
             catch (Exception ex)
             {
@@ -1912,6 +1979,9 @@ namespace Astra.UI.ViewModels
 
                 // 清除所有修改标记
                 ClearAllModifiedFlags();
+
+                // 保存成功后，将命令历史视为“已保存基线”，清空撤销/重做栈
+                _commandManager?.Clear();
 
                 return true;
             }
@@ -2091,6 +2161,36 @@ namespace Astra.UI.ViewModels
                     GlobalVariables = data.GlobalVariables;
                 }
 
+                //// 从 Metadata 还原缩放比例（如果存在）
+                //if (data.Metadata != null && data.Metadata.TryGetValue("ZoomPercentage", out var zoomObj))
+                //{
+                //    if (zoomObj is double d)
+                //    {
+                //        ZoomPercentage = d;
+                //    }
+                //    else if (zoomObj is float f)
+                //    {
+                //        ZoomPercentage = f;
+                //    }
+                //    else if (zoomObj is int i)
+                //    {
+                //        ZoomPercentage = i;
+                //    }
+                //    else if (zoomObj is long l)
+                //    {
+                //        ZoomPercentage = l;
+                //    }
+                //    else if (zoomObj is string s && double.TryParse(s, out var parsed))
+                //    {
+                //        ZoomPercentage = parsed;
+                //    }
+                //}
+                //else
+                //{
+                //    // 旧项目没有保存缩放信息时，使用默认值
+                //    ZoomPercentage = 100.0;
+                //}
+
                 // 重建主流程标签页（如果主流程存在）
                 if (MasterWorkflow != null)
                 {
@@ -2147,6 +2247,11 @@ namespace Astra.UI.ViewModels
         /// </summary>
         private bool HasUnsavedChanges()
         {
+            // 1. 优先根据命令历史判断：只要有可撤销命令，就说明从上次保存/打开后做过修改
+            if (_commandManager != null && _commandManager.CanUndo)
+                return true;
+
+            // 2. 兼容旧逻辑：保留 IsModified 标记作为兜底（例如某些直接属性编辑未走命令栈）
             // 检查主流程是否已修改
             if (MasterWorkflow != null && MasterWorkflow.IsModified)
                 return true;

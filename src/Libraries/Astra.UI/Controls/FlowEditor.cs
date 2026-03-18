@@ -3,6 +3,8 @@ using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
 using Astra.UI.Commands;
 using Astra.UI.Windows;
+using Astra.UI.Models;
+using Astra.UI.ViewModels;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -366,7 +368,67 @@ namespace Astra.UI.Controls
                 
                 // 初始化右键菜单
                 InitializeContextMenu();
+
+                // 订阅视图变换事件（缩放/平移变化）
+                _infiniteCanvas.ViewTransformChanged += OnCanvasViewTransformChanged;
             }
+        }
+
+        /// <summary>
+        /// 设置画布缩放比例（0.4 - 2.0，对应 40% - 200%）
+        /// </summary>
+        /// <param name="zoomPercentage">缩放百分比，例如 100 表示 1.0 倍</param>
+        public void SetZoomPercentage(double zoomPercentage)
+        {
+            if (_infiniteCanvas == null)
+                return;
+
+            var scale = zoomPercentage / 100.0;
+            _infiniteCanvas.Scale = scale;
+        }
+
+        /// <summary>
+        /// 画布视图（缩放/平移）变化时，同步缩放百分比到 ViewModel
+        /// </summary>
+        private void OnCanvasViewTransformChanged(object sender, RoutedEventArgs e)
+        {
+            if (_infiniteCanvas == null)
+                return;
+
+            // 计算当前缩放百分比
+            var zoom = _infiniteCanvas.Scale * 100.0;
+
+            // 防抖：缩放变化很小时忽略，避免无意义写入
+            if (DataContext is WorkflowTab && TryGetViewModel(out var viewModel))
+            {
+                // 只有当差异明显时才更新，避免死循环
+                if (Math.Abs(viewModel.ZoomPercentage - zoom) > 0.1)
+                {
+                    viewModel.ZoomPercentage = zoom;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 向上查找可视树，获取 MultiFlowEditorViewModel
+        /// </summary>
+        private bool TryGetViewModel(out MultiFlowEditorViewModel viewModel)
+        {
+            viewModel = null;
+
+            DependencyObject current = this;
+            while (current != null)
+            {
+                if (current is FrameworkElement fe && fe.DataContext is MultiFlowEditorViewModel vm)
+                {
+                    viewModel = vm;
+                    return true;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return false;
         }
 
         private void UnsubscribeFromEvents()
@@ -388,6 +450,9 @@ namespace Astra.UI.Controls
                 // 取消右键菜单事件
                 _infiniteCanvas.PreviewMouseRightButtonDown -= OnCanvasPreviewRightMouseDown;
                 _infiniteCanvas.MouseRightButtonDown -= OnCanvasRightMouseDown;
+
+                // 取消视图变换事件
+                _infiniteCanvas.ViewTransformChanged -= OnCanvasViewTransformChanged;
             }
         }
 

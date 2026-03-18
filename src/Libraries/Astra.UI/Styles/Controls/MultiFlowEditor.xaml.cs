@@ -1,4 +1,4 @@
-﻿using Astra.UI.Controls;
+using Astra.UI.Controls;
 using Astra.UI.Models;
 using System;
 using System.Collections.Generic;
@@ -412,6 +412,30 @@ namespace Astra.UI.Styles.Controls
                                 workflowTab.CommandManager = globalCommandManager;
                                 Debug.WriteLine($"[SequenceView] 为 {workflowTab.Name} 设置全局 CommandManager");
                             }
+
+                            // 根据当前 WorkflowTab 自己的数据恢复缩放比例（每个子流程独立）
+                            double zoom = 100.0;
+                            if (workflowTab.Type == Core.Nodes.Models.WorkflowType.Sub)
+                            {
+                                var subWorkflow = workflowTab.GetSubWorkflow();
+                                if (subWorkflow != null && subWorkflow.Variables != null &&
+                                    subWorkflow.Variables.TryGetValue("ZoomPercentage", out var zoomObj))
+                                {
+                                    if (zoomObj is double d)
+                                        zoom = d;
+                                    else if (zoomObj is float f)
+                                        zoom = f;
+                                    else if (zoomObj is int i)
+                                        zoom = i;
+                                    else if (zoomObj is long l)
+                                        zoom = l;
+                                    else if (zoomObj is string s && double.TryParse(s, out var parsed))
+                                        zoom = parsed;
+                                }
+                            }
+
+                            // 应用到当前 FlowEditor 对应的 InfiniteCanvas
+                            flowEditor.SetZoomPercentage(zoom);
                         }
                         else if (flowEditor.CommandManager != null && workflowTab.CommandManager == null)
                         {

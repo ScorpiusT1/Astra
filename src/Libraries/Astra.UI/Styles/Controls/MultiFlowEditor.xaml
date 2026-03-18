@@ -1,8 +1,8 @@
 ﻿<UserControl x:Class="Astra.UI.Styles.Controls.MultiFlowEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Astra.UI.Styles.Controls"
              xmlns:behaviors="clr-namespace:Astra.UI.Behaviors"
              xmlns:viewModels="clr-namespace:Astra.UI.ViewModels"
@@ -13,7 +13,7 @@
              xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
              d:DataContext="{d:DesignInstance Type=viewModels:MultiFlowEditorViewModel}"
              xmlns:converters="clr-namespace:Astra.UI.Converters"
-             mc:Ignorable="d" 
+             mc:Ignorable="d"
              d:DesignHeight="450"
              d:DesignWidth="800"
              Background="{DynamicResource SurfaceBrush}">
@@ -57,7 +57,7 @@
             </controls:WorkflowReferenceNodeControl>
         </DataTemplate>
 
-    
+
         <!-- 默认节点模板（使用 NodeControl） -->
         <DataTemplate x:Key="DefaultNodeTemplate">
             <controls:NodeControl Title="{Binding Name, Mode=TwoWay, FallbackValue='节点'}"
@@ -669,7 +669,7 @@
                                Margin="0,0,16,0" />
 
                     <!-- 缩放显示 -->
-                    <TextBlock Text="{Binding ZoomPercentage, StringFormat='{}{0:F0}%'}"
+                    <TextBlock Text="{Binding ZoomPercentage, StringFormat='{}{0:F0}%',UpdateSourceTrigger=PropertyChanged,Mode=TwoWay}"
                                FontSize="12"
                                Foreground="{DynamicResource SecondaryTextBrush}"
                                VerticalAlignment="Center"
