@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿using System;
 using Astra.Core.Foundation.Common;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,7 +56,7 @@ namespace Astra.Core.Devices.Base
             }
         }
 
-        public bool IsOnline => Status == DeviceStatus.Online;
+        public bool IsOnline => (Status == DeviceStatus.Online) || (Status == DeviceStatus.Connected);
 
         #region 心跳配置
 
@@ -140,7 +140,7 @@ namespace Astra.Core.Devices.Base
                     {
                         // 如果正在自动重连，停止重连任务
                         StopAutoReconnect();
-                        
+
                         Status = DeviceStatus.Online;
                         return OperationResult.Succeed("设备连接成功");
                     }
@@ -195,7 +195,7 @@ namespace Astra.Core.Devices.Base
                     {
                         // 如果正在自动重连，停止重连任务
                         StopAutoReconnect();
-                        
+
                         Status = DeviceStatus.Online;
                         return OperationResult.Succeed("设备连接成功");
                     }
