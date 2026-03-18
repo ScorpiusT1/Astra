@@ -1,17 +1,12 @@
+using Astra.Communication.Abstractions;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
-using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.SDKs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 
 namespace Astra.Plugins.DataAcquisition.ViewModels

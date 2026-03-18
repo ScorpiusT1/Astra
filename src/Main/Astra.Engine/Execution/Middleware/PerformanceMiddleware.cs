@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Astra.Engine.Execution.Middleware
 {
@@ -75,7 +76,7 @@ namespace Astra.Engine.Execution.Middleware
             var logger = _logger ?? ResolveLogger(context);
             if (logger != null)
             {
-                logger.Warn($"节点 {node.Name} 执行时间过长: {elapsedMs}ms");
+                logger.LogWarning($"节点 {node.Name} 执行时间过长: {elapsedMs}ms");
             }
         }
 
@@ -86,7 +87,7 @@ namespace Astra.Engine.Execution.Middleware
         {
             try
             {
-                return context?.ServiceProvider?.GetService(typeof(Logger)) as Logger;
+                return context?.ServiceProvider?.GetService(typeof(ILogger)) as ILogger;
             }
             catch
             {

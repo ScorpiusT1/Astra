@@ -17,10 +17,12 @@ namespace Astra.Services
     public sealed class PluginViewFactory : IPluginViewFactory
     {
         private readonly IPluginHost _pluginHost;
+        private readonly IServiceProvider _hostServiceProvider;
 
-        public PluginViewFactory(IPluginHost pluginHost)
+        public PluginViewFactory(IPluginHost pluginHost, IServiceProvider hostServiceProvider)
         {
             _pluginHost = pluginHost ?? throw new ArgumentNullException(nameof(pluginHost));
+            _hostServiceProvider = hostServiceProvider ?? throw new ArgumentNullException(nameof(hostServiceProvider));
         }
 
         /// <inheritdoc />
@@ -96,7 +98,7 @@ namespace Astra.Services
         /// 通过构造函数或属性注入创建 ViewModel，不依赖具体接口或属性名。
         /// 优先：单参构造函数（参数类型可接受 configOrDevice）；否则无参构造 + 可写且类型兼容的属性注入。
         /// </summary>
-        private static object CreateViewModel(Type viewModelType, object configOrDevice)
+        private object CreateViewModel(Type viewModelType, object configOrDevice)
         {
             if (viewModelType == null) return null;
 
@@ -108,16 +110,40 @@ namespace Astra.Services
 
             var valueType = configOrDevice.GetType();
 
-            // 1. 任一单参构造函数，且参数类型可接受当前实参（实参可赋值给参数类型）
-            foreach (var ctor in viewModelType.GetConstructors(BindingFlags.Public | BindingFlags.Instance))
+            // 1) 优先匹配构造函数：第 1 个参数接收 configOrDevice，其余参数从宿主 DI 尝试解析
+            // 用于支持 (config, IConfigurationManager, ...) 这类多参注入构造函数
+            var ctors = viewModelType.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+                .OrderByDescending(c => c.GetParameters().Length)
+                .ToArray();
+
+            foreach (var ctor in ctors)
             {
                 var parameters = ctor.GetParameters();
-                if (parameters.Length != 1) continue;
-                var paramType = parameters[0].ParameterType;
-                if (!paramType.IsInstanceOfType(configOrDevice)) continue;
+                if (parameters.Length == 0) continue;
+
+                var firstParamType = parameters[0].ParameterType;
+                if (!firstParamType.IsInstanceOfType(configOrDevice)) continue;
+
+                object[] args = new object[parameters.Length];
+                args[0] = configOrDevice;
+
+                bool canUse = true;
+                for (int i = 1; i < parameters.Length; i++)
+                {
+                    var pType = parameters[i].ParameterType;
+                    object resolved = ResolveFromHost(pType);
+                    if (resolved == null)
+                    {
+                        canUse = false;
+                        break;
+                    }
+                    args[i] = resolved;
+                }
+
+                if (!canUse) continue;
                 try
                 {
-                    return ctor.Invoke(new[] { configOrDevice });
+                    return ctor.Invoke(args);
                 }
                 catch { /* 忽略，尝试下一个 */ }
             }
@@ -149,6 +175,17 @@ namespace Astra.Services
                 catch { /* 忽略，尝试下一个属性 */ }
             }
 
+            return null;
+        }
+
+        private object ResolveFromHost(Type serviceType)
+        {
+            try
+            {
+                // 直接使用宿主 DI 容器解析，避免在 UI 线程阻塞等待 Task
+                return _hostServiceProvider.GetService(serviceType);
+            }
+            catch { }
             return null;
         }
 

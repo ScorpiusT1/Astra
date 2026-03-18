@@ -25,7 +25,7 @@
 	  <!-- ⭐ 程序集信息 -->
 	  <AssemblyTitle>Astra</AssemblyTitle>
 	  <NeutralLanguage>zh-CN</NeutralLanguage>
-	  <ApplicationIcon>Assets\Icons\app-as-logo.ico</ApplicationIcon>
+	  <ApplicationIcon>Assets\Icons\app-logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,27 +36,24 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Assets\Icons\app-as-logo.ico" />
     <None Remove="Assets\Icons\app-logo.png" />
     <None Remove="Assets\Icons\app-logo.svg" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\Icons\app-as-logo.ico" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Resource Include="Assets\Icons\app-as-logo.ico" />
     <Resource Include="Assets\Icons\app-logo.ico" />
     <Resource Include="Assets\Icons\app-logo.png" />
     <Resource Include="Assets\Icons\app-logo.svg" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Libraries\Astra.Extensions\Astra.Extensions.csproj" />
+    <ProjectReference Include="..\..\Libraries\Astra.Communication\Astra.Communication.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
     <ProjectReference Include="..\..\Libraries\NavStack\NavStack.csproj" />
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
+    <ProjectReference Include="..\Astra.Engine\Astra.Engine.csproj" />
     <ProjectReference Include="..\Astra.Infrastructure\Astra.Infrastructure.csproj" />
   </ItemGroup>
 
@@ -65,7 +62,7 @@
     <PackageReference Include="FontAwesome.Sharp" Version="6.6.0" />
     <PackageReference Include="HandyControl" Version="3.5.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.10" />
     <PackageReference Include="ScottPlot.WPF" Version="5.1.57" />
@@ -84,10 +81,6 @@
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Styles\" />
   </ItemGroup>
 
   <!-- ⭐ 插件需手动构建：在解决方案中单独生成各插件项目，或使用 msbuild 指定插件 .csproj。主程序构建时不再自动生成插件。 -->

@@ -218,6 +218,10 @@ namespace Astra.Services.Startup
                 // ── 主程序配置 Provider ───────────────────────────────────────
                 // 注册测试执行配置（全局单例，存储在 Configs/TestExecution 目录）
                 manager.RegisterProvider<TestExecutionConfig>();
+                // 软件配置（线体 / 工站 / DUT / 脚本 / 触发器映射）
+                manager.RegisterProvider<Astra.Configuration.SoftwareConfig>();
+                // 触发器配置（手动/扫码/PLC 等触发器定义）
+                manager.RegisterProvider<Astra.Engine.Triggers.TriggerConfig>();
 
                 return manager;
             });
@@ -458,7 +462,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<IPluginViewFactory>(provider =>
             {
                 var host = provider.GetRequiredService<IPluginHost>();
-                return new Astra.Services.PluginViewFactory(host);
+                return new Astra.Services.PluginViewFactory(host, provider);
             });
         }
 

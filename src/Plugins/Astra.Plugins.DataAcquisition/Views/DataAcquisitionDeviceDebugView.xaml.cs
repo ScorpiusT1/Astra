@@ -1,10 +1,12 @@
+using Astra.Plugins.DataAcquisition.ViewModels;
+using ScottPlot;
+using ScottPlot.Plottables;
+using ScottPlot.WPF;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Controls;
-using Astra.Plugins.DataAcquisition.ViewModels;
-using ScottPlot;
-using ScottPlot.Plottables;
 
 namespace Astra.Plugins.DataAcquisition.Views
 {
@@ -19,6 +21,7 @@ namespace Astra.Plugins.DataAcquisition.Views
         {
             InitializeComponent();
 
+            SetFont(WaveformPlot);
             DataContextChanged -= OnDataContextChanged;
             DataContextChanged += OnDataContextChanged;
         }
@@ -46,9 +49,9 @@ namespace Astra.Plugins.DataAcquisition.Views
 
             // 美化 ScottPlot 样式
             // 使用 UI 主题中的颜色
-            var surfaceColor   = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["SurfaceColor"];
-            var regionColor    = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["SecondaryRegionColor"];
-            var borderColor    = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["BorderColor"];
+            var surfaceColor = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["SurfaceColor"];
+            var regionColor = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["SecondaryRegionColor"];
+            var borderColor = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["BorderColor"];
 
             //plt.FigureBackground.Color = ScottPlot.Color.FromARGB(surfaceColor.A, surfaceColor.R, surfaceColor.G, surfaceColor.B);
             //plt.DataBackground.Color   = ScottPlot.Color.FromARGB(regionColor.A, regionColor.R, regionColor.G, regionColor.B);
@@ -90,6 +93,24 @@ namespace Astra.Plugins.DataAcquisition.Views
             }
 
             WaveformPlot.Refresh();
+        }
+
+        private static void SetFont(WpfPlot wpfPlot, string font = "微软雅黑")
+        {
+            if (wpfPlot == null) return;
+
+            var multiPlot = wpfPlot.Multiplot;
+
+            if (multiPlot == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < multiPlot.Subplots.Count; i++)
+            {
+                var plot = multiPlot.GetPlot(i);
+                plot.Font.Set(font);
+            }
         }
     }
 }

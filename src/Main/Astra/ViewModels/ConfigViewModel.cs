@@ -286,13 +286,13 @@ namespace Astra.ViewModels
                     }
                 }
 
-                // ✅ 获取或创建根节点（即使没有配置也要创建根节点，显示"+"号）
+                // ✅ 获取或创建根节点（即使没有配置也要创建根节点）
                 if (!rootNodes.TryGetValue(treeAttr.Category, out TreeNode? rootNode))
                 {
                     rootNode = GetTreeNode(treeAttr.Category);
 
-                    // 设置根节点属性
-                    rootNode.ShowAddButton = true;
+                    // 设置根节点属性（是否允许新增由 TreeNodeConfigAttribute 控制）
+                    rootNode.ShowAddButton = treeAttr.AllowAddOnRoot;
                     rootNode.ShowDeleteButton = false;
                     rootNode.Config = null;
                     rootNode.ConfigType = configType;
@@ -308,6 +308,24 @@ namespace Astra.ViewModels
                     .OrderBy(c => c.UpdatedAt ?? DateTime.MaxValue)
                     .ThenBy(c => c.CreatedAt) // 如果 UpdatedAt 相同，按创建时间排序
                     .ToList();
+
+                // 对于不允许在根节点新增的配置类型（如全局软件配置），如果当前没有任何配置实例，
+                // 在构建树时自动创建一个默认实例，保证根节点下始终有一个可编辑的配置。
+                if (!treeAttr.AllowAddOnRoot && configsOfType.Count == 0)
+                {
+                    try
+                    {
+                        var newConfig = Activator.CreateInstance(configType) as IConfig;
+                        if (newConfig != null)
+                        {
+                            configsOfType.Add(newConfig);
+                        }
+                    }
+                    catch
+                    {
+                        // 忽略自动创建失败，避免影响其他配置类型
+                    }
+                }
 
                 // 为该类型的所有配置创建子节点
                 foreach (var config in configsOfType)
@@ -422,7 +440,15 @@ namespace Astra.ViewModels
                 SelectedNode = node;
                 node.IsSelected = true;
 
-                LoadConfigView(node);
+                // 如果是根节点且不允许新增（没有“+”按钮），点击根节点时直接展示其下第一个配置的界面
+                if (node.Config == null && !node.ShowAddButton && node.Children != null && node.Children.Count > 0)
+                {
+                    LoadConfigView(node.Children[0]);
+                }
+                else
+                {
+                    LoadConfigView(node);
+                }
             }
             finally
             {

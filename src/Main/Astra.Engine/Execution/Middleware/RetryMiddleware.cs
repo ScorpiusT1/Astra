@@ -1,5 +1,5 @@
 using Astra.Core.Nodes.Models;
-using Astra.Core.Logs;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -67,7 +67,7 @@ namespace Astra.Engine.Execution.Middleware
                 try
                 {
                     attempt++;
-                    logger?.Info($"重试节点 {node.Name} 第 {attempt} 次尝试");
+                    logger?.LogInformation($"重试节点 {node.Name} 第 {attempt} 次尝试");
 
                     var result = await next(cancellationToken);
 
@@ -75,7 +75,7 @@ namespace Astra.Engine.Execution.Middleware
                     {
                         if (attempt > 1)
                         {
-                            logger?.Info($"节点 {node.Name} 在第 {attempt} 次尝试后成功");
+                            logger?.LogInformation($"节点 {node.Name} 在第 {attempt} 次尝试后成功");
                         }
                         return result;
                     }
@@ -85,19 +85,19 @@ namespace Astra.Engine.Execution.Middleware
                     // 检查是否应该重试
                     if (lastException != null && !_retryPredicate(lastException))
                     {
-                        logger?.Warn($"节点 {node.Name} 异常不支持重试: {lastException.GetType().Name}");
+                        logger?.LogWarning($"节点 {node.Name} 异常不支持重试: {lastException.GetType().Name}");
                         return result;
                     }
                 }
                 catch (Exception ex)
                 {
                     lastException = ex;
-                    logger?.Warn($"节点 {node.Name} 第 {attempt} 次尝试失败: {ex.Message}");
+                    logger?.LogWarning($"节点 {node.Name} 第 {attempt} 次尝试失败: {ex.Message}");
                     
                     // 检查是否应该重试
                     if (!_retryPredicate(ex))
                     {
-                        logger?.Warn($"节点 {node.Name} 异常不支持重试: {ex.GetType().Name}");
+                        logger?.LogWarning($"节点 {node.Name} 异常不支持重试: {ex.GetType().Name}");
                         throw;
                     }
                 }
@@ -105,12 +105,12 @@ namespace Astra.Engine.Execution.Middleware
                 if (attempt < _maxRetries)
                 {
                     var delay = _delayStrategy(attempt);
-                    logger?.Debug($"等待 {delay}ms 后进行下一次重试");
+                    logger?.LogDebug($"等待 {delay}ms 后进行下一次重试");
                     await Task.Delay(delay, cancellationToken);
                 }
             }
 
-            logger?.Error($"节点 {node.Name} 在 {_maxRetries} 次重试后仍然失败");
+            logger?.LogError($"节点 {node.Name} 在 {_maxRetries} 次重试后仍然失败");
             return ExecutionResult.Failed(
                 $"节点 {node.Name} 在 {_maxRetries} 次重试后仍然失败",
                 lastException,
@@ -125,7 +125,7 @@ namespace Astra.Engine.Execution.Middleware
         {
             try
             {
-                return context?.ServiceProvider?.GetService(typeof(Logger)) as Logger;
+                return context?.ServiceProvider?.GetService(typeof(ILogger)) as ILogger;
             }
             catch
             {

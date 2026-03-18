@@ -56,7 +56,7 @@ namespace Astra.Core.Devices.Base
             }
         }
 
-        public bool IsOnline => Status == DeviceStatus.Online;
+        public bool IsOnline => (Status == DeviceStatus.Online) || (Status == DeviceStatus.Connected);
 
         #region 心跳配置
 

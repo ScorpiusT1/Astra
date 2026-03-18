@@ -1,7 +1,4 @@
-using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Core.Devices.Interfaces;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Astra.Plugins.DataAcquisition.Providers
 {

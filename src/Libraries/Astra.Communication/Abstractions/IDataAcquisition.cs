@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Astra.Plugins.DataAcquisition.Abstractions
+namespace Astra.Communication.Abstractions
 {
     /// <summary>
     /// 数据采集器接口 - 核心接口

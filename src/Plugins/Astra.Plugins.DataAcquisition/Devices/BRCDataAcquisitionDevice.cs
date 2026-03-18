@@ -1,23 +1,12 @@
-using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
-using Astra.Core.Devices.Base;
 using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Messaging;
-using Microsoft.Extensions.Logging;
-using Astra.Plugins.DataAcquisition.Abstractions;
-using Astra.Plugins.DataAcquisition.SDKs;
 using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
-using NVHDataBridge.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {

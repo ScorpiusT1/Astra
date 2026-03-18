@@ -1,17 +1,11 @@
-using Astra.Core.Devices;
 using Astra.Core.Devices.Attributes;
-using Astra.Core.Devices.Base;
 using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Messaging;
-using Microsoft.Extensions.Logging;
-using Astra.Plugins.DataAcquisition.Abstractions;
-using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.ViewModels;
 using Astra.Plugins.DataAcquisition.Views;
-using NVHDataBridge.Models;
+using Microsoft.Extensions.Logging;
 using System.Buffers.Binary;
-using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Astra.Plugins.DataAcquisition.Devices

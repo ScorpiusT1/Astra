@@ -29,7 +29,7 @@
 
     </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid Margin="20">
+        <Grid Margin="0,20">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />

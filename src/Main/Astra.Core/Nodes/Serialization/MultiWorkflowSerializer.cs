@@ -1,4 +1,4 @@
-﻿using Astra.Core.Foundation.Common;
+using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Models;
 using Newtonsoft.Json;
 using System;
@@ -78,10 +78,10 @@ namespace Astra.Core.Nodes.Serialization
                 // 写入文件
                 File.WriteAllText(filePath, json);
 
-                // 更新主流程的文件路径
+                // 更新主流程的文件路径（使用相对路径/文件名，避免保存绝对路径）
                 if (data.MasterWorkflow != null)
                 {
-                    data.MasterWorkflow.FilePath = filePath;
+                    data.MasterWorkflow.FilePath = Path.GetFileName(filePath);
                 }
 
                 return OperationResult.Succeed($"多流程数据已保存到: {filePath}");
@@ -113,10 +113,10 @@ namespace Astra.Core.Nodes.Serialization
                 if (!result.Success)
                     return result;
 
-                // 更新主流程的文件路径
+                // 更新主流程的文件路径（使用相对路径/文件名，避免保存绝对路径）
                 if (result.Data.MasterWorkflow != null)
                 {
-                    result.Data.MasterWorkflow.FilePath = filePath;
+                    result.Data.MasterWorkflow.FilePath = Path.GetFileName(filePath);
                 }
 
                 return result;

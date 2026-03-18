@@ -1,4 +1,4 @@
-using Astra.Core.Configuration;
+using Astra.Communication.Abstractions;
 using Astra.Core.Devices.Abstractions;
 using Astra.Core.Devices.Base;
 using Astra.Core.Devices.Interfaces;
@@ -8,7 +8,6 @@ using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
 using Astra.Core.Plugins.Messaging;
-using Astra.Plugins.DataAcquisition.Abstractions;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Factories;
