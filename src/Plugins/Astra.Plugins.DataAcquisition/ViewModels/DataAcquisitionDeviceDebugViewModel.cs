@@ -1,4 +1,4 @@
-using Astra.Communication.Abstractions;
+using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
 using Astra.Plugins.DataAcquisition.Devices;

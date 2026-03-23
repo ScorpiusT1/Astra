@@ -36,13 +36,16 @@
 
 	<ItemGroup>
 		<!-- ⭐ 项目引用：不复制依赖项（主程序已包含这些库） -->
-		<ProjectReference Include="..\..\Libraries\Astra.Communication\Astra.Communication.csproj" />
 		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj">
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
 		<ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj">
 			<Private>True</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj" >
+			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
 		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
@@ -63,13 +66,9 @@
 
 		<MakeDir Directories="$(PluginOutputDir)" />
 
-		<Copy SourceFiles="$(PluginAddinSource)"
-		      DestinationFiles="$(PluginAddinTarget)"
-		      Condition="Exists('$(PluginAddinSource)') AND !Exists('$(PluginAddinTarget)')" />
+		<Copy SourceFiles="$(PluginAddinSource)" DestinationFiles="$(PluginAddinTarget)" Condition="Exists('$(PluginAddinSource)') AND !Exists('$(PluginAddinTarget)')" />
 
-		<Copy SourceFiles="$(PluginConfigSource)"
-		      DestinationFiles="$(PluginConfigTarget)"
-		      Condition="Exists('$(PluginConfigSource)') AND !Exists('$(PluginConfigTarget)')" />
+		<Copy SourceFiles="$(PluginConfigSource)" DestinationFiles="$(PluginConfigTarget)" Condition="Exists('$(PluginConfigSource)') AND !Exists('$(PluginConfigTarget)')" />
 	</Target>
 
 	<!-- 覆盖通用目标：仅在 Bin/Configs/Devices 不存在配置文件时初始化 -->
@@ -82,12 +81,8 @@
 		</PropertyGroup>
 
 		<MakeDir Directories="$(DeviceConfigOutputDir)" />
-		<Copy SourceFiles="$(DeviceConfigSourceFile)"
-		      DestinationFiles="$(DeviceConfigOutputFile)"
-		      Condition="Exists('$(DeviceConfigSourceFile)') AND !Exists('$(DeviceConfigOutputFile)')" />
-		<Message Text="配置文件不存在时已初始化到 $(DeviceConfigOutputFile)"
-		         Condition="Exists('$(DeviceConfigOutputFile)')"
-		         Importance="normal" />
+		<Copy SourceFiles="$(DeviceConfigSourceFile)" DestinationFiles="$(DeviceConfigOutputFile)" Condition="Exists('$(DeviceConfigSourceFile)') AND !Exists('$(DeviceConfigOutputFile)')" />
+		<Message Text="配置文件不存在时已初始化到 $(DeviceConfigOutputFile)" Condition="Exists('$(DeviceConfigOutputFile)')" Importance="normal" />
 	</Target>
 
 	<!-- ⚠️ 注意：不需要显式指定 XAML 文件为 Page 类型

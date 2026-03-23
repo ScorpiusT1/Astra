@@ -1,4 +1,4 @@
-using Astra.Communication.Abstractions;
+using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Base;
 using Astra.Core.Foundation.Common;
 using Astra.Plugins.PLC.Configs;

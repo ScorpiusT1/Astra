@@ -18,10 +18,10 @@
 
   <ItemGroup>
     <!-- 主程序公共库由宿主提供，不复制到插件目录 -->
-    <ProjectReference Include="..\..\Libraries\Astra.Communication\Astra.Communication.csproj">
-      <Private>false</Private>
-      <CopyLocal>false</CopyLocal>
-    </ProjectReference>
+	  <ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj" >
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+	  </ProjectReference>
     <ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
       <Private>false</Private>
       <CopyLocal>false</CopyLocal>
