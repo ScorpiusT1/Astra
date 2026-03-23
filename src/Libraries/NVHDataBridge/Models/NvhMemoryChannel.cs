@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 namespace NVHDataBridge.Models
@@ -175,7 +175,9 @@ namespace NVHDataBridge.Models
         /// <returns>数据范围</returns>
         public ReadOnlySpan<T> ReadRange(long start, int count)
         {
-            return _allData.GetRange(start, count);
+            var consumed = _allData.ConsumeRange(start, count);
+            UpdateTotalSamplesToProperties();
+            return consumed;
         }
 
         // =========================
@@ -186,6 +188,24 @@ namespace NVHDataBridge.Models
         /// </summary>
         /// <returns>所有数据的只读视图</returns>
         public ReadOnlySpan<T> ReadAll()
+        {
+            var consumed = _allData.ConsumeAll();
+            UpdateTotalSamplesToProperties();
+            return consumed;
+        }
+
+        /// <summary>
+        /// 仅查看指定范围的数据（不消费）
+        /// </summary>
+        public ReadOnlySpan<T> PeekRange(long start, int count)
+        {
+            return _allData.GetRange(start, count);
+        }
+
+        /// <summary>
+        /// 仅查看全部数据（不消费）
+        /// </summary>
+        public ReadOnlySpan<T> PeekAll()
         {
             return _allData.GetAll();
         }

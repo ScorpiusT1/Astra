@@ -1,0 +1,287 @@
+<UserControl x:Class="Astra.Plugins.PLC.Views.PlcDeviceDebugView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:viewmodels="clr-namespace:Astra.Plugins.PLC.ViewModels"
+             d:DataContext="{d:DesignInstance Type=viewmodels:PlcDeviceDebugViewModel}"
+             mc:Ignorable="d"
+             d:DesignHeight="620"
+             d:DesignWidth="980">
+    <UserControl.Resources>
+        <Style TargetType="TextBox"
+               BasedOn="{StaticResource DefaultModernTextBoxStyle}" />
+        <Style TargetType="TextBlock"
+               BasedOn="{StaticResource ModrenTextBlockStyle}" />
+        <Style TargetType="ComboBox"
+               BasedOn="{StaticResource ModernComboBoxStyle}" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="50" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="15" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="15" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0"
+                    Background="{DynamicResource SurfaceBrush}"
+                    CornerRadius="4"
+                    Padding="20"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    Margin="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               Text="连接管理"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               Margin="0,0,0,15" />
+
+
+                    <StackPanel Grid.Row="2"
+                                Grid.Column="1"
+                                Orientation="Horizontal">
+                        <Button Content="连接"
+                                Width="120"
+                                Height="34"
+                                Command="{Binding ConnectCommand}"
+                                Background="{DynamicResource DarkPrimaryBrush}"
+                                Foreground="{DynamicResource ReverseTextBrush}"
+                                BorderThickness="0" />
+                        <Button Content="断开连接"
+                                Width="120"
+                                Height="34"
+                                Margin="10,0,0,0"
+                                Command="{Binding DisconnectCommand}"
+                                Background="{DynamicResource DarkDefaultBrush}"
+                                Foreground="{DynamicResource PrimaryTextBrush}"
+                                BorderThickness="0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2"
+                  Margin="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0"
+                        Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="4"
+                        Padding="20"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="读取操作"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   Margin="0,0,0,15" />
+
+                        <TextBlock Text="IO地址:"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,5" />
+                        <TextBox Text="{Binding Address, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Height="34"
+                                 hc:InfoElement.Placeholder="例如 DB1.DBX0.0"
+                                 Margin="0,0,0,12" />
+
+                        <Border Background="{DynamicResource LightSuccessBrush}"
+                                CornerRadius="3"
+                                Padding="10,8"
+                                Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="{Binding ReadValue}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <TextBlock Text="{Binding ReadStatus}"
+                                           Margin="0,6,0,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                            </StackPanel>
+                        </Border>
+                        <Button Content="读取"
+                                Width="100"
+                                Height="34"
+                                HorizontalAlignment="Left"
+                                Command="{Binding ReadCommand}"
+                                Background="{DynamicResource SecondaryTextBrush}"
+                                Foreground="{DynamicResource ReverseTextBrush}"
+                                BorderThickness="0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="4"
+                        Padding="20"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="写入操作"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   Margin="0,0,0,15" />
+
+                        <TextBlock Text="IO地址:"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,5" />
+                        <TextBox Text="{Binding Address, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Height="34"
+                                 hc:InfoElement.Placeholder="例如 DB1.DBW2"
+                                 Margin="0,0,0,12" />
+
+                        <TextBlock Text="写入值:"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,5" />
+                        <TextBox Text="{Binding WriteValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Height="34"
+                                 hc:InfoElement.Placeholder="输入 bool/int/double/string"
+                                 Margin="0,0,0,12" />
+
+                        <Button Content="写入"
+                                Width="100"
+                                Height="34"
+                                HorizontalAlignment="Left"
+                                Command="{Binding WriteCommand}"
+                                Background="{DynamicResource DarkPrimaryBrush}"
+                                Foreground="{DynamicResource ReverseTextBrush}"
+                                BorderThickness="0"
+                                Margin="0,0,0,12" />
+
+                        <Border Background="{DynamicResource LightSuccessBrush}"
+                                CornerRadius="3"
+                                Padding="10,8">
+                            <TextBlock Text="{Binding WriteStatus}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="4"
+                    Background="{DynamicResource SurfaceBrush}"
+                    CornerRadius="4"
+                    Padding="12"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="调试日志"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               Margin="0,0,0,8" />
+                    <ListBox ItemsSource="{Binding Logs}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             VerticalAlignment="Stretch"
+                             HorizontalAlignment="Stretch" />
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource SecondaryRegionBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid Margin="20,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="{Binding Status, StringFormat=状态: {0}}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DeviceName, StringFormat=设备: {0}}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Margin="0,0,14,0"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Protocol, StringFormat=协议: {0}}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Margin="0,0,14,0"
+                               VerticalAlignment="Center" />
+                    <Ellipse Width="8"
+                             Height="8"
+                             Margin="0,0,6,0"
+                             VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill"
+                                        Value="{DynamicResource DangerBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsOnline}"
+                                                 Value="True">
+                                        <Setter Property="Fill"
+                                                Value="{DynamicResource SuccessBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock FontSize="11"
+                               VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text"
+                                        Value="连接状态: 离线" />
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource SecondaryTextBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsOnline}"
+                                                 Value="True">
+                                        <Setter Property="Text"
+                                                Value="连接状态: 在线" />
+                                        <Setter Property="Foreground"
+                                                Value="{DynamicResource DarkSuccessBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

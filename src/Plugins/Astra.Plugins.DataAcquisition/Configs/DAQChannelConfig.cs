@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace Astra.Plugins.DataAcquisition.Configs
 {
@@ -164,12 +164,26 @@ namespace Astra.Plugins.DataAcquisition.Configs
             get => _sensor;
             set
             {
+                var previousSavedSensorId = _savedSensorId;
+
                 if (_sensor != null)
                 {
                     _sensor.PropertyChanged -= Sensor_PropertyChanged;
                 }
 
                 SetProperty(ref _sensor, value);
+
+                // 仅在有新传感器对象时刷新保存用 SensorId。
+                // 当下拉源刷新导致 ComboBox 短暂回写 null 时，保留原 SensorId，避免误清空绑定。
+                if (_sensor != null)
+                {
+                    _savedSensorId = _sensor.ConfigId;
+                }
+                else
+                {
+                    _savedSensorId = previousSavedSensorId;
+                }
+                OnPropertyChanged(nameof(SensorId));
 
                 if (_sensor != null)
                 {
@@ -480,6 +494,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
         public void ClearSensor()
         {
             Sensor = null;
+            _savedSensorId = null;
+            OnPropertyChanged(nameof(SensorId));
         }
 
         /// <summary>

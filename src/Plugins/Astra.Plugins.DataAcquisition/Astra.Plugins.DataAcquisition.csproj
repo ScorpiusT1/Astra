@@ -24,6 +24,16 @@
 		</PackageReference>
 	</ItemGroup>
 
+	<!-- 覆盖通用 props 的默认复制策略：配置文件由首次生成时初始化，后续不覆盖 -->
+	<ItemGroup>
+		<None Update="$(AssemblyName).addin">
+			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
+		</None>
+		<None Update="$(AssemblyName).config.json" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">
+			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
 	<ItemGroup>
 		<!-- ⭐ 项目引用：不复制依赖项（主程序已包含这些库） -->
 		<ProjectReference Include="..\..\Libraries\Astra.Communication\Astra.Communication.csproj" />
@@ -40,6 +50,45 @@
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
 	</ItemGroup>
+
+	<!-- 仅在目标文件不存在时复制 .addin/.config.json 到插件输出目录 -->
+	<Target Name="CopyPluginMetadataIfMissing" AfterTargets="Build">
+		<PropertyGroup>
+			<PluginOutputDir>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</PluginOutputDir>
+			<PluginAddinSource>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(AssemblyName).addin'))</PluginAddinSource>
+			<PluginAddinTarget>$([System.IO.Path]::Combine('$(PluginOutputDir)', '$(AssemblyName).addin'))</PluginAddinTarget>
+			<PluginConfigSource>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(AssemblyName).config.json'))</PluginConfigSource>
+			<PluginConfigTarget>$([System.IO.Path]::Combine('$(PluginOutputDir)', '$(AssemblyName).config.json'))</PluginConfigTarget>
+		</PropertyGroup>
+
+		<MakeDir Directories="$(PluginOutputDir)" />
+
+		<Copy SourceFiles="$(PluginAddinSource)"
+		      DestinationFiles="$(PluginAddinTarget)"
+		      Condition="Exists('$(PluginAddinSource)') AND !Exists('$(PluginAddinTarget)')" />
+
+		<Copy SourceFiles="$(PluginConfigSource)"
+		      DestinationFiles="$(PluginConfigTarget)"
+		      Condition="Exists('$(PluginConfigSource)') AND !Exists('$(PluginConfigTarget)')" />
+	</Target>
+
+	<!-- 覆盖通用目标：仅在 Bin/Configs/Devices 不存在配置文件时初始化 -->
+	<Target Name="CopyDeviceConfigToBin" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">
+		<PropertyGroup>
+			<NormalizedBaseOutputPath>$([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))</NormalizedBaseOutputPath>
+			<DeviceConfigOutputDir>$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(NormalizedBaseOutputPath), '$(Configuration)', 'Configs', 'Devices'))'))</DeviceConfigOutputDir>
+			<DeviceConfigOutputFile>$([System.IO.Path]::Combine('$(DeviceConfigOutputDir)', '$(AssemblyName).config.json'))</DeviceConfigOutputFile>
+			<DeviceConfigSourceFile>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(AssemblyName).config.json'))</DeviceConfigSourceFile>
+		</PropertyGroup>
+
+		<MakeDir Directories="$(DeviceConfigOutputDir)" />
+		<Copy SourceFiles="$(DeviceConfigSourceFile)"
+		      DestinationFiles="$(DeviceConfigOutputFile)"
+		      Condition="Exists('$(DeviceConfigSourceFile)') AND !Exists('$(DeviceConfigOutputFile)')" />
+		<Message Text="配置文件不存在时已初始化到 $(DeviceConfigOutputFile)"
+		         Condition="Exists('$(DeviceConfigOutputFile)')"
+		         Importance="normal" />
+	</Target>
 
 	<!-- ⚠️ 注意：不需要显式指定 XAML 文件为 Page 类型
 	     .NET SDK 在 <UseWPF>true</UseWPF> 时会自动包含所有 .xaml 文件作为 Page 项

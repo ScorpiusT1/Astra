@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 
 namespace NVHDataBridge.Models
@@ -102,6 +102,60 @@ namespace NVHDataBridge.Models
             
             // 在 lock 外部创建 span
             return new ReadOnlySpan<T>(buffer, (int)start, length);
+        }
+
+        /// <summary>
+        /// 读取指定范围的数据并从缓冲区移除（消费式读取）
+        /// </summary>
+        public T[] ConsumeRange(long start, int length)
+        {
+            if (start < 0)
+                throw new ArgumentOutOfRangeException(nameof(start), "Start index cannot be negative");
+            if (length < 0)
+                throw new ArgumentOutOfRangeException(nameof(length), "Length cannot be negative");
+            if (start > int.MaxValue || length > int.MaxValue)
+                throw new ArgumentOutOfRangeException("Start or length exceeds maximum supported length");
+
+            lock (_lockObj)
+            {
+                if (length == 0)
+                    return Array.Empty<T>();
+                if (start >= _count)
+                    throw new ArgumentOutOfRangeException(nameof(start), $"Start index ({start}) exceeds count ({_count})");
+                if (start + length > _count)
+                    throw new ArgumentOutOfRangeException(nameof(length), $"Range exceeds buffer count");
+
+                int startIndex = (int)start;
+                T[] result = new T[length];
+                Array.Copy(_buffer, startIndex, result, 0, length);
+
+                long tailCount = _count - (start + length);
+                if (tailCount > 0)
+                {
+                    Array.Copy(_buffer, startIndex + length, _buffer, startIndex, (int)tailCount);
+                }
+
+                _count -= length;
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// 读取全部数据并清空缓冲区（消费式读取）
+        /// </summary>
+        public T[] ConsumeAll()
+        {
+            lock (_lockObj)
+            {
+                if (_count == 0)
+                    return Array.Empty<T>();
+
+                int length = (int)_count;
+                T[] result = new T[length];
+                Array.Copy(_buffer, 0, result, 0, length);
+                _count = 0;
+                return result;
+            }
         }
 
         // ✅ 内部扩容逻辑（智能增长策略）

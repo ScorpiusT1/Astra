@@ -1,0 +1,28 @@
+{
+  "Configs": [
+    {
+      "Ip": "192.168.0.1",
+      "Port": 102,
+      "ConnectTimeoutMs": 3000,
+      "ReadWriteTimeoutMs": 3000,
+      "AutoReconnect": true,
+      "ReconnectIntervalMs": 3000,
+      "DeviceId": "G0:S0:PLC-192.168.0.1:102",
+      "Type": 2,
+      "IsEnabled": true,
+      "GroupId": "G0",
+      "SlotId": "S0",
+      "ModifiedAt": "2026-03-23T00:00:00+08:00",
+      "Manufacturer": "",
+      "Model": "",
+      "SerialNumber": "",
+      "ConfigId": "21111111-1111-1111-1111-111111111111",
+      "ConfigName": "通用 PLC #1",
+      "CreatedAt": "0001-01-01T00:00:00",
+      "UpdatedAt": null,
+      "Version": 1,
+      "ConfigTypeName": "Astra.Plugins.PLC.Configs.PlcDeviceConfig, Astra.Plugins.PLC, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+    }
+  ],
+  "LastModified": "2026-03-23T00:00:00+08:00"
+}

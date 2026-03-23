@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -276,7 +276,7 @@ namespace NVHDataBridge.Models
             // 3. 复制通道数据
             if (options.CopyData && typedSourceChannel.TotalSamples > 0)
             {
-                ReadOnlySpan<T> sourceData = typedSourceChannel.ReadAll();
+                ReadOnlySpan<T> sourceData = typedSourceChannel.PeekAll();
                 if (!sourceData.IsEmpty)
                 {
                     // 批量写入数据

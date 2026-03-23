@@ -91,7 +91,7 @@
     <!-- ==================== 运行中状态卡片 ==================== -->
     <Style x:Key="WorkstationCardRunningStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource WorkstationCardBaseStyle}">
+           BasedOn="{StaticResource WorkstationCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"
@@ -113,7 +113,7 @@
     <!-- ==================== 错误状态卡片 ==================== -->
     <Style x:Key="WorkstationCardErrorStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource WorkstationCardBaseStyle}">
+           BasedOn="{StaticResource WorkstationCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"
@@ -135,7 +135,7 @@
     <!-- ==================== 警告状态卡片 ==================== -->
     <Style x:Key="WorkstationCardWarningStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource WorkstationCardBaseStyle}">
+           BasedOn="{StaticResource WorkstationCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"
@@ -157,7 +157,7 @@
     <!-- ==================== 待机状态卡片 ==================== -->
     <Style x:Key="WorkstationCardStandbyStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource WorkstationCardBaseStyle}">
+           BasedOn="{StaticResource WorkstationCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"
@@ -179,7 +179,7 @@
     <!-- ==================== 离线状态卡片 ==================== -->
     <Style x:Key="WorkstationCardOfflineStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource WorkstationCardBaseStyle}">
+           BasedOn="{StaticResource WorkstationCardBaseStyle}">
         <Setter Property="Opacity"
                 Value="0.7" />
         <Setter Property="BorderBrush">
@@ -314,7 +314,7 @@
     <!-- 测试项卡片 - 合格 -->
     <Style x:Key="TestItemCardPassStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource TestItemCardBaseStyle}">
+           BasedOn="{StaticResource TestItemCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"
@@ -335,7 +335,7 @@
     <!-- 测试项卡片 - 失败 -->
     <Style x:Key="TestItemCardFailStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource TestItemCardBaseStyle}">
+           BasedOn="{StaticResource TestItemCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"
@@ -356,7 +356,7 @@
     <!-- 测试项卡片 - 警告 -->
     <Style x:Key="TestItemCardWarningStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource TestItemCardBaseStyle}">
+           BasedOn="{StaticResource TestItemCardBaseStyle}">
         <Setter Property="BorderBrush">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0"

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using Astra.Plugins.DataAcquisition.ViewModels;
 
 namespace Astra.Plugins.DataAcquisition.Views
 {
@@ -54,6 +55,14 @@ namespace Astra.Plugins.DataAcquisition.Views
                     }
                     parent = LogicalTreeHelper.GetParent(parent) ?? VisualTreeHelper.GetParent(parent);
                 }
+            }
+        }
+
+        private async void SensorComboBox_DropDownOpened(object sender, EventArgs e)
+        {
+            if (DataContext is DataAcquisitionChannelConfigViewModel viewModel)
+            {
+                await viewModel.RefreshSensorsAsync();
             }
         }
 

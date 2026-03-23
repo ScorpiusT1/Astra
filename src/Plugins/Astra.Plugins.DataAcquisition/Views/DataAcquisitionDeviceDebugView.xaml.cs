@@ -16,6 +16,7 @@ namespace Astra.Plugins.DataAcquisition.Views
     public partial class DataAcquisitionDeviceDebugView : UserControl
     {
         private DataAcquisitionDeviceDebugViewModel? ViewModel => DataContext as DataAcquisitionDeviceDebugViewModel;
+        private readonly Dictionary<int, Signal> _signalsByChannelId = new();
 
         public DataAcquisitionDeviceDebugView()
         {
@@ -31,11 +32,13 @@ namespace Astra.Plugins.DataAcquisition.Views
             if (e.OldValue is DataAcquisitionDeviceDebugViewModel oldVm)
             {
                 oldVm.WaveformUpdated -= OnWaveformUpdated;
+                oldVm.ChannelVisibilityChanged -= OnChannelVisibilityChanged;
             }
 
             if (e.NewValue is DataAcquisitionDeviceDebugViewModel newVm)
             {
                 newVm.WaveformUpdated += OnWaveformUpdated;
+                newVm.ChannelVisibilityChanged += OnChannelVisibilityChanged;
             }
         }
 
@@ -46,6 +49,7 @@ namespace Astra.Plugins.DataAcquisition.Views
 
             var plt = WaveformPlot.Plot;
             plt.Clear();
+            _signalsByChannelId.Clear();
 
             // 美化 ScottPlot 样式
             // 使用 UI 主题中的颜色
@@ -80,10 +84,12 @@ namespace Astra.Plugins.DataAcquisition.Views
                 string channelName = $"CH{channelId}";
                 var vmChannel = ViewModel?.Channels?.FirstOrDefault(c => c.ChannelId == channelId);
                 if (vmChannel != null && !string.IsNullOrWhiteSpace(vmChannel.Name))
-                    channelName = vmChannel.Name;
+                    channelName = vmChannel.Name.Trim();
 
                 Signal signal = plt.Add.Signal(ys, 1.0 / sampleRate);
                 signal.LegendText = channelName;
+                signal.IsVisible = vmChannel?.IsEnabled ?? true;
+                _signalsByChannelId[channelId] = signal;
             }
 
             if (dataByChannel.Count > 0)
@@ -93,6 +99,18 @@ namespace Astra.Plugins.DataAcquisition.Views
             }
 
             WaveformPlot.Refresh();
+        }
+
+        private void OnChannelVisibilityChanged(int channelId, bool isEnabled)
+        {
+            if (WaveformPlot == null)
+                return;
+
+            if (_signalsByChannelId.TryGetValue(channelId, out var signal))
+            {
+                signal.IsVisible = isEnabled;
+                WaveformPlot.Refresh();
+            }
         }
 
         private void SetFont(WpfPlot wpfPlot, string font = "微软雅黑")

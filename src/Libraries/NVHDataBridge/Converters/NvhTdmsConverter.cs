@@ -152,7 +152,7 @@ namespace NVHDataBridge.Converters
             SetChannelProperties(writer, groupName, typedChannel, options);
 
             // 2. 读取所有数据
-            ReadOnlySpan<T> allData = typedChannel.ReadAll();
+            ReadOnlySpan<T> allData = typedChannel.PeekAll();
 
             if (allData.IsEmpty)
             {

@@ -151,7 +151,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         private double _sampleRate = 51200.0;
         private int _channelCount = 8;
-        private int _bufferSize = 8_192;
+        private int _bufferSize = 4_096;
         private bool _autoStart = true;
 
         /// <summary>

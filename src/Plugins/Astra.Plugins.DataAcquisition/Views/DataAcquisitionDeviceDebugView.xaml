@@ -70,36 +70,6 @@
                     </Border>
                 </StackPanel>
 
-                <!-- 通道卡片：两两并排 -->
-                <StackPanel Margin="0,0,0,10">
-                    <TextBlock Text="通道"
-                               FontSize="13"
-                               FontWeight="Bold"
-                               Foreground="{DynamicResource TitleBrush}"
-                               Margin="0,0,0,4" />
-                    <Border BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            Background="{DynamicResource SurfaceBrush}"
-                            CornerRadius="6"
-                            Padding="8">
-                        <ItemsControl ItemsSource="{Binding Channels}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Columns="2" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <CheckBox Content="{Binding Name}"
-                                              IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                              HorizontalAlignment="Left"
-                                              Margin="10,5,20,5" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </Border>
-                </StackPanel>
-
                 <!-- 设置卡片 -->
                 <StackPanel Margin="0,0,0,0">
                     <TextBlock Text="设置"

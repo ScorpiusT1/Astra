@@ -113,8 +113,54 @@
                              hc:InfoElement.Placeholder="请输入型号" />
                 </Grid>
 
-                <!-- 传感器名称 -->
+                <!-- 序列号 -->
                 <Grid Grid.Row="2"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="序列号 *:"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SelectedSensor.SerialNumber, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13"
+                             Height="36"
+                             hc:InfoElement.Placeholder="请输入序列号" />
+                </Grid>
+
+                <!-- 传感器类型 -->
+                <Grid Grid.Row="3"
+                      Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="传感器类型 *:"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding SensorTypeOptions}"
+                              SelectedItem="{Binding SelectedSensor.SensorType, UpdateSourceTrigger=PropertyChanged}"
+                              FontSize="13"
+                              Height="36">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource SensorTypeToStringConverter}}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <!-- 传感器名称 -->
+                <Grid Grid.Row="4"
                       Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="140" />
@@ -133,34 +179,8 @@
                              hc:InfoElement.Placeholder="请输入传感器名称" />
                 </Grid>
 
-                <!-- 传感器类型 -->
-                <Grid Grid.Row="3"
-                      Margin="0,0,0,15">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="传感器类型:"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource SecondaryTextBrush}"
-                               VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding SensorTypeOptions}"
-                              SelectedItem="{Binding SelectedSensor.SensorType, UpdateSourceTrigger=PropertyChanged}"
-                              FontSize="13"
-                              Height="36">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Converter={StaticResource SensorTypeToStringConverter}}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </Grid>
-
                 <!-- 轴数选择（仅加速度计显示） -->
-                <Grid Grid.Row="4"
+                <Grid Grid.Row="5"
                       Margin="0,0,0,15"
                       Visibility="{Binding SelectedSensor.SupportsAxisSelection, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid.ColumnDefinitions>
@@ -198,26 +218,6 @@
                                      GroupName="AxisSelection"
                                      Checked="ThreeAxisRadioButton_Checked" />
                     </StackPanel>
-                </Grid>
-
-                <!-- 序列号 -->
-                <Grid Grid.Row="5"
-                      Margin="0,0,0,15">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="序列号:"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource SecondaryTextBrush}"
-                               VerticalAlignment="Center" />
-                    <TextBox Grid.Column="1"
-                             Text="{Binding SelectedSensor.SerialNumber, UpdateSourceTrigger=PropertyChanged}"
-                             FontSize="13"
-                             Height="36"
-                             hc:InfoElement.Placeholder="请输入序列号" />
                 </Grid>
 
                 <!-- 单轴灵敏度 -->

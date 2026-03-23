@@ -47,7 +47,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Libraries\Astra.Extensions\Astra.Extensions.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.Communication\Astra.Communication.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />

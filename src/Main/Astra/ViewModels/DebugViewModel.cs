@@ -116,8 +116,26 @@ namespace Astra.ViewModels
                         i.IsGenericType &&
                         i.GetGenericTypeDefinition() == typeof(IConfigurable<>));
 
-                var configType = configurableInterface?.GetGenericArguments()[0];
-                var treeAttr = configType?.GetCustomAttribute<TreeNodeConfigAttribute>();
+                // ⚠️ 关键：优先使用 CurrentConfig 的运行时类型分组，避免 S7 设备因基类泛型为 PlcDeviceConfig 被误归类到“通用PLC”
+                var declaredConfigType = configurableInterface?.GetGenericArguments()[0];
+                Type? runtimeConfigType = null;
+                object? currentConfigObj = null;
+                if (configurableInterface != null)
+                {
+                    try
+                    {
+                        var currentConfigProp = configurableInterface.GetProperty("CurrentConfig");
+                        currentConfigObj = currentConfigProp?.GetValue(device);
+                        runtimeConfigType = currentConfigObj?.GetType();
+                    }
+                    catch
+                    {
+                        // 回退到声明类型
+                    }
+                }
+
+                var configType = runtimeConfigType ?? declaredConfigType;
+                var treeAttr = configType?.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
 
                 var category = treeAttr?.Category ?? "未分类设备";
                 var icon = treeAttr?.Icon ?? _defaultIcon;
@@ -143,34 +161,17 @@ namespace Astra.ViewModels
                 // 设备显示名称：优先使用当前配置的 ConfigName（与配置树子节点名称保持一致），其次 DisplayName，再次 DeviceName/DeviceId
                 string header = device.DeviceName;
 
-                if (configurableInterface != null)
+                if (currentConfigObj is ConfigBase configBase)
                 {
-                    try
+                    // 1. 优先使用 ConfigName（配置树子节点名称基于此字段生成并持久化）
+                    if (!string.IsNullOrWhiteSpace(configBase.ConfigName))
                     {
-                        // 通过 IConfigurable<TConfig>.CurrentConfig 反射获取当前配置实例
-                        var currentConfigProp = configurableInterface.GetProperty("CurrentConfig");
-                        var currentConfig = currentConfigProp?.GetValue(device);
-
-                        if (currentConfig is ConfigBase configBase)
-                        {
-                            // 1. 优先使用 ConfigName（配置树子节点名称基于此字段生成并持久化）
-                            if (!string.IsNullOrWhiteSpace(configBase.ConfigName))
-                            {
-                                header = configBase.ConfigName;
-                            }
-                            else
-                            {
-                                // 2. 没有 ConfigName 时退回到 GetDisplayName（包含厂商/型号等信息）
-                                header = configBase.GetDisplayName();
-                            }
-                        }
+                        header = configBase.ConfigName;
                     }
-                    catch
+                    else
                     {
-                        // 忽略获取配置时的异常，回退到 DeviceName / DeviceId
-                        header = string.IsNullOrWhiteSpace(device.DeviceName)
-                            ? device.DeviceId
-                            : device.DeviceName;
+                        // 2. 没有 ConfigName 时退回到 GetDisplayName（包含厂商/型号等信息）
+                        header = configBase.GetDisplayName();
                     }
                 }
 

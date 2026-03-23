@@ -129,7 +129,7 @@
         }
       ],
       "ChannelCount": 4,
-      "BufferSize": 8192,
+      "BufferSize": 4096,
       "AutoStart": true,
       "DeviceId": "G0:S0:DAQ-DLXX",
       "Type": 3,

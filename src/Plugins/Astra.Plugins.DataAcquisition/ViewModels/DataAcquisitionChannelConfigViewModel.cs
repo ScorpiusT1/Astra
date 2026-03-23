@@ -20,6 +20,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         private DataAcquisitionConfig _config;
         private readonly IConfigurationManager _configManager;
         private IDeviceSpecification _deviceSpecification;
+        private bool _isLoadingSensors;
 
         private IReadOnlyList<CouplingMode> _couplingModeOptions;
         private IReadOnlyList<double> _triggerLevelOptions;
@@ -141,7 +142,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             }
 
             InitializeChannels();
-            LoadSensorsAsync();
+            _ = LoadSensorsAsync();
 
             // 监听配置的属性变�?
             if (_config != null)
@@ -189,8 +190,11 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         /// <summary>
         /// 加载传感器列�?
         /// </summary>
-        private async void LoadSensorsAsync()
+        private async Task LoadSensorsAsync()
         {
+            if (_isLoadingSensors)
+                return;
+
             if (_configManager == null)
             {
                 System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 配置管理器为空，无法加载传感器列�?");
@@ -199,6 +203,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             try
             {
+                _isLoadingSensors = true;
                 System.Diagnostics.Debug.WriteLine("[DataAcquisitionChannelConfigViewModel] 开始加载传感器列表...");
                 var result = await _configManager.GetAllAsync<SensorConfig>();
 
@@ -206,22 +211,19 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 {
                     System.Diagnostics.Debug.WriteLine($"[DataAcquisitionChannelConfigViewModel] 成功加载 {result.Data.Count()} �?传感器配�?");
 
-                    // 保存当前通道�?已选择的传感器ID和引用映�?
-                    var channelSensorMap = new Dictionary<string, DAQChannelConfig>();
+                    // 保存当前通道已选择的传感器引用（按 ConfigId）。
+                    // 关键：刷新库时复用这些对象引用，避免 ComboBox 因 ItemsSource 变更把 SelectedItem 回写为 null。
+                    var selectedSensorRefMap = new Dictionary<string, SensorConfig>();
                     if (_config?.Channels != null)
                     {
                         foreach (var channel in _config.Channels)
                         {
                             if (channel?.Sensor != null && !string.IsNullOrEmpty(channel.Sensor.ConfigId))
                             {
-                                channelSensorMap[channel.Sensor.ConfigId] = channel;
-                               
+                                selectedSensorRefMap[channel.Sensor.ConfigId] = channel.Sensor;
                             }
                         }
                     }
-
-                    // 创建传感器ID到传感器对象的映�?
-                    var sensorIdMap = result.Data.ToDictionary(s => s.ConfigId, s => s);
 
                     // 在UI线程上更新传感器列表
                     System.Windows.Application.Current?.Dispatcher.Invoke(() =>
@@ -230,7 +232,16 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                         AvailableSensors.Clear();
                         foreach (var sensor in result.Data.OrderBy(s => s.ConfigName))
                         {
-                            AvailableSensors.Add(sensor);
+                            if (!string.IsNullOrEmpty(sensor.ConfigId) &&
+                                selectedSensorRefMap.TryGetValue(sensor.ConfigId, out var selectedRef))
+                            {
+                                // 复用已选对象引用，保持各通道 ComboBox 选中稳定
+                                AvailableSensors.Add(selectedRef);
+                            }
+                            else
+                            {
+                                AvailableSensors.Add(sensor);
+                            }
                         }
 
                         // 恢�?�所有通道的传感器引用（根�?保存�? SensorId 从传感器库中查找�?
@@ -251,7 +262,16 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             {
                 ToastHelper.ShowError($"[DataAcquisitionChannelConfigViewModel] 加载传感器列表异�?: {ex.Message}");
             }
+            finally
+            {
+                _isLoadingSensors = false;
+            }
         }
+
+        /// <summary>
+        /// 在下拉选择传感器前刷新传感器库。
+        /// </summary>
+        public Task RefreshSensorsAsync() => LoadSensorsAsync();
 
         /// <summary>
         /// 初始化通道集合
@@ -312,6 +332,9 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             // 监听通道集合变化
             _config.Channels.CollectionChanged += Channels_CollectionChanged;
 
+            // 初始化后保证通道个数与集合一致
+            SyncChannelCount();
+
             // 通知 UI Channels 属性已更新
             OnPropertyChanged(nameof(Channels));
         }
@@ -321,6 +344,8 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         /// </summary>
         private void Channels_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
+            SyncChannelCount();
+
             // 当集合变化时，强制通知UI刷新
             OnPropertyChanged(nameof(Channels));
             OnPropertyChanged(nameof(CanDeleteChannel));
@@ -421,6 +446,8 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             _config.Channels.Add(newChannel);
             SelectedChannel = newChannel;
 
+            SyncChannelCount();
+
             // 通知 UI 更新
             OnPropertyChanged(nameof(Channels));
             OnPropertyChanged(nameof(CanDeleteChannel));
@@ -467,32 +494,12 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 SelectedChannel = null;
             }
 
-            // 重新编号所有通道，并仅在“原本是默认名或为空”的情况下更新名称
-            for (int i = 0; i < _config.Channels.Count; i++)
-            {
-                var channelConfig = _config.Channels[i];
-                if (channelConfig == null)
-                    continue;
-
-                // 记录删除前的默认名（例如“通道 3”），用于判断是否系统自动生成
-                var oldId = channelConfig.ChannelId;
-                var oldDefaultName = $"通道 {oldId}";
-
-                // 重新编号为 1..N
-                channelConfig.ChannelId = i + 1;
-
-                // 仅当通道名为空，或恰好等于旧的默认名称时，才按新编号生成默认名
-                // 避免覆盖用户自定义的名称（哪怕是以“通道 ”开头）
-                if (string.IsNullOrWhiteSpace(channelConfig.ChannelName) ||
-                    channelConfig.ChannelName == oldDefaultName)
-                {
-                    channelConfig.ChannelName = $"通道 {channelConfig.ChannelId}";
-                }
-            }
+            // 删除后保留剩余通道的原始 ChannelId，不自动重排编号。
 
             // 强制通知 UI 更新（确保ItemsControl刷新�?
             // 注意：由于ObservableCollection的CollectionChanged事件已经触发�?
             // Channels_CollectionChanged方法会�?�理通知，但这里再�?�通知�?保UI刷新
+            SyncChannelCount();
             OnPropertyChanged(nameof(Channels));
             OnPropertyChanged(nameof(CanDeleteChannel));
 
@@ -564,6 +571,21 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             OnPropertyChanged(nameof(CanDeleteChannel));
             // 通知删除命令的可执�?�状态变�?
             DeleteChannelCommand?.NotifyCanExecuteChanged();
+        }
+
+        /// <summary>
+        /// 将配置中的通道个数与通道集合保持一致。
+        /// </summary>
+        private void SyncChannelCount()
+        {
+            if (_config == null || _config.Channels == null)
+                return;
+
+            int count = _config.Channels.Count;
+            if (_config.ChannelCount != count)
+            {
+                _config.ChannelCount = count;
+            }
         }
     }
 }

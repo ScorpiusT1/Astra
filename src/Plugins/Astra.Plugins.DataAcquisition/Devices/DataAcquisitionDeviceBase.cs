@@ -7,6 +7,7 @@ using Astra.Core.Plugins.Messaging;
 using Astra.Plugins.DataAcquisition.Configs;
 using Microsoft.Extensions.Logging;
 using NVHDataBridge.Models;
+using System.Threading.Channels;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
@@ -26,6 +27,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
         protected ManualResetEventSlim _pauseEvent = new(true);
         protected AcquisitionState _state = AcquisitionState.Idle;
         protected bool _initialized;
+        private Channel<DeviceMessage> _publishQueue;
+        private Task _publishTask;
+        private CancellationTokenSource _publishCts;
+        private const int PublishQueueCapacity = 256;
 
         // NVHDataBridge 数据结构
         protected NvhMemoryFile? _dataFile;
@@ -193,6 +198,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _acquisitionCts = linkedCts;
                 _pauseEvent.Set();
+                StartPublishLoop();
 
                 _acquisitionTask = Task.Run(() => RunAcquisitionLoopAsync(linkedCts.Token), CancellationToken.None);
                 _state = AcquisitionState.Running;
@@ -239,6 +245,8 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     {
                     }
                 }
+
+                await StopPublishLoopAsync().ConfigureAwait(false);
 
                 await DisconnectAsync().ConfigureAwait(false);
 
@@ -312,6 +320,89 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
             };
 
+            if (_publishQueue == null)
+            {
+                DispatchData(message);
+                return;
+            }
+
+            if (!_publishQueue.Writer.TryWrite(message))
+            {
+                _logger?.LogWarn($"[{DeviceName}] 数据发布队列已满，丢弃一帧数据", LogCategory.Device);
+            }
+        }
+
+        private void StartPublishLoop()
+        {
+            _publishCts?.Cancel();
+            _publishCts?.Dispose();
+            _publishCts = new CancellationTokenSource();
+
+            _publishQueue = Channel.CreateBounded<DeviceMessage>(new BoundedChannelOptions(PublishQueueCapacity)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.DropOldest
+            });
+
+            _publishTask = Task.Run(() => RunPublishLoopAsync(_publishCts.Token), CancellationToken.None);
+        }
+
+        private async Task StopPublishLoopAsync()
+        {
+            if (_publishQueue != null)
+            {
+                _publishQueue.Writer.TryComplete();
+            }
+
+            if (_publishCts != null)
+            {
+                _publishCts.Cancel();
+            }
+
+            if (_publishTask != null)
+            {
+                try
+                {
+                    await _publishTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            _publishTask = null;
+            _publishQueue = null;
+            _publishCts?.Dispose();
+            _publishCts = null;
+        }
+
+        private async Task RunPublishLoopAsync(CancellationToken token)
+        {
+            if (_publishQueue == null)
+                return;
+
+            try
+            {
+                while (await _publishQueue.Reader.WaitToReadAsync(token).ConfigureAwait(false))
+                {
+                    while (_publishQueue.Reader.TryRead(out var message))
+                    {
+                        DispatchData(message);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"[{DeviceName}] 数据分发循环异常: {ex.Message}", ex, LogCategory.Device);
+            }
+        }
+
+        private void DispatchData(DeviceMessage message)
+        {
             lock (_eventLock)
             {
                 DataReceived?.Invoke(this, message);
@@ -418,6 +509,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public override void Dispose()
         {
+            try
+            {
+                StopPublishLoopAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+            }
+
             _pauseEvent?.Set();
             _pauseEvent?.Dispose();
             _stateLock?.Dispose();

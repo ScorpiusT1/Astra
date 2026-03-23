@@ -191,11 +191,11 @@ namespace Astra.ViewModels
                         try
                         {
                             // 获取配置类型的 TreeNodeConfigAttribute（树结构）
-                            var treeAttr = configType.GetCustomAttribute<TreeNodeConfigAttribute>();
+                            var treeAttr = configType.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
                             if (treeAttr != null)
                             {
                                 // 获取可选的 ConfigUIAttribute（UI 映射）
-                                var uiAttr = configType.GetCustomAttribute<ConfigUIAttribute>();
+                                var uiAttr = configType.GetCustomAttribute<ConfigUIAttribute>(inherit: false);
                                 configTypes.Add((configType, treeAttr, uiAttr));
                             }
                         }
@@ -668,7 +668,7 @@ namespace Astra.ViewModels
             if (node == null || node.ConfigType == null)
                 return null;
 
-            var attr = node.ConfigType?.GetCustomAttribute<TreeNodeConfigAttribute>();
+            var attr = node.ConfigType?.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
 
             if (attr == null)
             {
@@ -1257,7 +1257,7 @@ namespace Astra.ViewModels
                 }
 
                 // 获取配置类型的属性信息（用于创建树节点）
-                var attr = targetNode.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>();
+                var attr = targetNode.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
                 if (attr == null)
                 {
                     ToastHelper.ShowError("配置类型缺少 TreeNodeConfigAttribute");

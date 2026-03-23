@@ -1,0 +1,75 @@
+<UserControl x:Class="Astra.Plugins.PLC.Views.PlcDeviceConfigFormView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="520"
+             d:DesignWidth="760">
+    <UserControl.Resources>
+        <Style TargetType="CheckBox" BasedOn="{StaticResource ModernCheckBoxStyle}" />
+        <Style TargetType="TextBox" BasedOn="{StaticResource DefaultModernTextBoxStyle}" />
+        <Style TargetType="TextBlock" BasedOn="{StaticResource ModrenTextBlockStyle}" />
+        <Style TargetType="ComboBox" BasedOn="{StaticResource ModernComboBoxStyle}" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="0,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="配置名称" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding ConfigName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入配置名称" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="厂家" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Manufacturer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入厂家（如 SIEMENS）" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="型号" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Model, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入型号（如 S7-1200）" />
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="序列号（可选）" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" Visibility="Collapsed" />
+            <TextBox Grid.Row="3" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding SerialNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="可留空，默认使用 IP:Port 生成设备ID" Visibility="Collapsed" />
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="IP 地址" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="4" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Ip, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入 PLC IP 地址" />
+
+            <TextBlock Grid.Row="5" Grid.Column="0" Text="端口" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="5" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Port, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="默认 102" />
+
+            <TextBlock Grid.Row="6" Grid.Column="0" Text="连接超时(ms)" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="6" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding ConnectTimeoutMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Grid.Row="7" Grid.Column="0" Text="读写超时(ms)" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="7" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding ReadWriteTimeoutMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Grid.Row="8" Grid.Column="0" Text="自动重连" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <CheckBox Grid.Row="8" Grid.Column="1" Margin="0,6" IsChecked="{Binding AutoReconnect, Mode=TwoWay}" VerticalAlignment="Center" />
+
+            <TextBlock Grid.Row="9" Grid.Column="0" Text="重连间隔(ms)" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="9" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding ReconnectIntervalMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Grid.Row="10" Grid.Column="0" Text="分组ID" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="10" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding GroupId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="G0" />
+
+            <TextBlock Grid.Row="11" Grid.Column="0" Text="槽位ID" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="11" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding SlotId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="S0" />
+        </Grid>
+    </ScrollViewer>
+</UserControl>

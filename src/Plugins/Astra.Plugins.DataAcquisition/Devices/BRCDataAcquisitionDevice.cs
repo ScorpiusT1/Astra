@@ -20,6 +20,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         // 数据缓冲区
         private double[] _dataBuffer;
+        private readonly Dictionary<int, float[]> _channelWriteBuffers = new();
 
         /// <summary>
         /// 运行时使用的构造函数（由 DI / 工厂创建）
@@ -62,9 +63,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         protected override async Task OnInitializeAsync()
         {
-            var enabledChannels = _config.Channels?.Count(c => c.Enabled) ?? _config.ChannelCount;
-            var bufferSize = _config.BufferSize;
-            _dataBuffer = new double[enabledChannels * bufferSize];
+            EnsureRuntimeBuffers();
             await Task.CompletedTask;
         }
 
@@ -84,6 +83,8 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 return Task.CompletedTask;
             }
 
+            // 每次启动前按最新配置校准缓冲，避免仅首次初始化导致配置变更后缓冲未更新。
+            EnsureRuntimeBuffers();
             brcDevice.Start();
 
             return Task.CompletedTask;
@@ -104,13 +105,13 @@ namespace Astra.Plugins.DataAcquisition.Devices
             return Task.CompletedTask;
         }
 
-        protected override async Task AcquireAndProcessFrameAsync(CancellationToken token)
+        protected override Task AcquireAndProcessFrameAsync(CancellationToken token)
         {
             var brcDevice = _brcConnection.GetBrcDevice();
             if (brcDevice == null)
             {
                 RaiseInitializationError("BRC设备实例无效");
-                return;
+                return Task.CompletedTask;
             }
 
             var enabledChannels = _config.Channels?.Where(c => c.Enabled).ToList()
@@ -121,40 +122,22 @@ namespace Astra.Plugins.DataAcquisition.Devices
             var bufferMemory = new Memory<double>(_dataBuffer);
             brcDevice.GetChannelsData(bufferMemory, timeout);
 
-            var payload = ConvertToByteArray(bufferMemory.Span);
-            PublishData(payload);
-
             WriteDataToChannels(bufferMemory.Span, enabledChannels, bufferSize);
 
-            var frameInterval = CalculateFrameInterval();
-            if (frameInterval > TimeSpan.Zero)
-            {
-                await Task.Delay(frameInterval, token).ConfigureAwait(false);
-            }
+            var payload = ConvertToByteArray(bufferMemory.Span);
+            PublishData(payload);
+            return Task.CompletedTask;
         }
 
         private byte[] ConvertToByteArray(Span<double> data)
         {
-            var floatData = new float[data.Length];
+            var bytes = new byte[data.Length * sizeof(float)];
+            var floatSpan = MemoryMarshal.Cast<byte, float>(bytes);
             for (int i = 0; i < data.Length; i++)
             {
-                floatData[i] = (float)data[i];
+                floatSpan[i] = (float)data[i];
             }
-
-            var bytes = new byte[floatData.Length * sizeof(float)];
-            var floatSpan = MemoryMarshal.Cast<byte, float>(bytes);
-            floatData.CopyTo(floatSpan);
             return bytes;
-        }
-
-        private TimeSpan CalculateFrameInterval()
-        {
-            if (_config.SampleRate <= 0 || _config.BufferSize <= 0)
-                return TimeSpan.FromMilliseconds(100);
-
-            var seconds = (double)_config.BufferSize / _config.SampleRate;
-            seconds = Math.Clamp(seconds, 0.01, 1.0);
-            return TimeSpan.FromSeconds(seconds);
         }
 
         private void WriteDataToChannels(Span<double> data, List<Configs.DAQChannelConfig> enabledChannels, int bufferSize)
@@ -174,10 +157,17 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     if (!_channelMap.TryGetValue(channelId, out var dataChannel))
                         continue;
 
-                    float[] channelSamples = new float[bufferSize];
+                    if (!_channelWriteBuffers.TryGetValue(channelId, out var channelSamples) || channelSamples.Length != bufferSize)
+                    {
+                        channelSamples = new float[bufferSize];
+                        _channelWriteBuffers[channelId] = channelSamples;
+                    }
+
                     for (int i = 0; i < bufferSize; i++)
                     {
-                        int sourceIndex = i * channelCount + channelIdx;
+                        // BRC采集卡返回的是按通道分段的数据：
+                        // [ch1(0..N-1), ch2(0..N-1), ...]
+                        int sourceIndex = channelIdx * bufferSize + i;
                         if (sourceIndex < data.Length)
                         {
                             channelSamples[i] = (float)data[sourceIndex];
@@ -195,7 +185,35 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         public override void Dispose()
         {
+            _channelWriteBuffers.Clear();
             base.Dispose();
+        }
+
+        private void EnsureRuntimeBuffers()
+        {
+            var enabledChannels = _config.Channels?.Where(c => c.Enabled).ToList()
+                ?? Enumerable.Range(1, _config.ChannelCount)
+                    .Select(i => new Configs.DAQChannelConfig { ChannelId = i, Enabled = true })
+                    .ToList();
+
+            var bufferSize = _config.BufferSize;
+            var expectedDataLength = enabledChannels.Count * bufferSize;
+            if (_dataBuffer == null || _dataBuffer.Length != expectedDataLength)
+            {
+                _dataBuffer = new double[expectedDataLength];
+            }
+
+            // 每次按所有配置通道重建写缓存。
+            var allChannels = _config.Channels?.ToList()
+                ?? Enumerable.Range(1, _config.ChannelCount)
+                    .Select(i => new Configs.DAQChannelConfig { ChannelId = i, Enabled = true })
+                    .ToList();
+
+            _channelWriteBuffers.Clear();
+            foreach (var channel in allChannels)
+            {
+                _channelWriteBuffers[channel.ChannelId] = new float[bufferSize];
+            }
         }
     }
 }

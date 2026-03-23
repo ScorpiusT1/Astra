@@ -1,0 +1,53 @@
+<UserControl x:Class="Astra.Plugins.PLC.Views.S7SiemensPlcDeviceConfigView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:views="clr-namespace:Astra.Plugins.PLC.Views"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="560"
+             d:DesignWidth="760">
+    <UserControl.Resources>
+        <Style TargetType="CheckBox" BasedOn="{StaticResource ModernCheckBoxStyle}" />
+        <Style TargetType="TextBox" BasedOn="{StaticResource DefaultModernTextBoxStyle}" />
+        <Style TargetType="TextBlock" BasedOn="{StaticResource ModrenTextBlockStyle}" />
+        <Style TargetType="ComboBox" BasedOn="{StaticResource ModernComboBoxStyle}" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <TabControl BorderThickness="0">
+            <TabItem Header="通用配置"
+                     FontSize="14">
+                <views:PlcDeviceConfigFormView />
+            </TabItem>
+            <TabItem Header="S7参数"
+                     FontSize="14"
+                     Visibility="{Binding IsS7Device, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Rack" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+                    <TextBox Grid.Row="0" Grid.Column="1" Margin="0,6"
+                             Height="36"
+                             Text="{Binding Rack, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="默认 0" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Slot" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6"
+                             Height="36"
+                             Text="{Binding Slot, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="默认 1" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

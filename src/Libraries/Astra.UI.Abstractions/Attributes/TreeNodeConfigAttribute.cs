@@ -17,6 +17,7 @@ namespace Astra.UI.Abstractions.Attributes
             ViewModelType = ViewModel;
             Icon = icon;
             Order = order;
+            AllowAddOnRoot = true;
         }
 
         public string? Header { get; set; }
@@ -30,6 +31,12 @@ namespace Astra.UI.Abstractions.Attributes
         public string Category { get; set; }
 
         public int Order { get; set; }
+
+        /// <summary>
+        /// 根节点是否显示“+”新增按钮，默认 true。
+        /// 某些全局配置（如软件配置）可将其设为 false。
+        /// </summary>
+        public bool AllowAddOnRoot { get; set; }
     }
 
     /// <summary>
