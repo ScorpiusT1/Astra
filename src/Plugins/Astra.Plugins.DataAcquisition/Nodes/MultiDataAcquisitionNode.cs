@@ -1,5 +1,6 @@
 using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Interfaces;
+using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Attributes;
@@ -29,6 +30,18 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             NodeContext context,
             CancellationToken cancellationToken)
         {
+            var executionController = context?.GetMetadata<IWorkflowExecutionController>("WorkflowExecutionController");
+
+            async Task WaitIfPausedAsync()
+            {
+                if (executionController == null)
+                {
+                    return;
+                }
+
+                await executionController.WaitIfPausedAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             // 未选择设备时直接跳过，避免报错
             if (DataAcquisitionDeviceNames == null || DataAcquisitionDeviceNames.Count == 0)
             {
@@ -66,12 +79,15 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
             try
             {
+                await WaitIfPausedAsync().ConfigureAwait(false);
+
                 // 并行启动所有未在运行状态的采集卡
                 var startTasks = distinctDevices.Select(async device =>
                 {
                     try
                     {
                         cancellationToken.ThrowIfCancellationRequested();
+                        await WaitIfPausedAsync().ConfigureAwait(false);
 
                         // 已在运行的设备不重复启动
                         var state = device.GetState();
@@ -81,12 +97,20 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         }
 
                         // 确保已初始化
-                        await device.InitializeAsync().ConfigureAwait(false);
+                        bool flag = await device.InitializeAsync().ConfigureAwait(false);
+                        if (!flag)
+                        {
+                            throw new InvalidOperationException($"采集卡初始化失败: {device.DeviceId}");
+                        }
 
                         // 启动采集
                         await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
 
                         startedDevices.Add(device.DeviceId);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
                     }
                     catch (Exception ex)
                     {
@@ -95,6 +119,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 }).ToList();
 
                 await Task.WhenAll(startTasks).ConfigureAwait(false);
+                await WaitIfPausedAsync().ConfigureAwait(false);
 
                 if (!startErrors.IsEmpty)
                 {
@@ -112,7 +137,16 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 if (DurationSeconds > 0 && startedList.Count > 0)
                 {
                     var delayMs = (int)(DurationSeconds * 1000);
-                    await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+                    const int delaySliceMs = 100;
+                    var elapsed = 0;
+                    while (elapsed < delayMs)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        await WaitIfPausedAsync().ConfigureAwait(false);
+                        var nextDelay = Math.Min(delaySliceMs, delayMs - elapsed);
+                        await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
+                        elapsed += nextDelay;
+                    }
 
                     var startedSet = new HashSet<string>(startedList);
 
@@ -123,7 +157,12 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                             try
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
+                                await WaitIfPausedAsync().ConfigureAwait(false);
                                 await device.StopAcquisitionAsync().ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
                             }
                             catch
                             {

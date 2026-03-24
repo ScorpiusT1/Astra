@@ -22,6 +22,9 @@ using Astra.Services.Authorization;
 using Astra.Services.Dialogs;
 using Astra.Services.Navigation;
 using Astra.Services.Session;
+using Astra.Core.Nodes.Management;
+using Astra.Engine.Execution.WorkFlowEngine.Management;
+using Astra.UI.Services;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -157,6 +160,8 @@ namespace Astra.Services.Startup
             
             // ⭐ 注册导航权限服务
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
+            services.AddSingleton<IWorkFlowManager, WorkFlowManager>();
+            services.AddSingleton<IWorkflowExecutionSessionService, WorkflowExecutionSessionService>();
 
             Debug.WriteLine("✅ 应用程序服务注册完成");
         }

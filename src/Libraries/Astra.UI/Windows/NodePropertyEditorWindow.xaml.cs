@@ -124,6 +124,12 @@ namespace Astra.UI.Windows
 
         private void RootBorder_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
+            if (e.ClickCount == 2)
+            {
+                ToggleMaximizeRestore();
+                return;
+            }
+
             if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
             {
                 try
@@ -135,6 +141,39 @@ namespace Astra.UI.Windows
                     // 忽略拖动异常
                 }
             }
+        }
+
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleMaximizeRestore();
+        }
+
+        private void ToggleMaximizeRestore()
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+
+            UpdateMaximizeButtonGlyph();
+        }
+
+        private void Window_StateChanged(object sender, EventArgs e)
+        {
+            UpdateMaximizeButtonGlyph();
+        }
+
+        private void UpdateMaximizeButtonGlyph()
+        {
+            if (MaximizeButton == null)
+                return;
+
+            // E923: Restore, E922: Maximize
+            MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
         }
     }
 }

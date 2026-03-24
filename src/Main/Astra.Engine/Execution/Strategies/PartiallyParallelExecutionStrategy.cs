@@ -88,6 +88,7 @@ namespace Astra.Engine.Execution.Strategies
         private async Task<ExecutionResult> ExecuteNodeAsync(Node node, NodeContext nodeContext, WorkFlowExecutionContext workflowContext, CancellationToken cancellationToken)
         {
             var startTime = DateTime.Now;
+            var pausedBefore = workflowContext.ExecutionController?.TotalPausedDuration ?? TimeSpan.Zero;
             workflowContext.OnNodeExecutionStarted?.Invoke(node, nodeContext);
 
             ExecutionResult result;
@@ -96,7 +97,7 @@ namespace Astra.Engine.Execution.Strategies
                 // 使用扩展方法执行节点
                 result = await node.ExecuteAsync(nodeContext, cancellationToken);
                 result.StartTime = startTime;
-                result.EndTime = DateTime.Now;
+                result.EndTime = AdjustEndTimeForPause(DateTime.Now, pausedBefore, workflowContext);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -106,12 +107,27 @@ namespace Astra.Engine.Execution.Strategies
             {
                 result = ExecutionResult.Failed($"节点 '{node.Name}' 执行异常: {ex.Message}", ex);
                 result.StartTime = startTime;
-                result.EndTime = DateTime.Now;
+                result.EndTime = AdjustEndTimeForPause(DateTime.Now, pausedBefore, workflowContext);
             }
 
             node.LastExecutionResult = result;
             workflowContext.OnNodeExecutionCompleted?.Invoke(node, nodeContext, result);
             return result;
+        }
+
+        private static DateTime AdjustEndTimeForPause(
+            DateTime rawEndTime,
+            TimeSpan pausedBefore,
+            WorkFlowExecutionContext workflowContext)
+        {
+            var pausedAfter = workflowContext.ExecutionController?.TotalPausedDuration ?? pausedBefore;
+            var pausedDelta = pausedAfter - pausedBefore;
+            if (pausedDelta <= TimeSpan.Zero)
+            {
+                return rawEndTime;
+            }
+
+            return rawEndTime - pausedDelta;
         }
 
         private static NodeContext CreateIsolatedNodeContext(NodeContext baseContext)

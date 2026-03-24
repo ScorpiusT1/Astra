@@ -1,4 +1,4 @@
-﻿﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -7,6 +7,7 @@ namespace Astra.Core.Nodes.Models
     {
         Idle,
         Running,
+        Paused,
         Success,
         Failed,
         Cancelled,

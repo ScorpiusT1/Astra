@@ -358,6 +358,54 @@
     </Style>
 
 
+    <Style x:Key="CaptionButtonStyle"
+           TargetType="Button">
+        <Setter Property="Width"
+                Value="32" />
+        <Setter Property="Height"
+                Value="32" />
+        <Setter Property="Background"
+                Value="Transparent" />
+        <Setter Property="Foreground"
+                Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderThickness"
+                Value="0" />
+        <Setter Property="FontFamily"
+                Value="Segoe MDL2 Assets" />
+        <Setter Property="FontSize"
+                Value="11" />
+        <Setter Property="Cursor"
+                Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="16">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver"
+                     Value="True">
+                <Setter Property="Background"
+                        Value="{DynamicResource SecondaryRegionBrush}" />
+                <Setter Property="Foreground"
+                        Value="{DynamicResource SecondaryTextBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed"
+                     Value="True">
+                <Setter Property="Background"
+                        Value="{DynamicResource ThirdlyRegionBrush}" />
+                <Setter Property="Foreground"
+                        Value="{DynamicResource ThirdlyTextBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
 
     <!-- 关闭按钮样式 -->
     <Style x:Key="CloseButtonStyle"
@@ -372,20 +420,21 @@
                 Value="{DynamicResource SecondaryTextBrush}" />
         <Setter Property="BorderThickness"
                 Value="0" />
+        <Setter Property="FontFamily"
+                Value="Segoe MDL2 Assets" />
         <Setter Property="Cursor"
                 Value="Hand" />
         <Setter Property="Content"
-                Value="✕" />
+                Value="&#xE8BB;" />
         <Setter Property="FontSize"
-                Value="16" />
+                Value="12" />
         <Setter Property="FontWeight"
                 Value="Normal" />
         <Setter Property="HorizontalAlignment"
                 Value="Right" />
         <Setter Property="VerticalAlignment"
                 Value="Top" />
-        <Setter Property="FontFamily"
-                Value="Segoe UI" />
+
         <Setter Property="ToolTip"
                 Value="关闭" />
         <Setter Property="Template">

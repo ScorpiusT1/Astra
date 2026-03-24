@@ -1,3 +1,4 @@
+using Astra.Core.Nodes.Management;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,12 +8,14 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
     /// <summary>
     /// 工作流执行控制器：提供暂停、恢复、取消能力。
     /// </summary>
-    public sealed class WorkFlowExecutionController : IDisposable
+    public sealed class WorkFlowExecutionController : IWorkflowExecutionController, IDisposable
     {
         private readonly CancellationTokenSource _internalCts = new CancellationTokenSource();
         private readonly AsyncManualResetEvent _pauseGate = new AsyncManualResetEvent(initialState: true);
         private readonly object _stateLock = new object();
         private bool _isPaused;
+        private TimeSpan _accumulatedPausedDuration = TimeSpan.Zero;
+        private DateTime? _pauseStartedAtUtc;
 
         public bool IsPaused
         {
@@ -27,12 +30,33 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
         public CancellationToken Token => _internalCts.Token;
 
+        /// <summary>
+        /// 总暂停时长（若当前处于暂停中，包含本次暂停进行中的时长）。
+        /// </summary>
+        public TimeSpan TotalPausedDuration
+        {
+            get
+            {
+                lock (_stateLock)
+                {
+                    var total = _accumulatedPausedDuration;
+                    if (_isPaused && _pauseStartedAtUtc.HasValue)
+                    {
+                        total += DateTime.UtcNow - _pauseStartedAtUtc.Value;
+                    }
+
+                    return total;
+                }
+            }
+        }
+
         public void Pause()
         {
             lock (_stateLock)
             {
                 if (_isPaused) return;
                 _isPaused = true;
+                _pauseStartedAtUtc = DateTime.UtcNow;
                 _pauseGate.Reset();
             }
         }
@@ -43,6 +67,11 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             {
                 if (!_isPaused) return;
                 _isPaused = false;
+                if (_pauseStartedAtUtc.HasValue)
+                {
+                    _accumulatedPausedDuration += DateTime.UtcNow - _pauseStartedAtUtc.Value;
+                    _pauseStartedAtUtc = null;
+                }
                 _pauseGate.Set();
             }
         }

@@ -158,14 +158,27 @@ namespace Astra.UI.Commands
                     // 从主流程节点中删除
                     if (_masterWorkflowTab != null && _removedNode != null)
                     {
+                        // 注意：删除时必须使用集合中的原对象引用，不能用克隆对象删除。
+                        var actualNodeToRemove = _masterWorkflowTab.Nodes.OfType<WorkflowReferenceNode>()
+                            .FirstOrDefault(n => n.SubWorkflowId == subWorkflowId);
+
+                        var actualEdgesToRemove = actualNodeToRemove == null
+                            ? new List<Edge>()
+                            : _masterWorkflowTab.Edges
+                                .Where(e => e.SourceNodeId == actualNodeToRemove.Id || e.TargetNodeId == actualNodeToRemove.Id)
+                                .ToList();
+
                         // 删除连线
-                        foreach (var edge in _removedEdges ?? new List<Edge>())
+                        foreach (var edge in actualEdgesToRemove)
                         {
                             _masterWorkflowTab.Edges.Remove(edge);
                         }
 
                         // 删除节点
-                        _masterWorkflowTab.Nodes.Remove(_removedNode);
+                        if (actualNodeToRemove != null)
+                        {
+                            _masterWorkflowTab.Nodes.Remove(actualNodeToRemove);
+                        }
                     }
                 }
             }

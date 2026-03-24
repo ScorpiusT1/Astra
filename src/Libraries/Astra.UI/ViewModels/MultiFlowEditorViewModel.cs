@@ -26,6 +26,9 @@ using Astra.UI.Commands;
 using Astra.Core.Nodes.Serialization;
 using Astra.Core.Nodes.Models;
 using System.IO;
+using Astra.Core.Foundation.Common;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Astra.UI.ViewModels
 {
@@ -86,6 +89,15 @@ namespace Astra.UI.ViewModels
         private IPluginHost _pluginHost;
 
         private IManifestSerializer _manifestSerializer;
+        private readonly IWorkflowExecutionSessionService _workflowExecutionSessionService;
+        private Task<OperationResult<ExecutionResult>> _executionTask;
+        private CancellationTokenSource _masterExecutionCts;
+        private string _activeExecutionId;
+        private WorkFlowNode _activeExecutionWorkflow;
+        private readonly object _nodeStateVisualLock = new object();
+        private readonly Dictionary<string, DateTime> _nodeRunningSinceUtc = new Dictionary<string, DateTime>();
+        private readonly Dictionary<string, long> _nodeStateVersions = new Dictionary<string, long>();
+        private const int MinRunningVisualMs = 120;
 
         /// <summary>
         /// 多流程序列化服务
@@ -359,12 +371,38 @@ namespace Astra.UI.ViewModels
         [ObservableProperty]
         private bool _isStartButtonVisible = true;
 
+        /// <summary>
+        /// 是否正在执行流程
+        /// </summary>
+        [ObservableProperty]
+        private bool _isRunning = false;
+
+        /// <summary>
+        /// 是否已暂停流程
+        /// </summary>
+        [ObservableProperty]
+        private bool _isPaused = false;
+
+        /// <summary>
+        /// 状态提示是否为失败态（用于UI红色提示）
+        /// </summary>
+        [ObservableProperty]
+        private bool _isStatusError = false;
+
         #endregion
 
-        public MultiFlowEditorViewModel(IPluginHost pluginHost, IManifestSerializer manifestSerializer)
+        public MultiFlowEditorViewModel(
+            IPluginHost pluginHost,
+            IManifestSerializer manifestSerializer,
+            IWorkflowExecutionSessionService workflowExecutionSessionService)
         {
             _pluginHost = pluginHost;
             _manifestSerializer = manifestSerializer;
+            _workflowExecutionSessionService = workflowExecutionSessionService;
+            if (_workflowExecutionSessionService != null)
+            {
+                _workflowExecutionSessionService.NodeExecutionChanged += OnNodeExecutionChanged;
+            }
 
             // 初始化多流程序列化服务
             _workflowSerializer = new MultiWorkflowSerializer();
@@ -1699,13 +1737,27 @@ namespace Astra.UI.ViewModels
             // 保存连线：直接使用 Edge，因为节点ID已经是引用ID（稳定），无需转换
             // 先清空现有连线，然后从主流程标签页的 Edges 重建
             masterWorkflow.Edges.Clear();
+            var validNodeIds = MasterWorkflowTab.Nodes
+                .OfType<WorkflowReferenceNode>()
+                .Select(n => n.Id)
+                .ToHashSet();
+            var invalidEdges = new List<Edge>();
 
             // 直接保存 Edge，因为节点ID已经是引用ID（稳定）
             foreach (var edge in MasterWorkflowTab.Edges)
             {
-                // 直接保存 Edge，因为节点ID已经是引用ID（稳定），连线可以一直存在
+                if (!validNodeIds.Contains(edge.SourceNodeId) || !validNodeIds.Contains(edge.TargetNodeId))
+                {
+                    invalidEdges.Add(edge);
+                    Debug.WriteLine($"[SequenceViewModel] 丢弃无效主流程连线: {edge.SourceNodeId} -> {edge.TargetNodeId}");
+                    continue;
+                }
+
                 masterWorkflow.Edges.Add(edge);
             }
+
+            // 注意：这里只过滤写入 masterWorkflow 的连线，不修改 UI 的 MasterWorkflowTab.Edges。
+            // 执行阶段应只读拓扑，不能在运行过程中改变画布连线可视集合。
 
             Debug.WriteLine($"[SequenceViewModel] 保存主流程状态完成: 节点数={MasterWorkflowTab.Nodes.Count}, 连线数={masterWorkflow.Edges.Count}");
         }
@@ -1962,7 +2014,7 @@ namespace Astra.UI.ViewModels
                 }
 
                 // 导出当前数据
-                var data = ExportMultiWorkflowData();
+                var data = ExportMultiWorkflowData(notifyMasterWorkflowSaved: true);
                 if (data == null)
                 {
                     MessageBoxHelper.ShowError("导出数据失败，无法保存", "保存失败");
@@ -1996,7 +2048,7 @@ namespace Astra.UI.ViewModels
         /// <summary>
         /// 导出当前多流程数据
         /// </summary>
-        private MultiWorkflowData ExportMultiWorkflowData()
+        private MultiWorkflowData ExportMultiWorkflowData(bool notifyMasterWorkflowSaved = false)
         {
             try
             {
@@ -2054,6 +2106,11 @@ namespace Astra.UI.ViewModels
                 if (IsMasterWorkflowViewVisible)
                 {
                     SaveMasterWorkflowState();
+                    if (notifyMasterWorkflowSaved)
+                    {
+                        StatusMessage = "主流程已保存";
+                        ToastHelper.ShowSuccess("主流程已保存");
+                    }
                 }
 
                 // 创建多流程数据对象
@@ -2533,11 +2590,103 @@ namespace Astra.UI.ViewModels
         /// 播放命令
         /// </summary>
         [RelayCommand]
-        private void Play()
+        private async Task Play()
         {
-            Debug.WriteLine("[SequenceViewModel] 播放命令");
-            StatusMessage = "正在执行流程...";
-            // TODO: 实现流程执行逻辑
+            IsStatusError = false;
+            if (_workflowExecutionSessionService == null)
+            {
+                IsStatusError = true;
+                StatusMessage = "执行服务不可用";
+                return;
+            }
+
+            SaveCurrentTabState();
+            IsRunning = true;
+            IsPaused = false;
+
+            var hasMaster = MasterWorkflow?.SubWorkflowReferences != null && MasterWorkflow.SubWorkflowReferences.Count > 0;
+            if (hasMaster)
+            {
+                _masterExecutionCts?.Cancel();
+                _masterExecutionCts?.Dispose();
+                _masterExecutionCts = new CancellationTokenSource();
+                _ = ExecuteMasterWorkflowAsync(_masterExecutionCts.Token);
+                return;
+            }
+
+            if (CurrentTab == null || CurrentTab.Type != WorkflowType.Sub)
+            {
+                IsRunning = false;
+                IsStatusError = true;
+                StatusMessage = "没有可执行的主流程，且当前未选中子流程";
+                return;
+            }
+
+            await ExecuteSingleSubWorkflowAsync(CurrentTab.GetSubWorkflow(), "正在执行当前子流程...");
+        }
+
+        /// <summary>
+        /// 执行/停止切换命令
+        /// </summary>
+        [RelayCommand]
+        private async Task ToggleRun()
+        {
+            if (IsRunning)
+            {
+                Stop();
+                return;
+            }
+
+            await Play();
+        }
+
+        /// <summary>
+        /// 暂停/继续切换命令
+        /// </summary>
+        [RelayCommand(CanExecute = nameof(CanTogglePauseResume))]
+        private void TogglePauseResume()
+        {
+            if (!IsRunning)
+            {
+                return;
+            }
+
+            if (!IsPaused)
+            {
+                var pauseResult = _workflowExecutionSessionService.Pause();
+                if (!pauseResult.Success)
+                {
+                    IsStatusError = true;
+                    StatusMessage = $"暂停失败: {pauseResult.Message}";
+                    return;
+                }
+
+                IsStatusError = false;
+                IsPaused = true;
+                StatusMessage = "流程已暂停";
+                UpdateActiveWorkflowNodeState(NodeExecutionState.Running, NodeExecutionState.Paused);
+                Debug.WriteLine("[SequenceViewModel] 暂停命令");
+                return;
+            }
+
+            var resumeResult = _workflowExecutionSessionService.Resume();
+            if (!resumeResult.Success)
+            {
+                IsStatusError = true;
+                StatusMessage = $"继续失败: {resumeResult.Message}";
+                return;
+            }
+
+            IsStatusError = false;
+            IsPaused = false;
+            StatusMessage = "流程继续执行中...";
+            UpdateActiveWorkflowNodeState(NodeExecutionState.Paused, NodeExecutionState.Running);
+            Debug.WriteLine("[SequenceViewModel] 继续命令");
+        }
+
+        private bool CanTogglePauseResume()
+        {
+            return IsRunning;
         }
 
         /// <summary>
@@ -2588,7 +2737,7 @@ namespace Astra.UI.ViewModels
         /// 启动指定子流程命令（从Tab标签按钮调用）
         /// </summary>
         [RelayCommand]
-        private void StartSubWorkflow(WorkflowTab tab)
+        private async Task StartSubWorkflow(WorkflowTab tab)
         {
             if (tab == null)
             {
@@ -2610,15 +2759,17 @@ namespace Astra.UI.ViewModels
             }
 
             Debug.WriteLine($"[SequenceViewModel] 启动子流程: {subWorkflow.Name} (ID: {subWorkflow.Id})");
-            StatusMessage = $"正在执行子流程: {subWorkflow.Name}...";
-            // TODO: 实现子流程执行逻辑
+            CurrentTab = tab;
+            IsRunning = true;
+            IsPaused = false;
+            await ExecuteSingleSubWorkflowAsync(subWorkflow, $"正在执行子流程: {subWorkflow.Name}...");
         }
 
         /// <summary>
         /// 启动当前子流程命令（保留作为备用）
         /// </summary>
         [RelayCommand(CanExecute = nameof(CanStartCurrentSubWorkflow))]
-        private void StartCurrentSubWorkflow()
+        private async Task StartCurrentSubWorkflow()
         {
             if (CurrentTab == null || CurrentTab.Type != WorkflowType.Sub)
             {
@@ -2627,7 +2778,7 @@ namespace Astra.UI.ViewModels
             }
 
             // 调用启动指定子流程的方法
-            StartSubWorkflow(CurrentTab);
+            await StartSubWorkflow(CurrentTab);
         }
 
         /// <summary>
@@ -3312,9 +3463,505 @@ namespace Astra.UI.ViewModels
         private void Stop()
         {
             Debug.WriteLine("[SequenceViewModel] 停止命令");
+            IsStatusError = false;
+            _masterExecutionCts?.Cancel();
+            if (_workflowExecutionSessionService != null)
+            {
+                var stopResult = _workflowExecutionSessionService.Stop();
+                if (!stopResult.Success)
+                {
+                    IsStatusError = true;
+                    StatusMessage = $"停止失败: {stopResult.Message}";
+                }
+            }
+
+            IsRunning = false;
+            IsPaused = false;
             StatusMessage = "流程已停止";
             ProcessTime = 0.0;
-            // TODO: 实现流程停止逻辑
+        }
+
+        partial void OnIsRunningChanged(bool value)
+        {
+            TogglePauseResumeCommand.NotifyCanExecuteChanged();
+        }
+
+        private NodeContext BuildExecutionContext()
+        {
+            var globalVariables = GlobalVariables?.Variables?
+                .ToDictionary(x => x.Key, x => x.Value?.Value)
+                ?? new Dictionary<string, object>();
+
+            return new NodeContext
+            {
+                InputData = new Dictionary<string, object>(),
+                GlobalVariables = globalVariables
+            };
+        }
+
+        private async Task ExecuteMasterWorkflowAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var queue = BuildMasterExecutionQueue();
+                if (queue.Count == 0)
+                {
+                    IsStatusError = true;
+                    StatusMessage = "主流程没有可执行的子流程节点";
+                    IsRunning = false;
+                    IsPaused = false;
+                    return;
+                }
+
+                for (int i = 0; i < queue.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    IsStatusError = false;
+                    var workflow = queue[i];
+                    StatusMessage = $"主流程执行中 ({i + 1}/{queue.Count})：{workflow.Name}";
+                    var success = await ExecuteSingleSubWorkflowAsync(
+                        workflow,
+                        $"正在执行主流程节点 ({i + 1}/{queue.Count})：{workflow.Name}",
+                        cancellationToken,
+                        updateGlobalRunningState: false);
+
+                    if (!success)
+                    {
+                        return;
+                    }
+                }
+
+                StatusMessage = $"主流程执行完成，共执行 {queue.Count} 个子流程";
+                IsStatusError = false;
+            }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = "主流程执行已停止";
+                IsStatusError = false;
+            }
+            finally
+            {
+                IsRunning = false;
+                IsPaused = false;
+            }
+        }
+
+        private List<WorkFlowNode> BuildMasterExecutionQueue()
+        {
+            var result = new List<WorkFlowNode>();
+            if (MasterWorkflow?.SubWorkflowReferences == null || MasterWorkflow.SubWorkflowReferences.Count == 0)
+            {
+                return result;
+            }
+
+            var refs = MasterWorkflow.SubWorkflowReferences;
+            var edges = MasterWorkflow.Edges ?? new List<Edge>();
+            var inDegree = refs.ToDictionary(x => x.Id, _ => 0);
+            var graph = refs.ToDictionary(x => x.Id, _ => new List<string>());
+
+            foreach (var edge in edges)
+            {
+                if (!graph.ContainsKey(edge.SourceNodeId) || !graph.ContainsKey(edge.TargetNodeId))
+                {
+                    continue;
+                }
+
+                graph[edge.SourceNodeId].Add(edge.TargetNodeId);
+                inDegree[edge.TargetNodeId]++;
+            }
+
+            var queue = new Queue<string>(inDegree.Where(x => x.Value == 0).Select(x => x.Key));
+            var orderedRefIds = new List<string>();
+            while (queue.Count > 0)
+            {
+                var nodeId = queue.Dequeue();
+                orderedRefIds.Add(nodeId);
+                foreach (var neighbor in graph[nodeId])
+                {
+                    inDegree[neighbor]--;
+                    if (inDegree[neighbor] == 0)
+                    {
+                        queue.Enqueue(neighbor);
+                    }
+                }
+            }
+
+            // 有环或孤立异常时，补齐未排序到的节点，保证仍可执行。
+            if (orderedRefIds.Count < refs.Count)
+            {
+                foreach (var item in refs.Select(x => x.Id))
+                {
+                    if (!orderedRefIds.Contains(item))
+                    {
+                        orderedRefIds.Add(item);
+                    }
+                }
+            }
+
+            foreach (var refId in orderedRefIds)
+            {
+                var reference = refs.FirstOrDefault(x => x.Id == refId);
+                if (reference == null || string.IsNullOrWhiteSpace(reference.SubWorkflowId))
+                {
+                    continue;
+                }
+
+                if (SubWorkflows.TryGetValue(reference.SubWorkflowId, out var subWorkflow) && subWorkflow != null)
+                {
+                    result.Add(subWorkflow);
+                }
+            }
+
+            return result;
+        }
+
+        private async Task<bool> ExecuteSingleSubWorkflowAsync(
+            WorkFlowNode workflow,
+            string runningMessage,
+            CancellationToken cancellationToken = default,
+            bool updateGlobalRunningState = true)
+        {
+            if (workflow == null)
+            {
+                IsStatusError = true;
+                StatusMessage = "子流程数据无效";
+                if (updateGlobalRunningState)
+                {
+                    IsRunning = false;
+                    IsPaused = false;
+                }
+
+                return false;
+            }
+
+            Debug.WriteLine($"[SequenceViewModel] 执行子流程: {workflow.Name} ({workflow.Id})");
+            var context = BuildExecutionContext();
+            _activeExecutionWorkflow = workflow;
+            UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Running);
+            var startResult = await _workflowExecutionSessionService.StartAsync(workflow.Id, workflow, context, cancellationToken);
+            if (!startResult.Success || startResult.ExecutionTask == null)
+            {
+                _activeExecutionWorkflow = null;
+                UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Failed);
+                IsStatusError = true;
+                StatusMessage = startResult.Message;
+                if (updateGlobalRunningState)
+                {
+                    IsRunning = false;
+                    IsPaused = false;
+                }
+
+                return false;
+            }
+
+            StatusMessage = string.IsNullOrWhiteSpace(startResult.ExecutionId)
+                ? runningMessage
+                : $"{runningMessage} (ID: {startResult.ExecutionId})";
+            IsStatusError = false;
+
+            _executionTask = startResult.ExecutionTask;
+            _activeExecutionId = startResult.ExecutionId;
+            await MonitorExecutionAsync(_executionTask, workflow, updateGlobalRunningState);
+
+            if (_executionTask == null || !_executionTask.IsCompletedSuccessfully)
+            {
+                UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Failed);
+                return false;
+            }
+
+            var operationResult = await _executionTask;
+            UpdateMasterReferenceNodeResult(workflow, operationResult?.Data);
+            return operationResult.Success && operationResult.Data != null && operationResult.Data.Success;
+        }
+
+        private async Task MonitorExecutionAsync(
+            Task<OperationResult<ExecutionResult>> executionTask,
+            WorkFlowNode workflow,
+            bool updateGlobalRunningState = true)
+        {
+            var startTime = DateTime.UtcNow;
+
+            try
+            {
+                var result = await executionTask;
+                ProcessTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                RefreshAllNodeStates(workflow);
+
+                if (!result.Success || result.Data == null)
+                {
+                    IsStatusError = true;
+                    StatusMessage = $"流程执行失败: {result.Message}";
+                    return;
+                }
+
+                IsStatusError = !result.Data.Success;
+                StatusMessage = result.Data.Success
+                    ? result.Data.Message ?? "流程执行完成"
+                    : result.Data.Message ?? "流程执行失败";
+            }
+            catch (Exception ex)
+            {
+                IsStatusError = true;
+                StatusMessage = $"流程执行异常: {ex.Message}";
+            }
+            finally
+            {
+                _activeExecutionWorkflow = null;
+                _activeExecutionId = null;
+                if (updateGlobalRunningState)
+                {
+                    IsRunning = false;
+                    IsPaused = false;
+                }
+            }
+        }
+
+        private void RefreshAllNodeStates(WorkFlowNode workflow)
+        {
+            if (workflow?.Nodes == null)
+            {
+                return;
+            }
+
+            foreach (var node in workflow.Nodes)
+            {
+                RefreshNodeStateInTab(workflow, node.Id);
+            }
+        }
+
+        private void OnNodeExecutionChanged(object sender, WorkflowNodeExecutionChangedEventArgs e)
+        {
+            if (e == null || string.IsNullOrWhiteSpace(e.NodeId))
+            {
+                return;
+            }
+
+            var activeWorkflow = _activeExecutionWorkflow;
+            if (activeWorkflow?.Nodes == null)
+            {
+                return;
+            }
+
+            // 仅处理当前活跃执行实例的节点事件，避免并发执行串扰。
+            if (!string.IsNullOrWhiteSpace(_activeExecutionId) &&
+                !string.IsNullOrWhiteSpace(e.ExecutionId) &&
+                !string.Equals(_activeExecutionId, e.ExecutionId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var node = activeWorkflow.Nodes.FirstOrDefault(x => x.Id == e.NodeId);
+            if (node == null)
+            {
+                return;
+            }
+
+            _ = ApplyNodeStateWithVisualGuaranteeAsync(activeWorkflow, node, e.State);
+        }
+
+        private void UpdateActiveWorkflowNodeState(NodeExecutionState fromState, NodeExecutionState toState)
+        {
+            RunOnUiThread(() =>
+            {
+                var activeWorkflow = _activeExecutionWorkflow;
+                if (activeWorkflow?.Nodes == null)
+                {
+                    return;
+                }
+
+                foreach (var node in activeWorkflow.Nodes.Where(x => x.ExecutionState == fromState))
+                {
+                    node.ExecutionState = toState;
+                    RefreshNodeStateInTab(activeWorkflow, node.Id);
+                }
+            });
+        }
+
+        private void RefreshNodeStateInTab(WorkFlowNode workflow, string nodeId)
+        {
+            if (workflow == null || string.IsNullOrWhiteSpace(nodeId))
+            {
+                return;
+            }
+
+            var targetTab = SubWorkflowTabs?.FirstOrDefault(
+                x => x?.Type == WorkflowType.Sub &&
+                     x.GetSubWorkflow() != null &&
+                     string.Equals(x.GetSubWorkflow().Id, workflow.Id, StringComparison.Ordinal));
+
+            if (targetTab?.Nodes == null)
+            {
+                return;
+            }
+
+            void Refresh()
+            {
+                // Node 已支持属性变更通知，这里不再通过 Remove/Insert 触发重绑定，
+                // 以避免误触发节点集合变更导致连线重算或丢失。
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                Refresh();
+                return;
+            }
+
+            dispatcher.BeginInvoke((Action)Refresh, System.Windows.Threading.DispatcherPriority.DataBind);
+        }
+
+        private void UpdateMasterReferenceNodeState(WorkFlowNode workflow, NodeExecutionState state)
+        {
+            if (workflow == null || MasterWorkflowTab?.Nodes == null)
+            {
+                return;
+            }
+
+            var referenceNode = MasterWorkflowTab.Nodes
+                .OfType<WorkflowReferenceNode>()
+                .FirstOrDefault(x => string.Equals(x.SubWorkflowId, workflow.Id, StringComparison.Ordinal));
+            if (referenceNode == null)
+            {
+                return;
+            }
+
+            referenceNode.ExecutionState = state;
+            RefreshMasterWorkflowNode(referenceNode.Id);
+        }
+
+        private void UpdateMasterReferenceNodeResult(WorkFlowNode workflow, ExecutionResult result)
+        {
+            if (workflow == null || MasterWorkflowTab?.Nodes == null)
+            {
+                return;
+            }
+
+            var referenceNode = MasterWorkflowTab.Nodes
+                .OfType<WorkflowReferenceNode>()
+                .FirstOrDefault(x => string.Equals(x.SubWorkflowId, workflow.Id, StringComparison.Ordinal));
+            if (referenceNode == null)
+            {
+                return;
+            }
+
+            referenceNode.LastExecutionResult = result;
+            referenceNode.ExecutionState = result == null
+                ? NodeExecutionState.Failed
+                : result.ResultType == ExecutionResultType.Cancelled
+                    ? NodeExecutionState.Cancelled
+                    : (result.IsSkipped || result.ResultType == ExecutionResultType.Skipped)
+                        ? NodeExecutionState.Skipped
+                        : result.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
+
+            RefreshMasterWorkflowNode(referenceNode.Id);
+        }
+
+        private void RefreshMasterWorkflowNode(string nodeId)
+        {
+            if (string.IsNullOrWhiteSpace(nodeId) || MasterWorkflowTab?.Nodes == null)
+            {
+                return;
+            }
+
+            void Refresh()
+            {
+                // Node 已支持属性变更通知，这里不再通过 Remove/Insert 触发重绑定，
+                // 以避免主流程节点重建时连线可视状态被清空。
+            }
+
+            RunOnUiThread(Refresh);
+        }
+
+        private static void RunOnUiThread(Action action)
+        {
+            if (action == null)
+            {
+                return;
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.Send);
+        }
+
+        private async Task ApplyNodeStateWithVisualGuaranteeAsync(
+            WorkFlowNode workflow,
+            Node node,
+            NodeExecutionState state)
+        {
+            if (workflow == null || node == null)
+            {
+                return;
+            }
+
+            var nodeId = node.Id;
+            if (string.IsNullOrWhiteSpace(nodeId))
+            {
+                return;
+            }
+
+            long version;
+            DateTime? runningSinceUtc = null;
+            lock (_nodeStateVisualLock)
+            {
+                _nodeStateVersions.TryGetValue(nodeId, out var currentVersion);
+                version = currentVersion + 1;
+                _nodeStateVersions[nodeId] = version;
+
+                if (state == NodeExecutionState.Running)
+                {
+                    _nodeRunningSinceUtc[nodeId] = DateTime.UtcNow;
+                }
+                else
+                {
+                    _nodeRunningSinceUtc.TryGetValue(nodeId, out var since);
+                    runningSinceUtc = since;
+                }
+            }
+
+            if (state != NodeExecutionState.Running &&
+                runningSinceUtc.HasValue &&
+                IsTerminalState(state))
+            {
+                var elapsedMs = (DateTime.UtcNow - runningSinceUtc.Value).TotalMilliseconds;
+                var waitMs = MinRunningVisualMs - elapsedMs;
+                if (waitMs > 0)
+                {
+                    await Task.Delay((int)waitMs).ConfigureAwait(false);
+                }
+            }
+
+            RunOnUiThread(() =>
+            {
+                lock (_nodeStateVisualLock)
+                {
+                    if (!_nodeStateVersions.TryGetValue(nodeId, out var latestVersion) || latestVersion != version)
+                    {
+                        return;
+                    }
+
+                    if (state != NodeExecutionState.Running && IsTerminalState(state))
+                    {
+                        _nodeRunningSinceUtc.Remove(nodeId);
+                    }
+                }
+
+                node.ExecutionState = state;
+                RefreshNodeStateInTab(workflow, nodeId);
+            });
+        }
+
+        private static bool IsTerminalState(NodeExecutionState state)
+        {
+            return state == NodeExecutionState.Success ||
+                   state == NodeExecutionState.Failed ||
+                   state == NodeExecutionState.Cancelled ||
+                   state == NodeExecutionState.Skipped;
         }
 
         /// <summary>

@@ -1302,6 +1302,9 @@ namespace Astra.UI.Controls
                 case NodeExecutionState.Running:
                     IconColor = GetBrushFromResource("WarningBrush");
                     break;
+                case NodeExecutionState.Paused:
+                    IconColor = GetBrushFromResource("DarkInfoBrush");
+                    break;
                 case NodeExecutionState.Skipped:
                     IconColor = GetBrushFromResource("InfoBrush");
                     break;
@@ -1334,6 +1337,7 @@ namespace Astra.UI.Controls
                     pathData = "M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z";
                     break;
                 case NodeExecutionState.Running:
+                case NodeExecutionState.Paused:
                     // 加载/旋转图标
                     pathData = "M12 2V6M12 18V22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12H6M18 12H22M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93";
                     break;

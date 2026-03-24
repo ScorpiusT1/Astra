@@ -4,6 +4,7 @@ using Astra.Core.Plugins.Manifest.Serializers;
 using Astra.Models;
 using Astra.Services;
 using Astra.UI.Controls;
+using Astra.UI.Services;
 using Astra.UI.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -41,12 +42,16 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private MultiFlowEditorViewModel _multiFlowEditor;
 
-        public SequenceViewModel(IFrameNavigationService navigationService, IPluginHost pluginHost, IManifestSerializer manifestSerializer)
+        public SequenceViewModel(
+            IFrameNavigationService navigationService,
+            IPluginHost pluginHost,
+            IManifestSerializer manifestSerializer,
+            IWorkflowExecutionSessionService workflowExecutionSessionService)
         {
             _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             
             // 创建 MultiFlowEditorViewModel 实例
-            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializer);
+            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializer, workflowExecutionSessionService);
             
             Debug.WriteLine("[SequenceViewModel] 已创建 MultiFlowEditorViewModel");
         }

@@ -6,7 +6,8 @@
              xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:scottplot="http://schemas.scottplot.net/2008/xaml/presentation"
              xmlns:converters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
-             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels" d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionDeviceDebugViewModel}"
+             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels" 
+             d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionDeviceDebugViewModel}"
              mc:Ignorable="d"
              d:DesignHeight="600"
              d:DesignWidth="900">

@@ -338,12 +338,37 @@
                         VerticalAlignment="Center" />
 
                 <!-- 画布控制组 -->
-                <Button ToolTip="锁定画布"
-                        Command="{Binding ToggleLockCommand}"
-                        Style="{StaticResource LockIconButtonStyle}"
+                <Button Command="{Binding ToggleLockCommand}"
                         Margin="0,0,4,0">
-                    <fa:IconBlock Icon="Lock"
-                                  FontSize="16" />
+                    <Button.Style>
+                        <Style TargetType="Button"
+                               BasedOn="{StaticResource LockIconButtonStyle}">
+                            <Setter Property="ToolTip"
+                                    Value="锁定画布" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsLocked}"
+                                             Value="True">
+                                    <Setter Property="ToolTip"
+                                            Value="解锁画布" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <fa:IconBlock FontSize="16">
+                        <fa:IconBlock.Style>
+                            <Style TargetType="fa:IconBlock">
+                                <Setter Property="Icon"
+                                        Value="Lock" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLocked}"
+                                                 Value="True">
+                                        <Setter Property="Icon"
+                                                Value="LockOpen" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </fa:IconBlock.Style>
+                    </fa:IconBlock>
                 </Button>
 
                 <!-- 分隔符（竖线） -->
@@ -354,12 +379,71 @@
                         VerticalAlignment="Center" />
 
                 <!-- 执行控制组 -->
-                <Button ToolTip="执行"
-                        Command="{Binding PlayCommand}"
-                        Style="{StaticResource StartIconButtonStyle}"
+                <Button Command="{Binding ToggleRunCommand}"
                         Margin="0,0,4,0">
-                    <fa:IconBlock Icon="Play"
-                                  FontSize="16" />
+                    <Button.Style>
+                        <Style TargetType="Button"
+                               BasedOn="{StaticResource StartIconButtonStyle}">
+                            <Setter Property="ToolTip"
+                                    Value="执行" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRunning}"
+                                             Value="True">
+                                    <Setter Property="ToolTip"
+                                            Value="停止" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <fa:IconBlock FontSize="16">
+                        <fa:IconBlock.Style>
+                            <Style TargetType="fa:IconBlock">
+                                <Setter Property="Icon"
+                                        Value="Play" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsRunning}"
+                                                 Value="True">
+                                        <Setter Property="Icon"
+                                                Value="Stop" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </fa:IconBlock.Style>
+                    </fa:IconBlock>
+                </Button>
+                <Button Command="{Binding TogglePauseResumeCommand}"
+                        Margin="0,0,4,0">
+                    <Button.Style>
+                        <Style TargetType="Button"
+                               BasedOn="{StaticResource IconButtonStyle}">
+                            <Setter Property="ToolTip"
+                                    Value="暂停" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPaused}"
+                                             Value="True">
+                                    <Setter Property="ToolTip"
+                                            Value="继续" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <fa:IconBlock FontSize="16">
+                            <fa:IconBlock.Style>
+                                <Style TargetType="fa:IconBlock">
+                                    <Setter Property="Icon"
+                                            Value="Pause" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPaused}"
+                                                     Value="True">
+                                            <Setter Property="Icon"
+                                                    Value="Forward" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </fa:IconBlock.Style>
+                        </fa:IconBlock>
+                    </StackPanel>
                 </Button>
 
                 <!-- 流程操作组（移动到末尾） -->
@@ -852,9 +936,22 @@
                            Margin="0,0,20,0"
                            Text="{Binding StatusMessage}"
                            FontSize="12"
-                           Foreground="{DynamicResource PrimaryTextBrush}"
                            VerticalAlignment="Center"
-                           HorizontalAlignment="Right" />
+                           HorizontalAlignment="Right">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource PrimaryTextBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsStatusError}"
+                                             Value="True">
+                                    <Setter Property="Foreground"
+                                            Value="{DynamicResource DangerBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <!-- 右侧控制区域 -->
                 <StackPanel Grid.Column="2"

@@ -3,7 +3,8 @@
                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                         xmlns:local="clr-namespace:Astra.UI.Controls"
                         xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
-                        xmlns:converters="clr-namespace:Astra.UI.Converters">
+                        xmlns:converters="clr-namespace:Astra.UI.Converters"
+                        xmlns:models="clr-namespace:Astra.Core.Nodes.Models;assembly=Astra.Core">
 
     <ResourceDictionary.MergedDictionaries>
         <!-- 引入图标转换器等公共转换器 -->
@@ -51,7 +52,8 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- 图标区域：使用 FontAwesome 图标，绑定到节点模型的 Icon 字段 -->
-                                <Border Grid.Column="0"
+                                <Border x:Name="IconArea"
+                                        Grid.Column="0"
                                         Background="{TemplateBinding IconColor}"
                                         CornerRadius="6,0,0,6">
                                     <Viewbox Width="20"
@@ -188,6 +190,119 @@
                                     Property="BorderThickness"
                                     Value="2" />
                         </Trigger>
+
+                        <!-- 运行中状态：节点整体高亮为黄/橙色 -->
+                        <Trigger Property="Status"
+                                 Value="{x:Static models:NodeExecutionState.Running}">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource LightWarningBrush}" />
+                            <Setter TargetName="IconArea"
+                                    Property="Background"
+                                    Value="{DynamicResource WarningBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource DarkWarningBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                        </Trigger>
+
+                        <!-- 成功状态：使用成功色 -->
+                        <Trigger Property="Status"
+                                 Value="{x:Static models:NodeExecutionState.Success}">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource LightSuccessBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource DarkSuccessBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                        </Trigger>
+
+                        <!-- 暂停状态：使用独立暂停色 -->
+                        <Trigger Property="Status"
+                                 Value="{x:Static models:NodeExecutionState.Paused}">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="#FFEDE7F6" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="#FF7E57C2" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                        </Trigger>
+
+                        <!-- 跳过状态：使用信息色 -->
+                        <Trigger Property="Status"
+                                 Value="{x:Static models:NodeExecutionState.Skipped}">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource LightInfoBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource DarkInfoBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                        </Trigger>
+
+                        <!-- 失败状态：整体切换为危险色风格 -->
+                        <Trigger Property="Status"
+                                 Value="{x:Static models:NodeExecutionState.Failed}">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource LightDangerBrush}" />
+                            <Setter TargetName="IconArea"
+                                    Property="Background"
+                                    Value="{DynamicResource DangerBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource DarkDangerBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource DangerBrush}" />
+                        </Trigger>
+
+                        <!-- 取消状态：沿用失败风格（取消也属于异常终态） -->
+                        <Trigger Property="Status"
+                                 Value="{x:Static models:NodeExecutionState.Cancelled}">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource LightDangerBrush}" />
+                            <Setter TargetName="IconArea"
+                                    Property="Background"
+                                    Value="{DynamicResource DangerBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource DarkDangerBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource DangerBrush}" />
+                        </Trigger>
+
+                        <!-- 禁用状态：灰阶展示，优先级高于执行状态色 -->
+                        <DataTrigger Binding="{Binding DataContext.IsEnabled, RelativeSource={RelativeSource TemplatedParent}}"
+                                     Value="False">
+                            <Setter TargetName="NodeBorder"
+                                    Property="Background"
+                                    Value="{DynamicResource SecondaryRegionBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderBrush"
+                                    Value="{DynamicResource SecondaryBorderBrush}" />
+                            <Setter TargetName="NodeBorder"
+                                    Property="BorderThickness"
+                                    Value="2" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource SecondaryTextBrush}" />
+                        </DataTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

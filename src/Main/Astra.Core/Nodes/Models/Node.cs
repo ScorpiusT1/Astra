@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Geometry;
+using Astra.Core.Nodes.Geometry;
 using System.Diagnostics;
 using Astra.Core.Logs;
 using Newtonsoft.Json;
@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using System.Reflection;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -25,8 +27,13 @@ namespace Astra.Core.Nodes.Models
     /// 2. 开闭原则：通过抽象方法 ExecuteCoreAsync 支持扩展
     /// 3. 里氏替换：子类可以安全替换基类
     /// </summary>
-    public abstract class Node
+    public abstract class Node : INotifyPropertyChanged
     {
+        private bool _isEnabled;
+        private bool _isSelected;
+        private ExecutionResult _lastExecutionResult;
+        private NodeExecutionState _executionState;
+
         private static readonly JsonSerializerSettings jsonCloneSettings = new JsonSerializerSettings
         {
             ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
@@ -68,7 +75,20 @@ namespace Astra.Core.Nodes.Models
         // ===== 状态属性 =====
         
         [JsonProperty(Order = 7)]
-        public bool IsEnabled { get; set; }
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set
+            {
+                if (_isEnabled == value)
+                {
+                    return;
+                }
+
+                _isEnabled = value;
+                OnPropertyChanged();
+            }
+        }
         
         [JsonProperty(Order = 8)]
         public bool IsReadonly { get; set; }
@@ -80,7 +100,20 @@ namespace Astra.Core.Nodes.Models
         /// 节点是否被选中（用于 UI 框选等交互）
         /// </summary>
         [JsonIgnore]
-        public bool IsSelected { get; set; }
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                if (_isSelected == value)
+                {
+                    return;
+                }
+
+                _isSelected = value;
+                OnPropertyChanged();
+            }
+        }
 
         // ===== 参数和结果 =====
         
@@ -88,10 +121,36 @@ namespace Astra.Core.Nodes.Models
         public Dictionary<string, object> Parameters { get; set; }
 
         [JsonIgnore]
-        public ExecutionResult LastExecutionResult { get; set; }
+        public ExecutionResult LastExecutionResult
+        {
+            get => _lastExecutionResult;
+            set
+            {
+                if (ReferenceEquals(_lastExecutionResult, value))
+                {
+                    return;
+                }
+
+                _lastExecutionResult = value;
+                OnPropertyChanged();
+            }
+        }
 
         [JsonIgnore]
-        public NodeExecutionState ExecutionState { get; set; }
+        public NodeExecutionState ExecutionState
+        {
+            get => _executionState;
+            set
+            {
+                if (_executionState == value)
+                {
+                    return;
+                }
+
+                _executionState = value;
+                OnPropertyChanged();
+            }
+        }
 
         // ===== 端口集合 =====
         
@@ -289,6 +348,13 @@ namespace Astra.Core.Nodes.Models
         // ===== 执行入口（通过扩展方法提供，在 Astra.Engine 中实现） =====
         // 注意：ExecuteAsync 方法已移至 Astra.Engine.Execution.NodeExecutor.NodeExecutionExtensions
         // 这样可以避免 Core 直接依赖 Engine 的实现
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
 
     // ========================================

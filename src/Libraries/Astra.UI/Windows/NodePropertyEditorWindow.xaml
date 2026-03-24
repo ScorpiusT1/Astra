@@ -9,10 +9,11 @@
         Height="600"
         WindowStartupLocation="CenterOwner"
         WindowStyle="None"
-        ResizeMode="NoResize"
+        ResizeMode="CanResize"
         Background="Transparent"
         AllowsTransparency="True"
-        ShowInTaskbar="False">
+        ShowInTaskbar="True"
+        StateChanged="Window_StateChanged">
 
     <Border x:Name="RootBorder"
             Background="{DynamicResource SurfaceBrush}"
@@ -39,34 +40,52 @@
             </Grid.RowDefinitions>
 
             <!-- 标题 -->
-            <StackPanel Grid.Row="0"
-                        Margin="0,0,0,16">
-                <TextBlock Text="🧩 节点属性"
-                           FontSize="18"
-                           FontWeight="Bold"
-                           Foreground="{DynamicResource PrimaryTextBrush}" />
-                <TextBlock Text="{Binding TargetNode.Name, RelativeSource={RelativeSource AncestorType=Window}}"
-                           FontSize="11"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
-                           Margin="0,6,0,0"
-                           TextTrimming="CharacterEllipsis" />
-            </StackPanel>
+            <Grid Grid.Row="0"
+                  Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-            <!-- 右上角关闭按钮 -->
-            <Button x:Name="CloseButton"
-                    Grid.Row="0"
-                    Grid.RowSpan="2"
-                    Margin="0,-8,-8,0"
-                    Style="{DynamicResource CloseButtonStyle}"
-                    Click="CancelButton_Click" />
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="🧩 节点属性"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource PrimaryTextBrush}" />
+                    <TextBlock Text="{Binding TargetNode.Name, RelativeSource={RelativeSource AncestorType=Window}}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Margin="0,6,0,0"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Top">
+                    <Button Content="&#xE921;"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Click="MinimizeButton_Click" />
+                    <Button x:Name="MaximizeButton"
+                            Content="&#xE922;"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Click="MaximizeButton_Click" />
+                    <Button x:Name="CloseButton"
+                            Margin="4,0,0,0"
+                            Style="{DynamicResource CloseButtonStyle}"
+                            Click="CancelButton_Click" />
+                </StackPanel>
+            </Grid>
 
             <!-- 属性编辑器主体 -->
-            <ui:PropertyEditorControl x:Name="PropertyEditor"
-                                      Grid.Row="1"
-                                      Margin="0,0,0,16"
-                                      ShowSearchBox="False"
-                                      HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch" />
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,0,0,16"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          CanContentScroll="False">
+                <ui:PropertyEditorControl x:Name="PropertyEditor"
+                                          ShowSearchBox="False"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch" />
+            </ScrollViewer>
 
             <!-- 底部确认 / 取消按钮 -->
             <StackPanel Grid.Row="2"
