@@ -5,6 +5,7 @@ using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.SDKs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ScottPlot;
 using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
@@ -36,6 +37,9 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             [ObservableProperty]
             private bool _isEnabled;
+
+            [ObservableProperty]
+            private ScottPlot.Color _color;
 
             // 供外部（视图模型）监听通道启用状态变化，及时同步曲线可见性。
             public event Action<ChannelDebugItem, bool>? IsEnabledChanged;
@@ -296,6 +300,8 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         {
             Channels.Clear();
 
+            var colorCategory = new ScottPlot.Palettes.Category10();
+
             if (_device?.CurrentConfig is DataAcquisitionConfig cfg && cfg.Channels != null)
             {
                 foreach (var ch in cfg.Channels)
@@ -305,11 +311,14 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                     if (string.IsNullOrWhiteSpace(name))
                         name = $"CH{ch.ChannelId}";
 
+                    int colorIndex =  (ch.ChannelId - 1) % colorCategory.Colors.Length; // 通道 ID 从 1 开始，调整为 0 基索引
+
                     Channels.Add(new ChannelDebugItem
                     {
                         ChannelId = ch.ChannelId,
                         Name = name,
-                        IsEnabled = ch.Enabled
+                        IsEnabled = ch.Enabled,
+                        Color = colorCategory.GetColor(colorIndex) // 根据通道 ID 分配颜色
                     });
                 }
             }
@@ -319,8 +328,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 channel.IsEnabledChanged += OnChannelDebugItemIsEnabledChanged;
             }
 
-            SelectedChannel = Channels.FirstOrDefault();
-            DeleteChannelCommand.NotifyCanExecuteChanged();
+            SelectedChannel = Channels.FirstOrDefault();           
         }
 
         private void OnChannelDebugItemIsEnabledChanged(ChannelDebugItem channel, bool isEnabled)
@@ -337,82 +345,6 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             ChannelVisibilityChanged?.Invoke(channel.ChannelId, isEnabled);
         }
 
-        [RelayCommand]
-        private void AddChannel()
-        {
-            if (_device?.CurrentConfig is not DataAcquisitionConfig cfg)
-                return;
-
-            cfg.Channels ??= new ObservableCollection<Configs.DAQChannelConfig>();
-
-            int nextChannelId = cfg.Channels.Count + 1;
-            var configChannel = new Configs.DAQChannelConfig
-            {
-                ChannelId = nextChannelId,
-                ChannelName = $"通道 {nextChannelId}",
-                SampleRate = cfg.SampleRate,
-                Enabled = true
-            };
-
-            cfg.Channels.Add(configChannel);
-
-            var debugItem = new ChannelDebugItem
-            {
-                ChannelId = configChannel.ChannelId,
-                Name = configChannel.ChannelName,
-                IsEnabled = configChannel.Enabled
-            };
-            debugItem.IsEnabledChanged += OnChannelDebugItemIsEnabledChanged;
-            Channels.Add(debugItem);
-            SelectedChannel = debugItem;
-
-            SyncChannelCount();
-            DeleteChannelCommand.NotifyCanExecuteChanged();
-        }
-
-        [RelayCommand(CanExecute = nameof(CanDeleteChannel))]
-        private void DeleteChannel(ChannelDebugItem? channel)
-        {
-            if (_device?.CurrentConfig is not DataAcquisitionConfig cfg || cfg.Channels == null)
-                return;
-
-            var target = channel ?? SelectedChannel;
-            if (target == null)
-                return;
-
-            var configTarget = cfg.Channels.FirstOrDefault(c => c.ChannelId == target.ChannelId);
-            if (configTarget != null)
-            {
-                cfg.Channels.Remove(configTarget);
-            }
-
-            target.IsEnabledChanged -= OnChannelDebugItemIsEnabledChanged;
-            Channels.Remove(target);
-
-            for (int i = 0; i < cfg.Channels.Count; i++)
-            {
-                cfg.Channels[i].ChannelId = i + 1;
-                if (string.IsNullOrWhiteSpace(cfg.Channels[i].ChannelName))
-                {
-                    cfg.Channels[i].ChannelName = $"通道 {i + 1}";
-                }
-            }
-
-            for (int i = 0; i < Channels.Count; i++)
-            {
-                Channels[i].ChannelId = i + 1;
-                if (string.IsNullOrWhiteSpace(Channels[i].Name))
-                {
-                    Channels[i].Name = $"通道 {i + 1}";
-                }
-            }
-
-            SelectedChannel = Channels.FirstOrDefault();
-            SyncChannelCount();
-            DeleteChannelCommand.NotifyCanExecuteChanged();
-        }
-
-        private bool CanDeleteChannel() => SelectedChannel != null && Channels.Count > 0;
 
         private void SyncChannelCount()
         {
@@ -428,10 +360,6 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             OnPropertyChanged(nameof(ChannelCount));
         }
 
-        partial void OnSelectedChannelChanged(ChannelDebugItem? value)
-        {
-            DeleteChannelCommand.NotifyCanExecuteChanged();
-        }
 
         private void OnDataReceived(object sender, DeviceMessage message)
         {

@@ -47,10 +47,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Libraries\Astra.Contract\Astra.Contract.csproj" />
+  
     <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
     <ProjectReference Include="..\..\Libraries\NavStack\NavStack.csproj" />
+    <ProjectReference Include="..\Astra.Contract\Astra.Contract.csproj" />
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\Astra.Engine\Astra.Engine.csproj" />
     <ProjectReference Include="..\Astra.Infrastructure\Astra.Infrastructure.csproj" />

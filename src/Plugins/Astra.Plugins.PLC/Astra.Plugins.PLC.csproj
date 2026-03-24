@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <!-- 主程序公共库由宿主提供，不复制到插件目录 -->
-	  <ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj" >
+	  <ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj">
 		  <Private>false</Private>
 		  <CopyLocal>false</CopyLocal>
 	  </ProjectReference>
@@ -33,9 +33,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Astra.Plugins.PLC.General.config.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Update="Astra.Plugins.PLC.addin">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Astra.Plugins.PLC.General.config.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+	  <None Update="Astra.Plugins.PLC.S7.config.json">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
   </ItemGroup>
 
 </Project>

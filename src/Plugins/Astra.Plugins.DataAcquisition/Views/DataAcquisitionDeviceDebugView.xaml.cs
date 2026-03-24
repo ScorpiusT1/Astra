@@ -1,4 +1,5 @@
 using Astra.Plugins.DataAcquisition.ViewModels;
+using NAudio.Gui;
 using ScottPlot;
 using ScottPlot.Plottables;
 using ScottPlot.WPF;
@@ -15,7 +16,7 @@ namespace Astra.Plugins.DataAcquisition.Views
     /// </summary>
     public partial class DataAcquisitionDeviceDebugView : UserControl
     {
-        private DataAcquisitionDeviceDebugViewModel? ViewModel => DataContext as DataAcquisitionDeviceDebugViewModel;
+        private DataAcquisitionDeviceDebugViewModel? viewModel => DataContext as DataAcquisitionDeviceDebugViewModel;
         private readonly Dictionary<int, Signal> _signalsByChannelId = new();
 
         public DataAcquisitionDeviceDebugView()
@@ -51,22 +52,6 @@ namespace Astra.Plugins.DataAcquisition.Views
             plt.Clear();
             _signalsByChannelId.Clear();
 
-            // 美化 ScottPlot 样式
-            // 使用 UI 主题中的颜色
-            var surfaceColor = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["SurfaceColor"];
-            var regionColor = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["SecondaryRegionColor"];
-            var borderColor = (System.Windows.Media.Color)System.Windows.Application.Current.Resources["BorderColor"];
-
-            //plt.FigureBackground.Color = ScottPlot.Color.FromARGB(surfaceColor.A, surfaceColor.R, surfaceColor.G, surfaceColor.B);
-            //plt.DataBackground.Color   = ScottPlot.Color.FromARGB(regionColor.A, regionColor.R, regionColor.G, regionColor.B);
-
-            //plt.Grid.MajorLineColor = ScottPlot.Color.FromARGB(borderColor.A, borderColor.R, borderColor.G, borderColor.B);
-            //plt.Grid.MajorLineWidth = 1;
-            //// 次网格线使用更浅的背景色
-            //plt.Grid.MinorLineColor = plt.Grid.MajorLineColor.WithAlpha(100);
-            //plt.Grid.MinorLineWidth = 0.5f;
-            //plt.Grid.MinorLineStyle = LineStyle.Dot;
-
             plt.Axes.Left.Label.Text = "幅值";
             plt.Axes.Bottom.Label.Text = "时间 (s)";
             plt.Axes.Margins(bottom: 0.05, left: 0.05, right: 0.02, top: 0.02);
@@ -78,17 +63,23 @@ namespace Astra.Plugins.DataAcquisition.Views
                 if (ys == null || ys.Length == 0)
                     continue;
 
-                double sampleRate = ViewModel?.DebugSampleRate > 0
-                    ? ViewModel.DebugSampleRate
-                    : (ViewModel?.SampleRate > 0 ? ViewModel.SampleRate : 1.0);
+                double sampleRate = viewModel?.DebugSampleRate > 0
+                    ? viewModel.DebugSampleRate
+                    : (viewModel?.SampleRate > 0 ? viewModel.SampleRate : 1.0);
                 string channelName = $"CH{channelId}";
-                var vmChannel = ViewModel?.Channels?.FirstOrDefault(c => c.ChannelId == channelId);
+                var vmChannel = viewModel?.Channels?.FirstOrDefault(c => c.ChannelId == channelId);
                 if (vmChannel != null && !string.IsNullOrWhiteSpace(vmChannel.Name))
                     channelName = vmChannel.Name.Trim();
 
                 Signal signal = plt.Add.Signal(ys, 1.0 / sampleRate);
                 signal.LegendText = channelName;
                 signal.IsVisible = vmChannel?.IsEnabled ?? true;
+
+                if(vmChannel != null)
+                {
+                    signal.Color = vmChannel.Color;
+                }
+              
                 _signalsByChannelId[channelId] = signal;
             }
 
@@ -109,6 +100,7 @@ namespace Astra.Plugins.DataAcquisition.Views
             if (_signalsByChannelId.TryGetValue(channelId, out var signal))
             {
                 signal.IsVisible = isEnabled;
+                WaveformPlot.Plot.Axes.AutoScale();
                 WaveformPlot.Refresh();
             }
         }

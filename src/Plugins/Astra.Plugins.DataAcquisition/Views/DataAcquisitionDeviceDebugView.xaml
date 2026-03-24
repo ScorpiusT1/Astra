@@ -6,157 +6,182 @@
              xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:scottplot="http://schemas.scottplot.net/2008/xaml/presentation"
              xmlns:converters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
+             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels" d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionDeviceDebugViewModel}"
              mc:Ignorable="d"
              d:DesignHeight="600"
              d:DesignWidth="900">
     <UserControl.Resources>
         <converters:HzToKHzConverter x:Key="HzToKHzConverter" />
+        <converters:PlotColorToHexColorConverter x:Key="PlotColorToHexColorConverter" />
     </UserControl.Resources>
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
 
 
-            <!-- 左侧：波形区域 -->
-            <Border Grid.Column="0"
-                    BorderThickness="0"
-                    Margin="0,0,10,0">
-                <scottplot:WpfPlot x:Name="WaveformPlot" />
-            </Border>
+        <!-- 左侧：波形区域 -->
+        <Border Grid.Column="0"
+                BorderThickness="0,0,1,0"
+                BorderBrush="{DynamicResource BorderBrush}"
+                Margin="0,0,10,0">
+            <scottplot:WpfPlot x:Name="WaveformPlot" />
+        </Border>
 
-            <Border BorderThickness="0,0,1,0"
-                    Margin="0,-15"
-                    Grid.Column="1"
-                    BorderBrush="{DynamicResource BorderBrush}" />
 
-            <!-- 右侧：扫描 + 通道 + 设置 + 采集控制（TextBlock + Border 替代 GroupBox） -->
-            <StackPanel Grid.Column="2"
-                        Orientation="Vertical"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center">
-                <!-- 扫描设备卡片 -->
-                <StackPanel Margin="0,0,0,10">
-                    <TextBlock Text="扫描设备"
-                               FontSize="13"
-                               FontWeight="Bold"
-                               Foreground="{DynamicResource TitleBrush}"
-                               Margin="0,0,0,4" />
-                    <Border BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            Background="{DynamicResource SurfaceBrush}"
-                            CornerRadius="6"
-                            Padding="8">
-                        <StackPanel Orientation="Horizontal">
-                            <ComboBox Width="160"
-                                      IsEditable="True"
-                                      IsReadOnly="True"
-                                      ItemsSource="{Binding AvailableSerialNumbers}"
-                                      SelectedItem="{Binding SelectedSerialNumber, Mode=TwoWay}" />
-                            <Button Content="扫描"
-                                    Width="60"
-                                    Margin="8,0,0,0"
-                                    Background="{DynamicResource PrimaryBrush}"
-                                    Foreground="{DynamicResource ReverseTextBrush}"
-                                    Command="{Binding ScanSerialNumbersCommand}" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-
-                <!-- 设置卡片 -->
-                <StackPanel Margin="0,0,0,0">
-                    <TextBlock Text="设置"
-                               FontSize="13"
-                               FontWeight="Bold"
-                               Foreground="{DynamicResource TitleBrush}"
-                               Margin="0,0,0,4" />
-                    <Border BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            Background="{DynamicResource SurfaceBrush}"
-                            CornerRadius="6"
-                            Padding="8">
-                        <StackPanel>
-                            <DockPanel LastChildFill="True">
-                                <TextBlock Text="采样率"
-                                           VerticalAlignment="Center" />
-                                <ComboBox Margin="8,0,0,0"
-                                          ItemsSource="{Binding SampleRateOptions}"
-                                          SelectedItem="{Binding DebugSampleRate, Mode=TwoWay}"
-                                          HorizontalAlignment="Stretch"
-                                          IsEditable="True">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Converter={StaticResource HzToKHzConverter}}"
-                                                       VerticalAlignment="Center"
-                                                       TextAlignment="Left" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </DockPanel>
-
-                            <DockPanel LastChildFill="True"
-                                       Margin="0,10,0,0">
-                                <TextBlock Text="采样点"
-                                           VerticalAlignment="Center" />
-                                <TextBox Margin="8,0,0,0"
-                                         Text="{Binding DebugSampleCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         VerticalAlignment="Center" />
-                            </DockPanel>
-
-                            <DockPanel LastChildFill="True"
-                                       Margin="0,10,0,0">
-                                <TextBlock Text="耦合方式"
-                                           VerticalAlignment="Center" />
-                                <ComboBox Margin="8,0,0,0"
-                                          ItemsSource="{Binding CouplingModes}"
-                                          SelectedItem="{Binding CouplingMode, Mode=TwoWay}"
-                                          HorizontalAlignment="Stretch" />
-                            </DockPanel>
-
-                            <DockPanel LastChildFill="True"
-                                       Margin="0,10,0,0">
-                                <TextBlock Text="激励电流"
-                                           VerticalAlignment="Center" />
-                                <ComboBox Margin="8,0,0,0"
-                                          ItemsSource="{Binding ExcitationCurrentOptions}"
-                                          SelectedItem="{Binding ExcitationCurrent, Mode=TwoWay}"
-                                          HorizontalAlignment="Stretch">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding StringFormat='{}{0} mA'}"
-                                                       VerticalAlignment="Center"
-                                                       TextAlignment="Left" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </DockPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-                <!-- 采集控制按钮 -->
-                <StackPanel Orientation="Horizontal"
-                            HorizontalAlignment="Center"
-                            Margin="0,10,0,0">
-                    <Button Content="开始采集"
-                            Width="120"
-                            Margin="0,0,8,0"
-                            Background="{DynamicResource PrimaryBrush}"
-                            Foreground="{DynamicResource ReverseTextBrush}"
-                            Command="{Binding StartAcquisitionAsyncCommand}" />
-                    <Button Content="停止采集"
-                            Width="120"
-                            Background="{DynamicResource DangerBrush}"
-                            Foreground="{DynamicResource ReverseTextBrush}"
-                            Command="{Binding StopAcquisitionAsyncCommand}" />
-                </StackPanel>
+        <!-- 右侧：扫描 + 通道 + 设置 + 采集控制（TextBlock + Border 替代 GroupBox） -->
+        <StackPanel Grid.Column="1"
+                    Orientation="Vertical"
+                    Margin="10,0,0,0"
+                    VerticalAlignment="Center">
+            <!-- 扫描设备卡片 -->
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="扫描设备"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TitleBrush}"
+                           Margin="0,0,0,4" />
+                <Border BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="6"
+                        Padding="8">
+                    <StackPanel Orientation="Horizontal">
+                        <ComboBox Width="160"
+                                  IsEditable="True"
+                                  IsReadOnly="True"
+                                  ItemsSource="{Binding AvailableSerialNumbers}"
+                                  SelectedItem="{Binding SelectedSerialNumber, Mode=TwoWay}" />
+                        <Button Content="扫描"
+                                Width="60"
+                                Margin="8,0,0,0"
+                                Background="{DynamicResource PrimaryBrush}"
+                                Foreground="{DynamicResource ReverseTextBrush}"
+                                Command="{Binding ScanSerialNumbersCommand}" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
-        </Grid>
+
+
+            <!-- 通道卡片：两两并排 -->
+            <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="通道"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TitleBrush}"
+                           Margin="0,0,0,4" />
+                <Border BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="6"
+                        Padding="8">
+                    <ItemsControl ItemsSource="{Binding Channels}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="2" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox Content="{Binding Name}"
+                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                          HorizontalAlignment="Left"
+                                          Foreground="{Binding Color,Converter={StaticResource PlotColorToHexColorConverter}}"
+                                          Margin="10,5,20,5" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+            </StackPanel>
+
+            <!-- 设置卡片 -->
+            <StackPanel Margin="0,0,0,0">
+                <TextBlock Text="设置"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TitleBrush}"
+                           Margin="0,0,0,4" />
+                <Border BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="6"
+                        Padding="8">
+                    <StackPanel>
+                        <DockPanel LastChildFill="True">
+                            <TextBlock Text="采样率"
+                                       VerticalAlignment="Center" />
+                            <ComboBox Margin="8,0,0,0"
+                                      ItemsSource="{Binding SampleRateOptions}"
+                                      SelectedItem="{Binding DebugSampleRate, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"
+                                      IsEditable="True">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource HzToKHzConverter}}"
+                                                   VerticalAlignment="Center"
+                                                   TextAlignment="Left" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </DockPanel>
+
+                        <DockPanel LastChildFill="True"
+                                   Margin="0,10,0,0">
+                            <TextBlock Text="采样点"
+                                       VerticalAlignment="Center" />
+                            <TextBox Margin="8,0,0,0"
+                                     Text="{Binding DebugSampleCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalAlignment="Center" />
+                        </DockPanel>
+
+                        <DockPanel LastChildFill="True"
+                                   Margin="0,10,0,0">
+                            <TextBlock Text="耦合方式"
+                                       VerticalAlignment="Center" />
+                            <ComboBox Margin="8,0,0,0"
+                                      ItemsSource="{Binding CouplingModes}"
+                                      SelectedItem="{Binding CouplingMode, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" />
+                        </DockPanel>
+
+                        <DockPanel LastChildFill="True"
+                                   Margin="0,10,0,0">
+                            <TextBlock Text="激励电流"
+                                       VerticalAlignment="Center" />
+                            <ComboBox Margin="8,0,0,0"
+                                      ItemsSource="{Binding ExcitationCurrentOptions}"
+                                      SelectedItem="{Binding ExcitationCurrent, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding StringFormat='{}{0} mA'}"
+                                                   VerticalAlignment="Center"
+                                                   TextAlignment="Left" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            <!-- 采集控制按钮 -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Margin="0,10,0,0">
+                <Button Content="开始采集"
+                        Width="120"
+                        Margin="0,0,8,0"
+                        Background="{DynamicResource PrimaryBrush}"
+                        Foreground="{DynamicResource ReverseTextBrush}"
+                        Command="{Binding StartAcquisitionAsyncCommand}" />
+                <Button Content="停止采集"
+                        Width="120"
+                        Background="{DynamicResource DangerBrush}"
+                        Foreground="{DynamicResource ReverseTextBrush}"
+                        Command="{Binding StopAcquisitionAsyncCommand}" />
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </UserControl>
