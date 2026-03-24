@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Controls;
@@ -26,6 +27,7 @@ namespace Astra.ViewModels
         private readonly IPluginViewFactory? _pluginViewFactory;
         private readonly string _defaultIcon = "🧩";
         private readonly Dictionary<string, TreeNode> _deviceNodeMap = new Dictionary<string, TreeNode>();
+        private static readonly CompareInfo ZhCompare = CultureInfo.GetCultureInfo("zh-CN").CompareInfo;
 
         [ObservableProperty]
         private string _title = "调试工具";
@@ -196,27 +198,8 @@ namespace Astra.ViewModels
                     rootNodes[category] = root;
                 }
 
-                // 设备显示名称：优先使用当前配置的 ConfigName（与配置树子节点名称保持一致），其次 DisplayName，再次 DeviceName/DeviceId
-                string header = device.DeviceName;
-
-                if (currentConfigObj is ConfigBase configBase)
-                {
-                    // 1. 优先使用 ConfigName（配置树子节点名称基于此字段生成并持久化）
-                    if (!string.IsNullOrWhiteSpace(configBase.ConfigName))
-                    {
-                        header = configBase.ConfigName;
-                    }
-                    else
-                    {
-                        // 2. 没有 ConfigName 时退回到 GetDisplayName（包含厂商/型号等信息）
-                        header = configBase.GetDisplayName();
-                    }
-                }
-
-                if (string.IsNullOrWhiteSpace(header))
-                {
-                    header = device.DeviceId;
-                }
+                // 设备显示名称：优先配置名；配置名为空时回退到中文友好名称，避免暴露英文类型名。
+                string header = ResolveDeviceHeader(device, currentConfigObj, treeAttr, category);
 
                 var child = new TreeNode
                 {
@@ -244,7 +227,7 @@ namespace Astra.ViewModels
             // 根节点排序后加入集合
             foreach (var root in rootNodes.Values
                          .OrderBy(r => r.Order)
-                         .ThenBy(r => r.Header))
+                         .ThenBy(r => r.Header, Comparer<string>.Create((a, b) => ZhCompare.Compare(a ?? string.Empty, b ?? string.Empty, CompareOptions.StringSort))))
             {
                 DebugTreeNodes.Add(root);
                 // 默认展开所有根节点
@@ -338,6 +321,67 @@ namespace Astra.ViewModels
                 ToastHelper.ShowError($"加载调试界面时发生错误: {ex.Message}");
                 ContentControlChanged?.Invoke(this, null);
             }
+        }
+
+        /// <summary>
+        /// 构建设备节点显示名：优先使用配置名，其次中文友好回退。
+        /// </summary>
+        private string ResolveDeviceHeader(IDevice device, object? currentConfigObj, TreeNodeConfigAttribute? treeAttr, string category)
+        {
+            // 1) 配置名（配置界面保存后的业务名称）
+            if (currentConfigObj is ConfigBase cfg && !string.IsNullOrWhiteSpace(cfg.ConfigName))
+            {
+                return cfg.ConfigName;
+            }
+
+            // 2) 设备名（通常由业务层赋值，优先于类型显示名）
+            if (!string.IsNullOrWhiteSpace(device.DeviceName))
+            {
+                return device.DeviceName;
+            }
+
+            // 3) 尝试 GetDisplayName（若明显是英文类型名则忽略）
+            if (currentConfigObj is ConfigBase configBase)
+            {
+                var displayName = configBase.GetDisplayName();
+                if (!string.IsNullOrWhiteSpace(displayName) && !LooksLikeTypeName(displayName))
+                {
+                    return displayName;
+                }
+            }
+
+            // 4) 配置特性 Header（中文友好兜底）
+            if (!string.IsNullOrWhiteSpace(treeAttr?.Header))
+            {
+                return treeAttr.Header!;
+            }
+
+            // 5) 分类名兜底，避免暴露英文类型
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                return $"{category}设备";
+            }
+
+            // 6) 最后回退到设备ID
+            return string.IsNullOrWhiteSpace(device.DeviceId) ? "未命名设备" : device.DeviceId;
+        }
+
+        private bool LooksLikeTypeName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            var text = name.Trim();
+            if (text.EndsWith("Config", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // 全ASCII且无空格时，通常是类型名（如 SiemensPlcConfig）
+            bool allAscii = text.All(c => c <= 127);
+            return allAscii && !text.Contains(' ');
         }
     }
 }
