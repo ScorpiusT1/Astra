@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="Astra.UI.Styles.Controls.MultiFlowEditor"
+<UserControl x:Class="Astra.UI.Styles.Controls.MultiFlowEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -81,15 +81,17 @@
                                                             MasterTemplateSelector="{StaticResource MasterNodeTemplateSelector}"
                                                             SubTemplateSelector="{StaticResource SubNodeTemplateSelector}" />
 
-        <!-- 图标按钮样式 -->
+        <!-- 图标按钮样式：增强 Hover/Pressed/Disabled 反馈 -->
         <Style x:Key="IconButtonStyle"
                TargetType="Button">
             <Setter Property="Background"
                     Value="Transparent" />
             <Setter Property="Foreground"
                     Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="Transparent" />
             <Setter Property="BorderThickness"
-                    Value="0" />
+                    Value="1" />
             <Setter Property="Width"
                     Value="32" />
             <Setter Property="Height"
@@ -113,8 +115,15 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="border"
                                 Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="4"
+                                RenderTransformOrigin="0.5,0.5"
                                 Padding="4">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1"
+                                                ScaleY="1" />
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
@@ -123,12 +132,112 @@
                                      Value="True">
                                 <Setter TargetName="border"
                                         Property="Background"
+                                        Value="{DynamicResource LightPrimaryBrush}" />
+                                <Setter TargetName="border"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed"
+                                     Value="True">
+                                <Setter TargetName="border"
+                                        Property="Background"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                                <Setter TargetName="border"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource DarkPrimaryBrush}" />
+                                <Setter Property="Foreground"
+                                        Value="White" />
+                                <Setter TargetName="border"
+                                        Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.95"
+                                                        ScaleY="0.95" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled"
+                                     Value="False">
+                                <Setter Property="Opacity"
+                                        Value="0.45" />
+                                <Setter TargetName="border"
+                                        Property="Background"
                                         Value="{DynamicResource SecondaryRegionBrush}" />
+                                <Setter TargetName="border"
+                                        Property="BorderBrush"
+                                        Value="{DynamicResource BorderBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- 锁定按钮：锁定时保持高亮，状态更直观 -->
+        <Style x:Key="LockIconButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource IconButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsLocked}"
+                             Value="True">
+                    <Setter Property="Background"
+                            Value="{DynamicResource WarningBrush}" />
+                    <Setter Property="BorderBrush"
+                            Value="{DynamicResource DarkWarningBrush}" />
+                    <Setter Property="Foreground"
+                            Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 开始按钮：默认弱高亮，便于快速识别 -->
+        <Style x:Key="StartIconButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource IconButtonStyle}">
+            <Setter Property="Background"
+                    Value="{DynamicResource LightSuccessBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource SuccessBrush}" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource DarkSuccessBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsPressed"
+                         Value="True">
+                    <Setter Property="Background"
+                            Value="{DynamicResource SuccessBrush}" />
+                    <Setter Property="BorderBrush"
+                            Value="{DynamicResource DarkSuccessBrush}" />
+                    <Setter Property="Foreground"
+                            Value="White" />
+                </Trigger>
+                <Trigger Property="IsEnabled"
+                         Value="False">
+                    <Setter Property="Background"
+                            Value="{DynamicResource SecondaryRegionBrush}" />
+                    <Setter Property="BorderBrush"
+                            Value="{DynamicResource BorderBrush}" />
+                    <Setter Property="Foreground"
+                            Value="{DynamicResource SecondaryTextBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 切换按钮：处于主流程视图时常亮 -->
+        <Style x:Key="SwitchWorkflowIconButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource IconButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMasterWorkflowViewVisible}"
+                             Value="True">
+                    <Setter Property="Background"
+                            Value="{DynamicResource InfoBrush}" />
+                    <Setter Property="BorderBrush"
+                            Value="{DynamicResource DarkInfoBrush}" />
+                    <Setter Property="Foreground"
+                            Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </UserControl.Resources>
 
@@ -231,7 +340,7 @@
                 <!-- 画布控制组 -->
                 <Button ToolTip="锁定画布"
                         Command="{Binding ToggleLockCommand}"
-                        Style="{StaticResource IconButtonStyle}"
+                        Style="{StaticResource LockIconButtonStyle}"
                         Margin="0,0,4,0">
                     <fa:IconBlock Icon="Lock"
                                   FontSize="16" />
@@ -247,7 +356,7 @@
                 <!-- 执行控制组 -->
                 <Button ToolTip="执行"
                         Command="{Binding PlayCommand}"
-                        Style="{StaticResource IconButtonStyle}"
+                        Style="{StaticResource StartIconButtonStyle}"
                         Margin="0,0,4,0">
                     <fa:IconBlock Icon="Play"
                                   FontSize="16" />
@@ -261,7 +370,7 @@
                         VerticalAlignment="Center" />
                 <Button ToolTip="切换流程"
                         Command="{Binding OpenMasterWorkflowCommand}"
-                        Style="{StaticResource IconButtonStyle}">
+                        Style="{StaticResource SwitchWorkflowIconButtonStyle}">
                     <fa:IconBlock Icon="DiagramProject"
                                   FontSize="16" />
                 </Button>
@@ -415,7 +524,8 @@
                                         Command="{Binding DataContext.StartSubWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
                                         Background="Transparent"
-                                        BorderThickness="0"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="1"
                                         Padding="6,4"
                                         Margin="0,0,4,0"
                                         Width="24"
@@ -436,17 +546,39 @@
                                         <Style TargetType="Button">
                                             <Setter Property="Background"
                                                     Value="Transparent" />
+                                            <Setter Property="BorderBrush"
+                                                    Value="Transparent" />
                                             <Setter Property="BorderThickness"
-                                                    Value="0" />
+                                                    Value="1" />
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}"
+                                                        <Border x:Name="StartBtnBorder"
+                                                                Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
                                                                 CornerRadius="4"
+                                                                RenderTransformOrigin="0.5,0.5"
                                                                 Padding="{TemplateBinding Padding}">
+                                                            <Border.RenderTransform>
+                                                                <ScaleTransform ScaleX="1"
+                                                                                ScaleY="1" />
+                                                            </Border.RenderTransform>
                                                             <ContentPresenter HorizontalAlignment="Center"
                                                                               VerticalAlignment="Center" />
                                                         </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsPressed"
+                                                                     Value="True">
+                                                                <Setter TargetName="StartBtnBorder"
+                                                                        Property="RenderTransform">
+                                                                    <Setter.Value>
+                                                                        <ScaleTransform ScaleX="0.95"
+                                                                                        ScaleY="0.95" />
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
                                                     </ControlTemplate>
                                                 </Setter.Value>
                                             </Setter>
@@ -454,9 +586,31 @@
                                                 <Trigger Property="IsMouseOver"
                                                          Value="True">
                                                     <Setter Property="Background"
-                                                            Value="{DynamicResource SecondaryRegionBrush}" />
+                                                            Value="{DynamicResource SuccessBrush}" />
+                                                    <Setter Property="BorderBrush"
+                                                            Value="{DynamicResource DarkSuccessBrush}" />
                                                     <Setter Property="Foreground"
-                                                            Value="{DynamicResource PrimaryBrush}" />
+                                                            Value="White" />
+                                                </Trigger>
+                                                <Trigger Property="IsPressed"
+                                                         Value="True">
+                                                    <Setter Property="Background"
+                                                            Value="{DynamicResource DarkSuccessBrush}" />
+                                                    <Setter Property="BorderBrush"
+                                                            Value="{DynamicResource SuccessBrush}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="White" />
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled"
+                                                         Value="False">
+                                                    <Setter Property="Opacity"
+                                                            Value="0.45" />
+                                                    <Setter Property="Background"
+                                                            Value="{DynamicResource SecondaryRegionBrush}" />
+                                                    <Setter Property="BorderBrush"
+                                                            Value="{DynamicResource BorderBrush}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource SecondaryTextBrush}" />
                                                 </Trigger>
                                             </Style.Triggers>
                                         </Style>
@@ -468,7 +622,8 @@
                                         Command="{Binding DataContext.CloseWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
                                         Background="Transparent"
-                                        BorderThickness="0"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="1"
                                         Padding="6,4"
                                         Width="24"
                                         Height="24"
@@ -481,17 +636,39 @@
                                         <Style TargetType="Button">
                                             <Setter Property="Background"
                                                     Value="Transparent" />
+                                            <Setter Property="BorderBrush"
+                                                    Value="Transparent" />
                                             <Setter Property="BorderThickness"
-                                                    Value="0" />
+                                                    Value="1" />
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}"
+                                                        <Border x:Name="CloseBtnBorder"
+                                                                Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
                                                                 CornerRadius="4"
+                                                                RenderTransformOrigin="0.5,0.5"
                                                                 Padding="{TemplateBinding Padding}">
+                                                            <Border.RenderTransform>
+                                                                <ScaleTransform ScaleX="1"
+                                                                                ScaleY="1" />
+                                                            </Border.RenderTransform>
                                                             <ContentPresenter HorizontalAlignment="Center"
                                                                               VerticalAlignment="Center" />
                                                         </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsPressed"
+                                                                     Value="True">
+                                                                <Setter TargetName="CloseBtnBorder"
+                                                                        Property="RenderTransform">
+                                                                    <Setter.Value>
+                                                                        <ScaleTransform ScaleX="0.95"
+                                                                                        ScaleY="0.95" />
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
                                                     </ControlTemplate>
                                                 </Setter.Value>
                                             </Setter>
@@ -500,8 +677,30 @@
                                                          Value="True">
                                                     <Setter Property="Background"
                                                             Value="{DynamicResource DangerBrush}" />
+                                                    <Setter Property="BorderBrush"
+                                                            Value="{DynamicResource DarkDangerBrush}" />
                                                     <Setter Property="Foreground"
                                                             Value="White" />
+                                                </Trigger>
+                                                <Trigger Property="IsPressed"
+                                                         Value="True">
+                                                    <Setter Property="Background"
+                                                            Value="{DynamicResource DarkDangerBrush}" />
+                                                    <Setter Property="BorderBrush"
+                                                            Value="{DynamicResource DangerBrush}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="White" />
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled"
+                                                         Value="False">
+                                                    <Setter Property="Opacity"
+                                                            Value="0.45" />
+                                                    <Setter Property="Background"
+                                                            Value="{DynamicResource SecondaryRegionBrush}" />
+                                                    <Setter Property="BorderBrush"
+                                                            Value="{DynamicResource BorderBrush}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource SecondaryTextBrush}" />
                                                 </Trigger>
                                             </Style.Triggers>
                                         </Style>
