@@ -1,0 +1,116 @@
+<Window x:Class="Astra.Views.ConfigTypeSelectionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
+        xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
+
+        Title="选择配置类型"
+        helpers:WindowIconHelper.IconGeometryKey="AppLogoGeometry"
+        Width="480"
+        MinHeight="280"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Background="Transparent"
+        AllowsTransparency="True"
+        ShowInTaskbar="False">
+
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource SurfaceBrush}"
+            CornerRadius="14"
+            BorderBrush="{DynamicResource PrimaryBrush}"
+            BorderThickness="1.5"
+            helpers:BorderClipHelper.ClipToBounds="True"
+            MouseLeftButtonDown="RootBorder_MouseLeftButtonDown">
+        <Border.Effect>
+            <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                              Opacity="0.2"
+                              BlurRadius="24"
+                              ShadowDepth="5" />
+        </Border.Effect>
+
+        <Grid Margin="24,16,24,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Button x:Name="CloseButton"
+                    Grid.Row="0"
+                    Grid.RowSpan="2"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,-8,-8,0"
+                    Panel.ZIndex="10"
+                    Style="{StaticResource CloseButtonStyle}"
+                    Click="CloseButton_Click" />
+
+            <TextBlock Grid.Row="0"
+                       Text="选择配置类型"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource PrimaryTextBrush}"
+                       Margin="0,0,0,6" />
+
+            <TextBlock Grid.Row="1"
+                       Text="{Binding PromptText, RelativeSource={RelativeSource AncestorType=Window}}"
+                       FontSize="13"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       Margin="0,0,0,12"
+                       TextWrapping="Wrap" />
+
+            <ListBox x:Name="TypeListBox"
+                     Grid.Row="2"
+                     ItemsSource="{Binding Items, RelativeSource={RelativeSource AncestorType=Window}}"
+                     SelectedItem="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"
+
+                     BorderBrush="{DynamicResource BorderBrush}"
+                     BorderThickness="1"
+
+                     MinHeight="160"
+                     MaxHeight="220">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Icon}"
+                                       FontSize="14"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0" />
+                            <TextBlock Text="{Binding DisplayName}"
+                                       FontSize="13"
+                                       FontWeight="Medium"
+                                       VerticalAlignment="Center"
+                                       />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Margin="0,16,0,0">
+                <Button Content="取消"
+                        Width="110"
+                        Height="40"
+                        Margin="0,0,12,0"
+                        Click="CancelButton_Click"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        BorderThickness="0" />
+                <Button Content="确定"
+                        Width="110"
+                        Height="40"
+                        Click="ConfirmButton_Click"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        FontSize="14"
+                        FontWeight="Medium"
+                        BorderThickness="0" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

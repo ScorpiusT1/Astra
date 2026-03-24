@@ -2,6 +2,7 @@ using Astra.Core.Devices.Configuration;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Plugins.UI;
 using Astra.Models;
+using Astra.Views;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Helpers;
 using Astra.Utilities;
@@ -27,6 +28,18 @@ namespace Astra.ViewModels
 
         // ✅ 缓存已创建的 View 和 ViewModel，避免切换节点时丢失未保存的数据
         private readonly Dictionary<string, (UserControl View, object ViewModel)> _viewCache = new Dictionary<string, (UserControl, object)>();
+        // 根节点可新增的配置类型候选（支持单类型直加 / 多类型弹窗选择）
+        private readonly Dictionary<string, List<ConfigTypeCandidate>> _rootAddCandidates = new Dictionary<string, List<ConfigTypeCandidate>>();
+
+        private sealed class ConfigTypeCandidate
+        {
+            public required Type ConfigType { get; init; }
+            public required Type ViewType { get; init; }
+            public required Type ViewModelType { get; init; }
+            public required string DisplayName { get; init; }
+            public required string Icon { get; init; }
+            public int Order { get; init; }
+        }
 
         [ObservableProperty]
         private string _title = "配置管理";
@@ -236,6 +249,7 @@ namespace Astra.ViewModels
             // ✅ IPostLoadConfig 的调用已移至 ConfigurationManager，这里无需处理
 
             TreeNodes?.Clear();
+            _rootAddCandidates.Clear();
 
             // 使用字典跟踪所有根节点，避免重复处理
             Dictionary<string, TreeNode> rootNodes = new Dictionary<string, TreeNode>();
@@ -296,6 +310,12 @@ namespace Astra.ViewModels
                     rootNodes[treeAttr.Category] = rootNode;
                 }
 
+                // 可新增子节点的根节点，注册候选配置类型（用于点击“+”时选择）
+                if (treeAttr.AllowAddOnRoot)
+                {
+                    RegisterRootAddCandidate(rootNode, configType, treeAttr, uiAttr);
+                }
+
                 // 按照 UpdatedAt 排序（保持保存时的顺序）
                 // UpdatedAt 为 null 的配置排在最后
                 configsOfType = configsOfType
@@ -325,6 +345,9 @@ namespace Astra.ViewModels
                 // 直接将配置挂载到根节点本身，不再创建子节点。
                 if (!treeAttr.AllowAddOnRoot)
                 {
+                    // 根节点直挂模式不需要类型选择候选
+                    _rootAddCandidates.Remove(rootNode.Id);
+
                     var rootConfig = configsOfType.FirstOrDefault();
                     if (rootConfig != null)
                     {
@@ -380,6 +403,36 @@ namespace Astra.ViewModels
                     addedCategories.Add(category);
                 }
             }
+        }
+
+        private void RegisterRootAddCandidate(
+            TreeNode rootNode,
+            Type configType,
+            TreeNodeConfigAttribute treeAttr,
+            ConfigUIAttribute? uiAttr)
+        {
+            if (!_rootAddCandidates.TryGetValue(rootNode.Id, out var candidates))
+            {
+                candidates = new List<ConfigTypeCandidate>();
+                _rootAddCandidates[rootNode.Id] = candidates;
+            }
+
+            if (candidates.Any(c => c.ConfigType == configType))
+            {
+                return;
+            }
+
+            var candidate = new ConfigTypeCandidate
+            {
+                ConfigType = configType,
+                ViewType = uiAttr?.ViewType ?? treeAttr.ViewType,
+                ViewModelType = uiAttr?.ViewModelType ?? treeAttr.ViewModelType,
+                DisplayName = string.IsNullOrWhiteSpace(treeAttr.Header) ? configType.Name : treeAttr.Header!,
+                Icon = treeAttr.Icon ?? _defaultIcon,
+                Order = treeAttr.Order
+            };
+
+            candidates.Add(candidate);
         }
 
         /// <summary>
@@ -700,22 +753,18 @@ namespace Astra.ViewModels
         }
 
 
-        private TreeNode? CreateNode(TreeNode node)
+        private TreeNode? CreateNode(TreeNode node, ConfigTypeCandidate candidate)
         {
-            if (node == null || node.ConfigType == null)
+            if (node == null || candidate == null)
                 return null;
 
-            var attr = node.ConfigType?.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
+            var newConfig = Activator.CreateInstance(candidate.ConfigType, Guid.NewGuid().ToString()) as IConfig;
 
-            if (attr == null)
-            {
-                return null;
-            }
+            // 新增节点名称以“所选类型名”为基准，确保“选什么类型就是什么名称”
+            // 若候选名称来自英文类型名回退，则优先尝试配置实例默认显示名（通常是中文业务名）。
+            string baseName = ResolveBaseNameForNewNode(candidate, newConfig);
+            string newNodeName = EnsureUniqueNumber(baseName, node);
 
-            NodeAutoNaming nodeAutoNaming = new NodeAutoNaming();
-            string newNodeName = nodeAutoNaming.GenerateUniqueName(node);
-
-            var newConfig = Activator.CreateInstance(node.ConfigType!, Guid.NewGuid().ToString()) as IConfig;
             if (newConfig != null)
             {
                 // ✅ 确保配置名称与树节点名称一致
@@ -726,18 +775,48 @@ namespace Astra.ViewModels
             TreeNode newNode = new TreeNode
             {
                 Header = newNodeName,
-                Icon = attr.Icon ?? _defaultIcon,
-                ViewModelType = attr.ViewModelType,
-                ViewType = attr.ViewType,
+                Icon = candidate.Icon,
+                ViewModelType = candidate.ViewModelType,
+                ViewType = candidate.ViewType,
                 ShowAddButton = false,
                 ShowDeleteButton = true,
-                ConfigType = node.ConfigType,
+                ConfigType = candidate.ConfigType,
                 Config = newConfig,
-                Order = attr.Order,
+                Order = candidate.Order,
                 Parent = node,
             };
 
             return newNode;
+        }
+
+        private string ResolveBaseNameForNewNode(ConfigTypeCandidate candidate, IConfig? config)
+        {
+            // 优先使用候选显示名（通常来自 TreeNodeConfigAttribute.Header）
+            var candidateName = candidate.DisplayName?.Trim();
+            if (!string.IsNullOrWhiteSpace(candidateName) && !string.Equals(candidateName, candidate.ConfigType.Name, StringComparison.Ordinal))
+            {
+                return ExtractBaseName(candidateName);
+            }
+
+            // 如果候选名只是英文类型名回退，优先尝试配置实例默认名（更贴近业务命名，通常中文）
+            if (config is ConfigBase configBase)
+            {
+                var displayName = configBase.GetDisplayName();
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    return ExtractBaseName(displayName.Trim());
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(config?.ConfigName))
+            {
+                return ExtractBaseName(config.ConfigName.Trim());
+            }
+
+            // 最后回退：类型名
+            return !string.IsNullOrWhiteSpace(candidateName)
+                ? ExtractBaseName(candidateName)
+                : "新建节点";
         }
 
         [RelayCommand]
@@ -746,7 +825,43 @@ namespace Astra.ViewModels
             if (node == null)
                 return;
 
-            TreeNode? newNode = CreateNode(node);
+            if (!_rootAddCandidates.TryGetValue(node.Id, out var candidates) || candidates == null || candidates.Count == 0)
+            {
+                // 兼容旧逻辑：没有候选类型时尝试按根节点 ConfigType 回退
+                if (node.ConfigType == null)
+                {
+                    MessageBoxHelper.ShowWarning("该节点未配置可新增的配置类型", "提示");
+                    return;
+                }
+
+                var attr = node.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
+                if (attr == null)
+                {
+                    MessageBoxHelper.ShowWarning("配置类型缺少 TreeNodeConfigAttribute，无法新增", "提示");
+                    return;
+                }
+
+                candidates = new List<ConfigTypeCandidate>
+                {
+                    new ConfigTypeCandidate
+                    {
+                        ConfigType = node.ConfigType,
+                        ViewType = attr.ViewType,
+                        ViewModelType = attr.ViewModelType,
+                        DisplayName = string.IsNullOrWhiteSpace(attr.Header) ? node.ConfigType.Name : attr.Header!,
+                        Icon = attr.Icon ?? _defaultIcon,
+                        Order = attr.Order
+                    }
+                };
+            }
+
+            ConfigTypeCandidate? selectedCandidate = SelectConfigTypeCandidate(node, candidates);
+            if (selectedCandidate == null)
+            {
+                return;
+            }
+
+            TreeNode? newNode = CreateNode(node, selectedCandidate);
 
             if (newNode == null)
             {
@@ -757,6 +872,102 @@ namespace Astra.ViewModels
 
             // 新增配置后自动选中该节点并打开右侧配置界面，避免用户再手动点击一次
             NodeSelected(newNode);
+        }
+
+        private ConfigTypeCandidate? SelectConfigTypeCandidate(TreeNode parentNode, List<ConfigTypeCandidate> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return null;
+            }
+
+            var sorted = candidates
+                .OrderBy(c => c.Order >= 0 ? c.Order : int.MaxValue)
+                .ThenBy(c => c.DisplayName)
+                .ToList();
+
+            if (sorted.Count == 1)
+            {
+                return sorted[0];
+            }
+
+            var items = sorted.Select(c => new ConfigTypeSelectionItem
+            {
+                DisplayName = c.DisplayName,
+                Icon = c.Icon,
+                ConfigType = c.ConfigType
+            }).ToList();
+
+            var dialog = new ConfigTypeSelectionDialog(items, parentNode.Header)
+            {
+                Owner = System.Windows.Application.Current?.MainWindow
+            };
+
+            var result = dialog.ShowDialog();
+            if (result == true && dialog.SelectedItem != null)
+            {
+                return sorted.FirstOrDefault(c => c.ConfigType == dialog.SelectedItem.ConfigType);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 获取根节点可用于新增/导入的配置类型集合（支持单类型与多类型）。
+        /// </summary>
+        private List<Type> GetAvailableTypesForRoot(TreeNode rootNode)
+        {
+            var types = new List<Type>();
+            if (rootNode == null)
+            {
+                return types;
+            }
+
+            if (_rootAddCandidates.TryGetValue(rootNode.Id, out var candidates) && candidates != null && candidates.Count > 0)
+            {
+                types.AddRange(candidates.Select(c => c.ConfigType).Distinct());
+            }
+            else if (rootNode.ConfigType != null)
+            {
+                // 兼容旧逻辑
+                types.Add(rootNode.ConfigType);
+            }
+
+            return types;
+        }
+
+        /// <summary>
+        /// 根据配置类型获取根节点上的候选元数据（用于图标、View、ViewModel 映射）。
+        /// </summary>
+        private ConfigTypeCandidate? GetRootCandidateByConfigType(TreeNode rootNode, Type configType)
+        {
+            if (rootNode == null || configType == null)
+            {
+                return null;
+            }
+
+            if (_rootAddCandidates.TryGetValue(rootNode.Id, out var candidates) && candidates != null)
+            {
+                return candidates.FirstOrDefault(c => c.ConfigType == configType);
+            }
+
+            // 兼容旧逻辑：回退到属性解析
+            var attr = configType.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
+            if (attr == null)
+            {
+                return null;
+            }
+
+            var uiAttr = configType.GetCustomAttribute<ConfigUIAttribute>(inherit: false);
+            return new ConfigTypeCandidate
+            {
+                ConfigType = configType,
+                ViewType = uiAttr?.ViewType ?? attr.ViewType,
+                ViewModelType = uiAttr?.ViewModelType ?? attr.ViewModelType,
+                DisplayName = string.IsNullOrWhiteSpace(attr.Header) ? configType.Name : attr.Header!,
+                Icon = attr.Icon ?? _defaultIcon,
+                Order = attr.Order
+            };
         }
 
         /// <summary>
@@ -1254,9 +1465,10 @@ namespace Astra.ViewModels
                 }
 
                 // 检查根节点是否有配置类型
-                if (targetNode.ConfigType == null)
+                var availableTypes = GetAvailableTypesForRoot(targetNode);
+                if (availableTypes.Count == 0)
                 {
-                    ToastHelper.ShowError("根节点未指定配置类型");
+                    ToastHelper.ShowError("根节点未配置可导入的配置类型");
                     return;
                 }
 
@@ -1287,7 +1499,7 @@ namespace Astra.ViewModels
 
                 var options = new ImportOptions
                 {
-                    TypeFilter = new[] { targetNode.ConfigType },
+                    TypeFilter = availableTypes,
                     ConflictResolution = ConflictResolution.KeepBoth,
                     ValidateBeforeImport = true
                 };
@@ -1310,19 +1522,19 @@ namespace Astra.ViewModels
                     }
                 }
 
-                // 获取配置类型的属性信息（用于创建树节点）
-                var attr = targetNode.ConfigType.GetCustomAttribute<TreeNodeConfigAttribute>(inherit: false);
-                if (attr == null)
-                {
-                    ToastHelper.ShowError("配置类型缺少 TreeNodeConfigAttribute");
-                    return;
-                }
-
                 // 将所有导入的配置添加到树节点（不保存到配置管理器）
                 foreach (var config in allImportedConfigs)
                 {
                     try
                     {
+                        var candidate = GetRootCandidateByConfigType(targetNode, config.GetType());
+                        if (candidate == null)
+                        {
+                            failureCount++;
+                            errors.Add($"{config.ConfigName ?? "未知配置"}: 未找到配置类型映射({config.GetType().Name})");
+                            continue;
+                        }
+
                         // 使用统一的节点显示名称生成方法
                         // 如果名称中没有编号，自动添加唯一编号
                         var displayName = GetNodeDisplayName(config, targetNode);
@@ -1331,14 +1543,14 @@ namespace Astra.ViewModels
                         TreeNode childNode = new TreeNode
                         {
                             Header = displayName,
-                            Icon = attr.Icon ?? _defaultIcon,
-                            ViewModelType = attr.ViewModelType,
-                            ViewType = attr.ViewType,
+                            Icon = candidate.Icon,
+                            ViewModelType = candidate.ViewModelType,
+                            ViewType = candidate.ViewType,
                             ShowAddButton = false,
                             ShowDeleteButton = true,
                             Config = config,
-                            Order = attr.Order,
-                            ConfigType = config.ConfigType,
+                            Order = candidate.Order,
+                            ConfigType = candidate.ConfigType,
                             Parent = targetNode,
                         };
 
@@ -1409,13 +1621,6 @@ namespace Astra.ViewModels
                 if (targetNode.Children == null || targetNode.Children.Count == 0)
                 {
                     ToastHelper.ShowWarning("该根节点下没有可导出的配置");
-                    return;
-                }
-
-                // 检查根节点是否有配置类型
-                if (targetNode.ConfigType == null)
-                {
-                    ToastHelper.ShowError("根节点未指定配置类型");
                     return;
                 }
 

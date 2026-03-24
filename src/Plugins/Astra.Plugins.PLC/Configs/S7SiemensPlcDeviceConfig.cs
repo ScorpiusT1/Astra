@@ -11,7 +11,7 @@ using System.Collections.Generic;
 
 namespace Astra.Plugins.PLC.Configs
 {
-    [TreeNodeConfig("西门子PLC", "🧠", typeof(S7SiemensPlcDeviceConfigView), typeof(S7SiemensPlcDeviceConfigViewModel), header: "西门子PLC")]
+    [TreeNodeConfig("PLC", "🧠", typeof(S7SiemensPlcDeviceConfigView), typeof(S7SiemensPlcDeviceConfigViewModel), header: "西门子PLC")]
     [ConfigUI(typeof(S7SiemensPlcDeviceConfigView), typeof(S7SiemensPlcDeviceConfigViewModel))]
     public class S7SiemensPlcDeviceConfig : PlcDeviceConfig
     {
