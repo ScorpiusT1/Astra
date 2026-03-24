@@ -11,15 +11,15 @@ namespace Astra.Engine.Execution.Middleware
     /// </summary>
     public class TimeoutMiddleware : INodeMiddleware
     {
-        private readonly int _timeoutSeconds;
+        private readonly int _timeoutMilliseconds;
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="timeoutSeconds">超时时间（秒）</param>
-        public TimeoutMiddleware(int timeoutSeconds)
+        /// <param name="timeoutMilliseconds">超时时间（毫秒）</param>
+        public TimeoutMiddleware(int timeoutMilliseconds)
         {
-            _timeoutSeconds = timeoutSeconds;
+            _timeoutMilliseconds = timeoutMilliseconds;
         }
 
         /// <summary>
@@ -31,7 +31,7 @@ namespace Astra.Engine.Execution.Middleware
             CancellationToken cancellationToken,
             Func<CancellationToken, Task<ExecutionResult>> next)
         {
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_timeoutSeconds));
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_timeoutMilliseconds));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
             try
@@ -40,7 +40,7 @@ namespace Astra.Engine.Execution.Middleware
             }
             catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
             {
-                return ExecutionResult.Failed($"节点 {node.Name} 执行超时（{_timeoutSeconds}秒）");
+                return ExecutionResult.Timeout($"节点 {node.Name} 执行超时（{_timeoutMilliseconds}ms）", _timeoutMilliseconds / 1000);
             }
         }
     }

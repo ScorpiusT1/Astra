@@ -24,6 +24,7 @@ namespace Astra.Engine.Execution.Strategies
             var workflow = context.Workflow;
             var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
             var outputs = new Dictionary<string, object>();
+            MarkDisabledNodesAsSkipped(workflow, context);
 
             // 构建图与入度
             var inDegree = new Dictionary<string, int>();
@@ -49,6 +50,11 @@ namespace Astra.Engine.Execution.Strategies
 
             while (ready.Count > 0)
             {
+                if (context.ExecutionController != null)
+                {
+                    await context.ExecutionController.WaitIfPausedAsync(context.CancellationToken);
+                }
+
                 // 取最多 MaxParallelism 个就绪节点执行
                 var batch = new List<Node>();
                 int take = Math.Min(workflow.Configuration.MaxParallelism, ready.Count);
@@ -66,6 +72,11 @@ namespace Astra.Engine.Execution.Strategies
 
                 await Parallel.ForEachAsync(batch, options, async (node, ct) =>
                 {
+                    if (context.ExecutionController != null)
+                    {
+                        await context.ExecutionController.WaitIfPausedAsync(ct);
+                    }
+
                     var nodeContext = PrepareNodeContext(node, workflow, context.NodeContext);
                     var nodeResult = await ExecuteNodeAsync(node, nodeContext, context, ct);
                     results.Add((node, nodeResult));
@@ -152,6 +163,10 @@ namespace Astra.Engine.Execution.Strategies
                 result.StartTime = startTime;
                 result.EndTime = DateTime.Now;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 result = ExecutionResult.Failed($"节点 '{node.Name}' 执行异常: {ex.Message}", ex);
@@ -162,6 +177,19 @@ namespace Astra.Engine.Execution.Strategies
             node.LastExecutionResult = result;
             workflowContext.OnNodeExecutionCompleted?.Invoke(node, nodeContext, result);
             return result;
+        }
+
+        private static void MarkDisabledNodesAsSkipped(WorkFlowNode workflow, WorkFlowExecutionContext workflowContext)
+        {
+            var disabledNodes = workflow.Nodes.Where(n => !n.IsEnabled).ToList();
+            foreach (var disabledNode in disabledNodes)
+            {
+                var skippedResult = ExecutionResult.Skip($"节点 '{disabledNode.Name}' 未启用，已跳过")
+                    .WithOutput("SkipReason", "Disabled");
+                disabledNode.LastExecutionResult = skippedResult;
+                disabledNode.ExecutionState = NodeExecutionState.Skipped;
+                workflowContext.OnNodeExecutionCompleted?.Invoke(disabledNode, workflowContext.NodeContext, skippedResult);
+            }
         }
     }
 }

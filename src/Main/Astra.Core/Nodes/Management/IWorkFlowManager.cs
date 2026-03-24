@@ -1,4 +1,4 @@
-﻿using Astra.Core.Foundation.Common;
+using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Models;
 using System;
 using System.Collections.Generic;
@@ -125,6 +125,20 @@ namespace Astra.Core.Nodes.Management
         OperationResult CancelWorkFlowExecution(string executionId);
 
         /// <summary>
+        /// 暂停正在执行的工作流
+        /// </summary>
+        /// <param name="executionId">执行ID</param>
+        /// <returns>操作结果</returns>
+        OperationResult PauseWorkFlowExecution(string executionId);
+
+        /// <summary>
+        /// 恢复已暂停的工作流
+        /// </summary>
+        /// <param name="executionId">执行ID</param>
+        /// <returns>操作结果</returns>
+        OperationResult ResumeWorkFlowExecution(string executionId);
+
+        /// <summary>
         /// 获取正在执行的工作流列表
         /// </summary>
         /// <returns>正在执行的工作流信息列表</returns>
@@ -141,6 +155,13 @@ namespace Astra.Core.Nodes.Management
         /// <param name="limit">返回的最大记录数</param>
         /// <returns>执行历史记录列表</returns>
         OperationResult<List<WorkFlowExecutionInfo>> GetExecutionHistory(string key = null, int limit = 100);
+
+        /// <summary>
+        /// 获取指定执行ID的完整结果链
+        /// </summary>
+        /// <param name="executionId">执行ID</param>
+        /// <returns>工作流结果链</returns>
+        OperationResult<WorkFlowRunRecord> GetWorkFlowRunRecord(string executionId);
 
         /// <summary>
         /// 获取工作流执行统计信息
@@ -257,7 +278,17 @@ namespace Astra.Core.Nodes.Management
         /// <summary>
         /// 已取消
         /// </summary>
-        Cancelled
+        Cancelled,
+
+        /// <summary>
+        /// 已暂停
+        /// </summary>
+        Paused,
+
+        /// <summary>
+        /// 取消中
+        /// </summary>
+        Cancelling
     }
 
     /// <summary>

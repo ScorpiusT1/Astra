@@ -23,6 +23,7 @@ namespace Astra.Engine.Execution.Strategies
         {
             var workflow = context.Workflow;
             var groups = context.DetectedStrategy.ParallelGroups;
+            MarkDisabledNodesAsSkipped(workflow, context);
             if (groups == null || groups.Count == 0)
             {
                 return ExecutionResult.Successful("无可执行层");
@@ -34,6 +35,11 @@ namespace Astra.Engine.Execution.Strategies
 
             foreach (var layer in groups)
             {
+                if (context.ExecutionController != null)
+                {
+                    await context.ExecutionController.WaitIfPausedAsync(context.CancellationToken);
+                }
+
                 var options = new ParallelOptions
                 {
                     MaxDegreeOfParallelism = workflow.Configuration.MaxParallelism,
@@ -44,7 +50,13 @@ namespace Astra.Engine.Execution.Strategies
 
                 await Parallel.ForEachAsync(layer, options, async (node, ct) =>
                 {
-                    var nodeResult = await ExecuteNodeAsync(node, context.NodeContext, context, ct);
+                    if (context.ExecutionController != null)
+                    {
+                        await context.ExecutionController.WaitIfPausedAsync(ct);
+                    }
+
+                    var isolatedContext = CreateIsolatedNodeContext(context.NodeContext);
+                    var nodeResult = await ExecuteNodeAsync(node, isolatedContext, context, ct);
                     results.Add((node, nodeResult));
                 });
 
@@ -86,6 +98,10 @@ namespace Astra.Engine.Execution.Strategies
                 result.StartTime = startTime;
                 result.EndTime = DateTime.Now;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 result = ExecutionResult.Failed($"节点 '{node.Name}' 执行异常: {ex.Message}", ex);
@@ -96,6 +112,31 @@ namespace Astra.Engine.Execution.Strategies
             node.LastExecutionResult = result;
             workflowContext.OnNodeExecutionCompleted?.Invoke(node, nodeContext, result);
             return result;
+        }
+
+        private static NodeContext CreateIsolatedNodeContext(NodeContext baseContext)
+        {
+            return new NodeContext
+            {
+                InputData = new Dictionary<string, object>(baseContext?.InputData ?? new Dictionary<string, object>()),
+                GlobalVariables = new Dictionary<string, object>(baseContext?.GlobalVariables ?? new Dictionary<string, object>()),
+                Metadata = new Dictionary<string, object>(baseContext?.Metadata ?? new Dictionary<string, object>()),
+                ServiceProvider = baseContext?.ServiceProvider,
+                ParentWorkFlow = baseContext?.ParentWorkFlow
+            };
+        }
+
+        private static void MarkDisabledNodesAsSkipped(WorkFlowNode workflow, WorkFlowExecutionContext workflowContext)
+        {
+            var disabledNodes = workflow.Nodes.Where(n => !n.IsEnabled).ToList();
+            foreach (var disabledNode in disabledNodes)
+            {
+                var skippedResult = ExecutionResult.Skip($"节点 '{disabledNode.Name}' 未启用，已跳过")
+                    .WithOutput("SkipReason", "Disabled");
+                disabledNode.LastExecutionResult = skippedResult;
+                disabledNode.ExecutionState = NodeExecutionState.Skipped;
+                workflowContext.OnNodeExecutionCompleted?.Invoke(disabledNode, workflowContext.NodeContext, skippedResult);
+            }
         }
     }
 }

@@ -19,12 +19,20 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
     /// </summary>
     public class WorkFlowManager : IWorkFlowManager
     {
+        private static readonly TimeSpan DefaultRawDataTtl = TimeSpan.FromMinutes(10);
+        private const int DefaultRawDataMaxItems = 2000;
+        private const long DefaultRawDataMaxBytes = 128L * 1024L * 1024L;
+
         private readonly ConcurrentDictionary<string, WorkFlowNode> _workflows;
         private readonly ConcurrentDictionary<string, WorkFlowExecutionInfo> _runningExecutions;
+        private readonly ConcurrentDictionary<string, WorkFlowExecutionController> _executionControllers;
         private readonly ConcurrentQueue<WorkFlowExecutionInfo> _executionHistory;
         private readonly ConcurrentDictionary<string, List<WorkFlowExecutionInfo>> _workflowHistory;
         private readonly ConcurrentDictionary<string, WorkFlowExecutionStatistics> _workflowStatistics;
+        private readonly ConcurrentDictionary<string, WorkFlowRunRecord> _runRecords;
+        private readonly ConcurrentDictionary<IWorkFlowEngine, byte> _wiredEngines;
         private readonly IWorkFlowEngine _defaultEngine;
+        private readonly INodeRunCollector _nodeRunCollector;
         private readonly int _maxHistorySize;
 
         /// <summary>
@@ -52,15 +60,20 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         /// </summary>
         /// <param name="defaultEngine">默认工作流引擎，如果为null则使用默认引擎</param>
         /// <param name="maxHistorySize">最大历史记录数，默认1000</param>
-        public WorkFlowManager(IWorkFlowEngine defaultEngine = null, int maxHistorySize = 1000)
+        public WorkFlowManager(IWorkFlowEngine defaultEngine = null, int maxHistorySize = 1000, INodeRunCollector nodeRunCollector = null)
         {
             _workflows = new ConcurrentDictionary<string, WorkFlowNode>();
             _runningExecutions = new ConcurrentDictionary<string, WorkFlowExecutionInfo>();
+            _executionControllers = new ConcurrentDictionary<string, WorkFlowExecutionController>();
             _executionHistory = new ConcurrentQueue<WorkFlowExecutionInfo>();
             _workflowHistory = new ConcurrentDictionary<string, List<WorkFlowExecutionInfo>>();
             _workflowStatistics = new ConcurrentDictionary<string, WorkFlowExecutionStatistics>();
+            _runRecords = new ConcurrentDictionary<string, WorkFlowRunRecord>();
+            _wiredEngines = new ConcurrentDictionary<IWorkFlowEngine, byte>();
             _defaultEngine = defaultEngine ?? WorkFlowEngineFactory.CreateDefault();
+            _nodeRunCollector = nodeRunCollector ?? new InMemoryNodeRunCollector();
             _maxHistorySize = maxHistorySize;
+            EnsureEngineWired(_defaultEngine);
         }
 
         #region 工作流注册
@@ -300,6 +313,8 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             if (engine == null)
                 return OperationResult<ExecutionResult>.Failure("工作流引擎不能为空", ErrorCodes.InvalidData);
 
+            EnsureEngineWired(engine);
+
             // 获取工作流
             var workflowResult = GetWorkFlow(key);
             if (!workflowResult.Success)
@@ -322,6 +337,15 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
             // 记录正在执行的执行
             _runningExecutions[executionId] = executionInfo;
+            var controller = new WorkFlowExecutionController();
+            _executionControllers[executionId] = controller;
+            var rawDataStore = new InMemoryRawDataStore(DefaultRawDataTtl, DefaultRawDataMaxItems, DefaultRawDataMaxBytes);
+            context ??= new NodeContext();
+            context.ExecutionId = executionId;
+            context.SetMetadata("WorkflowExecutionController", controller);
+            context.SetMetadata("ExecutionId", executionId);
+            context.SetMetadata("WorkFlowKey", key);
+            context.SetRawDataStore(rawDataStore);
 
             // 触发执行开始事件
             OnWorkFlowExecutionStarted(new WorkFlowExecutionStartedEventArgs
@@ -333,16 +357,16 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
             try
             {
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, controller.Token);
+
                 // 执行工作流
-                var result = await engine.ExecuteAsync(workflow, context, cancellationToken);
+                var result = await engine.ExecuteAsync(workflow, context, linkedCts.Token);
 
                 // 更新执行信息
                 executionInfo.EndTime = DateTime.Now;
                 executionInfo.Status = result.Success ? WorkFlowExecutionStatus.Completed : WorkFlowExecutionStatus.Failed;
                 executionInfo.Result = result;
-
-                // 更新统计信息
-                UpdateStatistics(key, result);
+                BuildAndStoreRunRecord(executionInfo, result);
 
                 // 触发执行完成事件
                 OnWorkFlowExecutionCompleted(new WorkFlowExecutionCompletedEventArgs
@@ -360,6 +384,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 executionInfo.EndTime = DateTime.Now;
                 executionInfo.Status = WorkFlowExecutionStatus.Cancelled;
                 executionInfo.Result = ExecutionResult.Cancel("工作流执行已取消");
+                BuildAndStoreRunRecord(executionInfo, executionInfo.Result);
 
                 OnWorkFlowExecutionCompleted(new WorkFlowExecutionCompletedEventArgs
                 {
@@ -376,6 +401,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 executionInfo.EndTime = DateTime.Now;
                 executionInfo.Status = WorkFlowExecutionStatus.Failed;
                 executionInfo.Result = ExecutionResult.Failed($"工作流执行异常: {ex.Message}", ex);
+                BuildAndStoreRunRecord(executionInfo, executionInfo.Result);
 
                 OnWorkFlowExecutionCompleted(new WorkFlowExecutionCompletedEventArgs
                 {
@@ -389,8 +415,18 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             }
             finally
             {
+                if (context.GetRawDataStore() is IRawDataStore store)
+                {
+                    // 建议业务节点使用 executionId:xxx 作为 key 前缀，便于执行结束后快速回收
+                    store.RemoveByPrefix($"{executionId}:");
+                }
+
                 // 从正在执行的列表中移除
                 _runningExecutions.TryRemove(executionId, out _);
+                if (_executionControllers.TryRemove(executionId, out var executionController))
+                {
+                    executionController.Dispose();
+                }
 
                 // 添加到历史记录
                 AddToHistory(executionInfo);
@@ -405,12 +441,50 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             if (string.IsNullOrWhiteSpace(executionId))
                 return OperationResult.Failure("执行ID不能为空", ErrorCodes.InvalidData);
 
-            if (_runningExecutions.TryGetValue(executionId, out var executionInfo))
+            if (_runningExecutions.TryGetValue(executionId, out var executionInfo) &&
+                _executionControllers.TryGetValue(executionId, out var controller))
             {
-                // 注意：实际取消需要CancellationToken，这里只能标记
-                // 实际应用中应该维护CancellationTokenSource
-                executionInfo.Status = WorkFlowExecutionStatus.Cancelled;
-                return OperationResult.Succeed($"执行 '{executionId}' 已标记为取消");
+                executionInfo.Status = WorkFlowExecutionStatus.Cancelling;
+                controller.Cancel();
+                return OperationResult.Succeed($"执行 '{executionId}' 已发出取消请求");
+            }
+
+            return OperationResult.Failure($"执行 '{executionId}' 不存在或已完成", ErrorCodes.NotFound);
+        }
+
+        /// <summary>
+        /// 暂停正在执行的工作流
+        /// </summary>
+        public OperationResult PauseWorkFlowExecution(string executionId)
+        {
+            if (string.IsNullOrWhiteSpace(executionId))
+                return OperationResult.Failure("执行ID不能为空", ErrorCodes.InvalidData);
+
+            if (_runningExecutions.TryGetValue(executionId, out var executionInfo) &&
+                _executionControllers.TryGetValue(executionId, out var controller))
+            {
+                controller.Pause();
+                executionInfo.Status = WorkFlowExecutionStatus.Paused;
+                return OperationResult.Succeed($"执行 '{executionId}' 已暂停");
+            }
+
+            return OperationResult.Failure($"执行 '{executionId}' 不存在或已完成", ErrorCodes.NotFound);
+        }
+
+        /// <summary>
+        /// 恢复已暂停的工作流
+        /// </summary>
+        public OperationResult ResumeWorkFlowExecution(string executionId)
+        {
+            if (string.IsNullOrWhiteSpace(executionId))
+                return OperationResult.Failure("执行ID不能为空", ErrorCodes.InvalidData);
+
+            if (_runningExecutions.TryGetValue(executionId, out var executionInfo) &&
+                _executionControllers.TryGetValue(executionId, out var controller))
+            {
+                controller.Resume();
+                executionInfo.Status = WorkFlowExecutionStatus.Running;
+                return OperationResult.Succeed($"执行 '{executionId}' 已恢复");
             }
 
             return OperationResult.Failure($"执行 '{executionId}' 不存在或已完成", ErrorCodes.NotFound);
@@ -422,7 +496,9 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public OperationResult<List<WorkFlowExecutionInfo>> GetRunningWorkFlows()
         {
             var running = _runningExecutions.Values
-                .Where(e => e.Status == WorkFlowExecutionStatus.Running)
+                .Where(e => e.Status == WorkFlowExecutionStatus.Running ||
+                            e.Status == WorkFlowExecutionStatus.Paused ||
+                            e.Status == WorkFlowExecutionStatus.Cancelling)
                 .ToList();
 
             return OperationResult<List<WorkFlowExecutionInfo>>.Succeed(running);
@@ -462,6 +538,22 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
                 return OperationResult<List<WorkFlowExecutionInfo>>.Succeed(new List<WorkFlowExecutionInfo>());
             }
+        }
+
+        /// <summary>
+        /// 获取指定执行ID的完整结果链
+        /// </summary>
+        public OperationResult<WorkFlowRunRecord> GetWorkFlowRunRecord(string executionId)
+        {
+            if (string.IsNullOrWhiteSpace(executionId))
+                return OperationResult<WorkFlowRunRecord>.Failure("执行ID不能为空", ErrorCodes.InvalidData);
+
+            if (_runRecords.TryGetValue(executionId, out var runRecord))
+            {
+                return OperationResult<WorkFlowRunRecord>.Succeed(runRecord);
+            }
+
+            return OperationResult<WorkFlowRunRecord>.Failure($"执行 '{executionId}' 的结果链不存在", ErrorCodes.NotFound);
         }
 
         /// <summary>
@@ -548,6 +640,109 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             stats.TotalNodes = stats.CompletedNodes + stats.FailedNodes + stats.SkippedNodes;
         }
 
+        private void BuildAndStoreRunRecord(WorkFlowExecutionInfo executionInfo, ExecutionResult finalResult)
+        {
+            var nodeRuns = _nodeRunCollector.GetByExecutionId(executionInfo.ExecutionId);
+            var workflowStatus = executionInfo.Status;
+
+            var record = new WorkFlowRunRecord
+            {
+                ExecutionId = executionInfo.ExecutionId,
+                WorkFlowKey = executionInfo.WorkFlowKey,
+                WorkFlowName = executionInfo.WorkFlowName,
+                Strategy = finalResult?.GetOutput("ExecutionStrategy", string.Empty),
+                StartTime = executionInfo.StartTime,
+                EndTime = executionInfo.EndTime ?? DateTime.Now,
+                Status = workflowStatus.ToString(),
+                FinalResult = finalResult,
+                NodeRuns = nodeRuns.ToList()
+            };
+
+            _runRecords[executionInfo.ExecutionId] = record;
+            _nodeRunCollector.Clear(executionInfo.ExecutionId);
+            UpdateStatisticsFromNodeRuns(executionInfo.WorkFlowKey, record.NodeRuns);
+        }
+
+        private void UpdateStatisticsFromNodeRuns(string key, List<NodeRunRecord> nodeRuns)
+        {
+            if (!_workflowStatistics.TryGetValue(key, out var stats))
+            {
+                stats = new WorkFlowExecutionStatistics();
+                _workflowStatistics[key] = stats;
+            }
+
+            if (nodeRuns == null || nodeRuns.Count == 0)
+            {
+                return;
+            }
+
+            stats.TotalNodes += nodeRuns.Count;
+            stats.CompletedNodes += nodeRuns.Count(n => n.State == NodeExecutionState.Success);
+            stats.FailedNodes += nodeRuns.Count(n => n.State == NodeExecutionState.Failed);
+            stats.SkippedNodes += nodeRuns.Count(n => n.State == NodeExecutionState.Skipped);
+            var failedNode = nodeRuns.LastOrDefault(n => n.State == NodeExecutionState.Failed);
+            if (failedNode != null)
+            {
+                stats.LastError = failedNode.Message;
+            }
+        }
+
+        private void WireEngineEvents(IWorkFlowEngine engine)
+        {
+            if (engine == null) return;
+
+            engine.NodeExecutionStarted += (_, e) =>
+            {
+                if (e?.Node == null || e.Context == null) return;
+                var executionId = ResolveExecutionId(e.Context);
+                if (string.IsNullOrWhiteSpace(executionId)) return;
+                var workflowKey = ResolveWorkFlowKey(e.Context);
+                _nodeRunCollector.MarkNodeStarted(executionId, workflowKey, e.Node, e.Context, DateTime.Now);
+            };
+
+            engine.NodeExecutionCompleted += (_, e) =>
+            {
+                if (e?.Node == null || e.Context == null || e.Result == null) return;
+                var executionId = ResolveExecutionId(e.Context);
+                if (string.IsNullOrWhiteSpace(executionId)) return;
+                var workflowKey = ResolveWorkFlowKey(e.Context);
+                _nodeRunCollector.MarkNodeCompleted(executionId, workflowKey, e.Node, e.Context, e.Result, DateTime.Now);
+            };
+        }
+
+        private void EnsureEngineWired(IWorkFlowEngine engine)
+        {
+            if (engine == null) return;
+            if (_wiredEngines.TryAdd(engine, 0))
+            {
+                WireEngineEvents(engine);
+            }
+        }
+
+        private static string ResolveExecutionId(NodeContext context)
+        {
+            if (context?.Metadata != null &&
+                context.Metadata.TryGetValue("ExecutionId", out var metadataExecutionId) &&
+                metadataExecutionId is string executionId)
+            {
+                return executionId;
+            }
+
+            return context?.ExecutionId;
+        }
+
+        private static string ResolveWorkFlowKey(NodeContext context)
+        {
+            if (context?.Metadata != null &&
+                context.Metadata.TryGetValue("WorkFlowKey", out var metadataWorkFlowKey) &&
+                metadataWorkFlowKey is string workFlowKey)
+            {
+                return workFlowKey;
+            }
+
+            return string.Empty;
+        }
+
         /// <summary>
         /// 添加到历史记录
         /// </summary>
@@ -624,9 +819,15 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
             _workflows.Clear();
             _runningExecutions.Clear();
+            foreach (var controller in _executionControllers.Values)
+            {
+                controller.Dispose();
+            }
+            _executionControllers.Clear();
             while (_executionHistory.TryDequeue(out _)) { }
             _workflowHistory.Clear();
             _workflowStatistics.Clear();
+            _runRecords.Clear();
         }
 
         #endregion

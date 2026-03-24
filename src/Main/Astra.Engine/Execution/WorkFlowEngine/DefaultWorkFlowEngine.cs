@@ -1,5 +1,6 @@
 using Astra.Core.Nodes.Models;
 using Astra.Engine.Execution.WorkFlowEngine;
+using Astra.Engine.Execution.WorkFlowEngine.Management;
 using Astra.Engine.Execution.Strategies;
 using Astra.Engine.Execution.Validators;
 using Microsoft.Extensions.Logging;
@@ -111,6 +112,9 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                     Workflow = workflow,
                     NodeContext = PrepareContext(workflow, context),
                     CancellationToken = cancellationToken,
+                    ExecutionController = ResolveExecutionController(context),
+                    ExecutionId = ResolveExecutionId(context),
+                    WorkFlowKey = ResolveWorkFlowKey(context),
                     StartTime = startTime,
                     Statistics = Statistics,
                     DetectedStrategy = detectedStrategy
@@ -192,6 +196,43 @@ namespace Astra.Engine.Execution.WorkFlowEngine
             _logger.LogInformation("描述: {Description}", strategy.Description);
             _logger.LogInformation("原因: {Reason}", strategy.Reason);
             _logger.LogInformation("=".PadRight(60, '='));
+        }
+
+        private static WorkFlowExecutionController ResolveExecutionController(NodeContext context)
+        {
+            if (context?.Metadata == null) return null;
+            if (context.Metadata.TryGetValue("WorkflowExecutionController", out var value) &&
+                value is WorkFlowExecutionController controller)
+            {
+                return controller;
+            }
+
+            return null;
+        }
+
+        private static string ResolveExecutionId(NodeContext context)
+        {
+            if (context?.Metadata != null &&
+                context.Metadata.TryGetValue("ExecutionId", out var value) &&
+                value is string executionId &&
+                !string.IsNullOrWhiteSpace(executionId))
+            {
+                return executionId;
+            }
+
+            return context?.ExecutionId;
+        }
+
+        private static string ResolveWorkFlowKey(NodeContext context)
+        {
+            if (context?.Metadata != null &&
+                context.Metadata.TryGetValue("WorkFlowKey", out var value) &&
+                value is string workFlowKey)
+            {
+                return workFlowKey;
+            }
+
+            return string.Empty;
         }
 
         /// <summary>

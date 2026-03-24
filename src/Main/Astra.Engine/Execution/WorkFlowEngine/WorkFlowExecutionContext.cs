@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.Engine.Execution.WorkFlowEngine.Management;
 using System;
 using System.Threading;
 
@@ -24,6 +25,21 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// 取消令牌
         /// </summary>
         public CancellationToken CancellationToken { get; set; }
+
+        /// <summary>
+        /// 执行控制器（支持暂停、恢复、取消）
+        /// </summary>
+        public WorkFlowExecutionController ExecutionController { get; set; }
+
+        /// <summary>
+        /// 本次执行唯一ID
+        /// </summary>
+        public string ExecutionId { get; set; }
+
+        /// <summary>
+        /// 工作流键
+        /// </summary>
+        public string WorkFlowKey { get; set; }
 
         /// <summary>
         /// 执行开始时间

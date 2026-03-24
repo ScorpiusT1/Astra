@@ -49,6 +49,8 @@ namespace Astra.Engine.Execution.NodeExecutor
             NodeContext context,
             CancellationToken cancellationToken)
         {
+            node.ExecutionState = NodeExecutionState.Running;
+
             // 核心执行委托，允许中间件替换 CancellationToken
             Func<CancellationToken, Task<ExecutionResult>> core = async (CancellationToken token) =>
             {
@@ -93,7 +95,30 @@ namespace Astra.Engine.Execution.NodeExecutor
             }
 
             // 执行管道
-            return await pipeline(cancellationToken);
+            try
+            {
+                var result = await pipeline(cancellationToken);
+                node.ExecutionState = MapState(result);
+                return result;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                node.ExecutionState = NodeExecutionState.Cancelled;
+                throw;
+            }
+            catch
+            {
+                node.ExecutionState = NodeExecutionState.Failed;
+                throw;
+            }
+        }
+
+        private static NodeExecutionState MapState(ExecutionResult result)
+        {
+            if (result == null) return NodeExecutionState.Failed;
+            if (result.ResultType == ExecutionResultType.Cancelled) return NodeExecutionState.Cancelled;
+            if (result.IsSkipped || result.ResultType == ExecutionResultType.Skipped) return NodeExecutionState.Skipped;
+            return result.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
         }
     }
 }
