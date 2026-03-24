@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
@@ -24,6 +25,7 @@ namespace Astra.ViewModels
         private readonly IDeviceManager? _deviceManager;
         private readonly IPluginViewFactory? _pluginViewFactory;
         private readonly string _defaultIcon = "🧩";
+        private readonly Dictionary<string, TreeNode> _deviceNodeMap = new Dictionary<string, TreeNode>();
 
         [ObservableProperty]
         private string _title = "调试工具";
@@ -49,6 +51,7 @@ namespace Astra.ViewModels
             var sp = App.ServiceProvider;
             _deviceManager = sp?.GetService<IDeviceManager>();
             _pluginViewFactory = sp?.GetService<IPluginViewFactory>();
+            SubscribeDeviceStatusChanged();
 
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
@@ -63,10 +66,44 @@ namespace Astra.ViewModels
         {
             _deviceManager = deviceManager;
             _pluginViewFactory = pluginViewFactory;
+            SubscribeDeviceStatusChanged();
 
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
                 BuildDebugTree();
+            });
+        }
+
+        private void SubscribeDeviceStatusChanged()
+        {
+            if (_deviceManager == null)
+            {
+                return;
+            }
+
+            _deviceManager.DeviceStatusChanged -= OnDeviceStatusChanged;
+            _deviceManager.DeviceStatusChanged += OnDeviceStatusChanged;
+        }
+
+        private void OnDeviceStatusChanged(object? sender, Astra.Core.Devices.DeviceStatusChangedEventArgs e)
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                return;
+            }
+
+            dispatcher.InvokeAsync(() =>
+            {
+                if (string.IsNullOrWhiteSpace(e?.Id))
+                {
+                    return;
+                }
+
+                if (_deviceNodeMap.TryGetValue(e.Id, out var node))
+                {
+                    node.IsOnline = e.NewStatus == Astra.Core.Devices.DeviceStatus.Online;
+                }
             });
         }
 
@@ -84,6 +121,7 @@ namespace Astra.ViewModels
         private void BuildDebugTree()
         {
             DebugTreeNodes.Clear();
+            _deviceNodeMap.Clear();
 
             if (_deviceManager == null)
             {
@@ -197,6 +235,10 @@ namespace Astra.ViewModels
                 };
 
                 root.Children.Add(child);
+                if (!string.IsNullOrWhiteSpace(device.DeviceId))
+                {
+                    _deviceNodeMap[device.DeviceId] = child;
+                }
             }
 
             // 根节点排序后加入集合
