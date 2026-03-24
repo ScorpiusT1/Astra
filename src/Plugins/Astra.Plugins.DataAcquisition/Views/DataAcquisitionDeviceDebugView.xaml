@@ -52,6 +52,7 @@
                         <ComboBox Width="160"
                                   IsEditable="True"
                                   IsReadOnly="True"
+                                  IsEnabled="{Binding IsDebugParameterEditable}"
                                   ItemsSource="{Binding AvailableSerialNumbers}"
                                   SelectedItem="{Binding SelectedSerialNumber, Mode=TwoWay}" />
                         <Button Content="扫描"
@@ -59,6 +60,7 @@
                                 Margin="8,0,0,0"
                                 Background="{DynamicResource PrimaryBrush}"
                                 Foreground="{DynamicResource ReverseTextBrush}"
+                                IsEnabled="{Binding IsDebugParameterEditable}"
                                 Command="{Binding ScanSerialNumbersCommand}" />
                     </StackPanel>
                 </Border>
@@ -116,6 +118,7 @@
                                       ItemsSource="{Binding SampleRateOptions}"
                                       SelectedItem="{Binding DebugSampleRate, Mode=TwoWay}"
                                       HorizontalAlignment="Stretch"
+                                      IsEnabled="{Binding IsDebugParameterEditable}"
                                       IsEditable="True">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
@@ -143,6 +146,7 @@
                             <ComboBox Margin="8,0,0,0"
                                       ItemsSource="{Binding CouplingModes}"
                                       SelectedItem="{Binding CouplingMode, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsDebugParameterEditable}"
                                       HorizontalAlignment="Stretch" />
                         </DockPanel>
 
@@ -153,6 +157,7 @@
                             <ComboBox Margin="8,0,0,0"
                                       ItemsSource="{Binding ExcitationCurrentOptions}"
                                       SelectedItem="{Binding ExcitationCurrent, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsDebugParameterEditable}"
                                       HorizontalAlignment="Stretch">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>

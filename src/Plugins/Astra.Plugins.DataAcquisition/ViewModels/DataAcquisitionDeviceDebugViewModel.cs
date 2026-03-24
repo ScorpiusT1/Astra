@@ -82,9 +82,15 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                     // 采集状态变化时更新按钮可用性
                     StartAcquisitionAsyncCommand?.NotifyCanExecuteChanged();
                     StopAcquisitionAsyncCommand?.NotifyCanExecuteChanged();
+                    OnPropertyChanged(nameof(IsDebugParameterEditable));
                 }
             }
         }
+
+        /// <summary>
+        /// 调试参数是否可编辑：运行中锁定，空闲/暂停可编辑。
+        /// </summary>
+        public bool IsDebugParameterEditable => CurrentState != AcquisitionState.Running;
 
         public string StatusMessage
         {
