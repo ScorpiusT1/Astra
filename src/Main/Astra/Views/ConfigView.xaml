@@ -17,6 +17,7 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         <localConverters:TextTruncateConverter x:Key="TextTruncateConverter" DefaultMaxLength="30" />
+        <localConverters:TreeNodeContextMenuVisibilityConverter x:Key="TreeNodeContextMenuVisibilityConverter" />
     </UserControl.Resources>
     <Grid>
         <!-- 主内容区域 -->
@@ -79,17 +80,17 @@
                                                 <MenuItem Header="📥 导入配置"
                                                           Command="{Binding ImportConfigurationsCommand}"
                                                           CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"
-                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}" />
+                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext, Converter={StaticResource TreeNodeContextMenuVisibilityConverter}, ConverterParameter=ImportExport}" />
                                                 <MenuItem Header="📤 导出配置"
                                                           Command="{Binding ExportConfigurationsCommand}"
                                                           CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"
-                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}" />
-                                                <Separator Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverse}" />
+                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext, Converter={StaticResource TreeNodeContextMenuVisibilityConverter}, ConverterParameter=ImportExport}" />
+                                                <Separator Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext, Converter={StaticResource TreeNodeContextMenuVisibilityConverter}, ConverterParameter=ImportExport}" />
                                                 <!-- 子节点菜单：保存 -->
                                                 <MenuItem Header="💾 保存此配置"
                                                           Command="{Binding SaveSingleConfigurationCommand}"
                                                           CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext}"
-                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext.Config, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                          Visibility="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.DataContext, Converter={StaticResource TreeNodeContextMenuVisibilityConverter}, ConverterParameter=Save}" />
                                             </ContextMenu>
                                         </Setter.Value>
                                     </Setter>

@@ -226,13 +226,7 @@ namespace Astra.ViewModels
             Dictionary<string, IConfig> existingNodeConfigs = new Dictionary<string, IConfig>();
             foreach (var rootNode in TreeNodes)
             {
-                foreach (var childNode in rootNode.Children)
-                {
-                    if (childNode.Config != null && !string.IsNullOrEmpty(childNode.Config.ConfigId))
-                    {
-                        existingNodeConfigs[childNode.Config.ConfigId] = childNode.Config;
-                    }
-                }
+                CollectNodeConfigs(rootNode, existingNodeConfigs);
             }
 
             var result = await _configManager?.GetAllAsync();
@@ -327,6 +321,27 @@ namespace Astra.ViewModels
                     }
                 }
 
+                // 对于不允许在根节点新增的配置类型（如软件配置），
+                // 直接将配置挂载到根节点本身，不再创建子节点。
+                if (!treeAttr.AllowAddOnRoot)
+                {
+                    var rootConfig = configsOfType.FirstOrDefault();
+                    if (rootConfig != null)
+                    {
+                        rootNode.Config = rootConfig;
+                        rootNode.ViewModelType = uiAttr?.ViewModelType ?? treeAttr.ViewModelType;
+                        rootNode.ViewType = uiAttr?.ViewType ?? treeAttr.ViewType;
+                    }
+
+                    // 该模式下根节点不使用子节点
+                    rootNode.Children.Clear();
+                    continue;
+                }
+
+                // 可新增子节点的分类根节点不直接承载界面
+                rootNode.ViewModelType = null;
+                rootNode.ViewType = null;
+
                 // 为该类型的所有配置创建子节点
                 foreach (var config in configsOfType)
                 {
@@ -364,6 +379,28 @@ namespace Astra.ViewModels
                     TreeNodes.Add(rootNode);
                     addedCategories.Add(category);
                 }
+            }
+        }
+
+        /// <summary>
+        /// 递归收集树节点上的配置对象（包含根节点和子节点）。
+        /// </summary>
+        private void CollectNodeConfigs(TreeNode? node, Dictionary<string, IConfig> collector)
+        {
+            if (node == null)
+                return;
+
+            if (node.Config != null && !string.IsNullOrEmpty(node.Config.ConfigId))
+            {
+                collector[node.Config.ConfigId] = node.Config;
+            }
+
+            if (node.Children == null || node.Children.Count == 0)
+                return;
+
+            foreach (var child in node.Children)
+            {
+                CollectNodeConfigs(child, collector);
             }
         }
 
@@ -1056,6 +1093,23 @@ namespace Astra.ViewModels
                 
                 foreach (var rootNode in TreeNodes)
                 {
+                    // 根节点本身挂载配置（如软件配置）
+                    if (rootNode.Config != null)
+                    {
+                        // 对配置执行验证
+                        if (rootNode.Config is DeviceConfig rootDeviceConfig)
+                        {
+                            var validateResult = rootDeviceConfig.Validate();
+                            if (!validateResult.Success)
+                            {
+                                errorCount++;
+                                errors.Add($"{rootDeviceConfig.ConfigName ?? rootNode.Header ?? "未命名配置"}: {validateResult.ErrorMessage}");
+                            }
+                        }
+
+                        nodesToSave.Add((rootNode, rootNode.Config.ConfigName ?? rootNode.Header ?? "未命名配置"));
+                    }
+
                     // 遍历所有子节点（实际配置，按树中的顺序）
                     foreach (var childNode in rootNode.Children)
                     {

@@ -30,7 +30,7 @@ using System.IO;
 namespace Astra.UI.ViewModels
 {
     public partial class MultiFlowEditorViewModel : ObservableObject
-    {       
+    {
         #region 常量定义
 
         /// <summary>
@@ -58,7 +58,7 @@ namespace Astra.UI.ViewModels
                 // 使用 AppDomain.CurrentDomain.BaseDirectory 已经是 bin 目录
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 var folder = Path.Combine(baseDir, SOLUTIONS_FOLDER_NAME);
-                
+
                 // 确保文件夹存在
                 if (!Directory.Exists(folder))
                 {
@@ -71,7 +71,7 @@ namespace Astra.UI.ViewModels
                         Debug.WriteLine($"[SolutionsFolder] 创建文件夹失败: {ex.Message}");
                     }
                 }
-                
+
                 // 返回完整路径（解决 SaveFileDialog 的路径格式问题）
                 return Path.GetFullPath(folder);
             }
@@ -80,7 +80,7 @@ namespace Astra.UI.ViewModels
         #endregion
 
         #region 字段
-       
+
         private PluginNodeService _pluginNodeService;
 
         private IPluginHost _pluginHost;
@@ -176,12 +176,12 @@ namespace Astra.UI.ViewModels
         partial void OnCurrentTabChanged(WorkflowTab value)
         {
             Debug.WriteLine($"[OnCurrentTabChanged] CurrentTab 变更: {value?.Name ?? "null"}");
-            
+
             // 如果新标签页不为空，执行切换逻辑
             if (value != null)
             {
                 Debug.WriteLine($"[OnCurrentTabChanged] 调用 SwitchWorkflow");
-                
+
                 // 保存旧标签页的状态
                 var oldTab = SubWorkflowTabs.FirstOrDefault(t => t.IsActive && t != value);
                 if (oldTab != null)
@@ -190,7 +190,7 @@ namespace Astra.UI.ViewModels
                     oldTab.IsActive = false;
                     SaveCurrentTabState();
                 }
-                
+
                 // 确保所有其他标签页都是非活动状态
                 foreach (var tab in SubWorkflowTabs)
                 {
@@ -199,16 +199,16 @@ namespace Astra.UI.ViewModels
                         tab.IsActive = false;
                     }
                 }
-                
+
                 // 激活新标签页
                 value.IsActive = true;
                 IsMasterWorkflow = value.Type == WorkflowType.Master;
-                
+
                 // 同步到画布
                 SyncTabToCanvas(value);
-                
+
                 Debug.WriteLine($"[OnCurrentTabChanged] 切换完成，新标签页: {value.Name}, IsActive: {value.IsActive}");
-                
+
                 // 打印所有标签页的状态
                 Debug.WriteLine($"[OnCurrentTabChanged] 所有标签页状态:");
                 foreach (var t in SubWorkflowTabs)
@@ -216,21 +216,21 @@ namespace Astra.UI.ViewModels
                     Debug.WriteLine($"[OnCurrentTabChanged]   {t.Name}: Nodes 哈希={t.Nodes.GetHashCode()}, 节点数={t.Nodes.Count}, IsActive={t.IsActive}");
                 }
             }
-            
+
             // 当当前标签页改变时，更新启动命令的可用性
             StartCurrentSubWorkflowCommand.NotifyCanExecuteChanged();
-            
+
             // 更新撤销/重做命令的可用性（因为切换流程后，CommandManager 可能不同）
             UndoCommand.NotifyCanExecuteChanged();
             RedoCommand.NotifyCanExecuteChanged();
-            
+
             // 订阅全局 CommandManager 的属性变更事件（如果还没有订阅）
             if (_commandManager != null)
             {
                 _commandManager.PropertyChanged -= OnCommandManagerPropertyChanged;
                 _commandManager.PropertyChanged += OnCommandManagerPropertyChanged;
             }
-            
+
             // 如果新标签页有 CommandManager，订阅其属性变更事件
             if (value?.CommandManager != null)
             {
@@ -365,10 +365,10 @@ namespace Astra.UI.ViewModels
         {
             _pluginHost = pluginHost;
             _manifestSerializer = manifestSerializer;
-            
+
             // 初始化多流程序列化服务
             _workflowSerializer = new MultiWorkflowSerializer();
-            
+
             // 初始化命令管理器
             _commandManager = new CommandManager(maxHistorySize: 100);
             _commandManager.PropertyChanged += OnCommandManagerPropertyChanged;
@@ -709,7 +709,7 @@ namespace Astra.UI.ViewModels
                             CurrentTab = null;
                         }
                     }
-                    
+
                     // 刷新主流程节点
                     if (IsMasterWorkflowViewVisible)
                     {
@@ -800,7 +800,7 @@ namespace Astra.UI.ViewModels
 
             Debug.WriteLine($"[SwitchWorkflow] === 切换完成 ===");
             Debug.WriteLine($"[SwitchWorkflow]   CurrentTab: {CurrentTab.Name}, Nodes 哈希: {CurrentTab.Nodes.GetHashCode()}, 节点数: {CurrentTab.Nodes.Count}");
-            
+
             // 打印所有标签页的集合状态（用于诊断）
             Debug.WriteLine($"[SwitchWorkflow] 所有标签页状态:");
             foreach (var t in SubWorkflowTabs)
@@ -1043,7 +1043,7 @@ namespace Astra.UI.ViewModels
                                 CurrentTab = null;
                             }
                         }
-                        
+
                         // 触发 UI 更新
                         OnPropertyChanged(nameof(MasterWorkflowTab));
                         if (IsMasterWorkflowViewVisible)
@@ -1109,8 +1109,8 @@ namespace Astra.UI.ViewModels
             var existingRef = MasterWorkflow.GetSubWorkflowReference(subWorkflowId);
             if (existingRef != null)
             {
-                var existingName = SubWorkflows.TryGetValue(subWorkflowId, out var existing) 
-                    ? existing.Name ?? "未命名流程" 
+                var existingName = SubWorkflows.TryGetValue(subWorkflowId, out var existing)
+                    ? existing.Name ?? "未命名流程"
                     : "未命名流程";
                 Debug.WriteLine($"[SequenceViewModel] 子流程 {existingName} 已在主流程中");
                 return;
@@ -1192,7 +1192,7 @@ namespace Astra.UI.ViewModels
                             CurrentTab = null;
                         }
                     }
-                    
+
                     // 刷新主流程节点
                     if (IsMasterWorkflowViewVisible)
                     {
@@ -1337,12 +1337,12 @@ namespace Astra.UI.ViewModels
             // 只有在引用发生变化时才更新，避免不必要的通知
             if (CanvasItemsSource != tab.Nodes)
             {
-            CanvasItemsSource = tab.Nodes;
+                CanvasItemsSource = tab.Nodes;
             }
 
             if (EdgeItemsSource != tab.Edges)
             {
-            EdgeItemsSource = tab.Edges;
+                EdgeItemsSource = tab.Edges;
             }
 
             Debug.WriteLine($"[SequenceViewModel] 同步标签页到画布: {tab.Name}, 节点数: {tab.Nodes.Count}, 连线数: {tab.Edges.Count}");
@@ -1399,11 +1399,11 @@ namespace Astra.UI.ViewModels
                     if (newItem is WorkflowReferenceNode workflowNode)
                     {
                         Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 发现 WorkflowReferenceNode: {workflowNode.Name}, NodeId: {workflowNode.Id}, SubWorkflowId: {workflowNode.SubWorkflowId}");
-                        
+
                         // 检查对应的子流程数据是否已存在
                         bool subWorkflowExists = SubWorkflows.ContainsKey(workflowNode.SubWorkflowId);
                         Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 子流程数据是否存在: {subWorkflowExists}");
-                        
+
                         // 检查主流程中是否已经有其他节点使用相同的 SubWorkflowId（表示这是复制粘贴操作）
                         bool isDuplicate = false;
                         if (subWorkflowExists && MasterWorkflowTab?.Nodes != null)
@@ -1414,7 +1414,7 @@ namespace Astra.UI.ViewModels
                             isDuplicate = sameSubWorkflowCount > 1; // 如果有多个节点使用相同的 SubWorkflowId，说明是复制粘贴
                             Debug.WriteLine($"[OnMasterWorkflowNodesCollectionChanged] 主流程中使用相同 SubWorkflowId 的节点数: {sameSubWorkflowCount}, 是否为复制粘贴: {isDuplicate}");
                         }
-                        
+
                         if (!subWorkflowExists || isDuplicate)
                         {
                             // 子流程数据不存在，或者是复制粘贴操作，需要创建新的子流程
@@ -1458,7 +1458,7 @@ namespace Astra.UI.ViewModels
             if (sourceSubWorkflow == null)
             {
                 Debug.WriteLine($"[SequenceViewModel] 未找到源子流程数据，创建新的空子流程");
-                
+
                 // 创建一个新的空子流程
                 var newSubWorkflow = new WorkFlowNode
                 {
@@ -1488,7 +1488,7 @@ namespace Astra.UI.ViewModels
                 // 克隆子流程数据
                 var clonedNode = sourceSubWorkflow.Clone();
                 var duplicatedSubWorkflow = clonedNode as WorkFlowNode;
-                
+
                 if (duplicatedSubWorkflow == null)
                 {
                     Debug.WriteLine($"[SequenceViewModel] 克隆子流程失败：类型转换错误");
@@ -1793,8 +1793,8 @@ namespace Astra.UI.ViewModels
         private void OpenFile()
         {
             try
-        {
-            Debug.WriteLine("[SequenceViewModel] 打开文件命令");
+            {
+                Debug.WriteLine("[SequenceViewModel] 打开文件命令");
 
                 // 检查是否有未保存的更改
                 if (HasUnsavedChanges())
@@ -1871,8 +1871,8 @@ namespace Astra.UI.ViewModels
         private void SaveFile()
         {
             try
-        {
-            Debug.WriteLine("[SequenceViewModel] 保存文件命令");
+            {
+                Debug.WriteLine("[SequenceViewModel] 保存文件命令");
 
                 if (string.IsNullOrWhiteSpace(CurrentFilePath))
                 {
@@ -1902,8 +1902,8 @@ namespace Astra.UI.ViewModels
         private void SaveFileAs()
         {
             try
-        {
-            Debug.WriteLine("[SequenceViewModel] 另存为命令");
+            {
+                Debug.WriteLine("[SequenceViewModel] 另存为命令");
 
                 // 提前获取文件夹路径，确保文件夹存在
                 var initialDir = SolutionsFolder;
@@ -1918,8 +1918,8 @@ namespace Astra.UI.ViewModels
                     DefaultExt = FILE_EXTENSION,
                     AddExtension = true,
                     InitialDirectory = initialDir,
-                    FileName = string.IsNullOrWhiteSpace(CurrentFilePath) 
-                        ? $"项目_{DateTime.Now:yyyyMMdd_HHmmss}" 
+                    FileName = string.IsNullOrWhiteSpace(CurrentFilePath)
+                        ? $"项目_{DateTime.Now:yyyyMMdd_HHmmss}"
                         : Path.GetFileNameWithoutExtension(CurrentFilePath)
                 };
 
@@ -2101,7 +2101,7 @@ namespace Astra.UI.ViewModels
                 if (data.SubWorkflows != null)
                 {
                     SubWorkflows = new Dictionary<string, WorkFlowNode>(data.SubWorkflows);
-                    
+
                     // 为每个子流程创建标签页
                     foreach (var subWorkflow in data.SubWorkflows.Values)
                     {
@@ -2326,7 +2326,7 @@ namespace Astra.UI.ViewModels
             {
                 var command = _commandManager.PeekLastCommand();
                 Debug.WriteLine($"[SequenceViewModel] 撤销命令 - 描述: {command?.Description}");
-                
+
                 // 如果命令有 WorkflowTab，先切换到对应的标签页
                 if (command is UndoableCommandBase undoableCommand && undoableCommand.WorkflowTab != null)
                 {
@@ -2335,7 +2335,7 @@ namespace Astra.UI.ViewModels
                     {
                         Debug.WriteLine($"[SequenceViewModel] 撤销前切换到流程: {targetTab.Name}");
                         SwitchWorkflow(targetTab);
-                        
+
                         // 等待界面切换完成后再执行撤销操作
                         ExecuteAfterTabSwitch(targetTab, () =>
                         {
@@ -2345,7 +2345,7 @@ namespace Astra.UI.ViewModels
                         return; // 提前返回，等待异步执行
                     }
                 }
-                
+
                 // 如果已经是当前标签页，立即执行撤销
                 _commandManager.Undo();
             }
@@ -2376,7 +2376,7 @@ namespace Astra.UI.ViewModels
             {
                 var command = _commandManager.PeekRedoCommand();
                 Debug.WriteLine($"[SequenceViewModel] 重做命令 - 描述: {command?.Description}");
-                
+
                 // 如果命令有 WorkflowTab，先切换到对应的标签页
                 if (command is UndoableCommandBase undoableCommand && undoableCommand.WorkflowTab != null)
                 {
@@ -2385,7 +2385,7 @@ namespace Astra.UI.ViewModels
                     {
                         Debug.WriteLine($"[SequenceViewModel] 重做前切换到流程: {targetTab.Name}");
                         SwitchWorkflow(targetTab);
-                        
+
                         // 等待界面切换完成后再执行重做操作
                         ExecuteAfterTabSwitch(targetTab, () =>
                         {
@@ -2395,7 +2395,7 @@ namespace Astra.UI.ViewModels
                         return; // 提前返回，等待异步执行
                     }
                 }
-                
+
                 // 如果已经是当前标签页，立即执行重做
                 _commandManager.Redo();
             }
@@ -2730,12 +2730,12 @@ namespace Astra.UI.ViewModels
 
             // 执行重命名（在重命名完成后再退出编辑模式，防止重命名期间被误删）
             Debug.WriteLine($"[SequenceViewModel] CommitEditWorkflowName: 准备执行重命名，OldName={oldName}, NewName={newName}");
-            
+
             // 先执行重命名，如果成功再退出编辑模式
             try
             {
                 ExecuteRenameWorkflow(tab, newName);
-                
+
                 // 重命名成功后，延迟退出编辑模式，确保UI已更新
                 Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -3153,9 +3153,9 @@ namespace Astra.UI.ViewModels
                     {
                         AddImportedWorkflow(workflow);
                         successCount++;
-            }
-            catch (Exception ex)
-            {
+                    }
+                    catch (Exception ex)
+                    {
                         Debug.WriteLine($"[SequenceViewModel] 添加导入的子流程失败: {workflow.Name}, 错误: {ex.Message}");
                     }
                 }
@@ -3198,7 +3198,7 @@ namespace Astra.UI.ViewModels
             // 检查名称是否冲突，如果冲突则生成新名称
             var originalName = importedWorkflow.Name ?? "未命名流程";
             var existingNames = new HashSet<string>();
-            
+
             // 从 SubWorkflows 字典中获取所有流程名
             foreach (var subWorkflow in SubWorkflows.Values)
             {
@@ -3207,7 +3207,7 @@ namespace Astra.UI.ViewModels
                     existingNames.Add(subWorkflow.Name);
                 }
             }
-            
+
             // 从 SubWorkflowTabs 中获取所有标签页名（作为备用检查）
             foreach (var existingTab in SubWorkflowTabs)
             {
