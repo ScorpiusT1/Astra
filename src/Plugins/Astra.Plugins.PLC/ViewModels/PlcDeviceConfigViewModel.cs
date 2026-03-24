@@ -36,6 +36,8 @@ namespace Astra.Plugins.PLC.ViewModels
                 {
                     _config.Manufacturer = value;
                     OnPropertyChanged();
+                    // 厂家变化时，底层 DeviceConfig 会重置 Model，这里需同步通知 UI 刷新型号显示
+                    OnPropertyChanged(nameof(Model));
                 }
             }
         }

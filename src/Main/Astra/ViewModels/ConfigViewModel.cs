@@ -1146,9 +1146,10 @@ namespace Astra.ViewModels
                 var allConfigsResult = await _configManager.GetAllAsync();
                 var savedConfigs = allConfigsResult?.Success == true ? allConfigsResult.Data?.ToList() : null;
                 
-                // ✅ 生成新名称（保持原有编号，不根据索引重新分配）
-                // 编号应该保持稳定，只有新建节点或名称没有编号时才分配新编号
-                string newNodeName = GetNodeDisplayName(targetNode.Config, targetNode.Parent, savedConfigs);
+                // 保存时统一生成规范名称：
+                // - 设备配置：厂家 + 型号 + #序号
+                // - 其他配置：沿用原有命名规则
+                string newNodeName = GenerateNameForSave(targetNode.Config, targetNode.Parent, savedConfigs);
                 targetNode.Config.ConfigName = newNodeName;
 
                 // ✅ 根据节点在树中的位置更新 UpdatedAt（保持拖拽后的顺序）
@@ -1339,20 +1340,10 @@ namespace Astra.ViewModels
                                 }
                             }
 
-                            // ⚠️ 关键：如果 ConfigName 中已有编号，直接使用它，不重新生成
-                            // 这样可以保持原有编号，不会因为拖拽而改变
-                            string newNodeName;
-                            
-                            if (!string.IsNullOrEmpty(childNode.Config.ConfigName) && HasHashNumberSuffix(childNode.Config.ConfigName))
-                            {
-                                // ConfigName 中已有编号，直接使用它（但需要检查唯一性）
-                                newNodeName = EnsureUniqueNumber(childNode.Config.ConfigName, childNode.Parent, childNode.Config.ConfigId, savedConfigs);
-                            }
-                            else
-                            {
-                                // ConfigName 中没有编号，生成新名称（可能会添加编号）
-                                newNodeName = GetNodeDisplayName(childNode.Config, childNode.Parent, savedConfigs, preserveExistingNumber: false);
-                            }
+                            // 保存时统一生成规范名称：
+                            // - 设备配置：厂家 + 型号 + #序号
+                            // - 其他配置：沿用原有命名规则
+                            string newNodeName = GenerateNameForSave(childNode.Config, childNode.Parent, savedConfigs);
                             
                             // 立即更新内存中的 Header 和 ConfigName
                             childNode.Header = newNodeName;
@@ -1671,6 +1662,37 @@ namespace Astra.ViewModels
             {
                 ToastHelper.ShowError($"导出配置失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 保存时生成规范名称：
+        /// - DeviceConfig: 厂家 + 型号 + #序号
+        /// - 其他配置：沿用现有命名策略
+        /// </summary>
+        private string GenerateNameForSave(IConfig config, TreeNode parent = null, List<IConfig> savedConfigs = null)
+        {
+            if (config == null)
+            {
+                return string.Empty;
+            }
+
+            if (config is DeviceConfig deviceConfig && parent != null)
+            {
+                // 厂家 + 型号作为基础名；缺失时回退到现有显示名
+                var manufacturer = (deviceConfig.Manufacturer ?? string.Empty).Trim();
+                var model = (deviceConfig.Model ?? string.Empty).Trim();
+                var baseName = string.Join(" ", new[] { manufacturer, model }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+                if (string.IsNullOrWhiteSpace(baseName))
+                {
+                    baseName = GetNodeDisplayName(config, null, null, preserveExistingNumber: false);
+                }
+
+                return EnsureUniqueNumber(baseName, parent, config.ConfigId, savedConfigs);
+            }
+
+            // 非设备配置保持原有策略（并在必要时补充编号）
+            return GetNodeDisplayName(config, parent, savedConfigs, preserveExistingNumber: false);
         }
 
         /// <summary>

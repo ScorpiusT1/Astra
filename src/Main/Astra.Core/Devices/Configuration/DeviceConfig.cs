@@ -1,4 +1,4 @@
-﻿﻿using Astra.Core.Foundation.Common;
+using Astra.Core.Foundation.Common;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Specifications;
 using Astra.Core.Configuration;
@@ -202,12 +202,12 @@ namespace Astra.Core.Devices.Configuration
             {
                 if (SetProperty(ref _manufacturer, value))
                 {
-                    // 厂家变更时，重置型号
+                    // 厂家变更时重置型号，等待界面重新选择
                     if (!string.IsNullOrEmpty(_model))
                     {
                         var oldModel = _model;
                         _model = string.Empty;
-                        OnPropertyChanged(nameof(Model));
+                        OnPropertyChanged(nameof(Model), oldModel, _model);
                     }
 
                     // 应用设备约束

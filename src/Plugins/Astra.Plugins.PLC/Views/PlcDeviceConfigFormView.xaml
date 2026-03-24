@@ -35,14 +35,14 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="配置名称" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
-            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding ConfigName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入配置名称" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="设备名称" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding ConfigName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入配置名称" />
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="厂家" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
-            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Manufacturer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入厂家（如 SIEMENS）" />
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="设备厂家" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Manufacturer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入厂家（如 SIEMENS）" />
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="型号" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
-            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Model, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入型号（如 S7-1200）" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="设备型号" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding Model, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="请输入型号（如 S7-1200）" />
 
             <TextBlock Grid.Row="3" Grid.Column="0" Text="序列号（可选）" Margin="0,6" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryTextBrush}" Visibility="Collapsed" />
             <TextBox Grid.Row="3" Grid.Column="1" Margin="0,6" Height="36" Text="{Binding SerialNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="可留空，默认使用 IP:Port 生成设备ID" Visibility="Collapsed" />
