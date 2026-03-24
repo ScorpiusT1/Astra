@@ -26,6 +26,7 @@ using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NavStack.Extensions;
+using Serilog;
 using System.Diagnostics;
 using System.IO;
 using Astra.Core.Plugins.Loading;
@@ -58,33 +59,38 @@ namespace Astra.Services.Startup
         /// </summary>
         private void RegisterLoggingServices(IServiceCollection services)
         {
-            // 注册 Microsoft.Extensions.Logging
             var logDirectory = Path.Combine(
                 System.AppDomain.CurrentDomain.BaseDirectory,
                 "Logs");
-            
-            // 确保日志目录存在
+
             if (!Directory.Exists(logDirectory))
             {
                 Directory.CreateDirectory(logDirectory);
             }
-            
-            var logFilePath = Path.Combine(logDirectory, "application.log");
-            
-            // 配置日志
+
+            var logFilePath = Path.Combine(logDirectory, "application-.log");
+
+            var serilogLogger = new LoggerConfiguration()
+                .MinimumLevel.Debug()
+                .WriteTo.File(
+                    path: logFilePath,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 30,
+                    shared: true,
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+                .CreateLogger();
+
+            Log.Logger = serilogLogger;
+
             services.AddLogging(builder =>
             {
                 builder
-                    .AddConsole()
                     .AddDebug()
+                    .AddSerilog(serilogLogger, dispose: true)
                     .SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Debug);
-                
-                // 添加文件日志提供程序（如果项目中有 Serilog 或其他文件日志提供程序）
-                // 这里使用简单的文件日志提供程序
-                // 注意：如果需要更高级的文件日志功能，可以添加 Serilog 或 NLog
             });
 
-            Debug.WriteLine("✅ 日志服务注册完成（使用 Microsoft.Extensions.Logging）");
+            Debug.WriteLine($"✅ 日志服务注册完成（Serilog，日志目录: {logDirectory}）");
         }
 
         /// <summary>
