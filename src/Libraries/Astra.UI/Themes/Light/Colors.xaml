@@ -27,6 +27,11 @@
     <Color x:Key="DarkInfoColor">#0097A7</Color>
     <Color x:Key="InfoColorTransparent">#1A00BCD4</Color>
 
+    <!-- 暂停色 -->
+    <Color x:Key="LightPauseColor">#EDE7F6</Color>
+    <Color x:Key="PauseColor">#9575CD</Color>
+    <Color x:Key="DarkPauseColor">#7E57C2</Color>
+
     <!-- 成功色 -->
     <Color x:Key="LightSuccessColor">#E8F5E9</Color>
     <Color x:Key="SuccessColor">#4CAF50</Color>
@@ -105,6 +110,13 @@
                      Color="{DynamicResource InfoColor}" />
     <SolidColorBrush x:Key="DarkInfoBrush"
                      Color="{DynamicResource DarkInfoColor}" />
+
+    <SolidColorBrush x:Key="LightPauseBrush"
+                     Color="{DynamicResource LightPauseColor}" />
+    <SolidColorBrush x:Key="PauseBrush"
+                     Color="{DynamicResource PauseColor}" />
+    <SolidColorBrush x:Key="DarkPauseBrush"
+                     Color="{DynamicResource DarkPauseColor}" />
 
     <SolidColorBrush x:Key="LightSuccessBrush"
                      Color="{DynamicResource LightSuccessColor}" />

@@ -536,29 +536,6 @@ namespace Astra.UI.Controls
                 }
                 return;
             }
-
-            var objectType = _selectedObject.GetType();
-            foreach (var property in Properties)
-            {
-                var methodName = $"Is{property.Name}Visible";
-                var visibilityMethod = objectType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
-
-                if (visibilityMethod != null && visibilityMethod.ReturnType == typeof(bool))
-                {
-                    try
-                    {
-                        var shouldBeVisible = (bool)visibilityMethod.Invoke(_selectedObject, null);
-                        if (property.IsBrowsable != shouldBeVisible)
-                        {
-                            property.IsBrowsable = shouldBeVisible;
-                        }
-                    }
-                    catch
-                    {
-                        // 忽略调用失败
-                    }
-                }
-            }
         }
 
         private bool FilterProperties(object item)

@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Geometry;
+using Astra.Core.Nodes.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -214,6 +214,18 @@ namespace Astra.Core.Nodes.Models
         /// </summary>
         [JsonProperty(Order = 7)]
         public Dictionary<string, string> OutputParameterMapping { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>
+        /// 单节点失败后是否继续执行其后继节点
+        /// </summary>
+        [JsonProperty(Order = 8)]
+        public bool ContinueOnFailure { get; set; } = false;
+
+        /// <summary>
+        /// 节点是否启用
+        /// </summary>
+        [JsonProperty(Order = 9)]
+        public bool IsEnabled { get; set; } = true;
     }
 }
 

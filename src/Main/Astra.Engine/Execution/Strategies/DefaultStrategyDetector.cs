@@ -18,6 +18,11 @@ namespace Astra.Engine.Execution.Strategies
         public DetectedExecutionStrategy Detect(WorkFlowNode workflow)
         {
             var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
+            // 调度依赖：无论是 Flow 还是 Data 连接，只要有连接关系就参与拓扑排序/分批执行。
+            // 这样可以避免 UI 层 ConnectionType 推断不一致导致错误并行。
+            var dependencyConnections = (workflow.Connections ?? Enumerable.Empty<Connection>())
+                .Where(c => c != null)
+                .ToList();
 
             if (enabledNodes.Count == 0)
             {
@@ -30,7 +35,7 @@ namespace Astra.Engine.Execution.Strategies
             }
 
             // 1. 无连接 → 并行
-            if (workflow.Connections.Count == 0)
+            if (dependencyConnections.Count == 0)
             {
                 return new DetectedExecutionStrategy
                 {
@@ -43,7 +48,7 @@ namespace Astra.Engine.Execution.Strategies
             }
 
             // 2. 简单线性序列
-            if (IsSimpleSequence(workflow, out var sequencedNodes))
+            if (IsSimpleSequence(workflow, dependencyConnections, out var sequencedNodes))
             {
                 return new DetectedExecutionStrategy
                 {
@@ -55,7 +60,7 @@ namespace Astra.Engine.Execution.Strategies
             }
 
             // 3. 部分并行（分层）
-            if (DetectPartiallyParallel(workflow, out var parallelGroups, out var dependencies))
+            if (DetectPartiallyParallel(workflow, dependencyConnections, out var parallelGroups, out var dependencies))
             {
                 return new DetectedExecutionStrategy
                 {
@@ -94,18 +99,19 @@ namespace Astra.Engine.Execution.Strategies
         /// <summary>
         /// 检测是否为简单线性序列
         /// </summary>
-        private bool IsSimpleSequence(WorkFlowNode workflow, out List<Node> sequencedNodes)
+        private bool IsSimpleSequence(WorkFlowNode workflow, List<Connection> dependencyConnections, out List<Node> sequencedNodes)
         {
             sequencedNodes = new List<Node>();
             var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
 
-            if (workflow.Connections.Count != enabledNodes.Count - 1)
+            // 线性序列的流程依赖连接数应为 N-1
+            if (dependencyConnections.Count != enabledNodes.Count - 1)
                 return false;
 
             foreach (var node in enabledNodes)
             {
-                var inputCount = workflow.GetInputConnections(node.Id).Count;
-                var outputCount = workflow.GetOutputConnections(node.Id).Count;
+                var inputCount = dependencyConnections.Count(c => c.TargetNodeId == node.Id);
+                var outputCount = dependencyConnections.Count(c => c.SourceNodeId == node.Id);
 
                 if (!((inputCount == 0 && outputCount == 1) ||
                       (inputCount == 1 && outputCount == 1) ||
@@ -115,7 +121,7 @@ namespace Astra.Engine.Execution.Strategies
                 }
             }
 
-            var startNode = enabledNodes.FirstOrDefault(n => workflow.GetInputConnections(n.Id).Count == 0);
+            var startNode = enabledNodes.FirstOrDefault(n => dependencyConnections.All(c => c.TargetNodeId != n.Id));
             if (startNode == null) return false;
 
             var current = startNode;
@@ -123,7 +129,9 @@ namespace Astra.Engine.Execution.Strategies
 
             while (true)
             {
-                var nextConnections = workflow.GetOutputConnections(current.Id);
+                var nextConnections = dependencyConnections
+                    .Where(c => c.SourceNodeId == current.Id)
+                    .ToList();
                 if (nextConnections.Count == 0) break;
                 if (nextConnections.Count > 1) return false;
 
@@ -140,7 +148,11 @@ namespace Astra.Engine.Execution.Strategies
         /// <summary>
         /// 检测部分并行结构
         /// </summary>
-        private bool DetectPartiallyParallel(WorkFlowNode workflow, out List<List<Node>> parallelGroups, out Dictionary<string, List<string>> dependencies)
+        private bool DetectPartiallyParallel(
+            WorkFlowNode workflow,
+            List<Connection> dependencyConnections,
+            out List<List<Node>> parallelGroups,
+            out Dictionary<string, List<string>> dependencies)
         {
             parallelGroups = new List<List<Node>>();
             dependencies = new Dictionary<string, List<string>>();
@@ -156,7 +168,7 @@ namespace Astra.Engine.Execution.Strategies
                 dependencies[node.Id] = new List<string>();
             }
 
-            foreach (var conn in workflow.Connections)
+            foreach (var conn in dependencyConnections)
             {
                 if (!graph.ContainsKey(conn.SourceNodeId) || !graph.ContainsKey(conn.TargetNodeId))
                     continue;

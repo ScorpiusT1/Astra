@@ -1444,6 +1444,34 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
+        /// 查找父级 FlowEditor（用于同步共享剪贴板）
+        /// </summary>
+        private FlowEditor FindParentFlowEditor(DependencyObject element)
+        {
+            var parent = VisualTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                if (parent is FlowEditor fe)
+                    return fe;
+
+                // InfiniteCanvas 的上层通常是 FlowEditor；先跳过画布再继续向上找
+                if (parent is InfiniteCanvas canvas)
+                {
+                    var flowEditorParent = VisualTreeHelper.GetParent(canvas);
+                    while (flowEditorParent != null)
+                    {
+                        if (flowEditorParent is FlowEditor fe2)
+                            return fe2;
+                        flowEditorParent = VisualTreeHelper.GetParent(flowEditorParent);
+                    }
+                }
+
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+
+        /// <summary>
         /// 查找父级的 FlowEditor 并获取其 WorkflowTab
         /// </summary>
         private UI.Models.WorkflowTab FindWorkflowTab()
@@ -1474,55 +1502,25 @@ namespace Astra.UI.Controls
         /// </summary>
         private Point2D GetCurrentCanvasPosition()
         {
-            var dataContext = DataContext;
-            if (dataContext == null) 
-                return Point2D.Zero;
-            
-            // 如果 DataContext 是 Node 类型，直接获取 Position 属性
-            if (dataContext is Node node)
+            if (DataContext is not Node node)
             {
-                return node.Position;
-            }
-            
-            // 尝试通过反射获取 Position 属性
-            var positionProp = dataContext.GetType().GetProperty("Position");
-            if (positionProp != null)
-            {
-                var position = positionProp.GetValue(dataContext);
-                if (position != null)
+                // 非 Node 场景下退化为画布坐标读取
+                if (_parentCanvas != null)
                 {
-                    var positionType = position.GetType();
-                    
-                    // 如果是 Point2D 类型
-                    if (positionType.Name == "Point2D")
+                    var left = Canvas.GetLeft(this);
+                    var top = Canvas.GetTop(this);
+                    if (!double.IsNaN(left) && !double.IsNaN(top))
                     {
-                        var xProp = positionType.GetProperty("X");
-                        var yProp = positionType.GetProperty("Y");
-                        if (xProp != null && yProp != null)
-                        {
-                            var x = Convert.ToDouble(xProp.GetValue(position) ?? 0);
-                            var y = Convert.ToDouble(yProp.GetValue(position) ?? 0);
-                            return new Point2D(x, y);
-                        }
+                        var screenPoint = new Point(left, top);
+                        var canvasPoint = _parentCanvas.ScreenToCanvas(screenPoint);
+                        return new Point2D(canvasPoint.X, canvasPoint.Y);
                     }
                 }
+
+                return Point2D.Zero;
             }
-            
-            // 如果都没有，从 Canvas 附加属性获取
-            if (_parentCanvas != null)
-            {
-                var left = Canvas.GetLeft(this);
-                var top = Canvas.GetTop(this);
-                if (!double.IsNaN(left) && !double.IsNaN(top))
-                {
-                    // 转换为画布坐标系
-                    var screenPoint = new Point(left, top);
-                    var canvasPoint = _parentCanvas.ScreenToCanvas(screenPoint);
-                    return new Point2D(canvasPoint.X, canvasPoint.Y);
-                }
-            }
-            
-            return Point2D.Zero;
+
+            return node.Position;
         }
         
         /// <summary>
@@ -1530,39 +1528,12 @@ namespace Astra.UI.Controls
         /// </summary>
         private void UpdateNodePosition(Point2D canvasPosition)
         {
-            var dataContext = DataContext;
-            if (dataContext == null) return;
+            if (DataContext is not Node node) return;
             
             try
             {
                 // 更新数据模型，让绑定系统自动更新 UI 位置
-                if (dataContext is Node node)
-                {
-                    node.Position = canvasPosition;
-                }
-                else
-                {
-                    // 尝试通过反射设置 Position 属性
-                    var positionProp = dataContext.GetType().GetProperty("Position");
-                    if (positionProp != null && positionProp.CanWrite)
-                    {
-                        var positionType = positionProp.PropertyType;
-                        
-                        if (positionType.Name == "Point2D")
-                        {
-                            var constructor = positionType.GetConstructor(new[] { typeof(double), typeof(double) });
-                            if (constructor != null)
-                            {
-                                var newPoint2D = constructor.Invoke(new object[] { canvasPosition.X, canvasPosition.Y });
-                                positionProp.SetValue(dataContext, newPoint2D);
-                            }
-                        }
-                        else if (positionType == typeof(Point))
-                        {
-                            positionProp.SetValue(dataContext, new Point(canvasPosition.X, canvasPosition.Y));
-                        }
-                    }
-                }
+                node.Position = canvasPosition;
             }
             catch (Exception ex)
             {
@@ -1725,6 +1696,19 @@ namespace Astra.UI.Controls
             if (minX != double.MaxValue)
             {
                 _parentCanvas.ClipboardBounds = new Rect(minX, minY, maxX - minX, maxY - minY);
+            }
+
+            // 同步到 FlowEditor 的共享剪贴板：
+            // FlowEditor 画布空白处右键“粘贴”启用条件依赖 FlowEditor.SharedClipboardNodes。
+            // NodeControl 的复制仅更新 InfiniteCanvas.ClipboardNodes 会导致粘贴按钮保持禁用。
+            var flowEditor = FindParentFlowEditor(this);
+            if (flowEditor != null)
+            {
+                flowEditor.SharedClipboardNodes = selectedNodes;
+                if (_parentCanvas.ClipboardBounds.HasValue)
+                {
+                    flowEditor.SharedClipboardBounds = _parentCanvas.ClipboardBounds.Value;
+                }
             }
         }
 

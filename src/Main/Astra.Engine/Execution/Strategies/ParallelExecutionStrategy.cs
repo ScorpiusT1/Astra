@@ -23,6 +23,8 @@ namespace Astra.Engine.Execution.Strategies
             var workflow = context.Workflow;
             var enabledNodes = context.DetectedStrategy?.Nodes ?? new List<Node>();
             var outputs = new Dictionary<string, object>();
+            var hasNonSkippedFailure = false;
+            ExecutionResult firstFailureResult = null;
             MarkDisabledNodesAsSkipped(workflow, context);
 
             if (enabledNodes.Count == 0)
@@ -65,11 +67,23 @@ namespace Astra.Engine.Execution.Strategies
                     outputs[$"{node.Name}_{kvp.Key}"] = kvp.Value;
                 }
 
-                if (!result.Success && !result.IsSkipped && workflow.Configuration.StopOnError)
+                if (!result.Success && !result.IsSkipped)
                 {
-                    return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
-                        .WithOutputs(outputs);
+                    if (workflow.Configuration.StopOnError && !node.ContinueOnFailure)
+                    {
+                        return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
+                            .WithOutputs(outputs);
+                    }
+
+                    hasNonSkippedFailure = true;
+                    firstFailureResult ??= result;
                 }
+            }
+
+            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
+            {
+                return ExecutionResult.Failed($"并行执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
+                    .WithOutputs(outputs);
             }
 
             return ExecutionResult.Successful($"并行执行完成，共执行 {enabledNodes.Count} 个节点")
@@ -132,6 +146,7 @@ namespace Astra.Engine.Execution.Strategies
                 GlobalVariables = new Dictionary<string, object>(baseContext?.GlobalVariables ?? new Dictionary<string, object>()),
                 Metadata = new Dictionary<string, object>(baseContext?.Metadata ?? new Dictionary<string, object>()),
                 ServiceProvider = baseContext?.ServiceProvider,
+                ExecutionId = baseContext?.ExecutionId,
                 ParentWorkFlow = baseContext?.ParentWorkFlow
             };
         }

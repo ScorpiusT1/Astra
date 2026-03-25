@@ -1,4 +1,4 @@
-﻿using Astra.UI.Controls;
+using Astra.UI.Controls;
 using Astra.UI.Converters;
 using Astra.UI.Abstractions.Attributes;
 using System;
@@ -12,6 +12,7 @@ using System.Windows.Data;
 using HandyControl.Controls;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Astra.UI.PropertyEditors;
+using Astra.UI.Services;
 
 namespace Astra.UI.Selectors
 {
@@ -21,6 +22,8 @@ namespace Astra.UI.Selectors
     /// </summary>
     public class PropertyEditorTemplateSelector : DataTemplateSelector
     {
+        private static readonly Astra.UI.Abstractions.Interfaces.IItemsSourceResolver ItemsSourceResolver = DefaultItemsSourceResolver.Instance;
+
         public override DataTemplate SelectTemplate(object item, DependencyObject container)
         {
             if (item is Astra.UI.Abstractions.Models.PropertyDescriptor property && container is FrameworkElement element)
@@ -268,86 +271,10 @@ namespace Astra.UI.Selectors
             Astra.UI.Abstractions.Models.PropertyDescriptor property,
             ItemsSourceAttribute attribute)
         {
-
-            // 静态类型方法/属性
-            if (attribute.StaticType != null)
+            var targetObject = GetTargetObject(property);
+            if (ItemsSourceResolver.TryResolve(attribute, targetObject, out var itemsSource))
             {
-                return GetStaticItemsSource(attribute);
-            }
-            else
-            {
-                // 实例属性/方法
-                var targetObject = GetTargetObject(property);
-                if (targetObject != null)
-                {
-                    return GetInstanceItemsSource(targetObject, attribute);
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// 获取静态数据源
-        /// </summary>
-        private IEnumerable GetStaticItemsSource(ItemsSourceAttribute attribute)
-        {
-            if (!string.IsNullOrEmpty(attribute.MethodName))
-            {
-                var method = attribute.StaticType.GetMethod(
-                    attribute.MethodName,
-                    BindingFlags.Public | BindingFlags.Static,
-                    null,
-                    Type.EmptyTypes,
-                    null);
-                if (method != null)
-                {
-                    var result = method.Invoke(null, null);
-                    return result as IEnumerable;
-                }
-            }
-            else if (!string.IsNullOrEmpty(attribute.PropertyName))
-            {
-                var prop = attribute.StaticType.GetProperty(
-                    attribute.PropertyName,
-                    BindingFlags.Public | BindingFlags.Static);
-                if (prop != null)
-                {
-                    return prop.GetValue(null) as IEnumerable;
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// 获取实例数据源
-        /// </summary>
-        private IEnumerable GetInstanceItemsSource(object targetObject, ItemsSourceAttribute attribute)
-        {
-            if (!string.IsNullOrEmpty(attribute.MethodName))
-            {
-                var method = targetObject.GetType().GetMethod(
-                    attribute.MethodName,
-                    BindingFlags.Public | BindingFlags.Instance,
-                    null,
-                    Type.EmptyTypes,
-                    null);
-                if (method != null)
-                {
-                    var result = method.Invoke(targetObject, null);
-                    return result as IEnumerable;
-                }
-            }
-            else if (!string.IsNullOrEmpty(attribute.PropertyName))
-            {
-                var prop = targetObject.GetType().GetProperty(
-                    attribute.PropertyName,
-                    BindingFlags.Public | BindingFlags.Instance);
-                if (prop != null)
-                {
-                    return prop.GetValue(targetObject) as IEnumerable;
-                }
+                return itemsSource;
             }
 
             return null;

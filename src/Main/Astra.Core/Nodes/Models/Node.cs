@@ -1,17 +1,18 @@
-using Astra.Core.Nodes.Geometry;
-using System.Diagnostics;
 using Astra.Core.Logs;
+using Astra.Core.Nodes.Geometry;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Reflection;
-using System.Collections.Concurrent;
-using System.Linq.Expressions;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -31,7 +32,7 @@ namespace Astra.Core.Nodes.Models
     {
         private bool _isEnabled;
         private bool _isSelected;
-        private ExecutionResult _lastExecutionResult;
+        private ExecutionResult? _lastExecutionResult;
         private NodeExecutionState _executionState;
 
         private static readonly JsonSerializerSettings jsonCloneSettings = new JsonSerializerSettings
@@ -75,6 +76,7 @@ namespace Astra.Core.Nodes.Models
         // ===== 状态属性 =====
         
         [JsonProperty(Order = 7)]
+        [Display(Name = "启用", GroupName = "基础配置", Order = 1)]
         public bool IsEnabled
         {
             get => _isEnabled;
@@ -92,8 +94,17 @@ namespace Astra.Core.Nodes.Models
         
         [JsonProperty(Order = 8)]
         public bool IsReadonly { get; set; }
-        
+
+        /// <summary>
+        /// 节点级失败停止开关：
+        /// 当工作流配置了 StopOnError=true 时，如果本节点失败且此开关为 true，
+        /// 则不会终止整个工作流，允许继续执行该节点下游。
+        /// </summary>
         [JsonProperty(Order = 9)]
+        [Display(Name = "失败继续(失败继续测试)", GroupName = "基础配置", Order = 2)]
+        public bool ContinueOnFailure { get; set; } = false;
+
+        [JsonProperty(Order = 10)]
         public bool IsLocked { get; set; }
         
         /// <summary>
@@ -121,7 +132,7 @@ namespace Astra.Core.Nodes.Models
         public Dictionary<string, object> Parameters { get; set; }
 
         [JsonIgnore]
-        public ExecutionResult LastExecutionResult
+        public ExecutionResult? LastExecutionResult
         {
             get => _lastExecutionResult;
             set

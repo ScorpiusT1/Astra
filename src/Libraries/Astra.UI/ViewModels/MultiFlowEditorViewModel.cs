@@ -32,7 +32,7 @@ using System.Threading;
 
 namespace Astra.UI.ViewModels
 {
-    public partial class MultiFlowEditorViewModel : ObservableObject
+    public partial class MultiFlowEditorViewModel : ObservableObject, IWorkflowReferenceNodeHost
     {
         #region 常量定义
 
@@ -1357,6 +1357,11 @@ namespace Astra.UI.ViewModels
             SwitchWorkflow(tab);
         }
 
+        public void OpenSubWorkflowEditor(string subWorkflowId)
+        {
+            OpenWorkflowEditor(subWorkflowId);
+        }
+
         #endregion
 
         #region 流程管理辅助方法
@@ -1731,6 +1736,8 @@ namespace Astra.UI.ViewModels
                 {
                     reference.Position = node.Position;
                     reference.Size = node.Size;
+                    reference.ContinueOnFailure = node.ContinueOnFailure;
+                    reference.IsEnabled = node.IsEnabled;
                 }
             }
 
@@ -1762,6 +1769,61 @@ namespace Astra.UI.ViewModels
             Debug.WriteLine($"[SequenceViewModel] 保存主流程状态完成: 节点数={MasterWorkflowTab.Nodes.Count}, 连线数={masterWorkflow.Edges.Count}");
         }
 
+        private static bool TryParsePortSide(string portId, out string side)
+        {
+            side = null;
+            if (string.IsNullOrWhiteSpace(portId)) return false;
+            var parts = portId.Split(':');
+            if (parts.Length < 2) return false;
+            // 约定：portId 格式为 "{nodeId}:{side}"，side 例如 Top/Bottom/Left/Right
+            side = parts[1];
+            return !string.IsNullOrWhiteSpace(side);
+        }
+
+        private static Astra.Core.Nodes.Models.PortDirection InferDirectionFromSide(string side)
+        {
+            if (string.IsNullOrWhiteSpace(side)) return Astra.Core.Nodes.Models.PortDirection.Output;
+
+            // 与画布端口布局保持一致：Top/Left 视为输入，Bottom/Right 视为输出
+            return side.Equals("Top", StringComparison.OrdinalIgnoreCase) ||
+                   side.Equals("Left", StringComparison.OrdinalIgnoreCase)
+                ? Astra.Core.Nodes.Models.PortDirection.Input
+                : Astra.Core.Nodes.Models.PortDirection.Output;
+        }
+
+        private static bool NodeHasFlowPort(Node node, Astra.Core.Nodes.Models.PortDirection direction)
+        {
+            if (node == null) return false;
+            var ports = direction == Astra.Core.Nodes.Models.PortDirection.Input ? node.InputPorts : node.OutputPorts;
+            if (ports == null) return false;
+            return ports.Any(p => p != null && p.Type == PortType.Flow && p.Direction == direction);
+        }
+
+        private static ConnectionType InferConnectionTypeFromEdge(Edge edge, Node sourceNode, Node targetNode)
+        {
+            if (edge == null) return ConnectionType.Data;
+
+            var sourceSideKnown = TryParsePortSide(edge.SourcePortId, out var sourceSide);
+            var targetSideKnown = TryParsePortSide(edge.TargetPortId, out var targetSide);
+
+            var sourceDirection = sourceSideKnown ? InferDirectionFromSide(sourceSide) : Astra.Core.Nodes.Models.PortDirection.Output;
+            var targetDirection = targetSideKnown ? InferDirectionFromSide(targetSide) : Astra.Core.Nodes.Models.PortDirection.Input;
+
+            var sourceHasFlow = NodeHasFlowPort(sourceNode, sourceDirection);
+            var targetHasFlow = NodeHasFlowPort(targetNode, targetDirection);
+
+            if (sourceHasFlow && targetHasFlow)
+                return ConnectionType.Flow;
+
+            // fallback：如果无法严格匹配方向，则只要两端节点存在 Flow 端口即可视为 Flow 连接
+            var sourceAnyFlow = sourceNode?.InputPorts?.Any(p => p != null && p.Type == PortType.Flow) == true ||
+                                sourceNode?.OutputPorts?.Any(p => p != null && p.Type == PortType.Flow) == true;
+            var targetAnyFlow = targetNode?.InputPorts?.Any(p => p != null && p.Type == PortType.Flow) == true ||
+                                targetNode?.OutputPorts?.Any(p => p != null && p.Type == PortType.Flow) == true;
+
+            return (sourceAnyFlow && targetAnyFlow) ? ConnectionType.Flow : ConnectionType.Data;
+        }
+
         /// <summary>
         /// 保存当前标签页状态
         /// </summary>
@@ -1788,8 +1850,13 @@ namespace Astra.UI.ViewModels
                 var subWorkflow = CurrentTab.GetSubWorkflow();
                 if (subWorkflow != null)
                 {
+                    // 以 FlowEditor 的绑定数据为准：它绑定的是 CurrentTab.Nodes/Edges。
+                    // 仅当 CurrentTab 的引用为空时，才使用 CanvasItemsSource/EdgeItemsSource 作为兜底。
+                    var nodesSource = CurrentTab.Nodes ?? CanvasItemsSource;
+                    var edgesSource = CurrentTab.Edges ?? EdgeItemsSource;
+
                     // 同步节点
-                    subWorkflow.Nodes = CurrentTab.Nodes.ToList();
+                    subWorkflow.Nodes = nodesSource?.ToList() ?? new List<Node>();
 
                     // 将 Edges 转换为 Connections 并同步到 WorkFlowNode
                     // 注意：WorkFlowNode 使用 Connections，画布使用 Edges
@@ -1803,13 +1870,23 @@ namespace Astra.UI.ViewModels
                     }
 
                     // 从 Edges 转换为 Connections
-                    if (CurrentTab.Edges != null && CurrentTab.Edges.Count > 0)
+                    if (edgesSource != null && edgesSource.Count > 0)
                     {
-                        Debug.WriteLine($"[SequenceViewModel] 保存当前标签页状态: 将 {CurrentTab.Edges.Count} 个 Edges 转换为 Connections");
-                        foreach (var edge in CurrentTab.Edges)
+                        Debug.WriteLine($"[SequenceViewModel] 保存当前标签页状态: 将 {edgesSource.Count} 个 Edges 转换为 Connections");
+
+                        var nodeById = nodesSource?
+                            .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
+                            .ToDictionary(n => n.Id, n => n) ?? new Dictionary<string, Node>();
+
+                        foreach (var edge in edgesSource)
                         {
                             if (edge == null)
                                 continue;
+
+                            nodeById.TryGetValue(edge.SourceNodeId, out var sourceNode);
+                            nodeById.TryGetValue(edge.TargetNodeId, out var targetNode);
+
+                            var connectionType = InferConnectionTypeFromEdge(edge, sourceNode, targetNode);
 
                             var connection = new Connection
                             {
@@ -1818,7 +1895,7 @@ namespace Astra.UI.ViewModels
                                 TargetNodeId = edge.TargetNodeId,
                                 SourcePortId = edge.SourcePortId,
                                 TargetPortId = edge.TargetPortId,
-                                Type = ConnectionType.Flow, // 默认类型，可以根据需要调整
+                                Type = connectionType,
                                 Label = null,
                                 Metadata = new Dictionary<string, object>()
                             };
@@ -1936,7 +2013,7 @@ namespace Astra.UI.ViewModels
                 // 保存到当前文件
                 if (SaveFileInternal(CurrentFilePath))
                 {
-                    MessageBoxHelper.ShowSuccess($"项目已保存: {Path.GetFileName(CurrentFilePath)}", "保存成功");
+                    ToastHelper.ShowSuccess($"项目已保存: {Path.GetFileName(CurrentFilePath)}");
                     Debug.WriteLine($"[SequenceViewModel] 项目已保存: {CurrentFilePath}");
                 }
             }
@@ -1988,7 +2065,7 @@ namespace Astra.UI.ViewModels
                 {
                     // 更新当前文件路径
                     CurrentFilePath = filePath;
-                    MessageBoxHelper.ShowSuccess($"项目已保存: {Path.GetFileName(filePath)}", "保存成功");
+                    ToastHelper.ShowSuccess($"项目已保存: {Path.GetFileName(filePath)}");
                     Debug.WriteLine($"[SequenceViewModel] 项目已另存为: {filePath}");
                 }
             }
@@ -2079,10 +2156,19 @@ namespace Astra.UI.ViewModels
 
                         if (tab.Edges != null && tab.Edges.Count > 0)
                         {
+                            var nodeById = tab.Nodes?
+                                .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
+                                .ToDictionary(n => n.Id, n => n) ?? new Dictionary<string, Node>();
+
                             foreach (var edge in tab.Edges)
                             {
                                 if (edge == null)
                                     continue;
+
+                                nodeById.TryGetValue(edge.SourceNodeId, out var sourceNode);
+                                nodeById.TryGetValue(edge.TargetNodeId, out var targetNode);
+
+                                var connectionType = InferConnectionTypeFromEdge(edge, sourceNode, targetNode);
 
                                 var connection = new Connection
                                 {
@@ -2091,7 +2177,7 @@ namespace Astra.UI.ViewModels
                                     TargetNodeId = edge.TargetNodeId,
                                     SourcePortId = edge.SourcePortId,
                                     TargetPortId = edge.TargetPortId,
-                                    Type = ConnectionType.Flow, // 默认类型
+                                    Type = connectionType,
                                     Label = null,
                                     Metadata = new Dictionary<string, object>()
                                 };
@@ -2597,47 +2683,71 @@ namespace Astra.UI.ViewModels
             {
                 IsStatusError = true;
                 StatusMessage = "执行服务不可用";
+                IsRunning = false;
+                IsPaused = false;
                 return;
             }
 
             SaveCurrentTabState();
+
+            // 执行前快速校验（用于定位“为什么只跑了一个节点”）
+            if (CurrentTab?.Type == WorkflowType.Sub)
+            {
+                var subWorkflow = CurrentTab.GetSubWorkflow();
+                var nodes = subWorkflow?.Nodes;
+                var connections = subWorkflow?.Connections;
+                var enabledCount = nodes?.Count(n => n?.IsEnabled == true) ?? 0;
+                var totalCount = nodes?.Count ?? 0;
+                var totalConnections = connections?.Count ?? 0;
+                var flowConnections = connections?.Count(c => c?.Type == ConnectionType.Flow) ?? 0;
+                StatusMessage = $"执行前：节点 {totalCount}（启用 {enabledCount}），连接 {totalConnections}（Flow {flowConnections}）";
+                Debug.WriteLine($"[PreExec] {CurrentTab.Name}: Nodes={totalCount}, Enabled={enabledCount}, Connections={totalConnections}, Flow={flowConnections}");
+            }
+
             IsRunning = true;
             IsPaused = false;
 
-            var hasMaster = MasterWorkflow?.SubWorkflowReferences != null && MasterWorkflow.SubWorkflowReferences.Count > 0;
-            if (hasMaster)
-            {
-                _masterExecutionCts?.Cancel();
-                _masterExecutionCts?.Dispose();
-                _masterExecutionCts = new CancellationTokenSource();
-                _ = ExecuteMasterWorkflowAsync(_masterExecutionCts.Token);
-                return;
-            }
-
-            if (CurrentTab == null || CurrentTab.Type != WorkflowType.Sub)
-            {
-                IsRunning = false;
-                IsStatusError = true;
-                StatusMessage = "没有可执行的主流程，且当前未选中子流程";
-                return;
-            }
-
-            await ExecuteSingleSubWorkflowAsync(CurrentTab.GetSubWorkflow(), "正在执行当前子流程...");
+            // 主界面启动逻辑：执行全部子流程（而不是只执行当前子流程）
+            _masterExecutionCts?.Cancel();
+            _masterExecutionCts?.Dispose();
+            _masterExecutionCts = new CancellationTokenSource();
+            _ = ExecuteMasterWorkflowAsync(_masterExecutionCts.Token);
         }
 
         /// <summary>
         /// 执行/停止切换命令
         /// </summary>
         [RelayCommand]
-        private async Task ToggleRun()
+        private Task ToggleRun()
         {
             if (IsRunning)
             {
                 Stop();
-                return;
+                return Task.CompletedTask;
             }
 
-            await Play();
+            // 关键：不要 await Play()，否则命令在执行期间会被禁用（导致按钮变灰不可再点）
+            // 这里先把状态切到 Running，让下一次点击走 Stop()。
+            IsStatusError = false;
+            IsPaused = false;
+            IsRunning = true;
+
+            _ = Play().ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    Debug.WriteLine($"[SequenceViewModel] ToggleRun 执行异常: {t.Exception}");
+                    RunOnUiThread(() =>
+                    {
+                        IsStatusError = true;
+                        StatusMessage = "执行失败";
+                        IsRunning = false;
+                        IsPaused = false;
+                    });
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
+
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -2665,6 +2775,10 @@ namespace Astra.UI.ViewModels
                 IsPaused = true;
                 StatusMessage = "流程已暂停";
                 UpdateActiveWorkflowNodeState(NodeExecutionState.Running, NodeExecutionState.Paused);
+                if (_activeExecutionWorkflow != null)
+                {
+                    SetTabExecutionState(_activeExecutionWorkflow, NodeExecutionState.Paused);
+                }
                 Debug.WriteLine("[SequenceViewModel] 暂停命令");
                 return;
             }
@@ -2681,6 +2795,10 @@ namespace Astra.UI.ViewModels
             IsPaused = false;
             StatusMessage = "流程继续执行中...";
             UpdateActiveWorkflowNodeState(NodeExecutionState.Paused, NodeExecutionState.Running);
+            if (_activeExecutionWorkflow != null)
+            {
+                SetTabExecutionState(_activeExecutionWorkflow, NodeExecutionState.Running);
+            }
             Debug.WriteLine("[SequenceViewModel] 继续命令");
         }
 
@@ -2734,6 +2852,179 @@ namespace Astra.UI.ViewModels
         }
 
         /// <summary>
+        /// Tab 标题启动按钮：与主界面一致的启动/停止切换
+        /// 说明：
+        /// 1) 不 await 长任务，避免 RelayCommand 在执行期间禁用按钮
+        /// 2) 仅允许停止“当前正在执行”的那个子流程 tab
+        /// </summary>
+        [RelayCommand]
+        private void ToggleRunSubWorkflow(WorkflowTab tab)
+        {
+            if (tab == null)
+            {
+                return;
+            }
+
+            if (tab.Type != WorkflowType.Sub)
+            {
+                return;
+            }
+
+            // 正在运行时：只有点击“正在执行”的那个 tab 才会 Stop
+            if (IsRunning)
+            {
+                if (IsSameSubWorkflowAsActiveExecution(tab))
+                {
+                    Stop();
+                }
+                return;
+            }
+
+            var subWorkflow = tab.GetSubWorkflow();
+            if (subWorkflow == null)
+            {
+                IsStatusError = true;
+                StatusMessage = "启动失败：无法获取子流程数据";
+                IsRunning = false;
+                IsPaused = false;
+                return;
+            }
+
+            CurrentTab = tab;
+
+            // 启动前必须同步当前画布的未保存变更，否则只会执行上次保存过的节点集合
+            SaveCurrentTabState();
+
+            IsPaused = false;
+
+            IsStatusError = false;
+            IsRunning = true;
+
+            Debug.WriteLine($"[SequenceViewModel] 启动子流程(Title Button): {subWorkflow.Name} (ID: {subWorkflow.Id})");
+
+            // 与 Play() / StartSubWorkflow 保持一致：输出执行前的节点/连接数量，便于定位“为什么只跑一个节点”
+            var nodes = subWorkflow.Nodes;
+            var connections = subWorkflow.Connections;
+            var enabledCount = nodes?.Count(n => n?.IsEnabled == true) ?? 0;
+            var totalCount = nodes?.Count ?? 0;
+            var totalConnections = connections?.Count ?? 0;
+            var flowConnections = connections?.Count(c => c?.Type == ConnectionType.Flow) ?? 0;
+            StatusMessage =
+                $"执行前：节点 {totalCount}（启用 {enabledCount}），连接 {totalConnections}（Flow {flowConnections}）";
+            Debug.WriteLine(
+                $"[PreExec] {CurrentTab?.Name}: Nodes={totalCount}, Enabled={enabledCount}, Connections={totalConnections}, Flow={flowConnections}");
+
+            // Fire-and-forget：避免阻塞/禁用标题按钮
+            _ = ExecuteSingleSubWorkflowAsync(subWorkflow, $"正在执行子流程: {subWorkflow.Name}...", updateGlobalRunningState: true)
+                .ContinueWith(t =>
+                {
+                    if (!t.IsFaulted || t.Exception == null) return;
+                    RunOnUiThread(() =>
+                    {
+                        IsStatusError = true;
+                        StatusMessage = "执行失败";
+                        IsRunning = false;
+                        IsPaused = false;
+                    });
+                    Debug.WriteLine($"[SequenceViewModel] ToggleRunSubWorkflow 执行异常: {t.Exception}");
+                }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        [RelayCommand]
+        private void ToggleRunSubWorkflowFromNode(string subWorkflowId)
+        {
+            if (string.IsNullOrWhiteSpace(subWorkflowId))
+            {
+                return;
+            }
+
+            var tab = FindSubWorkflowTabById(subWorkflowId);
+            if (tab == null)
+            {
+                IsStatusError = true;
+                StatusMessage = "执行失败：未找到对应子流程";
+                return;
+            }
+
+            ToggleRunSubWorkflow(tab);
+        }
+
+        private bool IsSameSubWorkflowAsActiveExecution(WorkflowTab tab)
+        {
+            if (tab == null || _activeExecutionWorkflow == null)
+            {
+                return false;
+            }
+
+            if (tab.Type != WorkflowType.Sub)
+            {
+                return false;
+            }
+
+            var subWorkflow = tab.GetSubWorkflow();
+            if (subWorkflow == null)
+            {
+                return false;
+            }
+
+            return string.Equals(subWorkflow.Id, _activeExecutionWorkflow.Id, StringComparison.Ordinal);
+        }
+
+        [RelayCommand]
+        private void TogglePauseResumeSubWorkflowFromNode(string subWorkflowId)
+        {
+            if (string.IsNullOrWhiteSpace(subWorkflowId))
+            {
+                return;
+            }
+
+            var tab = FindSubWorkflowTabById(subWorkflowId);
+            if (tab == null)
+            {
+                IsStatusError = true;
+                StatusMessage = "暂停/继续失败：未找到对应子流程";
+                return;
+            }
+
+            if (!IsRunning)
+            {
+                return;
+            }
+
+            // 仅允许操作当前正在执行的同一子流程，防止误控其他流程
+            if (!IsSameSubWorkflowAsActiveExecution(tab))
+            {
+                IsStatusError = true;
+                StatusMessage = "当前子流程未在执行中";
+                return;
+            }
+
+            TogglePauseResume();
+        }
+
+        void IWorkflowReferenceNodeHost.ToggleRunSubWorkflowFromNode(string subWorkflowId)
+        {
+            ToggleRunSubWorkflowFromNode(subWorkflowId);
+        }
+
+        void IWorkflowReferenceNodeHost.TogglePauseResumeSubWorkflowFromNode(string subWorkflowId)
+        {
+            TogglePauseResumeSubWorkflowFromNode(subWorkflowId);
+        }
+
+        private WorkflowTab FindSubWorkflowTabById(string subWorkflowId)
+        {
+            if (string.IsNullOrWhiteSpace(subWorkflowId) || SubWorkflowTabs == null)
+            {
+                return null;
+            }
+
+            return SubWorkflowTabs.FirstOrDefault(tab =>
+                tab?.Type == WorkflowType.Sub &&
+                string.Equals(tab.GetSubWorkflow()?.Id, subWorkflowId, StringComparison.Ordinal));
+        }
+
+        /// <summary>
         /// 启动指定子流程命令（从Tab标签按钮调用）
         /// </summary>
         [RelayCommand]
@@ -2760,6 +3051,20 @@ namespace Astra.UI.ViewModels
 
             Debug.WriteLine($"[SequenceViewModel] 启动子流程: {subWorkflow.Name} (ID: {subWorkflow.Id})");
             CurrentTab = tab;
+
+            // 启动前必须同步当前画布的未保存变更，否则只会执行上次保存过的节点集合
+            SaveCurrentTabState();
+
+            // 与 Play() 保持一致：输出执行前的节点/连接数量，便于定位“为什么只跑一个节点”
+            var nodes = subWorkflow?.Nodes;
+            var connections = subWorkflow?.Connections;
+            var enabledCount = nodes?.Count(n => n?.IsEnabled == true) ?? 0;
+            var totalCount = nodes?.Count ?? 0;
+            var totalConnections = connections?.Count ?? 0;
+            var flowConnections = connections?.Count(c => c?.Type == ConnectionType.Flow) ?? 0;
+            StatusMessage = $"执行前：节点 {totalCount}（启用 {enabledCount}），连接 {totalConnections}（Flow {flowConnections}）";
+            Debug.WriteLine($"[PreExec] {CurrentTab?.Name}: Nodes={totalCount}, Enabled={enabledCount}, Connections={totalConnections}, Flow={flowConnections}");
+
             IsRunning = true;
             IsPaused = false;
             await ExecuteSingleSubWorkflowAsync(subWorkflow, $"正在执行子流程: {subWorkflow.Name}...");
@@ -3127,10 +3432,20 @@ namespace Astra.UI.ViewModels
                 if (tab.Edges != null && tab.Edges.Count > 0)
                 {
                     Debug.WriteLine($"[SequenceViewModel] 导出流程 '{tab.Name}': 将 {tab.Edges.Count} 个 Edges 转换为 Connections");
+
+                    var nodeById = tab.Nodes?
+                        .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
+                        .ToDictionary(n => n.Id, n => n) ?? new Dictionary<string, Node>();
+
                     foreach (var edge in tab.Edges)
                     {
                         if (edge == null)
                             continue;
+
+                        nodeById.TryGetValue(edge.SourceNodeId, out var sourceNode);
+                        nodeById.TryGetValue(edge.TargetNodeId, out var targetNode);
+
+                        var connectionType = InferConnectionTypeFromEdge(edge, sourceNode, targetNode);
 
                         var connection = new Connection
                         {
@@ -3139,7 +3454,7 @@ namespace Astra.UI.ViewModels
                             TargetNodeId = edge.TargetNodeId,
                             SourcePortId = edge.SourcePortId,
                             TargetPortId = edge.TargetPortId,
-                            Type = ConnectionType.Flow, // 默认类型
+                            Type = connectionType,
                             Label = null,
                             Metadata = new Dictionary<string, object>()
                         };
@@ -3479,6 +3794,12 @@ namespace Astra.UI.ViewModels
             IsPaused = false;
             StatusMessage = "流程已停止";
             ProcessTime = 0.0;
+
+            if (_activeExecutionWorkflow != null)
+            {
+                // 停止后按“取消（红色）”展示，和节点 Cancelled 颜色一致
+                SetTabExecutionState(_activeExecutionWorkflow, NodeExecutionState.Cancelled);
+            }
         }
 
         partial void OnIsRunningChanged(bool value)
@@ -3503,40 +3824,167 @@ namespace Astra.UI.ViewModels
         {
             try
             {
-                var queue = BuildMasterExecutionQueue();
-                if (queue.Count == 0)
+                var plan = BuildMasterExecutionPlan();
+                if (plan.Nodes.Count == 0)
                 {
                     IsStatusError = true;
-                    StatusMessage = "主流程没有可执行的子流程节点";
+                    StatusMessage = "没有可执行的子流程";
                     IsRunning = false;
                     IsPaused = false;
                     return;
                 }
 
-                for (int i = 0; i < queue.Count; i++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    IsStatusError = false;
-                    var workflow = queue[i];
-                    StatusMessage = $"主流程执行中 ({i + 1}/{queue.Count})：{workflow.Name}";
-                    var success = await ExecuteSingleSubWorkflowAsync(
-                        workflow,
-                        $"正在执行主流程节点 ({i + 1}/{queue.Count})：{workflow.Name}",
-                        cancellationToken,
-                        updateGlobalRunningState: false);
+                int successCount = 0;
+                int failedCount = 0;
+                int skippedCount = 0;
 
-                    if (!success)
+                // 无依赖：全部并行执行
+                if (plan.HasDependencies == false)
+                {
+                    StatusMessage = $"并行执行中：共 {plan.Nodes.Count} 个子流程";
+                    var tasks = plan.Nodes.Values.Select(async node =>
                     {
-                        return;
+                        if (!node.IsEnabled)
+                        {
+                            skippedCount++;
+                            UpdateMasterReferenceNodeState(node.Workflow, NodeExecutionState.Skipped);
+                            SetTabExecutionState(node.Workflow, NodeExecutionState.Skipped);
+                            return false;
+                        }
+
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var ok = await ExecuteSubWorkflowInMasterAsync(
+                            node.Workflow,
+                            $"并行执行：{node.DisplayName}",
+                            cancellationToken);
+                        if (ok)
+                        {
+                            successCount++;
+                        }
+                        else
+                        {
+                            failedCount++;
+                        }
+                        return ok;
+                    });
+
+                    await Task.WhenAll(tasks);
+                }
+                else
+                {
+                    // 有依赖：按拓扑层级执行；单节点失败是否放行下游，取决于该节点 ContinueOnFailure
+                    var inDegree = plan.Nodes.Values.ToDictionary(n => n.RefId, n => n.PredecessorIds.Count);
+                    var queue = new Queue<string>(inDegree.Where(x => x.Value == 0).Select(x => x.Key));
+                    var completed = new HashSet<string>();
+                    var canContinue = new Dictionary<string, bool>(); // true=成功或失败继续
+
+                    while (queue.Count > 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var batch = new List<string>();
+                        while (queue.Count > 0)
+                        {
+                            batch.Add(queue.Dequeue());
+                        }
+
+                        var runnable = new List<MasterExecutionNode>();
+                        foreach (var refId in batch)
+                        {
+                            if (!plan.Nodes.TryGetValue(refId, out var node))
+                            {
+                                completed.Add(refId);
+                                continue;
+                            }
+
+                            if (!node.IsEnabled)
+                            {
+                                completed.Add(refId);
+                                canContinue[refId] = true;
+                                skippedCount++;
+                                UpdateMasterReferenceNodeState(node.Workflow, NodeExecutionState.Skipped);
+                                SetTabExecutionState(node.Workflow, NodeExecutionState.Skipped);
+                                continue;
+                            }
+
+                            // 任一前驱失败且“不失败继续” -> 当前节点跳过
+                            bool blocked = node.PredecessorIds.Any(preId =>
+                                canContinue.TryGetValue(preId, out var preCanContinue) && !preCanContinue);
+                            if (blocked)
+                            {
+                                completed.Add(refId);
+                                canContinue[refId] = false;
+                                skippedCount++;
+                                UpdateMasterReferenceNodeState(node.Workflow, NodeExecutionState.Skipped);
+                                SetTabExecutionState(node.Workflow, NodeExecutionState.Skipped);
+                                continue;
+                            }
+
+                            runnable.Add(node);
+                        }
+
+                        var runTasks = runnable.Select(async node =>
+                        {
+                            var ok = await ExecuteSubWorkflowInMasterAsync(
+                                node.Workflow,
+                                $"依赖执行：{node.DisplayName}",
+                                cancellationToken);
+                            return (node, ok);
+                        }).ToList();
+
+                        var runResults = await Task.WhenAll(runTasks);
+                        foreach (var (node, ok) in runResults)
+                        {
+                            completed.Add(node.RefId);
+                            if (ok)
+                            {
+                                successCount++;
+                                canContinue[node.RefId] = true;
+                            }
+                            else
+                            {
+                                failedCount++;
+                                canContinue[node.RefId] = node.ContinueOnFailure;
+                            }
+                        }
+
+                        foreach (var refId in batch)
+                        {
+                            if (!plan.Successors.TryGetValue(refId, out var successors))
+                            {
+                                continue;
+                            }
+
+                            foreach (var next in successors)
+                            {
+                                if (!inDegree.ContainsKey(next))
+                                {
+                                    continue;
+                                }
+
+                                inDegree[next]--;
+                                if (inDegree[next] == 0 && !completed.Contains(next))
+                                {
+                                    queue.Enqueue(next);
+                                }
+                            }
+                        }
                     }
                 }
 
-                StatusMessage = $"主流程执行完成，共执行 {queue.Count} 个子流程";
-                IsStatusError = false;
+                if (failedCount > 0 || skippedCount > 0)
+                {
+                    IsStatusError = failedCount > 0;
+                    StatusMessage = $"执行完成：成功 {successCount}，失败 {failedCount}，跳过 {skippedCount}（共 {plan.Nodes.Count}）";
+                }
+                else
+                {
+                    StatusMessage = $"执行完成，共执行 {plan.Nodes.Count} 个子流程";
+                    IsStatusError = false;
+                }
             }
             catch (OperationCanceledException)
             {
-                StatusMessage = "主流程执行已停止";
+                StatusMessage = "流程执行已停止";
                 IsStatusError = false;
             }
             finally
@@ -3544,6 +3992,204 @@ namespace Astra.UI.ViewModels
                 IsRunning = false;
                 IsPaused = false;
             }
+        }
+
+        private sealed class MasterExecutionNode
+        {
+            public string RefId { get; init; }
+            public string DisplayName { get; init; }
+            public WorkFlowNode Workflow { get; init; }
+            public bool IsEnabled { get; init; } = true;
+            public bool ContinueOnFailure { get; init; }
+            public List<string> PredecessorIds { get; init; } = new List<string>();
+        }
+
+        private sealed class MasterExecutionPlan
+        {
+            public Dictionary<string, MasterExecutionNode> Nodes { get; init; } = new Dictionary<string, MasterExecutionNode>();
+            public Dictionary<string, List<string>> Successors { get; init; } = new Dictionary<string, List<string>>();
+            public bool HasDependencies { get; init; }
+        }
+
+        private MasterExecutionPlan BuildMasterExecutionPlan()
+        {
+            if (MasterWorkflow?.SubWorkflowReferences == null || MasterWorkflow.SubWorkflowReferences.Count == 0)
+            {
+                // 主流程无引用时：按子流程 Tab 全量执行（无依赖）
+                var tabNodes = new Dictionary<string, MasterExecutionNode>();
+                if (SubWorkflowTabs != null)
+                {
+                    foreach (var tab in SubWorkflowTabs.Where(t => t?.Type == WorkflowType.Sub))
+                    {
+                        var workflow = tab?.GetSubWorkflow();
+                        if (workflow == null || string.IsNullOrWhiteSpace(workflow.Id))
+                        {
+                            continue;
+                        }
+
+                        var key = workflow.Id;
+                        if (tabNodes.ContainsKey(key))
+                        {
+                            continue;
+                        }
+
+                        tabNodes[key] = new MasterExecutionNode
+                        {
+                            RefId = key,
+                            DisplayName = workflow.Name ?? tab?.Name ?? "未命名子流程",
+                            Workflow = workflow,
+                            IsEnabled = true,
+                            ContinueOnFailure = true
+                        };
+                    }
+                }
+
+                return new MasterExecutionPlan
+                {
+                    Nodes = tabNodes,
+                    Successors = tabNodes.Keys.ToDictionary(k => k, _ => new List<string>()),
+                    HasDependencies = false
+                };
+            }
+
+            var refs = MasterWorkflow.SubWorkflowReferences;
+            var referenceNodeById = (MasterWorkflowTab?.Nodes ?? new ObservableCollection<Node>())
+                .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
+                .ToDictionary(n => n.Id, n => n);
+            var nodes = new Dictionary<string, MasterExecutionNode>();
+            foreach (var reference in refs)
+            {
+                if (reference == null || string.IsNullOrWhiteSpace(reference.Id) || string.IsNullOrWhiteSpace(reference.SubWorkflowId))
+                {
+                    continue;
+                }
+
+                if (!SubWorkflows.TryGetValue(reference.SubWorkflowId, out var subWorkflow) || subWorkflow == null)
+                {
+                    continue;
+                }
+
+                nodes[reference.Id] = new MasterExecutionNode
+                {
+                    RefId = reference.Id,
+                    DisplayName = reference.DisplayName ?? subWorkflow.Name ?? "未命名子流程",
+                    Workflow = subWorkflow,
+                    IsEnabled = referenceNodeById.TryGetValue(reference.Id, out var nodeForEnabled)
+                        ? nodeForEnabled.IsEnabled
+                        : reference.IsEnabled,
+                    ContinueOnFailure = referenceNodeById.TryGetValue(reference.Id, out var refNode)
+                        ? refNode.ContinueOnFailure
+                        : false
+                };
+            }
+
+            var successors = nodes.Keys.ToDictionary(id => id, _ => new List<string>());
+            var edges = MasterWorkflow.Edges ?? new List<Edge>();
+            int dependencyCount = 0;
+            foreach (var edge in edges)
+            {
+                if (edge == null || !nodes.ContainsKey(edge.SourceNodeId) || !nodes.ContainsKey(edge.TargetNodeId))
+                {
+                    continue;
+                }
+
+                successors[edge.SourceNodeId].Add(edge.TargetNodeId);
+                nodes[edge.TargetNodeId].PredecessorIds.Add(edge.SourceNodeId);
+                dependencyCount++;
+            }
+
+            return new MasterExecutionPlan
+            {
+                Nodes = nodes,
+                Successors = successors,
+                HasDependencies = dependencyCount > 0
+            };
+        }
+
+        private async Task<bool> ExecuteSubWorkflowInMasterAsync(
+            WorkFlowNode workflow,
+            string runningMessage,
+            CancellationToken cancellationToken)
+        {
+            if (workflow == null)
+            {
+                return false;
+            }
+
+            UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Running);
+            SetTabExecutionState(workflow, NodeExecutionState.Running);
+
+            var startResult = await _workflowExecutionSessionService.StartAsync(workflow.Id, workflow, BuildExecutionContext(), cancellationToken);
+            if (!startResult.Success || startResult.ExecutionTask == null)
+            {
+                UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Failed);
+                SetTabExecutionState(workflow, NodeExecutionState.Failed);
+                Debug.WriteLine($"[SequenceViewModel] 启动子流程失败: {workflow.Name}, {startResult.Message}");
+                return false;
+            }
+
+            StatusMessage = string.IsNullOrWhiteSpace(startResult.ExecutionId)
+                ? runningMessage
+                : $"{runningMessage} (ID: {startResult.ExecutionId})";
+
+            var result = await startResult.ExecutionTask;
+            if (!result.Success || result.Data == null)
+            {
+                UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Failed);
+                SetTabExecutionState(workflow, NodeExecutionState.Failed);
+                return false;
+            }
+
+            UpdateMasterReferenceNodeResult(workflow, result.Data);
+            var state = result.Data.ResultType == ExecutionResultType.Cancelled
+                ? NodeExecutionState.Cancelled
+                : result.Data.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
+            UpdateMasterReferenceNodeState(workflow, state);
+            SetTabExecutionState(workflow, state);
+            return result.Data.Success;
+        }
+
+        /// <summary>
+        /// 全局执行队列：
+        /// 1) 有主流程引用时，沿用主流程拓扑顺序；
+        /// 2) 没有主流程引用时，按子流程标签顺序执行全部子流程。
+        /// </summary>
+        private List<WorkFlowNode> BuildGlobalSubWorkflowExecutionQueue()
+        {
+            var queueFromMaster = BuildMasterExecutionQueue();
+            if (queueFromMaster.Count > 0)
+            {
+                return queueFromMaster;
+            }
+
+            var result = new List<WorkFlowNode>();
+            if (SubWorkflowTabs == null || SubWorkflowTabs.Count == 0)
+            {
+                return result;
+            }
+
+            foreach (var tab in SubWorkflowTabs)
+            {
+                if (tab?.Type != WorkflowType.Sub)
+                {
+                    continue;
+                }
+
+                var subWorkflow = tab.GetSubWorkflow();
+                if (subWorkflow == null)
+                {
+                    continue;
+                }
+
+                if (result.Any(w => string.Equals(w.Id, subWorkflow.Id, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                result.Add(subWorkflow);
+            }
+
+            return result;
         }
 
         private List<WorkFlowNode> BuildMasterExecutionQueue()
@@ -3638,11 +4284,13 @@ namespace Astra.UI.ViewModels
             var context = BuildExecutionContext();
             _activeExecutionWorkflow = workflow;
             UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Running);
+            SetTabExecutionState(workflow, NodeExecutionState.Running);
             var startResult = await _workflowExecutionSessionService.StartAsync(workflow.Id, workflow, context, cancellationToken);
             if (!startResult.Success || startResult.ExecutionTask == null)
             {
                 _activeExecutionWorkflow = null;
                 UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Failed);
+                SetTabExecutionState(workflow, NodeExecutionState.Failed);
                 IsStatusError = true;
                 StatusMessage = startResult.Message;
                 if (updateGlobalRunningState)
@@ -3666,12 +4314,46 @@ namespace Astra.UI.ViewModels
             if (_executionTask == null || !_executionTask.IsCompletedSuccessfully)
             {
                 UpdateMasterReferenceNodeState(workflow, NodeExecutionState.Failed);
+                SetTabExecutionState(workflow, NodeExecutionState.Failed);
                 return false;
             }
 
             var operationResult = await _executionTask;
             UpdateMasterReferenceNodeResult(workflow, operationResult?.Data);
+            if (operationResult?.Data != null)
+            {
+                var execResult = operationResult.Data;
+                SetTabExecutionState(
+                    workflow,
+                    execResult.ResultType == ExecutionResultType.Cancelled
+                        ? NodeExecutionState.Cancelled
+                        : execResult.Success ? NodeExecutionState.Success : NodeExecutionState.Failed);
+            }
+            else
+            {
+                SetTabExecutionState(workflow, NodeExecutionState.Failed);
+            }
             return operationResult.Success && operationResult.Data != null && operationResult.Data.Success;
+        }
+
+        private void SetTabExecutionState(WorkFlowNode workflow, NodeExecutionState state)
+        {
+            if (workflow == null)
+            {
+                return;
+            }
+
+            var tab = SubWorkflowTabs?.FirstOrDefault(
+                t => t?.Type == WorkflowType.Sub &&
+                     t.GetSubWorkflow() != null &&
+                     string.Equals(t.GetSubWorkflow().Id, workflow.Id, StringComparison.Ordinal));
+
+            if (tab == null)
+            {
+                return;
+            }
+
+            RunOnUiThread(() => tab.TabExecutionState = state);
         }
 
         private async Task MonitorExecutionAsync(
@@ -3886,7 +4568,8 @@ namespace Astra.UI.ViewModels
                 return;
             }
 
-            dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.Send);
+            // 使用较低优先级，避免执行期间过多状态更新把 UI 消息队列挤爆
+            dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.Background);
         }
 
         private async Task ApplyNodeStateWithVisualGuaranteeAsync(
@@ -4233,6 +4916,8 @@ namespace Astra.UI.ViewModels
 
                     workflowNode.Position = existingRef.Position;
                     workflowNode.Size = existingRef.Size;
+                    workflowNode.ContinueOnFailure = existingRef.ContinueOnFailure;
+                    workflowNode.IsEnabled = existingRef.IsEnabled;
                 }
                 else
                 {
@@ -4245,7 +4930,9 @@ namespace Astra.UI.ViewModels
                         SubWorkflowName = workflowName,
                         Name = workflowName,
                         Position = existingRef.Position,
-                        Size = existingRef.Size
+                        Size = existingRef.Size,
+                        ContinueOnFailure = existingRef.ContinueOnFailure,
+                        IsEnabled = existingRef.IsEnabled
                     };
                     Debug.WriteLine($"[SequenceViewModel] 创建新节点: SubWorkflowId={subWorkflow.Id}, Name={workflowName}");
                 }

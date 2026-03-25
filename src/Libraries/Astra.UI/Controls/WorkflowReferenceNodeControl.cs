@@ -4,7 +4,6 @@ using Astra.UI.Commands;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -19,12 +18,8 @@ namespace Astra.UI.Controls
     public class WorkflowReferenceNodeControl : Control
     {
         private Button _executeButton;
-        private Button _refreshButton;
-        private Button _moreOptionsButton;
-        private Button _statisticsButton;
-        private Button _maximizeButton;
-        private ToggleButton _enabledToggle;
-        private TextBlock _executionCountText;
+        private Button _pauseResumeButton;
+        private Button _switchButton;
         private TextBlock _executionTimeText;
         private TextBlock _titleTextBlock;
         private InfiniteCanvas _parentCanvas;
@@ -48,6 +43,22 @@ namespace Astra.UI.Controls
         private Dictionary<string, Point2D> _selectedNodesInitialPositions;
         private DateTime _mouseDownTime;
         private TranslateTransform _dragTransform;
+
+        /// <summary>
+        /// 双击节点事件（用于弹出属性编辑窗口）
+        /// </summary>
+        public static readonly RoutedEvent NodeDoubleClickEvent =
+            EventManager.RegisterRoutedEvent(
+                nameof(NodeDoubleClick),
+                RoutingStrategy.Bubble,
+                typeof(RoutedEventHandler),
+                typeof(WorkflowReferenceNodeControl));
+
+        public event RoutedEventHandler NodeDoubleClick
+        {
+            add => AddHandler(NodeDoubleClickEvent, value);
+            remove => RemoveHandler(NodeDoubleClickEvent, value);
+        }
 
         static WorkflowReferenceNodeControl()
         {
@@ -76,12 +87,8 @@ namespace Astra.UI.Controls
 
             // 获取模板中的控件
             _executeButton = GetTemplateChild("PART_ExecuteButton") as Button;
-            _refreshButton = GetTemplateChild("PART_RefreshButton") as Button;
-            _moreOptionsButton = GetTemplateChild("PART_MoreOptionsButton") as Button;
-            _statisticsButton = GetTemplateChild("PART_StatisticsButton") as Button;
-            _maximizeButton = GetTemplateChild("PART_MaximizeButton") as Button;
-            _enabledToggle = GetTemplateChild("PART_EnabledToggle") as ToggleButton;
-            _executionCountText = GetTemplateChild("PART_ExecutionCountText") as TextBlock;
+            _pauseResumeButton = GetTemplateChild("PART_PauseResumeButton") as Button;
+            _switchButton = GetTemplateChild("PART_SwitchButton") as Button;
             _executionTimeText = GetTemplateChild("PART_ExecutionTimeText") as TextBlock;
             _titleTextBlock = GetTemplateChild("PART_TitleTextBlock") as TextBlock;
             
@@ -126,22 +133,11 @@ namespace Astra.UI.Controls
             if (_executeButton != null)
                 _executeButton.Click += OnExecuteButtonClick;
 
-            if (_refreshButton != null)
-                _refreshButton.Click += OnRefreshButtonClick;
+            if (_pauseResumeButton != null)
+                _pauseResumeButton.Click += OnPauseResumeButtonClick;
 
-            if (_moreOptionsButton != null)
-                _moreOptionsButton.Click += OnMoreOptionsButtonClick;
-
-            if (_statisticsButton != null)
-                _statisticsButton.Click += OnStatisticsButtonClick;
-
-            if (_maximizeButton != null)
-                _maximizeButton.Click += OnMaximizeButtonClick;
-
-            if (_enabledToggle != null)
-                _enabledToggle.Checked += OnEnabledToggleChecked;
-            if (_enabledToggle != null)
-                _enabledToggle.Unchecked += OnEnabledToggleUnchecked;
+            if (_switchButton != null)
+                _switchButton.Click += OnSwitchButtonClick;
 
             // 查找父画布（延迟到 Loaded 事件中查找，确保视觉树已完全构建）
             Loaded += (s, args) =>
@@ -206,27 +202,17 @@ namespace Astra.UI.Controls
                     _titleTextBlock.Text = node.SubWorkflowName ?? node.Name ?? "未命名流程";
                 }
 
-                // 更新启用状态
-                if (_enabledToggle != null)
-                {
-                    _enabledToggle.IsChecked = node.IsEnabled;
-                }
-
                 // 同步选中状态
                 if (IsSelected != node.IsSelected)
                 {
                     IsSelected = node.IsSelected;
                 }
 
-                // TODO: 更新执行次数和执行时间（需要从 ViewModel 或服务获取）
-                if (_executionCountText != null)
-                {
-                    _executionCountText.Text = "0次";
-                }
-
                 if (_executionTimeText != null)
                 {
-                    _executionTimeText.Text = "0.00ms";
+                    _executionTimeText.Text = node.LastExecutionResult?.Duration.HasValue == true
+                        ? $"{node.LastExecutionResult.Duration.Value.TotalMilliseconds:F2} ms"
+                        : "0.00 ms";
                 }
             }
             else if (DataContext is Node node2)
@@ -244,40 +230,46 @@ namespace Astra.UI.Controls
 
         private void OnExecuteButtonClick(object sender, RoutedEventArgs e)
         {
-            // TODO: 执行子流程
-            System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 执行子流程: {SubWorkflowName}");
-        }
-
-        private void OnRefreshButtonClick(object sender, RoutedEventArgs e)
-        {
-            // TODO: 刷新子流程
-            System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 刷新子流程: {SubWorkflowName}");
-        }
-
-        private void OnMoreOptionsButtonClick(object sender, RoutedEventArgs e)
-        {
-            // TODO: 显示更多选项菜单
-            System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 更多选项: {SubWorkflowName}");
-        }
-
-        private void OnStatisticsButtonClick(object sender, RoutedEventArgs e)
-        {
-            // TODO: 显示统计信息
-            System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 统计信息: {SubWorkflowName}");
-        }
-
-        private void OnMaximizeButtonClick(object sender, RoutedEventArgs e)
-        {
-            // 获取子流程 ID
-            string subWorkflowId = null;
-            if (DataContext is WorkflowReferenceNode workflowNode)
+            if (DataContext is WorkflowReferenceNode workflowNode && !workflowNode.IsEnabled)
             {
-                subWorkflowId = workflowNode.SubWorkflowId;
+                System.Diagnostics.Debug.WriteLine("[WorkflowReferenceNodeControl] 当前子流程节点已禁用，忽略执行请求");
+                return;
             }
-            else if (DataContext is Node node && node is WorkflowReferenceNode refNode)
+
+            var subWorkflowId = GetSubWorkflowId();
+            if (string.IsNullOrWhiteSpace(subWorkflowId))
             {
-                subWorkflowId = refNode.SubWorkflowId;
+                return;
             }
+
+            // 切换到目标子流程 Tab，并仅切换该子流程的执行状态
+            SwitchToSubWorkflowTab();
+            var host = FindWorkflowReferenceNodeHost();
+            host?.ToggleRunSubWorkflowFromNode(subWorkflowId);
+        }
+
+        private void OnPauseResumeButtonClick(object sender, RoutedEventArgs e)
+        {
+            var subWorkflowId = GetSubWorkflowId();
+            if (string.IsNullOrWhiteSpace(subWorkflowId))
+            {
+                return;
+            }
+
+            // 切换到目标子流程 Tab，并仅暂停/恢复该子流程
+            SwitchToSubWorkflowTab();
+            var host = FindWorkflowReferenceNodeHost();
+            host?.TogglePauseResumeSubWorkflowFromNode(subWorkflowId);
+        }
+
+        private void OnSwitchButtonClick(object sender, RoutedEventArgs e)
+        {
+            SwitchToSubWorkflowTab();
+        }
+
+        private void SwitchToSubWorkflowTab()
+        {
+            var subWorkflowId = GetSubWorkflowId();
 
             if (string.IsNullOrEmpty(subWorkflowId))
             {
@@ -285,55 +277,31 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            // 打开子流程编辑器时，隐藏当前 FlowEditor 的 NodeToolBox
-            var flowEditor = FindVisualParent<FlowEditor>(this);
-            if (flowEditor != null)
+            var host = FindWorkflowReferenceNodeHost();
+            if (host != null)
             {
-                flowEditor.IsToolBoxVisible = false;
-                System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 打开子流程编辑器，隐藏 NodeToolBox: {SubWorkflowName}");
-            }
-
-            // 查找父容器（UserControl）来获取 ViewModel
-            var userControl = FindVisualParent<UserControl>(this);
-            if (userControl != null && userControl.DataContext != null)
-            {
-                // 使用反射调用 OpenWorkflowEditorCommand
-                var viewModelType = userControl.DataContext.GetType();
-                var commandProperty = viewModelType.GetProperty("OpenWorkflowEditorCommand");
-                if (commandProperty != null)
-                {
-                    var command = commandProperty.GetValue(userControl.DataContext);
-                    if (command is ICommand cmd && cmd.CanExecute(subWorkflowId))
-                    {
-                        cmd.Execute(subWorkflowId);
-                        System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 执行 OpenWorkflowEditorCommand: {subWorkflowId}");
-                    }
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 警告：ViewModel 中没有找到 OpenWorkflowEditorCommand");
-                }
+                host.OpenSubWorkflowEditor(subWorkflowId);
+                System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 切换到子流程编辑器: {subWorkflowId}");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 警告：无法找到父 UserControl 或 ViewModel");
+                System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 警告：无法找到 IWorkflowReferenceNodeHost 宿主");
             }
         }
 
-        private void OnEnabledToggleChecked(object sender, RoutedEventArgs e)
+        private string GetSubWorkflowId()
         {
-            if (DataContext is Node node)
+            if (DataContext is WorkflowReferenceNode workflowNode)
             {
-                node.IsEnabled = true;
+                return workflowNode.SubWorkflowId;
             }
-        }
 
-        private void OnEnabledToggleUnchecked(object sender, RoutedEventArgs e)
-        {
-            if (DataContext is Node node)
+            if (DataContext is Node node && node is WorkflowReferenceNode refNode)
             {
-                node.IsEnabled = false;
+                return refNode.SubWorkflowId;
             }
+
+            return null;
         }
 
         #endregion
@@ -343,6 +311,14 @@ namespace Astra.UI.Controls
         private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _parentCanvas ??= FindParentCanvas(this);
+
+            // 优先处理双击：与普通节点一致，双击直接触发属性编辑
+            if (e.ClickCount == 2)
+            {
+                RaiseEvent(new RoutedEventArgs(NodeDoubleClickEvent, this));
+                e.Handled = true;
+                return;
+            }
 
             // 如果点击在端口上，优先进入"连线"模式而不是拖拽
             // 注意：端口现在有直接的事件处理，这里作为备用检查
@@ -370,10 +346,11 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            // 检查是否点击在按钮上，如果是则不允许拖拽
-            if (e.OriginalSource is System.Windows.Controls.Button ||
-                e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase ||
-                e.OriginalSource is System.Windows.Controls.Primitives.ToggleButton)
+            // 检查是否点击在按钮（或按钮内部元素）上，如果是则不允许拖拽
+            // 注意：OriginalSource 往往是图标/Border，而不是 Button 本身
+            var sourceObject = e.OriginalSource as DependencyObject;
+            if (sourceObject != null &&
+                FindVisualParent<System.Windows.Controls.Primitives.ButtonBase>(sourceObject) != null)
             {
                 return;
             }
@@ -562,6 +539,10 @@ namespace Astra.UI.Controls
 
         private void OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
+            var sourceObject = e.OriginalSource as DependencyObject;
+            var releasedOnButton = sourceObject != null &&
+                                   FindVisualParent<System.Windows.Controls.Primitives.ButtonBase>(sourceObject) != null;
+
             if (_isMouseDown || _isDragging)
             {
                 // 如果正在拖拽，结束拖拽并同步最终位置
@@ -580,7 +561,11 @@ namespace Astra.UI.Controls
                 }
 
                 Cursor = Cursors.Arrow;
-                e.Handled = true;
+                // 在按钮上释放时不吞事件，确保 Click 正常触发
+                if (!releasedOnButton)
+                {
+                    e.Handled = true;
+                }
 
                 // 结束拖拽后隐藏对齐线
                 _parentCanvas?.HideAlignmentLines();
@@ -829,15 +814,9 @@ namespace Astra.UI.Controls
             var flowEditor = FindParentFlowEditor(this);
             if (flowEditor != null)
             {
-                // 委托给 FlowEditor 的复制逻辑（支持共享剪贴板和跨流程复制）
-                var copyMethod = flowEditor.GetType().GetMethod("OnCopyMenuItemClick", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (copyMethod != null)
-                {
-                    copyMethod.Invoke(flowEditor, new object[] { sender, e });
-                    System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 已委托给 FlowEditor 处理复制操作");
-                    return;
-                }
+                flowEditor.ExecuteCopyFromNodeContextMenu(sender, e);
+                System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 已委托给 FlowEditor 处理复制操作");
+                return;
             }
 
             // 后备方案：使用本地剪贴板
@@ -901,15 +880,9 @@ namespace Astra.UI.Controls
             var flowEditor = FindParentFlowEditor(this);
             if (flowEditor != null)
             {
-                // 委托给 FlowEditor 的粘贴逻辑（支持共享剪贴板和跨流程粘贴）
-                var pasteMethod = flowEditor.GetType().GetMethod("OnPasteMenuItemClick", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (pasteMethod != null)
-                {
-                    pasteMethod.Invoke(flowEditor, new object[] { sender, e });
-                    System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 已委托给 FlowEditor 处理粘贴操作");
-                    return;
-                }
+                flowEditor.ExecutePasteFromNodeContextMenu(sender, e);
+                System.Diagnostics.Debug.WriteLine($"[WorkflowReferenceNodeControl] 已委托给 FlowEditor 处理粘贴操作");
+                return;
             }
 
             // 后备方案：使用本地剪贴板
@@ -957,10 +930,7 @@ namespace Astra.UI.Controls
 
         private static void OnExecutionCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if (d is WorkflowReferenceNodeControl control && control._executionCountText != null)
-            {
-                control._executionCountText.Text = $"{e.NewValue}次";
-            }
+            // 执行次数 UI 已在精简样式中移除，保留属性用于兼容旧数据绑定。
         }
 
         public static readonly DependencyProperty ExecutionTimeProperty =
@@ -999,10 +969,7 @@ namespace Astra.UI.Controls
 
         private static void OnIsEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if (d is WorkflowReferenceNodeControl control && control._enabledToggle != null)
-            {
-                control._enabledToggle.IsChecked = (bool)e.NewValue;
-            }
+            // 启用开关 UI 已在精简样式中移除，保留属性用于兼容旧数据绑定。
         }
 
         public static readonly DependencyProperty IsSelectedProperty =
@@ -1441,6 +1408,22 @@ namespace Astra.UI.Controls
                 return parent;
 
             return FindVisualParent<T>(parentObject);
+        }
+
+        private IWorkflowReferenceNodeHost FindWorkflowReferenceNodeHost()
+        {
+            DependencyObject current = this;
+            while (current != null)
+            {
+                if (current is FrameworkElement fe && fe.DataContext is IWorkflowReferenceNodeHost host)
+                {
+                    return host;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return null;
         }
 
         #endregion

@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Shapes;
 using System.Drawing;
 using System.Windows.Media;
 using CommandManager = Astra.UI.Commands.CommandManager;
@@ -34,6 +35,8 @@ namespace Astra.UI.Controls
     [TemplatePart(Name = "PART_InfiniteCanvas", Type = typeof(InfiniteCanvas))]
     public class FlowEditor : Control
     {
+        internal static INodeFactory NodeFactory { get; set; } = new DefaultNodeFactory();
+
         #region 模板部件名称常量
 
         private const string PART_NodeToolBox = "PART_NodeToolBox";
@@ -264,6 +267,8 @@ namespace Astra.UI.Controls
         private InfiniteCanvas _infiniteCanvas;
         private Border _toolBoxSeparator;  // 工具箱分割线
         private ContextMenu _canvasContextMenu;  // 选中项右键菜单（节点或框选组）
+        private ContextMenu _edgeContextMenu; // 连线右键菜单
+        private Edge _contextEdge; // 当前右键命中的连线
         private Window _hostWindow;
         private bool _windowEventsAttached;
         private CommandManager _undoRedoManager = new CommandManager();
@@ -326,6 +331,11 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.AddHandler(
                     NodeControl.NodeDoubleClickEvent,
                     new RoutedEventHandler(OnNodeControlDoubleClick));
+
+                // 订阅主流程引用节点双击事件（WorkflowReferenceNodeControl.NodeDoubleClick 会冒泡到画布）
+                _infiniteCanvas.AddHandler(
+                    WorkflowReferenceNodeControl.NodeDoubleClickEvent,
+                    new RoutedEventHandler(OnNodeControlDoubleClick));
             }
 
             // 订阅事件
@@ -363,6 +373,7 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.DragLeave += OnCanvasDragLeave;
                 
                 // 订阅右键菜单事件
+                _infiniteCanvas.PreviewMouseLeftButtonDown += OnCanvasPreviewLeftMouseDown;
                 _infiniteCanvas.PreviewMouseRightButtonDown += OnCanvasPreviewRightMouseDown;
                 _infiniteCanvas.MouseRightButtonDown += OnCanvasRightMouseDown;
                 
@@ -448,6 +459,7 @@ namespace Astra.UI.Controls
                 _infiniteCanvas.DragLeave -= OnCanvasDragLeave;
                 
                 // 取消右键菜单事件
+                _infiniteCanvas.PreviewMouseLeftButtonDown -= OnCanvasPreviewLeftMouseDown;
                 _infiniteCanvas.PreviewMouseRightButtonDown -= OnCanvasPreviewRightMouseDown;
                 _infiniteCanvas.MouseRightButtonDown -= OnCanvasRightMouseDown;
 
@@ -529,8 +541,20 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnNodeControlDoubleClick(object sender, RoutedEventArgs e)
         {
+            Node node = null;
+
             if (e.OriginalSource is NodeControl nodeControl &&
-                nodeControl.DataContext is Node node)
+                nodeControl.DataContext is Node nodeFromNormalControl)
+            {
+                node = nodeFromNormalControl;
+            }
+            else if (e.OriginalSource is WorkflowReferenceNodeControl workflowReferenceNodeControl &&
+                     workflowReferenceNodeControl.DataContext is Node nodeFromWorkflowReferenceControl)
+            {
+                node = nodeFromWorkflowReferenceControl;
+            }
+
+            if (node != null)
             {
                 var window = new NodePropertyEditorWindow(node)
                 {
@@ -558,7 +582,10 @@ namespace Astra.UI.Controls
             // Delete 键删除选中节点
             if (e.Key == Key.Delete)
             {
-                DeleteSelectedNodes();
+                if (!DeleteSelectedEdges())
+                {
+                    DeleteSelectedNodes();
+                }
                 e.Handled = true;
             }
 
@@ -749,6 +776,24 @@ namespace Astra.UI.Controls
                 pasteMenuItemForSelection.IsEnabled = SharedClipboardNodes != null && SharedClipboardNodes.Count > 0;
             };
 
+            // 1.1) 连线右键菜单（删除连线）
+            _edgeContextMenu = new ContextMenu();
+            if (contextMenuStyle != null)
+            {
+                _edgeContextMenu.Style = contextMenuStyle;
+            }
+            var deleteEdgeMenuItem = new MenuItem
+            {
+                Header = "删除连线",
+                Tag = "Danger"
+            };
+            if (menuItemStyle != null)
+            {
+                deleteEdgeMenuItem.Style = menuItemStyle;
+            }
+            deleteEdgeMenuItem.Click += OnDeleteEdgeMenuItemClick;
+            _edgeContextMenu.Items.Add(deleteEdgeMenuItem);
+
             // 2) 画布右键菜单（锁定画布）
             _canvasBackgroundContextMenu = new ContextMenu();
             if (contextMenuStyle != null)
@@ -822,6 +867,20 @@ namespace Astra.UI.Controls
         }
 
         /// <summary>
+        /// 左键点击画布时，如果没有点中连线则清除连线高亮。
+        /// </summary>
+        private void OnCanvasPreviewLeftMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            var hit = e.OriginalSource as DependencyObject;
+            var canvasPos = _infiniteCanvas != null ? _infiniteCanvas.ScreenToCanvas(e.GetPosition(_infiniteCanvas)) : new System.Windows.Point();
+            var hitEdge = FindHitEdge(hit, canvasPos);
+            if (hitEdge == null)
+            {
+                ClearEdgeSelection();
+            }
+        }
+
+        /// <summary>
         /// 画布右键按下事件（冒泡）
         /// </summary>
         private void OnCanvasRightMouseDown(object sender, MouseButtonEventArgs e)
@@ -831,15 +890,26 @@ namespace Astra.UI.Controls
 
             var selectedCount = _infiniteCanvas.SelectedItems?.Count ?? 0;
             var hit = e.OriginalSource as DependencyObject;
+            var canvasPos = _infiniteCanvas.ScreenToCanvas(e.GetPosition(_infiniteCanvas));
+            var hitEdge = FindHitEdge(hit, canvasPos);
             bool isBackgroundClick = IsClickOnCanvasBackground(hit);
+
+            if (hitEdge != null && _edgeContextMenu != null)
+            {
+                ShowEdgeContextMenu(hitEdge);
+                e.Handled = true;
+                return;
+            }
 
             if (!isBackgroundClick && selectedCount > 0 && _canvasContextMenu != null)
             {
+                ClearEdgeSelection();
                 // 在选中节点或组上右键：显示选中项菜单
                 ShowSelectionContextMenu();
             }
             else if (_canvasBackgroundContextMenu != null)
             {
+                ClearEdgeSelection();
                 // 在画布空白区域右键：显示画布菜单（锁定/解锁、粘贴），与是否有选中项无关
                 // 保存鼠标位置（转换为画布坐标系），用于粘贴
                 var mousePos = e.GetPosition(_infiniteCanvas);
@@ -858,17 +928,52 @@ namespace Astra.UI.Controls
             e.Handled = true;
         }
 
+        private void OnDeleteEdgeMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (_contextEdge == null || EdgeItemsSource is not IList edgeList)
+            {
+                return;
+            }
+
+            var edgesToDelete = new List<object> { _contextEdge };
+            if (_undoRedoManager != null)
+            {
+                var command = new DeleteEdgeCommand(edgeList, edgesToDelete);
+                if (DataContext is WorkflowTab workflowTab)
+                {
+                    command.WorkflowTab = workflowTab;
+                }
+                _undoRedoManager.Execute(command);
+            }
+            else
+            {
+                // 保证“删线可撤销”：没有命令管理器时不执行直接删除
+                return;
+            }
+
+            _contextEdge = null;
+            _infiniteCanvas?.RefreshEdgesImmediate();
+        }
+
         /// <summary>
         /// 删除菜单项点击事件
         /// </summary>
         private void OnDeleteMenuItemClick(object sender, RoutedEventArgs e)
         {
-            DeleteSelectedNodes();
+            if (!DeleteSelectedEdges())
+            {
+                DeleteSelectedNodes();
+            }
         }
 
         /// <summary>
         /// 复制选中的节点到剪贴板（不立即粘贴）
         /// </summary>
+        internal void ExecuteCopyFromNodeContextMenu(object sender, RoutedEventArgs e)
+        {
+            OnCopyMenuItemClick(sender, e);
+        }
+
         private void OnCopyMenuItemClick(object sender, RoutedEventArgs e)
         {
             if (_infiniteCanvas == null || _infiniteCanvas.SelectedItems == null || _infiniteCanvas.SelectedItems.Count == 0)
@@ -1022,6 +1127,11 @@ namespace Astra.UI.Controls
         /// <summary>
         /// 粘贴剪贴板中的节点和连线（粘贴到鼠标位置，保持节点相对位置和连线关系）
         /// </summary>
+        internal void ExecutePasteFromNodeContextMenu(object sender, RoutedEventArgs e)
+        {
+            OnPasteMenuItemClick(sender, e);
+        }
+
         private void OnPasteMenuItemClick(object sender, RoutedEventArgs e)
         {
             // 🔧 使用共享剪贴板支持跨流程复制粘贴
@@ -1405,6 +1515,176 @@ namespace Astra.UI.Controls
             _canvasContextMenu.IsOpen = true;
         }
 
+        private Edge FindHitEdge(DependencyObject hitElement, System.Windows.Point? canvasPoint = null)
+        {
+            var current = hitElement;
+            while (current != null && current != _infiniteCanvas)
+            {
+                if (current is Shape shape && shape.Tag is Edge edge)
+                {
+                    return edge;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            // 容错命中：即使没有命中到线条像素，也允许点中“连线附近区域”
+            if (canvasPoint.HasValue && EdgeItemsSource != null)
+            {
+                const double hitTolerance = 10.0; // 像素容错半径
+                Edge nearestEdge = null;
+                double nearestDistance = double.MaxValue;
+
+                foreach (var item in EdgeItemsSource)
+                {
+                    if (item is not Edge edge || edge.Points == null || edge.Points.Count < 2)
+                    {
+                        continue;
+                    }
+
+                    var distance = GetDistanceToEdge(canvasPoint.Value, edge);
+                    if (distance <= hitTolerance && distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearestEdge = edge;
+                    }
+                }
+
+                if (nearestEdge != null)
+                {
+                    return nearestEdge;
+                }
+            }
+
+            return null;
+        }
+
+        private static double GetDistanceToEdge(System.Windows.Point point, Edge edge)
+        {
+            double minDistance = double.MaxValue;
+            for (int i = 0; i < edge.Points.Count - 1; i++)
+            {
+                var a = new System.Windows.Point(edge.Points[i].X, edge.Points[i].Y);
+                var b = new System.Windows.Point(edge.Points[i + 1].X, edge.Points[i + 1].Y);
+                var distance = DistancePointToSegment(point, a, b);
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                }
+            }
+
+            return minDistance;
+        }
+
+        private static double DistancePointToSegment(System.Windows.Point p, System.Windows.Point a, System.Windows.Point b)
+        {
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+            if (Math.Abs(dx) < double.Epsilon && Math.Abs(dy) < double.Epsilon)
+            {
+                var px = p.X - a.X;
+                var py = p.Y - a.Y;
+                return Math.Sqrt(px * px + py * py);
+            }
+
+            var t = ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / (dx * dx + dy * dy);
+            t = Math.Max(0, Math.Min(1, t));
+            var projX = a.X + t * dx;
+            var projY = a.Y + t * dy;
+            var distX = p.X - projX;
+            var distY = p.Y - projY;
+            return Math.Sqrt(distX * distX + distY * distY);
+        }
+
+        private void ShowEdgeContextMenu(Edge edge)
+        {
+            if (edge == null || _edgeContextMenu == null)
+            {
+                return;
+            }
+
+            _contextEdge = edge;
+            SelectSingleEdge(edge);
+            _edgeContextMenu.PlacementTarget = _infiniteCanvas;
+            _edgeContextMenu.IsOpen = true;
+        }
+
+        private void SelectSingleEdge(Edge targetEdge)
+        {
+            if (EdgeItemsSource == null || targetEdge == null)
+            {
+                return;
+            }
+
+            foreach (var item in EdgeItemsSource)
+            {
+                if (item is Edge edge)
+                {
+                    edge.IsSelected = string.Equals(edge.Id, targetEdge.Id, StringComparison.Ordinal);
+                }
+            }
+
+            _infiniteCanvas?.ClearSelection();
+            _infiniteCanvas?.RefreshEdgesImmediate();
+        }
+
+        private void ClearEdgeSelection()
+        {
+            if (EdgeItemsSource == null)
+            {
+                return;
+            }
+
+            bool changed = false;
+            foreach (var item in EdgeItemsSource)
+            {
+                if (item is Edge edge && edge.IsSelected)
+                {
+                    edge.IsSelected = false;
+                    changed = true;
+                }
+            }
+
+            _contextEdge = null;
+            if (changed)
+            {
+                _infiniteCanvas?.RefreshEdgesImmediate();
+            }
+        }
+
+        private bool DeleteSelectedEdges()
+        {
+            if (EdgeItemsSource is not IList edgeList || _undoRedoManager == null)
+            {
+                return false;
+            }
+
+            var selectedEdges = new List<object>();
+            foreach (var item in EdgeItemsSource)
+            {
+                if (item is Edge edge && edge.IsSelected)
+                {
+                    selectedEdges.Add(edge);
+                }
+            }
+
+            if (selectedEdges.Count == 0)
+            {
+                return false;
+            }
+
+            var command = new DeleteEdgeCommand(edgeList, selectedEdges);
+            if (DataContext is WorkflowTab workflowTab)
+            {
+                command.WorkflowTab = workflowTab;
+            }
+            _undoRedoManager.Execute(command);
+
+            _contextEdge = null;
+            _infiniteCanvas?.RefreshEdgesImmediate();
+            return true;
+        }
+
         /// <summary>
         /// 统一的节点拖放处理逻辑，支持画布与外层控件的拖放事件
         /// </summary>
@@ -1461,152 +1741,25 @@ namespace Astra.UI.Controls
         /// </summary>
         private Node CreateDefaultNode(IToolItem toolItem, System.Windows.Point position)
         {
-            // 如果工具项没有指定节点类型，返回 null
-            if (toolItem.NodeType == null)
+            if (toolItem == null)
             {
-                System.Diagnostics.Debug.WriteLine($"工具项 {toolItem.Name} 未指定 NodeType，无法创建节点");
                 return null;
             }
 
             try
             {
-                Type nodeType = null;
-
-                // 如果 NodeType 是 Type 对象，直接使用
-                if (toolItem.NodeType is Type type)
+                if (NodeFactory != null && NodeFactory.TryCreate(toolItem, position, out var createdNode))
                 {
-                    nodeType = type;
-                }
-                // 如果 NodeType 是字符串，尝试解析为类型
-                else if (toolItem.NodeType is string typeName && !string.IsNullOrWhiteSpace(typeName))
-                {
-                    // 首先在当前程序集中查找
-                    nodeType = Type.GetType(typeName, false);
-                    
-                    // 如果找不到，尝试在所有已加载的程序集中查找
-                    if (nodeType == null)
-                    {
-                        foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
-                        {
-                            nodeType = assembly.GetType(typeName, false);
-                            if (nodeType != null)
-                                break;
-                        }
-                    }
+                    return createdNode;
                 }
 
-                // 如果找不到类型，返回 null
-                if (nodeType == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"无法找到节点类型: {toolItem.NodeType}");
-                    return null;
-                }
-
-                // 验证类型必须是 Node 的子类
-                if (!typeof(Node).IsAssignableFrom(nodeType))
-                {
-                    System.Diagnostics.Debug.WriteLine($"节点类型 {nodeType.FullName} 不是 Node 的子类，返回 null");
-                    return null;
-                }
-
-                // 检查是否是抽象类
-                if (nodeType.IsAbstract)
-                {
-                    System.Diagnostics.Debug.WriteLine($"节点类型 {nodeType.FullName} 是抽象类，无法创建实例，返回 null");
-                    return null;
-                }
-
-                // 尝试使用无参构造函数创建实例
-                var instance = System.Activator.CreateInstance(nodeType) as Node;
-                if (instance == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"无法创建节点实例: {nodeType.FullName}");
-                    return null;
-                }
-
-                // 设置节点名称
-                instance.Name = toolItem.Name ?? "未命名节点";
-
-                // 设置节点类型字符串（用于序列化和识别）
-                instance.NodeType = nodeType.Name;
-
-                // 设置位置属性（使用 Point2D）
-                instance.Position = new Point2D(position.X, position.Y);
-
-                // 如果工具项有描述，设置描述
-                if (!string.IsNullOrWhiteSpace(toolItem.Description))
-                {
-                    instance.Description = toolItem.Description;
-                }
-
-                // 如果工具项有图标代码，则同步到节点的 Icon 属性
-                // 这样画布中的节点图标可以与工具面板保持一致
-                if (toolItem is Astra.UI.Models.ToolItem typedTool &&
-                    !string.IsNullOrWhiteSpace(typedTool.IconCode))
-                {
-                    instance.Icon = typedTool.IconCode;
-                }
-
-                return instance;
+                System.Diagnostics.Debug.WriteLine($"无法创建节点实例: {toolItem.Name}, NodeType={toolItem.NodeType}");
+                return null;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"使用 NodeType 创建节点时发生错误: {ex.Message}");
                 return null;
-            }
-        }
-
-        /// <summary>
-        /// 设置节点位置（支持多种位置属性格式）
-        /// </summary>
-        private void SetNodePosition(object node, System.Windows.Point position)
-        {
-            if (node == null) return;
-
-            var nodeType = node.GetType();
-
-            // 尝试设置 Position 属性（Point2D 类型）
-            var positionProp = nodeType.GetProperty("Position");
-            if (positionProp != null && positionProp.CanWrite)
-            {
-                var positionType = positionProp.PropertyType;
-                // 检查是否是 Point2D 类型
-                if (positionType.Name == "Point2D")
-                {
-                    // 尝试创建 Point2D 实例
-                    var point2DType = positionType;
-                    var xProp = point2DType.GetProperty("X");
-                    var yProp = point2DType.GetProperty("Y");
-                    if (xProp != null && yProp != null)
-                    {
-                        // 使用构造函数创建 Point2D
-                        var constructor = point2DType.GetConstructor(new[] { typeof(double), typeof(double) });
-                        if (constructor != null)
-                        {
-                            var point2D = constructor.Invoke(new object[] { position.X, position.Y });
-                            positionProp.SetValue(node, point2D);
-                            return;
-                        }
-                    }
-                }
-                // 如果是 System.Windows.Point 类型
-                else if (positionType == typeof(System.Windows.Point))
-                {
-                    positionProp.SetValue(node, position);
-                    return;
-                }
-            }
-
-            // 尝试设置 X 和 Y 属性
-            var xProp2 = nodeType.GetProperty("X");
-            var yProp2 = nodeType.GetProperty("Y");
-            if (xProp2 != null && xProp2.CanWrite)
-            {
-                xProp2.SetValue(node, position.X);
-            }
-            if (yProp2 != null && yProp2.CanWrite)
-            {
-                yProp2.SetValue(node, position.Y);
             }
         }
 
@@ -1665,25 +1818,7 @@ namespace Astra.UI.Controls
             }
             else
             {
-                // 尝试通过反射调用 Add 方法（适用于 ObservableCollection<T> 等泛型集合）
-                var addMethod = CanvasItemsSource.GetType().GetMethod("Add");
-                if (addMethod != null)
-                {
-                    try
-                    {
-                        // 注意：如果不是 IList，无法使用撤销/重做
-                        addMethod.Invoke(CanvasItemsSource, new[] { node });
-                        System.Diagnostics.Debug.WriteLine("警告：CanvasItemsSource 不是 IList，无法使用撤销/重做功能");
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"添加节点到集合时发生错误: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"CanvasItemsSource 不支持添加操作，请使用 IList 或 ObservableCollection<Node>");
-                }
+                System.Diagnostics.Debug.WriteLine("CanvasItemsSource 不是 IList，已跳过添加。请使用 IList/ObservableCollection<Node> 作为数据源。");
             }
         }
 

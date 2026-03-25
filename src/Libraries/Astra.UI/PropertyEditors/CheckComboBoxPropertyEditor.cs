@@ -2,11 +2,11 @@ using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Interfaces;
 using Astra.UI.Abstractions.Models;
 using Astra.UI.Controls;
+using Astra.UI.Services;
 using HandyControl.Controls;
 using System;
 using System.Collections;
 using System.Linq;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -19,6 +19,8 @@ namespace Astra.UI.PropertyEditors
     /// </summary>
     public class CheckComboBoxPropertyEditor : PropertyEditorBase
     {
+        private static readonly IItemsSourceResolver ItemsSourceResolver = DefaultItemsSourceResolver.Instance;
+
         public override FrameworkElement CreateElement(PropertyDescriptor propertyDescriptor)
         {
             var comboBox = new CheckComboBox
@@ -83,98 +85,10 @@ namespace Astra.UI.PropertyEditors
 
         private void SetItemsSource(CheckComboBox comboBox, PropertyDescriptor propertyDescriptor, ItemsSourceAttribute attribute)
         {
-            // 1. 如果是枚举类型
-            if (attribute.ItemsSourceType?.IsEnum == true)
+            var targetObject = GetTargetObject(propertyDescriptor);
+            if (ItemsSourceResolver.TryResolve(attribute, targetObject, out var itemsSource))
             {
-                comboBox.ItemsSource = Enum.GetValues(attribute.ItemsSourceType);
-            }
-            // 2. 如果是从静态字段或属性获取
-            else if (attribute.ItemsSourceType != null && !string.IsNullOrEmpty(attribute.Path))
-            {
-                var field = attribute.ItemsSourceType.GetField(attribute.Path,
-                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                if (field != null)
-                {
-                    comboBox.ItemsSource = field.GetValue(null) as IEnumerable;
-                }
-                else
-                {
-                    var property = attribute.ItemsSourceType.GetProperty(attribute.Path,
-                        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                    if (property != null)
-                    {
-                        comboBox.ItemsSource = property.GetValue(null, null) as IEnumerable;
-                    }
-                }
-            }
-            // 3. 如果是从 IItemsSourceProvider 获取
-            else if (attribute.ItemsSourceType != null && typeof(IItemsSourceProvider).IsAssignableFrom(attribute.ItemsSourceType))
-            {
-                IItemsSourceProvider provider = Activator.CreateInstance(attribute.ItemsSourceType) as IItemsSourceProvider;
-                if (provider != null)
-                {
-                    comboBox.ItemsSource = provider.GetItemsSource();
-                }
-            }
-            // 4. 如果是从静态类型的方法/属性获取
-            else if (attribute.StaticType != null)
-            {
-                if (!string.IsNullOrEmpty(attribute.MethodName))
-                {
-                    var method = attribute.StaticType.GetMethod(
-                        attribute.MethodName,
-                        BindingFlags.Public | BindingFlags.Static,
-                        null,
-                        Type.EmptyTypes,
-                        null);
-                    if (method != null)
-                    {
-                        var result = method.Invoke(null, null);
-                        comboBox.ItemsSource = result as IEnumerable;
-                    }
-                }
-                else if (!string.IsNullOrEmpty(attribute.PropertyName))
-                {
-                    var property = attribute.StaticType.GetProperty(
-                        attribute.PropertyName,
-                        BindingFlags.Public | BindingFlags.Static);
-                    if (property != null)
-                    {
-                        comboBox.ItemsSource = property.GetValue(null) as IEnumerable;
-                    }
-                }
-            }
-            // 5. 如果是从实例属性/方法获取
-            else
-            {
-                var targetObject = GetTargetObject(propertyDescriptor);
-                if (targetObject != null)
-                {
-                    if (!string.IsNullOrEmpty(attribute.MethodName))
-                    {
-                        var method = targetObject.GetType().GetMethod(
-                            attribute.MethodName,
-                            BindingFlags.Public | BindingFlags.Instance,
-                            null,
-                            Type.EmptyTypes,
-                            null);
-                        if (method != null)
-                        {
-                            var result = method.Invoke(targetObject, null);
-                            comboBox.ItemsSource = result as IEnumerable;
-                        }
-                    }
-                    else if (!string.IsNullOrEmpty(attribute.PropertyName))
-                    {
-                        var property = targetObject.GetType().GetProperty(
-                            attribute.PropertyName,
-                            BindingFlags.Public | BindingFlags.Instance);
-                        if (property != null)
-                        {
-                            comboBox.ItemsSource = property.GetValue(targetObject) as IEnumerable;
-                        }
-                    }
-                }
+                comboBox.ItemsSource = itemsSource;
             }
         }
     }

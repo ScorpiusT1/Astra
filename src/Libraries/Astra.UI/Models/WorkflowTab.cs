@@ -1,4 +1,4 @@
-﻿using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Models;
 using Astra.UI.Commands;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
@@ -122,6 +122,12 @@ namespace Astra.UI.Models
         /// </summary>
         [ObservableProperty]
         private bool _isActive;
+
+        /// <summary>
+        /// Tab 标题指示器状态（灰/橙/红/绿）。
+        /// </summary>
+        [ObservableProperty]
+        private NodeExecutionState _tabExecutionState = NodeExecutionState.Idle;
 
         /// <summary>
         /// 文件路径（如果已保存）

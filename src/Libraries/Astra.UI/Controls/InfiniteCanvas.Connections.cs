@@ -139,7 +139,7 @@ namespace Astra.UI.Controls
             {
                 _edgeLayer = new Canvas
                 {
-                    IsHitTestVisible = false
+                    IsHitTestVisible = true
                 };
                 _contentCanvas.Children.Insert(0, _edgeLayer);
             }
@@ -495,7 +495,7 @@ namespace Astra.UI.Controls
                 }
             }
             var primaryBrush = TryFindResource("PrimaryBrush") as Brush ?? Brushes.SteelBlue;
-            var selectedBrush = TryFindResource("InfoBrush") as Brush ?? Brushes.DeepSkyBlue;
+            var selectedBrush = TryFindResource("WarningBrush") as Brush ?? Brushes.Orange;
 
             // 🔧 性能优化：延迟计算节点边界
             // 对于拖动多个节点且使用智能平移的场景，先不计算所有节点边界
@@ -806,14 +806,14 @@ namespace Astra.UI.Controls
                 var polyline = new Polyline
                 {
                     Stroke = edge.IsSelected ? selectedBrush : primaryBrush,
-                    StrokeThickness = edge.IsSelected ? 3 : 2,
+                    StrokeThickness = edge.IsSelected ? 4 : 2,
                     StrokeLineJoin = PenLineJoin.Round,
                     StrokeStartLineCap = PenLineCap.Round,
                     StrokeEndLineCap = PenLineCap.Round,
                     Points = points,
                     Opacity = 0.9,
                     Tag = edge,
-                    IsHitTestVisible = false
+                    IsHitTestVisible = true
                 };
 
                 // 箭头
@@ -825,7 +825,7 @@ namespace Astra.UI.Controls
                     // 连线已存在，更新points和样式
                     existing.polyline.Points = points;
                     existing.polyline.Stroke = edge.IsSelected ? selectedBrush : primaryBrush;
-                    existing.polyline.StrokeThickness = edge.IsSelected ? 3 : 2;
+                    existing.polyline.StrokeThickness = edge.IsSelected ? 4 : 2;
                     
                     // 更新箭头
                     if (existing.arrow != null)

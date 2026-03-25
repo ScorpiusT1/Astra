@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="clr-namespace:Astra.UI.Controls"
+                    xmlns:nodeModels="clr-namespace:Astra.Core.Nodes.Models;assembly=Astra.Core"
                     xmlns:ui="clr-namespace:Astra.UI.Controls;assembly=Astra.UI">
 
     <ResourceDictionary.MergedDictionaries>
@@ -301,12 +302,43 @@
                                                                                  Height="6"
                                                                                  Margin="0,0,12,0"
                                                                                  VerticalAlignment="Center"
-                                                                                 Fill="{DynamicResource PrimaryBrush}">
+                                                                                 Fill="{DynamicResource SecondaryBorderBrush}">
                                                                             <Ellipse.Style>
                                                                                 <Style TargetType="Ellipse">
                                                                                     <Setter Property="Opacity"
                                                                                             Value="0" />
                                                                                     <Style.Triggers>
+                                                                                        <!-- 运行/暂停：橙色 -->
+                                                                                        <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                                                     Value="{x:Static nodeModels:NodeExecutionState.Running}">
+                                                                                            <Setter Property="Fill"
+                                                                                                    Value="{DynamicResource WarningBrush}" />
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                                                     Value="{x:Static nodeModels:NodeExecutionState.Paused}">
+                                                                                            <Setter Property="Fill"
+                                                                                                    Value="{DynamicResource WarningBrush}" />
+                                                                                        </DataTrigger>
+
+                                                                                        <!-- 成功：绿色 -->
+                                                                                        <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                                                     Value="{x:Static nodeModels:NodeExecutionState.Success}">
+                                                                                            <Setter Property="Fill"
+                                                                                                    Value="{DynamicResource SuccessBrush}" />
+                                                                                        </DataTrigger>
+
+                                                                                        <!-- 失败：红色 -->
+                                                                                        <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                                                     Value="{x:Static nodeModels:NodeExecutionState.Failed}">
+                                                                                            <Setter Property="Fill"
+                                                                                                    Value="{DynamicResource DangerBrush}" />
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                                                     Value="{x:Static nodeModels:NodeExecutionState.Cancelled}">
+                                                                                            <Setter Property="Fill"
+                                                                                                    Value="{DynamicResource DangerBrush}" />
+                                                                                        </DataTrigger>
+
                                                                                         <!-- 通过 Button 的 Tag 获取选中状态 -->
                                                                                         <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Tag.IsSelected}"
                                                                                                      Value="True">

@@ -26,8 +26,15 @@
         <Setter Property="FocusVisualStyle"
                 Value="{x:Null}" />
         <!-- 为整个控件设置 ToolTip -->
-        <Setter Property="ToolTip"
-                Value="{Binding RelativeSource={RelativeSource Self}, Path=Title}" />
+        <Setter Property="ToolTip">
+            <Setter.Value>
+                <MultiBinding Converter="{StaticResource NodeExecutionResultToTooltipConverter}">
+                    <Binding RelativeSource="{RelativeSource Self}" Path="Title" />
+                    <Binding Path="LastExecutionResult.Message" />
+                    <Binding Path="Status" />
+                </MultiBinding>
+            </Setter.Value>
+        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type local:NodeControl}">
@@ -206,6 +213,8 @@
                             <Setter TargetName="NodeBorder"
                                     Property="BorderThickness"
                                     Value="2" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource WarningBrush}" />
                         </Trigger>
 
                         <!-- 成功状态：使用成功色 -->
@@ -220,6 +229,11 @@
                             <Setter TargetName="NodeBorder"
                                     Property="BorderThickness"
                                     Value="2" />
+                            <Setter TargetName="IconArea"
+                                    Property="Background"
+                                    Value="{DynamicResource SuccessBrush}" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource SuccessBrush}" />
                         </Trigger>
 
                         <!-- 暂停状态：使用独立暂停色 -->
@@ -227,13 +241,18 @@
                                  Value="{x:Static models:NodeExecutionState.Paused}">
                             <Setter TargetName="NodeBorder"
                                     Property="Background"
-                                    Value="#FFEDE7F6" />
+                                    Value="{DynamicResource LightPauseBrush}" />
                             <Setter TargetName="NodeBorder"
                                     Property="BorderBrush"
-                                    Value="#FF7E57C2" />
+                                    Value="{DynamicResource DarkPauseBrush}" />
                             <Setter TargetName="NodeBorder"
                                     Property="BorderThickness"
                                     Value="2" />
+                            <Setter TargetName="IconArea"
+                                    Property="Background"
+                                    Value="{DynamicResource PauseBrush}" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource PauseBrush}" />
                         </Trigger>
 
                         <!-- 跳过状态：使用信息色 -->
@@ -248,6 +267,11 @@
                             <Setter TargetName="NodeBorder"
                                     Property="BorderThickness"
                                     Value="2" />
+                            <Setter TargetName="IconArea"
+                                    Property="Background"
+                                    Value="{DynamicResource InfoBrush}" />
+                            <Setter Property="IconColor"
+                                    Value="{DynamicResource InfoBrush}" />
                         </Trigger>
 
                         <!-- 失败状态：整体切换为危险色风格 -->

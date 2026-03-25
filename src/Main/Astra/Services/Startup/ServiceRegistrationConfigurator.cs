@@ -161,6 +161,7 @@ namespace Astra.Services.Startup
             // ⭐ 注册导航权限服务
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
             services.AddSingleton<IWorkFlowManager, WorkFlowManager>();
+            services.AddSingleton<IWorkflowEngineProvider, DefaultWorkflowEngineProvider>();
             services.AddSingleton<IWorkflowExecutionSessionService, WorkflowExecutionSessionService>();
 
             Debug.WriteLine("✅ 应用程序服务注册完成");

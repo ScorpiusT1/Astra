@@ -24,6 +24,8 @@ namespace Astra.Engine.Execution.Strategies
             var workflow = context.Workflow;
             var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
             var outputs = new Dictionary<string, object>();
+            var hasNonSkippedFailure = false;
+            ExecutionResult firstFailureResult = null;
             MarkDisabledNodesAsSkipped(workflow, context);
 
             // 构建图与入度
@@ -37,7 +39,8 @@ namespace Astra.Engine.Execution.Strategies
                 graph[node.Id] = new List<string>();
             }
 
-            foreach (var conn in workflow.Connections)
+            // 拓扑依赖：无论是 Flow 还是 Data 连接，只要存在连线就作为依赖边处理
+            foreach (var conn in workflow.Connections.Where(c => c != null))
             {
                 if (!graph.ContainsKey(conn.SourceNodeId) || !graph.ContainsKey(conn.TargetNodeId))
                     continue;
@@ -91,10 +94,16 @@ namespace Astra.Engine.Execution.Strategies
                         workflow.Variables[$"{node.Name}_{kvp.Key}"] = kvp.Value;
                     }
 
-                    if (!result.Success && !result.IsSkipped && workflow.Configuration.StopOnError)
+                    if (!result.Success && !result.IsSkipped)
                     {
-                        return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
-                            .WithOutputs(outputs);
+                        if (workflow.Configuration.StopOnError && !node.ContinueOnFailure)
+                        {
+                            return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
+                                .WithOutputs(outputs);
+                        }
+
+                        hasNonSkippedFailure = true;
+                        firstFailureResult ??= result;
                     }
 
                     // 入度更新
@@ -116,6 +125,12 @@ namespace Astra.Engine.Execution.Strategies
                 return ExecutionResult.Failed("检测到循环依赖，复杂图执行未完成");
             }
 
+            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
+            {
+                return ExecutionResult.Failed($"复杂图执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
+                    .WithOutputs(outputs);
+            }
+
             return ExecutionResult.Successful($"复杂图执行完成，共执行 {processed} 个节点").WithOutputs(outputs);
         }
 
@@ -128,7 +143,12 @@ namespace Astra.Engine.Execution.Strategies
             {
                 InputData = new Dictionary<string, object>(),
                 GlobalVariables = new Dictionary<string, object>(baseContext.GlobalVariables),
-                ServiceProvider = baseContext.ServiceProvider
+                ServiceProvider = baseContext.ServiceProvider,
+
+                // 继承执行标识与元数据，保证 UI 事件过滤时 ExecutionId 一致
+                ExecutionId = baseContext.ExecutionId,
+                ParentWorkFlow = baseContext.ParentWorkFlow,
+                Metadata = new Dictionary<string, object>(baseContext.Metadata ?? new Dictionary<string, object>())
             };
 
             var inputConnections = workflow.GetInputConnections(node.Id);

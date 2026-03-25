@@ -30,6 +30,8 @@ namespace Astra.Engine.Execution.Strategies
             }
 
             var outputs = new Dictionary<string, object>();
+            var hasNonSkippedFailure = false;
+            ExecutionResult firstFailureResult = null;
             int totalLayers = groups.Count;
             int finishedLayers = 0;
 
@@ -70,13 +72,25 @@ namespace Astra.Engine.Execution.Strategies
 
                     if (!result.Success && !result.IsSkipped && workflow.Configuration.StopOnError)
                     {
-                        return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
-                            .WithOutputs(outputs);
+                        if (!node.ContinueOnFailure)
+                        {
+                            return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
+                                .WithOutputs(outputs);
+                        }
+
+                        hasNonSkippedFailure = true;
+                        firstFailureResult ??= result;
                     }
                 }
 
                 finishedLayers++;
                 context.OnProgressChanged?.Invoke((int)(finishedLayers * 100.0 / totalLayers));
+            }
+
+            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
+            {
+                return ExecutionResult.Failed($"部分并行执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
+                    .WithOutputs(outputs);
             }
 
             return ExecutionResult.Successful($"部分并行执行完成，共 {totalLayers} 层").WithOutputs(outputs);
@@ -138,6 +152,7 @@ namespace Astra.Engine.Execution.Strategies
                 GlobalVariables = new Dictionary<string, object>(baseContext?.GlobalVariables ?? new Dictionary<string, object>()),
                 Metadata = new Dictionary<string, object>(baseContext?.Metadata ?? new Dictionary<string, object>()),
                 ServiceProvider = baseContext?.ServiceProvider,
+                ExecutionId = baseContext?.ExecutionId,
                 ParentWorkFlow = baseContext?.ParentWorkFlow
             };
         }

@@ -23,6 +23,8 @@ namespace Astra.Engine.Execution.Strategies
             var workflow = context.Workflow;
             var sequencedNodes = context.DetectedStrategy?.Nodes ?? new List<Node>();
             var outputs = new Dictionary<string, object>();
+            var hasNonSkippedFailure = false;
+            ExecutionResult firstFailureResult = null;
             MarkDisabledNodesAsSkipped(workflow, context);
 
             if (sequencedNodes.Count == 0)
@@ -50,13 +52,28 @@ namespace Astra.Engine.Execution.Strategies
 
                 context.OnProgressChanged?.Invoke((int)((i + 1) * 100.0 / sequencedNodes.Count));
 
-                if (!nodeResult.Success && !nodeResult.IsSkipped && workflow.Configuration.StopOnError)
+                if (!nodeResult.Success && !nodeResult.IsSkipped)
                 {
-                    return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {nodeResult.Message}", nodeResult.Exception)
-                        .WithOutputs(outputs);
+                    // 如果全局配置了 StopOnError=true：
+                    // - 本节点未开启 ContinueOnFailure => 立即终止工作流
+                    // - 本节点开启 ContinueOnFailure => 记录失败并继续执行下游
+                    if (workflow.Configuration.StopOnError && !node.ContinueOnFailure)
+                    {
+                        return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {nodeResult.Message}", nodeResult.Exception)
+                            .WithOutputs(outputs);
+                    }
+
+                    hasNonSkippedFailure = true;
+                    firstFailureResult ??= nodeResult;
                 }
 
                 context.CancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
+            {
+                return ExecutionResult.Failed($"顺序执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
+                    .WithOutputs(outputs);
             }
 
             return ExecutionResult.Successful($"顺序执行完成，共执行 {sequencedNodes.Count} 个节点")
@@ -72,7 +89,12 @@ namespace Astra.Engine.Execution.Strategies
             {
                 InputData = new Dictionary<string, object>(),
                 GlobalVariables = new Dictionary<string, object>(baseContext.GlobalVariables),
-                ServiceProvider = baseContext.ServiceProvider
+                ServiceProvider = baseContext.ServiceProvider,
+
+                // 继承执行标识与元数据，保证 UI 事件的 ExecutionId 一致
+                ExecutionId = baseContext.ExecutionId,
+                ParentWorkFlow = baseContext.ParentWorkFlow,
+                Metadata = new Dictionary<string, object>(baseContext.Metadata ?? new Dictionary<string, object>())
             };
 
             var inputConnections = workflow.GetInputConnections(node.Id);

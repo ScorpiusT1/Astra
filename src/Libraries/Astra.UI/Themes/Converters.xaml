@@ -31,6 +31,7 @@
     <converters:StringFallbackConverter x:Key="StringFallbackConverter" />
     <converters:EnumToDisplayTextConverter x:Key="EnumToDisplayTextConverter" />
     <converters:ExecutionResultToTimeConverter x:Key="ExecutionResultToTimeConverter" />
+    <converters:NodeExecutionResultToTooltipConverter x:Key="NodeExecutionResultToTooltipConverter" />
     <converters:BrushToColorConverter x:Key="BrushToColorConverter" />
     <converters:IconConverter x:Key="IconConverter" />
     <converters:IconTypeToVisibilityConverter x:Key="IconTypeToVisibilityConverter" />

@@ -522,10 +522,49 @@
                                 <Ellipse Grid.Column="0"
                                          Width="8"
                                          Height="8"
-                                         Fill="{DynamicResource DangerBrush}"
                                          VerticalAlignment="Center"
                                          Margin="0,0,8,0"
-                                         Visibility="{Binding IsInEditMode, Converter={StaticResource InvertedBooleanToVisibilityConverter}, Mode=OneWay}" />
+                                         Visibility="{Binding IsInEditMode, Converter={StaticResource InvertedBooleanToVisibilityConverter}, Mode=OneWay}">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <!-- 未运行：灰色 -->
+                                            <Setter Property="Fill"
+                                                    Value="{DynamicResource SecondaryBorderBrush}" />
+                                            <Style.Triggers>
+                                                <!-- 运行/暂停：橙色 -->
+                                                <DataTrigger Binding="{Binding TabExecutionState}"
+                                                             Value="{x:Static nodeModels:NodeExecutionState.Running}">
+                                                    <Setter Property="Fill"
+                                                            Value="{DynamicResource WarningBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TabExecutionState}"
+                                                             Value="{x:Static nodeModels:NodeExecutionState.Paused}">
+                                                    <Setter Property="Fill"
+                                                            Value="{DynamicResource WarningBrush}" />
+                                                </DataTrigger>
+
+                                                <!-- 成功：绿色 -->
+                                                <DataTrigger Binding="{Binding TabExecutionState}"
+                                                             Value="{x:Static nodeModels:NodeExecutionState.Success}">
+                                                    <Setter Property="Fill"
+                                                            Value="{DynamicResource SuccessBrush}" />
+                                                </DataTrigger>
+
+                                                <!-- 失败：红色 -->
+                                                <DataTrigger Binding="{Binding TabExecutionState}"
+                                                             Value="{x:Static nodeModels:NodeExecutionState.Failed}">
+                                                    <Setter Property="Fill"
+                                                            Value="{DynamicResource DangerBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TabExecutionState}"
+                                                             Value="{x:Static nodeModels:NodeExecutionState.Cancelled}">
+                                                    <Setter Property="Fill"
+                                                            Value="{DynamicResource DangerBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
 
                                 <!-- 显示模式：TextBlock -->
                                 <TextBlock Grid.Column="1"
@@ -605,7 +644,7 @@
                                         VerticalAlignment="Center"
                                         Margin="8,0,0,0">
                                 <Button ToolTip="启动此子流程"
-                                        Command="{Binding DataContext.StartSubWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        Command="{Binding DataContext.ToggleRunSubWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
                                         Background="Transparent"
                                         BorderBrush="Transparent"
@@ -617,8 +656,26 @@
                                         Cursor="Hand"
                                         FontSize="11"
                                         Foreground="{DynamicResource PrimaryTextBrush}">
-                                    <fa:IconBlock Icon="Play"
-                                                  FontSize="12" />
+                                    <fa:IconBlock FontSize="12">
+                                        <fa:IconBlock.Style>
+                                            <Style TargetType="fa:IconBlock">
+                                                <Setter Property="Icon"
+                                                        Value="Play" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                 Value="{x:Static nodeModels:NodeExecutionState.Running}">
+                                                        <Setter Property="Icon"
+                                                                Value="Stop" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding TabExecutionState}"
+                                                                 Value="{x:Static nodeModels:NodeExecutionState.Paused}">
+                                                        <Setter Property="Icon"
+                                                                Value="Stop" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </fa:IconBlock.Style>
+                                    </fa:IconBlock>
                                     <Button.Visibility>
                                         <MultiBinding Converter="{StaticResource StartButtonVisibilityConverter}">
                                             <Binding Path="Type" />

@@ -14,17 +14,22 @@ namespace Astra.UI.Services
     public sealed class WorkflowExecutionSessionService : IWorkflowExecutionSessionService
     {
         private readonly IWorkFlowManager _workFlowManager;
+        private readonly IWorkflowEngineProvider _workflowEngineProvider;
         private readonly object _stateLock = new object();
 
         private string _currentWorkflowKey;
         private string _currentExecutionId;
         private Task<OperationResult<ExecutionResult>> _executionTask;
+        private readonly HashSet<string> _startedWorkflowKeys = new HashSet<string>(StringComparer.Ordinal);
 
         public event EventHandler<WorkflowNodeExecutionChangedEventArgs> NodeExecutionChanged;
 
-        public WorkflowExecutionSessionService(IWorkFlowManager workFlowManager)
+        public WorkflowExecutionSessionService(
+            IWorkFlowManager workFlowManager,
+            IWorkflowEngineProvider workflowEngineProvider)
         {
             _workFlowManager = workFlowManager ?? throw new ArgumentNullException(nameof(workFlowManager));
+            _workflowEngineProvider = workflowEngineProvider ?? throw new ArgumentNullException(nameof(workflowEngineProvider));
         }
 
         public bool IsRunning
@@ -33,7 +38,18 @@ namespace Astra.UI.Services
             {
                 lock (_stateLock)
                 {
-                    return _executionTask != null && !_executionTask.IsCompleted;
+                    if (_executionTask != null && !_executionTask.IsCompleted)
+                    {
+                        return true;
+                    }
+
+                    var runningResult = _workFlowManager.GetRunningWorkFlows();
+                    if (!runningResult.Success || runningResult.Data == null || _startedWorkflowKeys.Count == 0)
+                    {
+                        return false;
+                    }
+
+                    return runningResult.Data.Any(x => !string.IsNullOrWhiteSpace(x.WorkFlowKey) && _startedWorkflowKeys.Contains(x.WorkFlowKey));
                 }
             }
         }
@@ -73,18 +89,6 @@ namespace Astra.UI.Services
                 };
             }
 
-            lock (_stateLock)
-            {
-                if (_executionTask != null && !_executionTask.IsCompleted)
-                {
-                    return new WorkflowExecutionSessionStartResult
-                    {
-                        Success = false,
-                        Message = "当前已有流程在执行中"
-                    };
-                }
-            }
-
             _workFlowManager.UnregisterWorkFlow(workflowKey);
             var registerResult = _workFlowManager.RegisterWorkFlow(workflowKey, workflow);
             if (!registerResult.Success)
@@ -98,15 +102,20 @@ namespace Astra.UI.Services
 
             context ??= new NodeContext();
             var engine = CreateEngineWithNodeEvents();
-            var runTask = engine == null
-                ? _workFlowManager.ExecuteWorkFlowAsync(workflowKey, context, cancellationToken)
-                : _workFlowManager.ExecuteWorkFlowAsync(workflowKey, engine, context, cancellationToken);
+            // 把执行启动的同步开销放到后台线程，避免 UI 线程在“启动阶段”卡死。
+            var runTask = Task.Run(async () =>
+            {
+                return engine == null
+                    ? await _workFlowManager.ExecuteWorkFlowAsync(workflowKey, context, cancellationToken)
+                    : await _workFlowManager.ExecuteWorkFlowAsync(workflowKey, engine, context, cancellationToken);
+            });
 
             lock (_stateLock)
             {
                 _currentWorkflowKey = workflowKey;
                 _currentExecutionId = null;
                 _executionTask = runTask;
+                _startedWorkflowKeys.Add(workflowKey);
             }
 
             _ = Task.Run(async () =>
@@ -122,6 +131,22 @@ namespace Astra.UI.Services
                 catch
                 {
                     // 背景同步执行ID失败时不阻塞主流程启动
+                }
+                finally
+                {
+                    try
+                    {
+                        await runTask;
+                    }
+                    catch
+                    {
+                        // 任务异常由上层消费，这里仅做状态清理
+                    }
+
+                    lock (_stateLock)
+                    {
+                        _startedWorkflowKeys.Remove(workflowKey);
+                    }
                 }
             });
 
@@ -156,12 +181,58 @@ namespace Astra.UI.Services
 
         public OperationResult Stop()
         {
-            if (!TryResolveCurrentExecutionId(out var executionId))
+            List<string> keysToStop;
+            lock (_stateLock)
+            {
+                keysToStop = _startedWorkflowKeys.ToList();
+            }
+
+            if (keysToStop.Count == 0)
+            {
+                if (!TryResolveCurrentExecutionId(out var executionId))
+                {
+                    return OperationResult.Failure("未找到可停止的执行实例");
+                }
+
+                return _workFlowManager.CancelWorkFlowExecution(executionId);
+            }
+
+            var runningResult = _workFlowManager.GetRunningWorkFlows();
+            if (!runningResult.Success || runningResult.Data == null)
+            {
+                return OperationResult.Failure("查询运行中的流程失败");
+            }
+
+            var targets = runningResult.Data
+                .Where(x => !string.IsNullOrWhiteSpace(x.WorkFlowKey) && keysToStop.Contains(x.WorkFlowKey))
+                .ToList();
+
+            if (targets.Count == 0)
             {
                 return OperationResult.Failure("未找到可停止的执行实例");
             }
 
-            return _workFlowManager.CancelWorkFlowExecution(executionId);
+            string lastError = null;
+            int successCount = 0;
+            foreach (var target in targets)
+            {
+                var cancelResult = _workFlowManager.CancelWorkFlowExecution(target.ExecutionId);
+                if (cancelResult.Success)
+                {
+                    successCount++;
+                }
+                else
+                {
+                    lastError = cancelResult.Message;
+                }
+            }
+
+            if (successCount > 0)
+            {
+                return OperationResult.Succeed($"已停止 {successCount} 个执行实例");
+            }
+
+            return OperationResult.Failure(string.IsNullOrWhiteSpace(lastError) ? "停止失败" : lastError);
         }
 
         private async Task<string> ResolveExecutionIdAsync(string workflowKey, CancellationToken cancellationToken)
@@ -232,9 +303,7 @@ namespace Astra.UI.Services
         {
             try
             {
-                var factoryType = Type.GetType("Astra.Engine.Execution.WorkFlowEngine.WorkFlowEngineFactory, Astra.Engine");
-                var createDefaultMethod = factoryType?.GetMethod("CreateDefault");
-                var engine = createDefaultMethod?.Invoke(null, null) as IWorkFlowEngine;
+                var engine = _workflowEngineProvider.Create();
                 if (engine == null)
                 {
                     return null;

@@ -38,7 +38,8 @@ namespace Astra.Engine.Execution.Strategies
                 graph[node.Id] = new List<string>();
             }
 
-            foreach (var conn in _workflow.Connections)
+            // 拓扑依赖：无论是 Flow 还是 Data 连接，只要存在连接关系就参与顺序约束
+            foreach (var conn in _workflow.Connections.Where(c => c != null))
             {
                 if (!graph.ContainsKey(conn.SourceNodeId) || !graph.ContainsKey(conn.TargetNodeId))
                     continue;
