@@ -54,6 +54,11 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
             foreach (var kvp in result.OutputData)
             {
+                if (kvp.Value is DataArtifactReference artifactRef)
+                {
+                    record.DataArtifacts.Add(artifactRef);
+                }
+
                 if (kvp.Value is RawDataReference rawRef)
                 {
                     record.RawDataReferences.Add(rawRef);

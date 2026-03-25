@@ -247,6 +247,8 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     return 16;
                 case RawDataReference _:
                     return 128;
+                case DataArtifactReference _:
+                    return 192;
                 case IDictionary dict:
                     return 128 + dict.Count * 64;
                 case ICollection collection:

@@ -186,13 +186,13 @@ namespace Astra.Plugins.DataAcquisition
                     {
                         successCount++;
 
-                        if (initResult)
+                        if (initResult.Success)
                         {
                             _logger?.LogInfo($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
                         }
                         else
                         {
-                            _logger?.LogWarn($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 初始化失败，已以离线状态注册", LogCategory.Device);
+                            _logger?.LogWarn($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 初始化失败，已以离线状态注册: {initResult.ErrorMessage ?? initResult.Message}", LogCategory.Device);
                         }
                     }
                     else
@@ -220,7 +220,13 @@ namespace Astra.Plugins.DataAcquisition
             {
                 try
                 {
-                    await device.StopAcquisitionAsync().ConfigureAwait(false);
+                    var stopResult = await device.StopAcquisitionAsync().ConfigureAwait(false);
+                    if (!stopResult.Success)
+                    {
+                        var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
+                        var deviceName = deviceAsIDevice?.DeviceName ?? device.DeviceId;
+                        _logger?.LogWarn($"[{Name}] 停止设备 {deviceName} 失败: {stopResult.ErrorMessage ?? stopResult.Message}", LogCategory.Device);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -320,7 +326,13 @@ namespace Astra.Plugins.DataAcquisition
             {
                 try
                 {
-                    await device.DisposeAsync().ConfigureAwait(false);
+                    var disposeResult = await device.DisposeAsync().ConfigureAwait(false);
+                    if (!disposeResult.Success)
+                    {
+                        var deviceAsIDevice = device as Astra.Core.Devices.Interfaces.IDevice;
+                        var deviceName = deviceAsIDevice?.DeviceName ?? device.DeviceId;
+                        _logger?.LogWarn($"[{Name}] 释放设备 {deviceName} 失败: {disposeResult.ErrorMessage ?? disposeResult.Message}", LogCategory.Device);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -613,13 +625,13 @@ namespace Astra.Plugins.DataAcquisition
 
                         if (registerResult.Success)
                         {
-                            if (initResult)
+                            if (initResult.Success)
                             {
                                 _logger?.LogInfo($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
                             }
                             else
                             {
-                                _logger?.LogWarn($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 初始化失败，已以离线状态注册", LogCategory.Device);
+                                _logger?.LogWarn($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 初始化失败，已以离线状态注册: {initResult.ErrorMessage ?? initResult.Message}", LogCategory.Device);
                             }
                         }
                         else
@@ -712,7 +724,11 @@ namespace Astra.Plugins.DataAcquisition
                 // 如果设备正在运行，先停止采集
                 try
                 {
-                    await device.StopAcquisitionAsync().ConfigureAwait(false);
+                    var stopResult = await device.StopAcquisitionAsync().ConfigureAwait(false);
+                    if (!stopResult.Success)
+                    {
+                        _logger?.LogWarn($"[{Name}] 停止设备 {deviceName} 失败: {stopResult.ErrorMessage ?? stopResult.Message}", LogCategory.Device);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -739,7 +755,11 @@ namespace Astra.Plugins.DataAcquisition
                 // 释放设备资源
                 try
                 {
-                    await device.DisposeAsync().ConfigureAwait(false);
+                    var disposeResult = await device.DisposeAsync().ConfigureAwait(false);
+                    if (!disposeResult.Success)
+                    {
+                        _logger?.LogWarn($"[{Name}] 释放设备 {deviceName} 失败: {disposeResult.ErrorMessage ?? disposeResult.Message}", LogCategory.Device);
+                    }
                 }
                 catch (Exception ex)
                 {

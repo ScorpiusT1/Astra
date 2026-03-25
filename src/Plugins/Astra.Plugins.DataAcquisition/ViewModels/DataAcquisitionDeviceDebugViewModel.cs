@@ -536,9 +536,11 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             try
             {
-                await _device.StartAcquisitionAsync().ConfigureAwait(false);
+                var result = await _device.StartAcquisitionAsync().ConfigureAwait(false);
                 Application.Current?.Dispatcher.Invoke(UpdateState);
-                AddLogMessage("开始采集");
+                AddLogMessage(result.Success
+                    ? "开始采集"
+                    : $"开始采集失败: {result.ErrorMessage ?? result.Message}");
             }
             catch (Exception ex)
             {
@@ -553,9 +555,11 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
             try
             {
-                await _device.StopAcquisitionAsync().ConfigureAwait(false);
+                var result = await _device.StopAcquisitionAsync().ConfigureAwait(false);
                 Application.Current?.Dispatcher.Invoke(UpdateState);
-                AddLogMessage("停止采集");
+                AddLogMessage(result.Success
+                    ? "停止采集"
+                    : $"停止采集失败: {result.ErrorMessage ?? result.Message}");
             }
             catch (Exception ex)
             {

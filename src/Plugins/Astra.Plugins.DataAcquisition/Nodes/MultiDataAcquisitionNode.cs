@@ -2,11 +2,14 @@ using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
+using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Linq;
 
 namespace Astra.Plugins.DataAcquisition.Nodes
 {
@@ -15,13 +18,17 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// </summary>
     public class MultiDataAcquisitionNode : Node
     {
+
+        [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 2, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
+        public bool StopAcquisitionAfterCompletion { get; set; } = true;
+
         [Display(Name = "采集时长(秒)", GroupName = "采集卡配置", Order = 1, Description = "为 0 表示只启动不自动停止")]
         public double DurationSeconds { get; set; }
 
         /// <summary>
         /// 选中的采集卡设备名称列表（仅保存 DeviceName，避免在脚本中序列化具体设备实例）。
         /// </summary>
-        [Display(Name = "选择采集卡", GroupName = "采集卡配置", Order = 2)]
+        [Display(Name = "选择采集卡", GroupName = "采集卡配置", Order = 3)]
         [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(typeof(DataAcquisitionCardProvider), "GetDataAcquisitionNames", DisplayMemberPath = ".")]
         public List<string> DataAcquisitionDeviceNames { get; set; } = new();
@@ -75,8 +82,10 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             }
 
             var startedDevices = new ConcurrentBag<string>();
+            var runningDevices = new ConcurrentBag<string>();
             var startErrors = new ConcurrentBag<Exception>();
 
+            var actualDurationSeconds = 0d;
             try
             {
                 await WaitIfPausedAsync().ConfigureAwait(false);
@@ -93,18 +102,25 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         var state = device.GetState();
                         if (state == AcquisitionState.Running)
                         {
+                            runningDevices.Add(device.DeviceId);
                             return;
                         }
 
                         // 确保已初始化
-                        bool flag = await device.InitializeAsync().ConfigureAwait(false);
-                        if (!flag)
+                        var initResult = await device.InitializeAsync().ConfigureAwait(false);
+                        if (!initResult.Success)
                         {
-                            throw new InvalidOperationException($"采集卡初始化失败: {device.DeviceId}");
+                            throw new InvalidOperationException(
+                                $"采集卡初始化失败: {device.DeviceId}, {initResult.ErrorMessage ?? initResult.Message}");
                         }
 
                         // 启动采集
-                        await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
+                        var startResult = await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
+                        if (!startResult.Success)
+                        {
+                            throw new InvalidOperationException(
+                                $"采集卡启动失败: {device.DeviceId}, {startResult.ErrorMessage ?? startResult.Message}");
+                        }
 
                         startedDevices.Add(device.DeviceId);
                     }
@@ -133,44 +149,64 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
                 var startedList = startedDevices.ToList();
 
-                // 如果配置了采集时长，则当前节点等待指定时长后自动停止刚刚启动的设备（并行停止）
-                if (DurationSeconds > 0 && startedList.Count > 0)
+                var activeDevices = startedList
+                    .Concat(runningDevices)
+                    .Distinct()
+                    .ToList();
+
+                // 如果配置了采集时长，则当前节点等待指定时长
+                if (DurationSeconds > 0 && activeDevices.Count > 0)
                 {
                     var delayMs = (int)(DurationSeconds * 1000);
                     const int delaySliceMs = 100;
-                    var elapsed = 0;
-                    while (elapsed < delayMs)
+                    var durationStopwatch = Stopwatch.StartNew();
+                    while (durationStopwatch.ElapsedMilliseconds < delayMs)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         await WaitIfPausedAsync().ConfigureAwait(false);
-                        var nextDelay = Math.Min(delaySliceMs, delayMs - elapsed);
-                        await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
-                        elapsed += nextDelay;
-                    }
-
-                    var startedSet = new HashSet<string>(startedList);
-
-                    var stopTasks = distinctDevices
-                        .Where(d => startedSet.Contains(d.DeviceId))
-                        .Select(async device =>
+                        var remainingMs = delayMs - (int)durationStopwatch.ElapsedMilliseconds;
+                        if (remainingMs <= 0)
                         {
-                            try
-                            {
-                                cancellationToken.ThrowIfCancellationRequested();
-                                await WaitIfPausedAsync().ConfigureAwait(false);
-                                await device.StopAcquisitionAsync().ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                throw;
-                            }
-                            catch
-                            {
-                                // 单个设备停止失败不影响其它设备
-                            }
-                        }).ToList();
+                            break;
+                        }
 
-                    await Task.WhenAll(stopTasks).ConfigureAwait(false);
+                        var nextDelay = Math.Min(delaySliceMs, remainingMs);
+                        await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
+                    }
+                    durationStopwatch.Stop();
+                    actualDurationSeconds = durationStopwatch.Elapsed.TotalSeconds;
+
+                    if (StopAcquisitionAfterCompletion && startedList.Count > 0)
+                    {
+                        var startedSet = new HashSet<string>(startedList);
+
+                        var stopTasks = distinctDevices
+                            .Where(d => startedSet.Contains(d.DeviceId))
+                            .Select(async device =>
+                            {
+                                try
+                                {
+                                    cancellationToken.ThrowIfCancellationRequested();
+                                    await WaitIfPausedAsync().ConfigureAwait(false);
+                                    var stopResult = await device.StopAcquisitionAsync().ConfigureAwait(false);
+                                    if (!stopResult.Success)
+                                    {
+                                        throw new InvalidOperationException(
+                                            $"采集卡停止失败: {device.DeviceId}, {stopResult.ErrorMessage ?? stopResult.Message}");
+                                    }
+                                }
+                                catch (OperationCanceledException)
+                                {
+                                    throw;
+                                }
+                                catch
+                                {
+                                    // 单个设备停止失败不影响其它设备
+                                }
+                            }).ToList();
+
+                        await Task.WhenAll(stopTasks).ConfigureAwait(false);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -182,15 +218,93 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 return ExecutionResult.Failed("多采集卡采集过程中发生异常", ex);
             }
 
-            if (startedDevices.IsEmpty)
+            if (startedDevices.IsEmpty && runningDevices.IsEmpty)
             {
                 return ExecutionResult.Skip("所有采集卡均已在运行状态，无需重复启动");
             }
 
-            return ExecutionResult
+            var startedListForOutput = startedDevices.ToList();
+            var runningListForOutput = runningDevices.Distinct().ToList();
+            var activeDeviceListForOutput = startedListForOutput
+                .Concat(runningListForOutput)
+                .Distinct()
+                .ToList();
+            var result = ExecutionResult
                 .Successful("多采集卡采集已完成")
-                .WithOutput("StartedDevices", startedDevices.ToList())
-                .WithOutput("DurationSeconds", DurationSeconds);
+                .WithOutput("StartedDevices", startedListForOutput)
+                .WithOutput("RunningDevices", runningListForOutput)
+                .WithOutput("ActiveDevices", activeDeviceListForOutput)
+                .WithOutput("DurationSeconds", DurationSeconds)
+                .WithOutput("ActualDurationSeconds", actualDurationSeconds)
+                .WithOutput("StopAcquisitionAfterCompletion", StopAcquisitionAfterCompletion);
+
+            var rawDataStore = context.GetRawDataStore();
+            if (rawDataStore != null)
+            {
+                var rawDataKeys = new List<string>();
+                var activeSet = new HashSet<string>(activeDeviceListForOutput);
+
+                foreach (var device in distinctDevices)
+                {
+                    if (!activeSet.Contains(device.DeviceId))
+                    {
+                        continue;
+                    }
+
+                    if (device is not DataAcquisitionDeviceBase daqDevice)
+                    {
+                        continue;
+                    }
+
+                    var dataFile = daqDevice.GetDataFile();
+                    if (dataFile == null)
+                    {
+                        continue;
+                    }
+
+                    var artifactRef = context.StoreArtifact(
+                        nodeId: Id,
+                        category: DataArtifactCategory.Raw,
+                        artifactName: $"{device.DeviceId}:raw",
+                        data: dataFile,
+                        displayName: $"{(device as IDevice)?.DeviceName ?? device.DeviceId}-RawData",
+                        description: $"Device={device.DeviceId}, Node={Id}, Duration={DurationSeconds}s",
+                        preview: new Dictionary<string, object>
+                        {
+                            ["DeviceId"] = device.DeviceId,
+                            ["NodeId"] = Id,
+                            ["DurationSeconds"] = DurationSeconds
+                        });
+                    if (artifactRef == null)
+                    {
+                        continue;
+                    }
+
+                    rawDataKeys.Add(artifactRef.Key);
+
+                    var rawRef = new RawDataReference
+                    {
+                        Key = artifactRef.Key,
+                        Category = artifactRef.Category,
+                        DataType = dataFile.GetType().FullName,
+                        DisplayName = artifactRef.DisplayName,
+                        Description = artifactRef.Description,
+                        Preview = artifactRef.Preview,
+                        CreatedAt = artifactRef.CreatedAt
+                    };
+
+                    result = result
+                        .WithOutput($"RawDataRef:{device.DeviceId}", rawRef)
+                        .WithOutput($"ArtifactRef:{device.DeviceId}", rawRef);
+                }
+
+                if (rawDataKeys.Count > 0)
+                {
+                    result = result.WithOutput("RawDataKeys", rawDataKeys);
+                }
+            }
+
+            return result;
         }
     }
 }

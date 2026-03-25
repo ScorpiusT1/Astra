@@ -4,14 +4,41 @@ using System.Collections.Generic;
 namespace Astra.Core.Nodes.Models
 {
     /// <summary>
-    /// 原始数据引用描述（避免在结果链中直接携带大对象）。
+    /// 节点产物分类（用于统一描述采集数据、算法数据等）。
     /// </summary>
-    public class RawDataReference
+    public enum DataArtifactCategory
+    {
+        Unknown = 0,
+        Raw = 1,
+        Algorithm = 2,
+        Feature = 3,
+        Debug = 4
+    }
+
+    /// <summary>
+    /// 统一的数据产物引用描述（避免在结果链中直接携带大对象）。
+    /// </summary>
+    public class DataArtifactReference
     {
         public string Key { get; set; }
+        public DataArtifactCategory Category { get; set; } = DataArtifactCategory.Unknown;
         public string DataType { get; set; }
+        public string DisplayName { get; set; }
         public long? SizeBytes { get; set; }
         public string Description { get; set; }
+        public Dictionary<string, object> Preview { get; set; } = new Dictionary<string, object>();
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 原始数据引用描述（避免在结果链中直接携带大对象）。
+    /// </summary>
+    public class RawDataReference : DataArtifactReference
+    {
+        public RawDataReference()
+        {
+            Category = DataArtifactCategory.Raw;
+        }
     }
 
     /// <summary>
@@ -58,6 +85,7 @@ namespace Astra.Core.Nodes.Models
         public string SkipReason { get; set; }
         public Dictionary<string, object> InputSnapshot { get; set; } = new Dictionary<string, object>();
         public Dictionary<string, object> OutputSnapshot { get; set; } = new Dictionary<string, object>();
+        public List<DataArtifactReference> DataArtifacts { get; set; } = new List<DataArtifactReference>();
         public List<RawDataReference> RawDataReferences { get; set; } = new List<RawDataReference>();
     }
 

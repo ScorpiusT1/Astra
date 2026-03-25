@@ -1,6 +1,7 @@
 using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Base;
+using Astra.Core.Foundation.Common;
 using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Messaging;
@@ -74,36 +75,38 @@ namespace Astra.Plugins.DataAcquisition.Devices
             return channel;
         }
 
-        public async Task DisposeAsync()
+        public async Task<OperationResult> DisposeAsync()
         {
             await StopAcquisitionAsync().ConfigureAwait(false);
             Dispose();
+            return OperationResult.Succeed();
         }
 
         public AcquisitionState GetState() => _state;
 
-        public async Task<bool> InitializeAsync()
+        public async Task<OperationResult> InitializeAsync()
         {
             await _stateLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (_initialized)
-                    return true;
+                    return OperationResult.Succeed("采集卡已初始化");
 
                 var validation = ValidateConfig(_config);
                 if (!validation.Success)
                 {
                     _state = AcquisitionState.Error;
                     RaiseInitializationError(validation.ErrorMessage);
-                    return false;
+                    return OperationResult.Failure(validation.ErrorMessage ?? "采集卡配置校验失败");
                 }
 
                 var existsResult = await DeviceExistsAsync().ConfigureAwait(false);
                 if (!existsResult.Success || !existsResult.Data)
                 {
                     _state = AcquisitionState.Error;
-                    RaiseInitializationError(existsResult.ErrorMessage ?? "采集卡不存在或未就绪");
-                    return false;
+                    var message = existsResult.ErrorMessage ?? "采集卡不存在或未就绪";
+                    RaiseInitializationError(message);
+                    return OperationResult.Failure(message);
                 }
 
                 InitializeDataStructures();
@@ -112,7 +115,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 _initialized = true;
                 _state = AcquisitionState.Idle;
-                return true;
+                return OperationResult.Succeed("采集卡初始化成功");
             }
             finally
             {
@@ -120,17 +123,18 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
-        public async Task PauseAsync()
+        public async Task<OperationResult> PauseAsync()
         {
             await _stateLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (_state != AcquisitionState.Running)
-                    return;
+                    return OperationResult.Succeed("采集卡当前不在运行状态，无需暂停");
 
                 _pauseEvent.Reset();
                 _state = AcquisitionState.Paused;
                 _logger?.LogInfo($"[{DeviceName}] 已暂停数据采集", LogCategory.Device);
+                return OperationResult.Succeed("采集卡已暂停");
             }
             finally
             {
@@ -138,17 +142,18 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
-        public async Task ResumeAsync()
+        public async Task<OperationResult> ResumeAsync()
         {
             await _stateLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (_state != AcquisitionState.Paused)
-                    return;
+                    return OperationResult.Succeed("采集卡当前不在暂停状态，无需恢复");
 
                 _pauseEvent.Set();
                 _state = AcquisitionState.Running;
                 _logger?.LogInfo($"[{DeviceName}] 已恢复数据采集", LogCategory.Device);
+                return OperationResult.Succeed("采集卡已恢复");
             }
             finally
             {
@@ -156,20 +161,21 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
-        public async Task StartAcquisitionAsync(CancellationToken cancellationToken = default)
+        public async Task<OperationResult> StartAcquisitionAsync(CancellationToken cancellationToken = default)
         {
             // 先在锁外完成初始化，避免在持有 _stateLock 时再次调用 InitializeAsync 导致自死锁
             if (!_initialized)
             {
-                if (!await InitializeAsync().ConfigureAwait(false))
-                    throw new InvalidOperationException("采集卡初始化失败");
+                var initResult = await InitializeAsync().ConfigureAwait(false);
+                if (!initResult.Success)
+                    return OperationResult.Failure(initResult.ErrorMessage ?? "采集卡初始化失败");
             }
 
             await _stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (_state == AcquisitionState.Running)
-                    throw new InvalidOperationException("采集已在运行状态");
+                    return OperationResult.Succeed("采集已在运行状态");
 
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -177,8 +183,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 if (!connectResult.Success)
                 {
                     _state = AcquisitionState.Error;
-                    RaiseInitializationError(connectResult.ErrorMessage ?? "采集卡连接失败");
-                    return;
+                    var message = connectResult.ErrorMessage ?? "采集卡连接失败";
+                    RaiseInitializationError(message);
+                    return OperationResult.Failure(message);
                 }
 
                 await OnStartHardwareAsync(cancellationToken).ConfigureAwait(false);
@@ -203,6 +210,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 _acquisitionTask = Task.Run(() => RunAcquisitionLoopAsync(linkedCts.Token), CancellationToken.None);
                 _state = AcquisitionState.Running;
                 _logger?.LogInfo($"[{DeviceName}] 数据采集已启动", LogCategory.Device);
+                return OperationResult.Succeed("采集卡启动成功");
             }
             finally
             {
@@ -210,13 +218,13 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
-        public async Task StopAcquisitionAsync()
+        public async Task<OperationResult> StopAcquisitionAsync()
         {
             await _stateLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (_state == AcquisitionState.Idle)
-                    return;
+                    return OperationResult.Succeed("采集卡当前为空闲状态，无需停止");
 
                 _state = AcquisitionState.Idle;
                 _pauseEvent.Set();
@@ -271,6 +279,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 }
 
                 _logger?.LogInfo($"[{DeviceName}] 数据采集已停止", LogCategory.Device);
+                return OperationResult.Succeed("采集卡停止成功");
             }
             finally
             {

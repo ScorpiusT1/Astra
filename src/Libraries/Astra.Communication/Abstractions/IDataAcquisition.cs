@@ -1,4 +1,5 @@
-﻿using Astra.Core.Devices;
+using Astra.Core.Devices;
+using Astra.Core.Foundation.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,27 +21,27 @@ namespace Astra.Contract.Communication.Abstractions
         /// <summary>
         /// 初始化采集设备
         /// </summary>
-        Task<bool> InitializeAsync();
+        Task<OperationResult> InitializeAsync();
 
         /// <summary>
         /// 启动数据采集
         /// </summary>
-        Task StartAcquisitionAsync(CancellationToken cancellationToken = default);
+        Task<OperationResult> StartAcquisitionAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// 停止数据采集
         /// </summary>
-        Task StopAcquisitionAsync();
+        Task<OperationResult> StopAcquisitionAsync();
 
         /// <summary>
         /// 暂停采集
         /// </summary>
-        Task PauseAsync();
+        Task<OperationResult> PauseAsync();
 
         /// <summary>
         /// 恢复采集
         /// </summary>
-        Task ResumeAsync();
+        Task<OperationResult> ResumeAsync();
 
         /// <summary>
         /// 获取当前采集状态
@@ -50,7 +51,7 @@ namespace Astra.Contract.Communication.Abstractions
         /// <summary>
         /// 释放资源
         /// </summary>
-        Task DisposeAsync();
+        Task<OperationResult> DisposeAsync();
 
         /// <summary>
         /// 数据就绪事件
