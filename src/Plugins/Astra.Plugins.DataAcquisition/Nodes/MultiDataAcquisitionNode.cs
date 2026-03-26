@@ -37,6 +37,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             NodeContext context,
             CancellationToken cancellationToken)
         {
+            var log = context.CreateExecutionLogger($"数据采集节点:{Name}");
+
             var executionController = context?.GetMetadata<IWorkflowExecutionController>("WorkflowExecutionController");
 
             async Task WaitIfPausedAsync()
@@ -52,6 +54,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             // 未选择设备时直接跳过，避免报错
             if (DataAcquisitionDeviceNames == null || DataAcquisitionDeviceNames.Count == 0)
             {
+                log.Warn("未选择任何采集卡，节点跳过。");
                 return ExecutionResult.Skip("未选择任何采集卡");
             }
 
@@ -59,6 +62,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             var plugin = DataAcquisitionPlugin.Current;
             if (plugin == null)
             {
+                log.Error("数据采集插件未初始化，无法获取采集卡列表。");
                 return ExecutionResult.Skip("数据采集插件未初始化，无法获取采集卡列表");
             }
 
@@ -78,6 +82,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
             if (distinctDevices.Count == 0)
             {
+                log.Warn("采集卡列表为空或无效，节点跳过。");
                 return ExecutionResult.Skip("采集卡列表为空或无效");
             }
 
@@ -88,6 +93,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             var actualDurationSeconds = 0d;
             try
             {
+                log.Info($"开始执行，目标采集卡数量: {distinctDevices.Count}。");
                 await WaitIfPausedAsync().ConfigureAwait(false);
 
                 var startCandidates = new ConcurrentBag<IDataAcquisition>();
@@ -148,6 +154,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     var errorArray = startErrors.ToArray();
                     var aggregate = new AggregateException("部分采集卡启动失败", errorArray);
 
+                    log.Error($"并行预热阶段失败，失败数量: {errorArray.Length}。");
                     return ExecutionResult.Failed("部分采集卡启动失败，请检查日志获取详细信息", aggregate)
                         .WithOutput("StartErrors", errorArray.Select(e => e.Message).ToArray());
                 }
@@ -187,6 +194,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     var errorArray = startErrors.ToArray();
                     var aggregate = new AggregateException("部分采集卡启动失败", errorArray);
 
+                    log.Error($"统一启动阶段失败，失败数量: {errorArray.Length}。");
                     return ExecutionResult.Failed("部分采集卡启动失败，请检查日志获取详细信息", aggregate)
                         .WithOutput("StartErrors", errorArray.Select(e => e.Message).ToArray());
                 }
@@ -201,6 +209,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 // 如果配置了采集时长，则当前节点等待指定时长
                 if (DurationSeconds > 0 && activeDevices.Count > 0)
                 {
+                    log.Info($"进入采集等待阶段，配置时长: {DurationSeconds:F2}s。");
                     var delayMs = (int)(DurationSeconds * 1000);
                     const int delaySliceMs = 100;
                     var durationStopwatch = Stopwatch.StartNew();
@@ -255,15 +264,18 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             }
             catch (OperationCanceledException)
             {
+                log.Warn("执行被取消。");
                 return ExecutionResult.Cancel("多采集卡采集被取消");
             }
             catch (Exception ex)
             {
+                log.Error($"执行异常: {ex.Message}");
                 return ExecutionResult.Failed("多采集卡采集过程中发生异常", ex);
             }
 
             if (startedDevices.IsEmpty && runningDevices.IsEmpty)
             {
+                log.Info("所有采集卡均已在运行，未重复启动。");
                 return ExecutionResult.Skip("所有采集卡均已在运行状态，无需重复启动");
             }
 
@@ -281,6 +293,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 .WithOutput("DurationSeconds", DurationSeconds)
                 .WithOutput("ActualDurationSeconds", actualDurationSeconds)
                 .WithOutput("StopAcquisitionAfterCompletion", StopAcquisitionAfterCompletion);
+            log.Info($"执行完成，启动设备 {startedListForOutput.Count} 个，已运行设备 {runningListForOutput.Count} 个。");
 
             var rawDataStore = context.GetRawDataStore();
             if (rawDataStore != null)
