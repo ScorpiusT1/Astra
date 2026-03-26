@@ -20,7 +20,7 @@
     <!-- ==================== Success Badge ==================== -->
     <Style x:Key="BadgeSuccessStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource BaseBadgeStyle}">
+           BasedOn="{StaticResource BaseBadgeStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource LightSuccessBrush}" />
         <Setter Property="BorderBrush"
@@ -31,7 +31,7 @@
     <!-- ==================== Error Badge ==================== -->
     <Style x:Key="BadgeErrorStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource BaseBadgeStyle}">
+           BasedOn="{StaticResource BaseBadgeStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource LightDangerBrush}" />
         <Setter Property="BorderBrush"
@@ -42,7 +42,7 @@
     <!-- ==================== Warning Badge ==================== -->
     <Style x:Key="BadgeWarningStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource BaseBadgeStyle}">
+           BasedOn="{StaticResource BaseBadgeStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource LightWarningBrush}" />
         <Setter Property="BorderBrush"
@@ -53,7 +53,7 @@
     <!-- ==================== Info Badge ==================== -->
     <Style x:Key="BadgeInfoStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource BaseBadgeStyle}">
+           BasedOn="{StaticResource BaseBadgeStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource LightInfoBrush}" />
         <Setter Property="BorderBrush"
@@ -64,7 +64,7 @@
     <!-- ==================== Offline Badge ==================== -->
     <Style x:Key="BadgeOfflineStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource BaseBadgeStyle}">
+           BasedOn="{StaticResource BaseBadgeStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource DefaultBrush}" />
         <Setter Property="BorderBrush"
@@ -75,7 +75,7 @@
     <!-- ==================== Primary Badge ==================== -->
     <Style x:Key="BadgePrimaryStyle"
            TargetType="Border"
-           BasedOn="{DynamicResource BaseBadgeStyle}">
+           BasedOn="{StaticResource BaseBadgeStyle}">
         <Setter Property="Background"
                 Value="{DynamicResource LightPrimaryBrush}" />
         <Setter Property="BorderBrush"

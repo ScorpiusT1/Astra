@@ -1,0 +1,258 @@
+<UserControl x:Class="Astra.Views.HomeModules.TestItemTreeModuleView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:modules="clr-namespace:Astra.ViewModels.HomeModules"
+             xmlns:tv="clr-namespace:Astra.UI.Styles.Controls.TreeViewEx;assembly=Astra.UI"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="StatusBadgeStyle" TargetType="Border">
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}" Value="Pass">
+                    <Setter Property="Background" Value="{DynamicResource LightSuccessBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="Fail">
+                    <Setter Property="Background" Value="{DynamicResource LightDangerBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="Running">
+                    <Setter Property="Background" Value="{DynamicResource LightInfoBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource InfoBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="Ready">
+                    <Setter Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource SecondaryBorderBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <HierarchicalDataTemplate DataType="{x:Type modules:TestTreeNodeItem}"
+                                  ItemsSource="{Binding Children}">
+            <Border Visibility="Collapsed" />
+        </HierarchicalDataTemplate>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource RegionBrush}"
+            CornerRadius="12"
+            Padding="16"
+            Margin="6"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            VerticalAlignment="Stretch">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                        Background="{DynamicResource LightPrimaryBrush}"
+                        CornerRadius="6"
+                        Padding="8,4">
+                    <TextBlock Text="测试项展示模块"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TitleBrush}" />
+                </Border>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="8,0,0,0">
+                    <ProgressBar Width="100"
+                                 Height="4"
+                                 Margin="0,0,8,0"
+                                 IsIndeterminate="True"
+                                 Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button MinWidth="72"
+                            Padding="12,6"
+                            Content="刷新"
+                            Command="{Binding RefreshCommand}"
+                            IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}" />
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Text="根节点对应流程节点，子项展示详细测试结果；数据由 ITestItemTreeDataProvider 异步加载。"
+                       Grid.Row="1"
+                       Margin="0,0,0,8"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Grid.Row="2"
+                       Margin="0,0,0,8"
+                       Foreground="{DynamicResource DangerBrush}"
+                       TextWrapping="Wrap"
+                       Visibility="{Binding LoadError, Converter={StaticResource NullToVisibilityConverter}}"
+                       Text="{Binding LoadError}" />
+
+            <tv:TreeListView Grid.Row="3"
+                             ItemsSource="{Binding Roots}"
+                             Padding="0"
+                             VerticalAlignment="Stretch"
+                             StretchLastColumn="True"
+                             LastColumnMinWidth="72"
+                             Background="{DynamicResource SurfaceBrush}"
+                             BorderThickness="0"
+                             BorderBrush="{DynamicResource BorderBrush}"
+                             IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <tv:TreeListView.FirstColumnCellTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="LeafName"
+                                       Text="{Binding Name}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"
+                                       Visibility="Visible" />
+                            <StackPanel x:Name="RootHeader"
+                                        Orientation="Horizontal"
+                                        Visibility="Collapsed">
+                                <TextBlock Text="{Binding Name}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <TextBlock Text="{Binding Children.Count, StringFormat= ({0})}"
+                                           Margin="6,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                <Setter TargetName="LeafName" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="RootHeader" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </tv:TreeListView.FirstColumnCellTemplate>
+
+                <tv:TreeListView.Columns>
+                    <GridViewColumn Header="测试项名称"
+                                    Width="240"
+                                    CellTemplate="{StaticResource TreeListView.FirstColumnWithExpanderTemplate}" />
+                    <GridViewColumn Header="测试项状态"
+                                    Width="118">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
+                                <Border HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border" BasedOn="{StaticResource StatusBadgeStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding Status}"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                               FontWeight="SemiBold"
+                                               FontSize="11" />
+                                </Border>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="测试项时间"
+                                    Width="130">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           Text="{Binding TestTime, StringFormat={}{0:HH:mm:ss}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="测试项实际值"
+                                    Width="118">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           Text="{Binding ActualValue, StringFormat={}{0:F3}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="测试项下限"
+                                    Width="104">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           Text="{Binding LowerLimit, StringFormat={}{0:F3}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="测试项上限"
+                                    Width="104">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           Text="{Binding UpperLimit, StringFormat={}{0:F3}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </tv:TreeListView.Columns>
+            </tv:TreeListView>
+        </Grid>
+    </Border>
+</UserControl>

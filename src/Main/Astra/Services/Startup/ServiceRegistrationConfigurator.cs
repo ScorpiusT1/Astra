@@ -20,6 +20,7 @@ using Astra.Core.Plugins.Validation;
 using Astra.Models;
 using Astra.Services.Authorization;
 using Astra.Services.Dialogs;
+using Astra.Services.Home;
 using Astra.Services.Navigation;
 using Astra.Services.Session;
 using Astra.Core.Nodes.Management;
@@ -159,6 +160,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<IDialogService, DialogService>();
             
             // ⭐ 注册导航权限服务
+            services.AddSingleton<ITestItemTreeDataProvider, DefaultTestItemTreeDataProvider>();
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
             services.AddSingleton<IWorkFlowManager, WorkFlowManager>();
             services.AddSingleton<IWorkflowEngineProvider, DefaultWorkflowEngineProvider>();

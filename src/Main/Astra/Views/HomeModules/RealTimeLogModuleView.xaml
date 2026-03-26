@@ -1,0 +1,134 @@
+<UserControl x:Class="Astra.Views.HomeModules.RealTimeLogModuleView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <DataTemplate x:Key="LogCardTemplate">
+            <Border Margin="0,0,0,8"
+                    Padding="8,6"
+                    CornerRadius="2"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    Background="{DynamicResource SurfaceBrush}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{DynamicResource LightInfoBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource InfoBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding NormalizedLevel}" Value="INFO">
+                                <Setter Property="Background" Value="{DynamicResource LightInfoBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource InfoBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding NormalizedLevel}" Value="ERROR">
+                                <Setter Property="Background" Value="{DynamicResource LightDangerBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding NormalizedLevel}" Value="WARN">
+                                <Setter Property="Background" Value="{DynamicResource LightWarningBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding NormalizedLevel}" Value="FATAL">
+                                <Setter Property="Background" Value="{DynamicResource LightDangerBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource DarkDangerBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               FontSize="10" />
+
+                    <Border Grid.Column="1"
+                            Padding="7,1"
+                            CornerRadius="2"
+                            BorderThickness="1"
+                            Margin="8,0,0,0"
+                            Background="{DynamicResource SecondaryRegionBrush}"
+                            BorderBrush="{DynamicResource SecondaryBorderBrush}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SecondaryBorderBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NormalizedLevel}" Value="ERROR">
+                                        <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource DarkDangerBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding NormalizedLevel}" Value="WARN">
+                                        <Setter Property="Background" Value="{DynamicResource WarningBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource DarkWarningBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding NormalizedLevel}" Value="FATAL">
+                                        <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource DarkDangerBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding NormalizedLevel}" Value="INFO">
+                                        <Setter Property="Background" Value="{DynamicResource LightInfoBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource InfoBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding NormalizedLevel}"
+                                   FontWeight="Bold"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource PrimaryBrush}" />
+                    </Border>
+
+                    <TextBlock Grid.Row="1"
+                               Grid.ColumnSpan="2"
+                               Margin="0,6,0,0"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Text="{Binding Message}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource RegionBrush}"
+            CornerRadius="12"
+            Padding="16"
+            Margin="6"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Border Background="{DynamicResource LightWarningBrush}"
+                    CornerRadius="6"
+                    Padding="8,4">
+                <TextBlock Text="实时日志记录模块"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TitleBrush}" />
+            </Border>
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,10,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Background="{DynamicResource SurfaceBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}">
+                <ItemsControl ItemsSource="{Binding Logs}"
+                              ItemTemplate="{StaticResource LogCardTemplate}" />
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</UserControl>
