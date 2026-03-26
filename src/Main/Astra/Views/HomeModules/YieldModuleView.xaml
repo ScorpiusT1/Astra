@@ -11,7 +11,7 @@
             <Setter Property="Height"
                     Value="6" />
             <Setter Property="Background"
-                    Value="#1F22C55E" />
+                    Value="{DynamicResource LightSuccessBrush}" />
             <Setter Property="BorderThickness"
                     Value="0" />
             <Setter Property="Template">
@@ -26,9 +26,9 @@
                                     <Border.Background>
                                         <LinearGradientBrush StartPoint="0,0"
                                                              EndPoint="1,0">
-                                            <GradientStop Color="#22C55E"
+                                            <GradientStop Color="{DynamicResource SuccessColor}"
                                                           Offset="0" />
-                                            <GradientStop Color="#06B6D4"
+                                            <GradientStop Color="{DynamicResource InfoColor}"
                                                           Offset="1" />
                                         </LinearGradientBrush>
                                     </Border.Background>
@@ -47,6 +47,12 @@
             Margin="6"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="清除当日良率"
+                          Command="{Binding ClearYieldCommand}" />
+            </ContextMenu>
+        </Border.ContextMenu>
         <StackPanel>
 
             <!-- ── 标题栏 ── -->
@@ -65,9 +71,9 @@
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0"
                                              EndPoint="0,1">
-                            <GradientStop Color="#06B6D4"
+                            <GradientStop Color="{DynamicResource InfoColor}"
                                           Offset="0" />
-                            <GradientStop Color="#3B82F6"
+                            <GradientStop Color="{DynamicResource PrimaryColor}"
                                           Offset="1" />
                         </LinearGradientBrush>
                     </Border.Background>
@@ -86,20 +92,20 @@
                         CornerRadius="10"
                         Padding="8,3"
                         BorderThickness="1"
-                        BorderBrush="#3322C55E">
+                        BorderBrush="{DynamicResource SuccessBrush}">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0"
                                              EndPoint="1,0">
-                            <GradientStop Color="#1A22C55E"
+                            <GradientStop Color="{DynamicResource LightSuccessColor}"
                                           Offset="0" />
-                            <GradientStop Color="#1A06B6D4"
+                            <GradientStop Color="{DynamicResource LightInfoColor}"
                                           Offset="1" />
                         </LinearGradientBrush>
                     </Border.Background>
                     <StackPanel Orientation="Horizontal">
                         <Ellipse Width="7"
                                  Height="7"
-                                 Fill="#22C55E"
+                                 Fill="{DynamicResource SuccessBrush}"
                                  VerticalAlignment="Center"
                                  Margin="0,0,5,0" />
                         <TextBlock FontSize="12"
@@ -113,9 +119,9 @@
                             <TextBlock.Foreground>
                                 <LinearGradientBrush StartPoint="0,0"
                                                      EndPoint="1,0">
-                                    <GradientStop Color="#22C55E"
+                                    <GradientStop Color="{DynamicResource SuccessColor}"
                                                   Offset="0" />
-                                    <GradientStop Color="#06B6D4"
+                                    <GradientStop Color="{DynamicResource InfoColor}"
                                                   Offset="1" />
                                 </LinearGradientBrush>
                             </TextBlock.Foreground>

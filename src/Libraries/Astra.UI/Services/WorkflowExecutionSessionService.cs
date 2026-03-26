@@ -1,4 +1,5 @@
 using Astra.Core.Foundation.Common;
+using Astra.Core.Logs;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using System;
@@ -15,6 +16,7 @@ namespace Astra.UI.Services
     {
         private readonly IWorkFlowManager _workFlowManager;
         private readonly IWorkflowEngineProvider _workflowEngineProvider;
+        private readonly IExecutionLogSink? _executionLogSink;
         private readonly object _stateLock = new object();
 
         private string _currentWorkflowKey;
@@ -26,10 +28,12 @@ namespace Astra.UI.Services
 
         public WorkflowExecutionSessionService(
             IWorkFlowManager workFlowManager,
-            IWorkflowEngineProvider workflowEngineProvider)
+            IWorkflowEngineProvider workflowEngineProvider,
+            IExecutionLogSink? executionLogSink = null)
         {
             _workFlowManager = workFlowManager ?? throw new ArgumentNullException(nameof(workFlowManager));
             _workflowEngineProvider = workflowEngineProvider ?? throw new ArgumentNullException(nameof(workflowEngineProvider));
+            _executionLogSink = executionLogSink;
         }
 
         public bool IsRunning
@@ -101,6 +105,13 @@ namespace Astra.UI.Services
             }
 
             context ??= new NodeContext();
+            if (_executionLogSink != null)
+            {
+                context.SetMetadata(ExecutionContextMetadataKeys.UiLogWriter, (Action<string, string>)((level, message) =>
+                {
+                    _executionLogSink.Write(level, message);
+                }));
+            }
             var engine = CreateEngineWithNodeEvents();
             // 把执行启动的同步开销放到后台线程，避免 UI 线程在“启动阶段”卡死。
             var runTask = Task.Run(async () =>

@@ -8,7 +8,6 @@ using Astra.UI.Services;
 using Astra.UI.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using NavStack.Core;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Diagnostics;
@@ -17,18 +16,25 @@ using System.Windows.Media;
 using System.Collections.Generic;
 using System.Linq;
 using Astra.Core.Nodes.Geometry;
+using Astra.Core.Configuration.Abstractions;
+using Astra.Configuration;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Astra.UI.Helpers;
+using System.Threading.Tasks;
+using Astra.Core.Configuration;
+using NavStack.Core;
 
 namespace Astra.ViewModels
 {
     public partial class SequenceViewModel : ObservableObject
     {
-        private readonly IFrameNavigationService _navigationService;
+        private readonly IConfigurationManager _configurationManager;
+        private readonly Action<SoftwareConfig, ConfigChangeType> _softwareConfigChangedHandler;
+        private string? _lastLoadedScriptPath;
       
         [ObservableProperty]
         private string _title = "序列配置";
@@ -46,118 +52,24 @@ namespace Astra.ViewModels
             IFrameNavigationService navigationService,
             IPluginHost pluginHost,
             IManifestSerializer manifestSerializer,
-            IWorkflowExecutionSessionService workflowExecutionSessionService)
+            IWorkflowExecutionSessionService workflowExecutionSessionService,
+            IConfigurationManager configurationManager)
         {
-            _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
+            _ = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
+            _configurationManager = configurationManager ?? throw new ArgumentNullException(nameof(configurationManager));
             
             // 创建 MultiFlowEditorViewModel 实例
             MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializer, workflowExecutionSessionService);
             
             Debug.WriteLine("[SequenceViewModel] 已创建 MultiFlowEditorViewModel");
+
+            // 首次进入时加载一次当前保存脚本
+            InitializeSequencePage();
+
+            // 工业化事件驱动：软件配置一旦保存，序列编辑器立即切换到当前保存脚本
+            _softwareConfigChangedHandler = OnSoftwareConfigChanged;
+            _configurationManager.Subscribe(_softwareConfigChangedHandler);
         }
-
-       
-        /// <summary>
-        /// 订阅导航事件
-        /// </summary>
-        private void SubscribeToNavigationEvents()
-        {
-            // 订阅导航开始事件
-            _navigationService.Navigating += OnNavigationStarted;
-            
-            // 订阅导航完成事件
-            _navigationService.Navigated += OnNavigationCompleted;
-            
-            // 订阅导航失败事件
-            _navigationService.NavigationFailed += OnNavigationFailed;
-            
-            Debug.WriteLine("[SequenceViewModel] 已订阅导航事件");
-        }
-
-        /// <summary>
-        /// 取消订阅导航事件
-        /// </summary>
-        public void UnsubscribeFromNavigationEvents()
-        {
-            if (_navigationService != null)
-            {
-                _navigationService.Navigating -= OnNavigationStarted;
-                _navigationService.Navigated -= OnNavigationCompleted;
-                _navigationService.NavigationFailed -= OnNavigationFailed;
-                
-                Debug.WriteLine("[SequenceViewModel] 已取消订阅导航事件");
-            }
-        }
-
-        #region 导航事件处理
-
-        /// <summary>
-        /// 导航开始事件处理
-        /// </summary>
-        private void OnNavigationStarted(object sender, NavigationEventArgs e)
-        {
-            Debug.WriteLine($"[SequenceViewModel] 导航开始事件触发");
-            Debug.WriteLine($"[SequenceViewModel] 目标页面: {e.Context?.NavigationUri}");
-            Debug.WriteLine($"[SequenceViewModel] 导航模式: {e.Context?.NavigationMode}");
-            
-            // 设置导航状态
-            IsNavigating = true;
-            
-            // 这里可以添加导航开始时的逻辑
-            // 例如：显示加载指示器、禁用某些操作等
-            
-            // 示例：如果是导航到当前页面，可以做一些特殊处理
-            if (e.Context?.NavigationUri == NavigationKeys.Sequence)
-            {
-                Debug.WriteLine("[SequenceViewModel] 正在导航到序列编辑页面");
-                // 可以在这里做一些准备工作
-            }
-        }
-
-        /// <summary>
-        /// 导航完成事件处理
-        /// </summary>
-        private void OnNavigationCompleted(object sender, NavigationEventArgs e)
-        {
-            Debug.WriteLine($"[SequenceViewModel] 导航完成事件触发");
-            Debug.WriteLine($"[SequenceViewModel] 当前页面: {e.Context?.NavigationUri}");
-            Debug.WriteLine($"[SequenceViewModel] 导航模式: {e.Context?.NavigationMode}");
-            
-            // 清除导航状态
-            IsNavigating = false;
-            
-            // 这里可以添加导航完成时的逻辑
-            // 例如：隐藏加载指示器、启用操作、刷新数据等
-            
-            // 示例：如果导航到了当前页面，可以做一些初始化工作
-            if (e.Context?.NavigationUri == NavigationKeys.Sequence)
-            {
-                Debug.WriteLine("[SequenceViewModel] 已成功导航到序列编辑页面");
-                // 可以在这里做一些页面初始化工作
-                InitializeSequencePage();
-            }
-        }
-
-        /// <summary>
-        /// 导航失败事件处理
-        /// </summary>
-        private void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
-        {
-            Debug.WriteLine($"[SequenceViewModel] 导航失败事件触发");
-            Debug.WriteLine($"[SequenceViewModel] 失败原因: {e.Exception?.Message}");
-            Debug.WriteLine($"[SequenceViewModel] 目标页面: {e.Context?.NavigationUri}");
-            
-            // 清除导航状态
-            IsNavigating = false;
-            
-            // 这里可以添加导航失败时的逻辑
-            // 例如：显示错误消息、记录日志等
-            
-            // 示例：处理导航失败
-            HandleNavigationFailure(e.Exception, e.Context?.NavigationUri);
-        }
-
-        #endregion
 
         #region 私有方法
 
@@ -166,34 +78,126 @@ namespace Astra.ViewModels
         /// </summary>
         private void InitializeSequencePage()
         {
-            
+            _ = AutoLoadSequenceFromSoftwareConfigAsync();
         }
 
-        /// <summary>
-        /// 处理导航失败
-        /// </summary>
-        private void HandleNavigationFailure(Exception exception, string targetPage)
+        private async Task AutoLoadSequenceFromSoftwareConfigAsync()
         {
-            Debug.WriteLine($"[SequenceViewModel] 处理导航失败: {targetPage}");
-            
-            // 这里可以添加失败处理逻辑
-            // 例如：显示错误消息、尝试重新导航等
-            
-            if (exception != null)
+            try
             {
-                Debug.WriteLine($"[SequenceViewModel] 异常详情: {exception}");
+                string? preferredScriptPath = null;
+
+                var all = await _configurationManager.GetAllAsync().ConfigureAwait(false);
+                if (all?.Success == true && all.Data != null)
+                {
+                    var latestSoftwareConfig = all.Data
+                        .OfType<SoftwareConfig>()
+                        .OrderByDescending(cfg => cfg.UpdatedAt ?? DateTime.MinValue)
+                        .ThenByDescending(cfg => cfg.CreatedAt)
+                        .FirstOrDefault();
+
+                    preferredScriptPath = latestSoftwareConfig?.CurrentWorkflowId;
+                    if (string.IsNullOrWhiteSpace(preferredScriptPath) || !File.Exists(preferredScriptPath))
+                    {
+                        preferredScriptPath = (latestSoftwareConfig?.Duts ?? [])
+                            .Select(dut => dut?.WorkflowId)
+                            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id) && File.Exists(id));
+                    }
+
+                    // 兜底：如果最新配置未选脚本，则退回全局任意可用脚本
+                    if (string.IsNullOrWhiteSpace(preferredScriptPath))
+                    {
+                        preferredScriptPath = all.Data
+                            .OfType<SoftwareConfig>()
+                            .SelectMany(cfg => cfg.Duts ?? [])
+                            .Select(dut => dut?.WorkflowId)
+                            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id) && File.Exists(id));
+                    }
+                }
+
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (!ShouldReloadScript(preferredScriptPath))
+                        return;
+                    MultiFlowEditor?.TryAutoLoadSequence(preferredScriptPath);
+                    _lastLoadedScriptPath = NormalizePath(preferredScriptPath);
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 根据软件配置自动加载序列失败: {ex.Message}");
+                Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    MultiFlowEditor?.TryAutoLoadSequence();
+                });
             }
         }
 
-        #endregion
+        private void OnSoftwareConfigChanged(SoftwareConfig config, ConfigChangeType changeType)
+        {
+            if (changeType != ConfigChangeType.Updated || config == null)
+                return;
 
+            var preferredScriptPath = ResolvePreferredScriptPath(config);
+            if (!ShouldReloadScript(preferredScriptPath))
+                return;
+
+            Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                MultiFlowEditor?.TryAutoLoadSequence(preferredScriptPath);
+                _lastLoadedScriptPath = NormalizePath(preferredScriptPath);
+            });
+        }
+
+        private static string? ResolvePreferredScriptPath(SoftwareConfig? config)
+        {
+            if (config == null)
+                return null;
+
+            if (!string.IsNullOrWhiteSpace(config.CurrentWorkflowId) && File.Exists(config.CurrentWorkflowId))
+                return config.CurrentWorkflowId;
+
+            return (config.Duts ?? [])
+                .Select(dut => dut?.WorkflowId)
+                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id) && File.Exists(id));
+        }
+
+        private bool ShouldReloadScript(string? preferredScriptPath)
+        {
+            var target = NormalizePath(preferredScriptPath);
+            if (string.IsNullOrWhiteSpace(target))
+                return false;
+
+            var current = NormalizePath(MultiFlowEditor?.CurrentFilePath);
+            var loaded = NormalizePath(_lastLoadedScriptPath);
+
+            return !string.Equals(target, current, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(target, loaded, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? NormalizePath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+
+            try
+            {
+                return Path.GetFullPath(path.Trim());
+            }
+            catch
+            {
+                return path.Trim();
+            }
+        }
 
         /// <summary>
         /// 释放资源
         /// </summary>
         public void Dispose()
         {
-            UnsubscribeFromNavigationEvents();
+            _configurationManager.Unsubscribe(_softwareConfigChangedHandler);
         }
+
+        #endregion
     }
 }

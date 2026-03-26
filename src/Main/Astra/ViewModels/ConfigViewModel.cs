@@ -1200,6 +1200,7 @@ namespace Astra.ViewModels
                     {
                         try
                         {
+                            EnsureConfigId(siblingNode.Config);
                             // 保存节点配置（更新 UpdatedAt，但保持原有名称和编号）
                             var saveResult = await _configManager.SaveAsync(siblingNode.Config);
                             
@@ -1252,6 +1253,7 @@ namespace Astra.ViewModels
 
                 // 如果没有父节点，只保存当前节点（不应该发生，但保留作为后备）
                 // 通过 IConfigurationManager 的非泛型入口保存当前配置
+                EnsureConfigId(targetNode.Config);
                 OperationResult rlt = await _configManager.SaveAsync(targetNode.Config);
 
                 if (rlt == null || !rlt.Success)
@@ -1372,6 +1374,7 @@ namespace Astra.ViewModels
                     {
                         try
                         {
+                            EnsureConfigId(childNode.Config);
                             // 同步等待异步保存完成（在后台线程中不会阻塞 UI）
                             var result = _configManager.SaveAsync(childNode.Config).GetAwaiter().GetResult();
 
@@ -1693,6 +1696,20 @@ namespace Astra.ViewModels
 
             // 非设备配置保持原有策略（并在必要时补充编号）
             return GetNodeDisplayName(config, parent, savedConfigs, preserveExistingNumber: false);
+        }
+
+        /// <summary>
+        /// 保存前确保 ConfigId 有值，避免底层 Provider 以“配置ID不能为空”拒绝写入。
+        /// </summary>
+        private static void EnsureConfigId(IConfig config)
+        {
+            if (config == null || !string.IsNullOrWhiteSpace(config.ConfigId))
+                return;
+
+            if (config is ConfigBase configBase)
+            {
+                configBase.ConfigId = Guid.NewGuid().ToString("N");
+            }
         }
 
         /// <summary>

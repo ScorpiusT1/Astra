@@ -1,56 +1,67 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Astra.Services.Logging;
 using System;
 using System.Collections.ObjectModel;
-using System.Windows.Threading;
+using System.Windows;
 
 namespace Astra.ViewModels.HomeModules
 {
-    public partial class RealTimeLogModuleViewModel : ObservableObject
+    public partial class RealTimeLogModuleViewModel : ObservableObject, IDisposable
     {
-        private readonly DispatcherTimer _timer;
-        private int _sequence;
+        private readonly IUiLogService _uiLogService;
+        private bool _disposed;
 
         public ObservableCollection<LogEntryItem> Logs { get; } = new();
 
-        public RealTimeLogModuleViewModel()
+        public RealTimeLogModuleViewModel(IUiLogService uiLogService)
         {
-            InitializeSeedLogs();
+            _uiLogService = uiLogService;
+            _uiLogService.LogAdded += OnLogAdded;
+        }
 
-            _timer = new DispatcherTimer
+        private void OnLogAdded(object? sender, UiLogEntryEventArgs e)
+        {
+            if (_disposed)
+                return;
+
+            if (Application.Current?.Dispatcher == null || Application.Current.Dispatcher.CheckAccess())
             {
-                Interval = TimeSpan.FromSeconds(2)
-            };
-            _timer.Tick += OnTick;
-            _timer.Start();
+                AddLog(e.Level, e.Message, e.Timestamp);
+                return;
+            }
+
+            Application.Current.Dispatcher.InvokeAsync(() => AddLog(e.Level, e.Message, e.Timestamp));
         }
 
-        private void InitializeSeedLogs()
-        {
-            AddLog("INFO", "系统启动完成，等待测试任务...");
-            AddLog("INFO", "工作流引擎就绪");
-            AddLog("INFO", "设备通信链路正常");
-        }
-
-        private void OnTick(object? sender, EventArgs e)
-        {
-            _sequence++;
-            var level = _sequence % 5 == 0 ? "WARN" : "INFO";
-            AddLog(level, $"实时记录：第 {_sequence} 次状态轮询完成");
-        }
-
-        private void AddLog(string level, string message)
+        private void AddLog(string level, string message, DateTime? timestamp = null)
         {
             Logs.Insert(0, new LogEntryItem
             {
-                Timestamp = DateTime.Now,
+                Timestamp = timestamp ?? DateTime.Now,
                 Level = level,
                 Message = message
             });
 
-            while (Logs.Count > 200)
+            while (Logs.Count > 500)
             {
                 Logs.RemoveAt(Logs.Count - 1);
             }
+        }
+
+        [RelayCommand]
+        private void ClearLogs()
+        {
+            Logs.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _uiLogService.LogAdded -= OnLogAdded;
+            _disposed = true;
         }
     }
 

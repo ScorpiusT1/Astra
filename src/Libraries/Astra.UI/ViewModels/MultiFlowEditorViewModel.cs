@@ -34,6 +34,11 @@ namespace Astra.UI.ViewModels
 {
     public partial class MultiFlowEditorViewModel : ObservableObject, IWorkflowReferenceNodeHost
     {
+        /// <summary>
+        /// 序列文件保存成功事件（无论保存到同一路径还是另存为都会触发）。
+        /// </summary>
+        public event EventHandler<string>? SequenceFileSaved;
+
         #region 常量定义
 
         /// <summary>
@@ -109,6 +114,11 @@ namespace Astra.UI.ViewModels
         /// </summary>
         [ObservableProperty]
         private string _currentFilePath;
+
+        /// <summary>
+        /// 最近一次成功加载的文件路径（用于保存时兜底回写原文件）。
+        /// </summary>
+        private string _lastLoadedFilePath;
 
         /// <summary>
         /// 全局剪贴板：存储复制的节点（支持跨流程复制粘贴）
@@ -1538,6 +1548,9 @@ namespace Astra.UI.ViewModels
                     return;
                 }
 
+                // 复制出的子流程需要全新ID，避免覆盖原流程并导致执行漏跑。
+                duplicatedSubWorkflow.Id = Guid.NewGuid().ToString();
+
                 // 重建关系
                 duplicatedSubWorkflow.RebuildRelationships();
 
@@ -1975,6 +1988,7 @@ namespace Astra.UI.ViewModels
 
                 // 更新当前文件路径
                 CurrentFilePath = filePath;
+                _lastLoadedFilePath = filePath;
 
                 // 清除所有修改标记
                 ClearAllModifiedFlags();
@@ -1994,6 +2008,68 @@ namespace Astra.UI.ViewModels
         }
 
         /// <summary>
+        /// 自动加载序列文件：
+        /// 1) 优先加载指定路径（若存在）；
+        /// 2) 否则回退到 Solutions 目录中的第一个已保存序列（按最后写入时间升序）。
+        /// </summary>
+        public void TryAutoLoadSequence(string? preferredFilePath = null)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(preferredFilePath) && File.Exists(preferredFilePath))
+                {
+                    var preferredLoadResult = _workflowSerializer.LoadFromFile(preferredFilePath);
+                    if (preferredLoadResult.Success)
+                    {
+                        LoadMultiWorkflowData(preferredLoadResult.Data);
+                        CurrentFilePath = preferredFilePath;
+                        _lastLoadedFilePath = preferredFilePath;
+                        ClearAllModifiedFlags();
+                        _commandManager?.Clear();
+
+                        Debug.WriteLine($"[SequenceViewModel] 已按配置自动加载序列: {preferredFilePath}");
+                        return;
+                    }
+
+                    Debug.WriteLine($"[SequenceViewModel] 配置脚本加载失败，回退默认首个序列: {preferredLoadResult.ErrorMessage}");
+                }
+
+                var files = Directory
+                    .EnumerateFiles(SolutionsFolder, $"*{FILE_EXTENSION}", SearchOption.TopDirectoryOnly)
+                    .Select(path => new FileInfo(path))
+                    .OrderBy(info => info.LastWriteTimeUtc)
+                    .ThenBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var first = files.FirstOrDefault();
+                if (first == null)
+                {
+                    Debug.WriteLine("[SequenceViewModel] Solutions 目录下没有可自动加载的序列文件");
+                    return;
+                }
+
+                var loadResult = _workflowSerializer.LoadFromFile(first.FullName);
+                if (!loadResult.Success)
+                {
+                    Debug.WriteLine($"[SequenceViewModel] 自动加载序列失败: {loadResult.ErrorMessage}");
+                    return;
+                }
+
+                LoadMultiWorkflowData(loadResult.Data);
+                CurrentFilePath = first.FullName;
+                _lastLoadedFilePath = first.FullName;
+                ClearAllModifiedFlags();
+                _commandManager?.Clear();
+
+                Debug.WriteLine($"[SequenceViewModel] 已自动加载首个序列: {first.FullName}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 自动加载首个序列异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 保存文件命令
         /// </summary>
         [RelayCommand]
@@ -2002,6 +2078,14 @@ namespace Astra.UI.ViewModels
             try
             {
                 Debug.WriteLine("[SequenceViewModel] 保存文件命令");
+
+                // 兜底：若当前路径为空但有最近加载路径，则优先回写最近加载文件
+                if (string.IsNullOrWhiteSpace(CurrentFilePath)
+                    && !string.IsNullOrWhiteSpace(_lastLoadedFilePath)
+                    && File.Exists(_lastLoadedFilePath))
+                {
+                    CurrentFilePath = _lastLoadedFilePath;
+                }
 
                 if (string.IsNullOrWhiteSpace(CurrentFilePath))
                 {
@@ -2065,6 +2149,7 @@ namespace Astra.UI.ViewModels
                 {
                     // 更新当前文件路径
                     CurrentFilePath = filePath;
+                    _lastLoadedFilePath = filePath;
                     ToastHelper.ShowSuccess($"项目已保存: {Path.GetFileName(filePath)}");
                     Debug.WriteLine($"[SequenceViewModel] 项目已另存为: {filePath}");
                 }
@@ -2111,6 +2196,11 @@ namespace Astra.UI.ViewModels
 
                 // 保存成功后，将命令历史视为“已保存基线”，清空撤销/重做栈
                 _commandManager?.Clear();
+
+                // 无论来自“保存”还是“另存为”，成功后都固化当前路径，避免后续再次走“另存为”
+                CurrentFilePath = filePath;
+                _lastLoadedFilePath = filePath;
+                SequenceFileSaved?.Invoke(this, filePath);
 
                 return true;
             }
@@ -4013,6 +4103,8 @@ namespace Astra.UI.ViewModels
 
         private MasterExecutionPlan BuildMasterExecutionPlan()
         {
+            EnsureMasterWorkflowReferencesForExecution();
+
             if (MasterWorkflow?.SubWorkflowReferences == null || MasterWorkflow.SubWorkflowReferences.Count == 0)
             {
                 // 主流程无引用时：按子流程 Tab 全量执行（无依赖）
@@ -4077,9 +4169,8 @@ namespace Astra.UI.ViewModels
                     IsEnabled = referenceNodeById.TryGetValue(reference.Id, out var nodeForEnabled)
                         ? nodeForEnabled.IsEnabled
                         : reference.IsEnabled,
-                    ContinueOnFailure = referenceNodeById.TryGetValue(reference.Id, out var refNode)
-                        ? refNode.ContinueOnFailure
-                        : false
+                    // 失败继续以主流程引用配置为准，避免画布节点瞬态值覆盖持久化配置。
+                    ContinueOnFailure = reference.ContinueOnFailure
                 };
             }
 
@@ -4104,6 +4195,53 @@ namespace Astra.UI.ViewModels
                 Successors = successors,
                 HasDependencies = dependencyCount > 0
             };
+        }
+
+        /// <summary>
+        /// 执行前确保主流程引用与当前子流程集合同步。
+        /// 解决“未打开主流程界面时，新增子流程未进入执行计划”的问题。
+        /// </summary>
+        private void EnsureMasterWorkflowReferencesForExecution()
+        {
+            if (MasterWorkflow == null || SubWorkflows == null)
+            {
+                return;
+            }
+
+            MasterWorkflow.SubWorkflowReferences ??= new List<WorkflowReference>();
+
+            var existingBySubId = MasterWorkflow.SubWorkflowReferences
+                .Where(r => r != null && !string.IsNullOrWhiteSpace(r.SubWorkflowId))
+                .ToDictionary(r => r.SubWorkflowId, r => r, StringComparer.Ordinal);
+
+            // 为新增子流程补齐主流程引用（不依赖是否打开主流程可视界面）。
+            var index = MasterWorkflow.SubWorkflowReferences.Count;
+            foreach (var workflow in SubWorkflows.Values.Where(w => w != null && !string.IsNullOrWhiteSpace(w.Id)))
+            {
+                if (existingBySubId.ContainsKey(workflow.Id))
+                {
+                    continue;
+                }
+
+                var reference = new WorkflowReference
+                {
+                    SubWorkflowId = workflow.Id,
+                    DisplayName = workflow.Name ?? "未命名子流程",
+                    Position = new Point2D(100 + index * 250, 100),
+                    Size = new Size2D(200, 150),
+                    IsEnabled = true,
+                    ContinueOnFailure = false
+                };
+                MasterWorkflow.SubWorkflowReferences.Add(reference);
+                index++;
+            }
+
+            // 清理已失效引用，避免执行计划包含不存在的子流程。
+            MasterWorkflow.SubWorkflowReferences = MasterWorkflow.SubWorkflowReferences
+                .Where(r => r != null
+                    && !string.IsNullOrWhiteSpace(r.SubWorkflowId)
+                    && SubWorkflows.ContainsKey(r.SubWorkflowId))
+                .ToList();
         }
 
         private async Task<bool> ExecuteSubWorkflowInMasterAsync(

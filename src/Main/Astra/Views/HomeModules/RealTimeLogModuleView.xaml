@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:conv="clr-namespace:Astra.Converters"
              mc:Ignorable="d"
              d:DesignHeight="720"
@@ -10,46 +11,43 @@
 
     <UserControl.Resources>
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+        <Geometry x:Key="GithubGeometry">F1 M 512,64 C 268,64 72,260 72,504 C 72,700 200,867 377,926 C 402,931 411,916 411,903 C 411,892 410,860 410,819 C 272,849 243,761 243,761 C 220,703 187,687 187,687 C 142,656 191,657 191,657 C 241,661 267,709 267,709 C 311,784 383,763 411,750 C 415,717 428,695 442,683 C 332,670 217,628 217,440 C 217,387 236,344 267,309 C 262,297 245,247 272,180 C 272,180 314,166 410,232 C 449,221 490,215 531,215 C 572,215 613,221 652,232 C 748,166 790,180 790,180 C 817,247 800,297 795,309 C 826,344 845,387 845,440 C 845,629 729,669 619,683 C 637,699 653,730 653,777 C 653,845 652,888 652,903 C 652,916 661,932 686,926 C 863,867 992,700 992,504 C 992,260 796,64 552,64 C 538,64 525,64 512,64 Z</Geometry>
 
         <!-- 卡片背景渐变（末端保留淡色，不完全透明） -->
         <LinearGradientBrush x:Key="InfoCardBg"
                              StartPoint="0,0"
-                             EndPoint="1,0">
-            <GradientStop Color="#3000B4D8"
+                             EndPoint="1,0"
+                             Opacity="0.4">
+            <GradientStop Color="{DynamicResource SuccessColor}"
                           Offset="0" />
-            <GradientStop Color="#1800B4D8"
-                          Offset="0.5" />
-            <GradientStop Color="#0D00B4D8"
+            <GradientStop Color="{DynamicResource LightSuccessColor}"
                           Offset="1" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="WarnCardBg"
                              StartPoint="0,0"
-                             EndPoint="1,0">
-            <GradientStop Color="#38F59E0B"
+                             EndPoint="1,0"
+                             Opacity="0.4">
+            <GradientStop Color="{DynamicResource WarningColor}"
                           Offset="0" />
-            <GradientStop Color="#20F59E0B"
-                          Offset="0.5" />
-            <GradientStop Color="#12F59E0B"
+            <GradientStop Color="{DynamicResource LightWarningColor}"
                           Offset="1" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="ErrorCardBg"
                              StartPoint="0,0"
-                             EndPoint="1,0">
-            <GradientStop Color="#38EF4444"
+                             EndPoint="1,0"
+                             Opacity="0.40">
+            <GradientStop Color="{DynamicResource DangerColor}"
                           Offset="0" />
-            <GradientStop Color="#20EF4444"
-                          Offset="0.5" />
-            <GradientStop Color="#12EF4444"
+            <GradientStop Color="{DynamicResource LightDangerColor}"
                           Offset="1" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="FatalCardBg"
                              StartPoint="0,0"
-                             EndPoint="1,0">
-            <GradientStop Color="#40F97316"
+                             EndPoint="1,0"
+                             Opacity="0.40">
+            <GradientStop Color="{DynamicResource DarkWarningColor}"
                           Offset="0" />
-            <GradientStop Color="#25F97316"
-                          Offset="0.5" />
-            <GradientStop Color="#15F97316"
+            <GradientStop Color="{DynamicResource LightDangerColor}"
                           Offset="1" />
         </LinearGradientBrush>
 
@@ -58,6 +56,8 @@
             <Border Margin="0,4"
                     Padding="0"
                     MinHeight="82"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
                     ClipToBounds="True">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="6"
@@ -72,8 +72,6 @@
                                 Value="8" />
                         <Setter Property="Background"
                                 Value="{StaticResource InfoCardBg}" />
-                        <Setter Property="BorderThickness"
-                                Value="0,0,0,0" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding NormalizedLevel}"
                                          Value="WARN">
@@ -107,22 +105,22 @@
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Background"
-                                        Value="#00B4D8" />
+                                        Value="{DynamicResource DarkSuccessBrush}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding NormalizedLevel}"
                                                  Value="WARN">
                                         <Setter Property="Background"
-                                                Value="#F59E0B" />
+                                                Value="{DynamicResource DarkWarningBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding NormalizedLevel}"
                                                  Value="ERROR">
                                         <Setter Property="Background"
-                                                Value="#EF4444" />
+                                                Value="{DynamicResource DarkDangerBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding NormalizedLevel}"
                                                  Value="FATAL">
                                         <Setter Property="Background"
-                                                Value="#F97316" />
+                                                Value="{DynamicResource DarkDangerBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -143,8 +141,7 @@
                                    Foreground="{DynamicResource PrimaryTextBrush}"
                                    LineHeight="20"
                                    TextWrapping="Wrap"
-                                   MaxHeight="40"
-                                   TextTrimming="CharacterEllipsis" />
+                                   TextTrimming="None" />
                     </StackPanel>
 
                     <!-- 右侧 Badge：实色背景 + 白色文字 -->
@@ -157,22 +154,22 @@
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Background"
-                                        Value="#00B4D8" />
+                                        Value="{DynamicResource SuccessBrush}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding NormalizedLevel}"
                                                  Value="WARN">
                                         <Setter Property="Background"
-                                                Value="#F59E0B" />
+                                                Value="{DynamicResource WarningBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding NormalizedLevel}"
                                                  Value="ERROR">
                                         <Setter Property="Background"
-                                                Value="#EF4444" />
+                                                Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding NormalizedLevel}"
                                                  Value="FATAL">
                                         <Setter Property="Background"
-                                                Value="#F97316" />
+                                                Value="{DynamicResource DarkWarningBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -192,12 +189,18 @@
 
     <Border Background="{DynamicResource RegionBrush}"
             CornerRadius="12"
-            Padding="0"
+            Padding="4"
             Margin="6"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
             ClipToBounds="True">
-        <DockPanel Background="{DynamicResource RegionBrush}">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="清除日志"
+                          Command="{Binding ClearLogsCommand}" />
+            </ContextMenu>
+        </Border.ContextMenu>
+        <DockPanel Background="Transparent">
 
         <!-- 标题栏 -->
         <Grid DockPanel.Dock="Top"
@@ -237,12 +240,13 @@
             <Border Grid.Column="2"
                     CornerRadius="10"
                     Padding="8,3"
+                    BorderThickness="1"
                     VerticalAlignment="Center">
                 <Border.Background>
-                    <SolidColorBrush Color="#1406B6D4" />
+                    <SolidColorBrush Color="{DynamicResource LightPrimaryColor}" />
                 </Border.Background>
-                <Border BorderBrush="#3306B6D4"
-                        BorderThickness="1"
+                <Border BorderBrush="{DynamicResource PrimaryBrush}"
+                        BorderThickness="0"
                         CornerRadius="10"
                         Padding="0">
                     <TextBlock FontSize="12"
@@ -274,34 +278,27 @@
                         HorizontalAlignment="Center"
                         Visibility="{Binding Logs.Count,
                             Converter={StaticResource CountToVisibilityConverter}}">
-                <Ellipse Width="36"
-                         Height="36"
-                         Stroke="{DynamicResource SecondaryTextBrush}"
-                         StrokeThickness="2"
-                         StrokeDashArray="2.5,8"
-                         Margin="0,0,0,10">
-                    <Ellipse.RenderTransform>
-                        <RotateTransform x:Name="SpinTransform"
-                                         CenterX="18"
-                                         CenterY="18" />
-                    </Ellipse.RenderTransform>
-                    <Ellipse.Triggers>
-                        <EventTrigger RoutedEvent="Loaded">
-                            <BeginStoryboard>
-                                <Storyboard RepeatBehavior="Forever">
-                                    <DoubleAnimation Storyboard.TargetName="SpinTransform"
-                                                     Storyboard.TargetProperty="Angle"
-                                                     From="0"
-                                                     To="360"
-                                                     Duration="0:0:2" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </Ellipse.Triggers>
-                </Ellipse>
+                <hc:TransitioningContentControl HorizontalAlignment="Center"
+                                                VerticalAlignment="Center">
+                    <Viewbox Margin="0"
+                             Width="112"
+                             Height="112">
+                        <hc:AnimationPath VerticalAlignment="Center"
+                                          Duration="0:0:6"
+                                          Stretch="Uniform"
+                                          Width="1024"
+                                          Height="1024"
+                                          StrokeThickness="20"
+                                          Opacity="0.4"
+                                          Stroke="{DynamicResource PrimaryBrush}"
+                                          Data="{StaticResource GithubGeometry}" />
+                    </Viewbox>
+                </hc:TransitioningContentControl>
                 <TextBlock Text="等待日志数据…"
+                           Margin="0,8,0,0"
                            FontSize="12"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
+                               Opacity="0.5"
+                               Foreground="{DynamicResource PrimaryBrush}"
                            HorizontalAlignment="Center" />
             </StackPanel>
 

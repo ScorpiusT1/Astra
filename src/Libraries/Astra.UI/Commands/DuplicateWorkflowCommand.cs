@@ -89,6 +89,9 @@ namespace Astra.UI.Commands
             if (duplicatedSubWorkflow == null)
                 throw new InvalidOperationException("克隆的节点不是 WorkFlowNode 类型");
 
+            // 复制后的子流程必须使用新ID，避免覆盖原流程导致执行计划丢流程。
+            duplicatedSubWorkflow.Id = Guid.NewGuid().ToString();
+
             // 重建关系（确保连线引用正确）
             duplicatedSubWorkflow.RebuildRelationships();
 

@@ -17,10 +17,12 @@ using Astra.Core.Plugins.Performance;
 using Astra.Core.Plugins.Recovery;
 using Astra.Core.Plugins.Security;
 using Astra.Core.Plugins.Validation;
+using Astra.Core.Logs;
 using Astra.Models;
 using Astra.Services.Authorization;
 using Astra.Services.Dialogs;
 using Astra.Services.Home;
+using Astra.Services.Logging;
 using Astra.Services.Navigation;
 using Astra.Services.Session;
 using Astra.Core.Nodes.Management;
@@ -160,11 +162,15 @@ namespace Astra.Services.Startup
             services.AddSingleton<IDialogService, DialogService>();
             
             // ⭐ 注册导航权限服务
-            services.AddSingleton<ITestItemTreeDataProvider, DefaultTestItemTreeDataProvider>();
+            services.AddSingleton<ITestItemTreeDataProvider, WorkflowNodeTestItemTreeDataProvider>();
+            services.AddSingleton<IYieldDailyStatsService, YieldDailyStatsService>();
+            services.AddSingleton<IHomeWorkflowExecutionService, HomeWorkflowExecutionService>();
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
             services.AddSingleton<IWorkFlowManager, WorkFlowManager>();
             services.AddSingleton<IWorkflowEngineProvider, DefaultWorkflowEngineProvider>();
             services.AddSingleton<IWorkflowExecutionSessionService, WorkflowExecutionSessionService>();
+            services.AddSingleton<IUiLogService, UiLogService>();
+            services.AddSingleton<IExecutionLogSink, ExecutionLogSink>();
 
             Debug.WriteLine("✅ 应用程序服务注册完成");
         }
@@ -494,6 +500,8 @@ namespace Astra.Services.Startup
             services.AddTransient<ViewModels.DebugViewModel>();
             // ⭐ SequenceViewModel 注册为单例，确保切换界面时画布数据不丢失
             services.AddSingleton<ViewModels.SequenceViewModel>();
+            // ⭐ HomeViewModel 注册为单例，切换 Home/Sequence 时保留运行态数据，避免每次导航刷新
+            services.AddSingleton<ViewModels.HomeViewModel>();
 
             Debug.WriteLine("✅ 重构后的 ViewModels 注册完成");
         }

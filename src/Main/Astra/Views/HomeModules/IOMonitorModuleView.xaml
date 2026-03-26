@@ -68,7 +68,9 @@
                        Foreground="{DynamicResource SecondaryTextBrush}" />
 
             <!-- 内容区 -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
+            <!-- 固定可视区域为两行（每行2个），一次显示4个IO -->
+            <ScrollViewer Height="196"
+                          VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl ItemsSource="{Binding Points}">
 
@@ -83,9 +85,12 @@
                             <Border Height="86"
                                     Margin="4"
                                     CornerRadius="6"
+                                    BorderThickness="1"
                                     ClipToBounds="True">
                                 <Border.Style>
                                     <Style TargetType="Border">
+                                        <Setter Property="BorderBrush"
+                                                Value="#33EF4444" />
                                         <Setter Property="Background">
                                             <Setter.Value>
                                                 <LinearGradientBrush StartPoint="0,0"
@@ -100,6 +105,8 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsOn}"
                                                          Value="True">
+                                                <Setter Property="BorderBrush"
+                                                        Value="#3322C55E" />
                                                 <Setter Property="Background">
                                                     <Setter.Value>
                                                         <LinearGradientBrush StartPoint="0,0"

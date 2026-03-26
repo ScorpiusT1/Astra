@@ -123,6 +123,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0"
@@ -166,6 +167,18 @@
                                  Text="{Binding Config.DutCount}" />
                     </StackPanel>
                 </Grid>
+
+                <StackPanel Grid.Row="2"
+                            Margin="{StaticResource FieldSpacing}"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Top">
+                    <CheckBox IsChecked="{Binding Config.EnableHomeSequenceLinkage, UpdateSourceTrigger=PropertyChanged}"
+                              VerticalAlignment="Center" />
+                    <TextBlock Text="启用 Home 与流程编辑界面执行联动（开始/暂停/继续/取消）"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -219,12 +232,12 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ComboBox Style="{StaticResource ModernComboBoxStyle}"
-                                                  IsEditable="True"
+                                                  IsEditable="False"
                                                   ItemsSource="{Binding DataContext.WorkflowOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                   DisplayMemberPath="Name"
                                                   SelectedValuePath="Id"
-                                                  SelectedValue="{Binding WorkflowName, UpdateSourceTrigger=PropertyChanged}"
-                                                  Text="{Binding WorkflowName, UpdateSourceTrigger=PropertyChanged}" />
+                                                  SelectedValue="{Binding WorkflowId, UpdateSourceTrigger=PropertyChanged}"
+                                                  Text="{Binding WorkflowName, Mode=OneWay}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

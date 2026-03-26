@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="clr-namespace:Astra.Views"
              xmlns:modules="clr-namespace:Astra.ViewModels.HomeModules"
              xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
              xmlns:tv="clr-namespace:Astra.UI.Styles.Controls.TreeViewEx;assembly=Astra.UI"
@@ -28,17 +29,17 @@
                 <DataTrigger Binding="{Binding Status}"
                              Value="Pass">
                     <Setter Property="Background"
-                            Value="#22C55E" />
+                            Value="{DynamicResource SuccessBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}"
                              Value="Fail">
                     <Setter Property="Background"
-                            Value="#EF4444" />
+                            Value="{DynamicResource DangerBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}"
                              Value="Running">
                     <Setter Property="Background"
-                            Value="#F97316" />
+                            Value="{DynamicResource WarningBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}"
                              Value="Ready">
@@ -90,12 +91,12 @@
                 <DataTrigger Binding="{Binding Status}"
                              Value="Pass">
                     <Setter Property="Foreground"
-                            Value="#22C55E" />
+                            Value="{DynamicResource SuccessBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}"
                              Value="Fail">
                     <Setter Property="Foreground"
-                            Value="#EF4444" />
+                            Value="{DynamicResource DangerBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -125,11 +126,93 @@
             <Setter Property="Margin"
                     Value="0,0,8,0" />
             <Setter Property="BorderBrush"
-                    Value="#3306B6D4" />
+                    Value="{DynamicResource PrimaryBrush}" />
             <Setter Property="BorderThickness"
                     Value="1" />
             <Setter Property="Background"
-                    Value="#1406B6D4" />
+                    Value="{DynamicResource LightPrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="HomeToolbarButtonBaseStyle"
+               TargetType="Button">
+            <Setter Property="Height"
+                    Value="34" />
+            <Setter Property="MinWidth"
+                    Value="76" />
+            <Setter Property="Padding"
+                    Value="16,0" />
+            <Setter Property="FontSize"
+                    Value="13" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+            <Setter Property="Foreground"
+                    Value="White" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
+            <Setter Property="Cursor"
+                    Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter TargetName="Root"
+                                        Property="Opacity"
+                                        Value="0.9" />
+                            </Trigger>
+                            <Trigger Property="IsPressed"
+                                     Value="True">
+                                <Setter TargetName="Root"
+                                        Property="Opacity"
+                                        Value="0.78" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled"
+                                     Value="False">
+                                <Setter TargetName="Root"
+                                        Property="Opacity"
+                                        Value="0.45" />
+                                <Setter Property="Cursor"
+                                        Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HomeToolbarStartStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource HomeToolbarButtonBaseStyle}">
+            <Setter Property="Background"
+                    Value="{DynamicResource SuccessBrush}" />
+        </Style>
+
+        <Style x:Key="HomeToolbarCancelStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource HomeToolbarButtonBaseStyle}">
+            <Setter Property="Background"
+                    Value="{DynamicResource DangerBrush}" />
+        </Style>
+
+        <Style x:Key="HomeToolbarPauseStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource HomeToolbarButtonBaseStyle}">
+            <Setter Property="Background"
+                    Value="{DynamicResource WarningBrush}" />
+        </Style>
+
+        <Style x:Key="HomeToolbarResumeStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource HomeToolbarButtonBaseStyle}">
+            <Setter Property="Background"
+                    Value="{DynamicResource PrimaryBrush}" />
         </Style>
 
         <Style x:Key="SummaryCardStyle"
@@ -141,7 +224,7 @@
             <Setter Property="Margin"
                     Value="0,0,6,0" />
             <Setter Property="BorderBrush"
-                    Value="#D7E1ED" />
+                    Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness"
                     Value="1" />
             <Setter Property="Background"
@@ -155,6 +238,82 @@
                                       Direction="270" />
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="ChartActionButtonStyle"
+               TargetType="Button">
+            <Setter Property="Height"
+                    Value="26" />
+            <Setter Property="MinWidth"
+                    Value="82" />
+            <Setter Property="Padding"
+                    Value="10,0" />
+            <Setter Property="FontSize"
+                    Value="12" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Background"
+                    Value="{DynamicResource LightPrimaryBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="BorderThickness"
+                    Value="1" />
+            <Setter Property="Cursor"
+                    Value="Hand" />
+            <Setter Property="Visibility"
+                    Value="Visible" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter TargetName="Root"
+                                        Property="Background"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Foreground"
+                                        Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsPressed"
+                                     Value="True">
+                                <Setter TargetName="Root"
+                                        Property="Opacity"
+                                        Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled"
+                                     Value="False">
+                                <Setter TargetName="Root"
+                                        Property="Opacity"
+                                        Value="0.45" />
+                                <Setter Property="Cursor"
+                                        Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsRoot}"
+                             Value="True">
+                    <Setter Property="Visibility"
+                            Value="Collapsed" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsChartButtonVisible}"
+                             Value="False">
+                    <Setter Property="Visibility"
+                            Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="TreeEmptyStateStyle"
@@ -188,7 +347,6 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -209,9 +367,9 @@
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0"
                                              EndPoint="0,1">
-                            <GradientStop Color="#06B6D4"
+                            <GradientStop Color="{DynamicResource InfoColor}"
                                           Offset="0" />
-                            <GradientStop Color="#3B82F6"
+                            <GradientStop Color="{DynamicResource PrimaryColor}"
                                           Offset="1" />
                         </LinearGradientBrush>
                     </Border.Background>
@@ -229,9 +387,28 @@
                 <StackPanel Grid.Column="2"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
+                    <UniformGrid Columns="4"
+                                 Margin="0,0,8,0">
+                        <Button Content="开始"
+                                Style="{StaticResource HomeToolbarStartStyle}"
+                                Margin="0,0,4,0"
+                                Command="{Binding DataContext.StartTestCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeView}}}" />
+                        <Button Content="取消"
+                                Style="{StaticResource HomeToolbarCancelStyle}"
+                                Margin="0,0,4,0"
+                                Command="{Binding DataContext.CancelTestCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeView}}}" />
+                        <Button Content="暂停"
+                                Style="{StaticResource HomeToolbarPauseStyle}"
+                                Margin="0,0,4,0"
+                                Command="{Binding DataContext.PauseTestCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeView}}}" />
+                        <Button Content="继续"
+                                Style="{StaticResource HomeToolbarResumeStyle}"
+                                Command="{Binding DataContext.ResumeTestCommand, RelativeSource={RelativeSource AncestorType={x:Type views:HomeView}}}" />
+                    </UniformGrid>
                     <Border Style="{StaticResource ModuleStatPillStyle}">
                         <TextBlock Text="{Binding Roots.Count, StringFormat=节点 {0}}"
                                    FontSize="12"
+                                   VerticalAlignment="Center"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource SecondaryTextBrush}" />
                     </Border>
@@ -250,7 +427,7 @@
 
             <!-- ── 副标题说明 ── -->
             <TextBlock Grid.Row="1"
-                       Text="根节点对应流程节点，子项展示详细测试结果；数据由 ITestItemTreeDataProvider 异步加载。"
+                       Text="根节点对应流程节点，子项展示详细测试结果。"
                        Margin="0,0,0,8"
                        FontSize="12"
                        LineHeight="18"
@@ -267,7 +444,7 @@
                             <ColumnDefinition Width="4" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Border Background="#3B82F6"
+                        <Border Background="{DynamicResource PrimaryBrush}"
                                 CornerRadius="10,0,0,10" />
                         <StackPanel Grid.Column="1"
                                     Margin="10,8,10,8">
@@ -278,7 +455,7 @@
                                        Margin="0,5,0,0"
                                        FontSize="20"
                                        FontWeight="Bold"
-                                       Foreground="#1D4ED8" />
+                                       Foreground="{DynamicResource DarkPrimaryBrush}" />
                             <TextBlock Text="最近一条测试记录"
                                        Margin="0,3,0,0"
                                        FontSize="11"
@@ -292,7 +469,7 @@
                             <ColumnDefinition Width="4" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Border Background="#22C55E"
+                        <Border Background="{DynamicResource SuccessBrush}"
                                 CornerRadius="10,0,0,10" />
                         <StackPanel Grid.Column="1"
                                     Margin="10,8,10,8">
@@ -303,7 +480,7 @@
                                        Margin="0,5,0,0"
                                        FontSize="24"
                                        FontWeight="Bold"
-                                       Foreground="#15803D" />
+                                       Foreground="{DynamicResource DarkSuccessBrush}" />
                             <TextBlock Text="OK 项数量"
                                        Margin="0,3,0,0"
                                        FontSize="11"
@@ -318,7 +495,7 @@
                             <ColumnDefinition Width="4" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Border Background="#EF4444"
+                        <Border Background="{DynamicResource DangerBrush}"
                                 CornerRadius="10,0,0,10" />
                         <StackPanel Grid.Column="1"
                                     Margin="10,8,10,8">
@@ -329,7 +506,7 @@
                                        Margin="0,5,0,0"
                                        FontSize="24"
                                        FontWeight="Bold"
-                                       Foreground="#B91C1C" />
+                                       Foreground="{DynamicResource DarkDangerBrush}" />
                             <TextBlock Text="NG 项数量"
                                        Margin="0,3,0,0"
                                        FontSize="11"
@@ -339,31 +516,8 @@
                 </Border>
             </UniformGrid>
 
-            <!-- ── 错误提示 ── -->
-            <Border Grid.Row="3"
-                    CornerRadius="6"
-                    Padding="10,6"
-                    Margin="0,0,0,8"
-                    Background="#1AEF4444"
-                    BorderBrush="#55EF4444"
-                    BorderThickness="1"
-                    Visibility="{Binding LoadError, Converter={StaticResource NullToVisibilityConverter}}">
-                <StackPanel Orientation="Horizontal">
-                    <Ellipse Width="6"
-                             Height="6"
-                             Fill="#EF4444"
-                             VerticalAlignment="Center"
-                             Margin="0,0,8,0" />
-                    <TextBlock Foreground="#EF4444"
-                               FontSize="12"
-                               VerticalAlignment="Center"
-                               TextWrapping="Wrap"
-                               Text="{Binding LoadError}" />
-                </StackPanel>
-            </Border>
-
             <!-- ── TreeListView ── -->
-            <Grid Grid.Row="4">
+            <Grid Grid.Row="3">
                 <tv:TreeListView ItemsSource="{Binding Roots}"
                                  Padding="0"
                                  VerticalAlignment="Stretch"
@@ -377,13 +531,13 @@
                                  ScrollViewer.HorizontalScrollBarVisibility="Auto">
                 <tv:TreeListView.Resources>
                     <SolidColorBrush x:Key="TreeGroupBrush0"
-                                     Color="#FFEAF4FF" />
+                                     Color="{DynamicResource LightPrimaryColor}" />
                     <SolidColorBrush x:Key="TreeGroupBrush1"
-                                     Color="#FFEAFBEF" />
+                                     Color="{DynamicResource LightSuccessColor}" />
                     <SolidColorBrush x:Key="TreeGroupBrush2"
-                                     Color="#FFFFF2E6" />
+                                     Color="{DynamicResource LightWarningColor}" />
                     <SolidColorBrush x:Key="TreeGroupBrush3"
-                                     Color="#FFF3EDFF" />
+                                     Color="{DynamicResource LightPauseColor}" />
 
                     <Style TargetType="GridViewColumnHeader">
                         <Setter Property="Height"
@@ -393,7 +547,7 @@
                         <Setter Property="Foreground"
                                 Value="{DynamicResource PrimaryTextBrush}" />
                         <Setter Property="Background"
-                                Value="#EEF3FA" />
+                                Value="{DynamicResource SecondaryRegionBrush}" />
                         <Setter Property="BorderBrush"
                                 Value="{DynamicResource BorderBrush}" />
                         <Setter Property="BorderThickness"
@@ -469,7 +623,7 @@
                                                   FontSize="11"
                                                   Margin="0,0,6,0"
                                                   VerticalAlignment="Center"
-                                                  Foreground="#06B6D4" />
+                                                  Foreground="{DynamicResource InfoBrush}" />
                                     <TextBlock Text="{Binding Name}"
                                                FontWeight="SemiBold"
                                                FontSize="13"
@@ -480,14 +634,14 @@
                                     <Border CornerRadius="8"
                                             Padding="6,1"
                                             Margin="8,0,0,0"
-                                            Background="#1406B6D4"
-                                            BorderBrush="#3306B6D4"
+                                            Background="{DynamicResource LightInfoBrush}"
+                                            BorderBrush="{DynamicResource InfoBrush}"
                                             BorderThickness="1"
                                             VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Children.Count, StringFormat={}{0}}"
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
-                                                   Foreground="#06B6D4" />
+                                                   Foreground="{DynamicResource InfoBrush}" />
                                     </Border>
                                 </StackPanel>
                             </Border>
@@ -508,19 +662,19 @@
                                          Value="Pass">
                                 <Setter TargetName="StatusDot"
                                         Property="Fill"
-                                        Value="#22C55E" />
+                                        Value="{DynamicResource SuccessBrush}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="Fail">
                                 <Setter TargetName="StatusDot"
                                         Property="Fill"
-                                        Value="#EF4444" />
+                                        Value="{DynamicResource DangerBrush}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="Running">
                                 <Setter TargetName="StatusDot"
                                         Property="Fill"
-                                        Value="#06B6D4" />
+                                        Value="{DynamicResource InfoBrush}" />
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>
@@ -541,15 +695,7 @@
                                         VerticalAlignment="Center">
                                     <Border.Style>
                                         <Style TargetType="Border"
-                                               BasedOn="{StaticResource StatusBadgeStyle}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}"
-                                                             Value="True">
-                                                    <Setter Property="Visibility"
-                                                            Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
+                                               BasedOn="{StaticResource StatusBadgeStyle}" />
                                     </Border.Style>
                                     <TextBlock x:Name="PART_Text"
                                                Style="{StaticResource StatusTextStyle}" />
@@ -592,20 +738,7 @@
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
-                                           Text="{Binding TestTime, StringFormat={}{0:HH:mm:ss}}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility"
-                                                    Value="Visible" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}"
-                                                             Value="True">
-                                                    <Setter Property="Visibility"
-                                                            Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
+                                           Text="{Binding TestDurationSeconds, StringFormat={}{0:F2} s}">
                                 </TextBlock>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
@@ -618,8 +751,8 @@
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="13"
-                                           TextAlignment="Right"
-                                           HorizontalAlignment="Right"
+                                           TextAlignment="Left"
+                                           HorizontalAlignment="Left"
                                            Text="{Binding ActualValue, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock"
@@ -646,8 +779,8 @@
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
-                                           TextAlignment="Right"
-                                           HorizontalAlignment="Right"
+                                           TextAlignment="Left"
+                                           HorizontalAlignment="Left"
                                            Text="{Binding LowerLimit, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -675,8 +808,8 @@
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
-                                           TextAlignment="Right"
-                                           HorizontalAlignment="Right"
+                                           TextAlignment="Left"
+                                           HorizontalAlignment="Left"
                                            Text="{Binding UpperLimit, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -692,6 +825,19 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+
+                    <!-- 操作栏 -->
+                    <GridViewColumn Header="操作栏"
+                                    Width="120">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
+                                <Button Content="打开图表"
+                                        Style="{StaticResource ChartActionButtonStyle}"
+                                        Command="{Binding DataContext.OpenChartCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                        CommandParameter="{Binding}" />
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>

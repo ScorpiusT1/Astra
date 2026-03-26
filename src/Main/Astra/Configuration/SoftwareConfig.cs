@@ -17,6 +17,9 @@ namespace Astra.Configuration
         private int _groupCount = 1;
         private int _dutCount = 1;
         private ObservableCollection<DutConfig> _duts = new ObservableCollection<DutConfig>();
+        private string _currentWorkflowId = string.Empty;
+        private string _currentWorkflowName = string.Empty;
+        private bool _enableHomeSequenceLinkage = true;
         private bool _isSyncingCounts;
 
         public SoftwareConfig() : base()
@@ -120,6 +123,33 @@ namespace Astra.Configuration
                 SetProperty(ref _duts, value);
                 SyncDutCollection();
             }
+        }
+
+        /// <summary>
+        /// 当前保存并生效的脚本路径（序列界面优先据此加载）。
+        /// </summary>
+        public string CurrentWorkflowId
+        {
+            get => _currentWorkflowId;
+            set => SetProperty(ref _currentWorkflowId, value ?? string.Empty);
+        }
+
+        /// <summary>
+        /// 当前保存并生效的脚本显示名。
+        /// </summary>
+        public string CurrentWorkflowName
+        {
+            get => _currentWorkflowName;
+            set => SetProperty(ref _currentWorkflowName, value ?? string.Empty);
+        }
+
+        /// <summary>
+        /// 是否启用 Home 与流程编辑界面的执行联动。
+        /// </summary>
+        public bool EnableHomeSequenceLinkage
+        {
+            get => _enableHomeSequenceLinkage;
+            set => SetProperty(ref _enableHomeSequenceLinkage, value);
         }
 
         /// <summary>

@@ -10,35 +10,6 @@
              Background="{DynamicResource BackgroundBrush}"
              d:DesignHeight="720"
              d:DesignWidth="1280">
-    <UserControl.Resources>
-        <!-- Home 页面局部固定使用 Light 主题色 -->
-        <SolidColorBrush x:Key="BackgroundBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="RegionBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="SecondaryRegionBrush" Color="#FAFAFA" />
-        <SolidColorBrush x:Key="ThirdlyRegionBrush" Color="#F5F5F5" />
-
-        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#212121" />
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#757575" />
-        <SolidColorBrush x:Key="ThirdlyTextBrush" Color="#9E9E9E" />
-        <SolidColorBrush x:Key="TitleBrush" Color="#1976D2" />
-
-        <SolidColorBrush x:Key="BorderBrush" Color="#E0E0E0" />
-        <SolidColorBrush x:Key="SecondaryBorderBrush" Color="#BDBDBD" />
-
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#2196F3" />
-        <SolidColorBrush x:Key="DarkPrimaryBrush" Color="#1976D2" />
-        <SolidColorBrush x:Key="SuccessBrush" Color="#4CAF50" />
-        <SolidColorBrush x:Key="DangerBrush" Color="#F44336" />
-        <SolidColorBrush x:Key="InfoBrush" Color="#00BCD4" />
-
-        <SolidColorBrush x:Key="LightPrimaryBrush" Color="#E3F2FD" />
-        <SolidColorBrush x:Key="LightSuccessBrush" Color="#E8F5E9" />
-        <SolidColorBrush x:Key="LightDangerBrush" Color="#FFEBEE" />
-        <SolidColorBrush x:Key="LightInfoBrush" Color="#E0F7FA" />
-        <SolidColorBrush x:Key="LightWarningBrush" Color="#FFF3E0" />
-    </UserControl.Resources>
-
     <Grid Margin="14">
         <Grid.Resources>
             <Style x:Key="HomeRegionCardStyle"
@@ -56,6 +27,88 @@
                 <Setter Property="VerticalAlignment"
                         Value="Stretch" />
             </Style>
+
+            <Style x:Key="HomeActionButtonBaseStyle"
+                   TargetType="Button">
+                <Setter Property="Height"
+                        Value="36" />
+                <Setter Property="FontSize"
+                        Value="13" />
+                <Setter Property="FontWeight"
+                        Value="SemiBold" />
+                <Setter Property="Padding"
+                        Value="12,0" />
+                <Setter Property="Foreground"
+                        Value="White" />
+                <Setter Property="BorderThickness"
+                        Value="0" />
+                <Setter Property="Cursor"
+                        Value="Hand" />
+                <Setter Property="Background"
+                        Value="{DynamicResource PrimaryBrush}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="8">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver"
+                                         Value="True">
+                                    <Setter TargetName="ButtonBorder"
+                                            Property="Opacity"
+                                            Value="0.9" />
+                                </Trigger>
+                                <Trigger Property="IsPressed"
+                                         Value="True">
+                                    <Setter TargetName="ButtonBorder"
+                                            Property="Opacity"
+                                            Value="0.78" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled"
+                                         Value="False">
+                                    <Setter TargetName="ButtonBorder"
+                                            Property="Opacity"
+                                            Value="0.45" />
+                                    <Setter Property="Cursor"
+                                            Value="Arrow" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="HomeStartButtonStyle"
+                   TargetType="Button"
+                   BasedOn="{StaticResource HomeActionButtonBaseStyle}">
+                <Setter Property="Background"
+                        Value="{DynamicResource SuccessBrush}" />
+            </Style>
+
+            <Style x:Key="HomeCancelButtonStyle"
+                   TargetType="Button"
+                   BasedOn="{StaticResource HomeActionButtonBaseStyle}">
+                <Setter Property="Background"
+                        Value="{DynamicResource DangerBrush}" />
+            </Style>
+
+            <Style x:Key="HomePauseButtonStyle"
+                   TargetType="Button"
+                   BasedOn="{StaticResource HomeActionButtonBaseStyle}">
+                <Setter Property="Background"
+                        Value="{DynamicResource WarningBrush}" />
+            </Style>
+
+            <Style x:Key="HomeResumeButtonStyle"
+                   TargetType="Button"
+                   BasedOn="{StaticResource HomeActionButtonBaseStyle}">
+                <Setter Property="Background"
+                        Value="{DynamicResource PrimaryBrush}" />
+            </Style>
         </Grid.Resources>
 
         <Grid.ColumnDefinitions>
@@ -67,149 +120,152 @@
         <Border Grid.Column="0"
                 Background="Transparent">
             <Border.Effect>
-                <DropShadowEffect Color="#000000"
+                <DropShadowEffect Color="{DynamicResource ShadowColor}"
                                   Opacity="0.12"
                                   ShadowDepth="2"
                                   BlurRadius="14"
                                   Direction="270" />
             </Border.Effect>
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                <Border Grid.Row="0"
-                        Margin="6"
-                        Padding="14,12"
-                        CornerRadius="12"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Background"
-                                    Value="{DynamicResource SecondaryRegionBrush}" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                             Value="OK">
-                                    <Setter Property="Background"
-                                            Value="#EAFBEF" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                             Value="NG">
-                                    <Setter Property="Background"
-                                            Value="#FEECEC" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <Grid Margin="0,0,0,2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0"
-                                        Width="4"
-                                        CornerRadius="2"
-                                        Margin="0,0,8,0">
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0"
-                                                             EndPoint="0,1">
-                                            <GradientStop Color="#06B6D4"
-                                                          Offset="0" />
-                                            <GradientStop Color="#3B82F6"
-                                                          Offset="1" />
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                </Border>
-                                <TextBlock Grid.Column="1"
-                                           Text="测试总结果"
-                                           FontSize="15"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TitleBrush}" />
-                            </Grid>
-                            <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
-                                       Margin="0,6,0,0"
-                                       FontSize="42"
-                                       FontWeight="Bold">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground"
-                                                Value="{DynamicResource SecondaryTextBrush}" />
+                    <Border Grid.Row="0"
+                            Margin="6"
+                            Padding="14,12"
+                            CornerRadius="12"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background"
+                                        Value="{DynamicResource LightPrimaryBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                                 Value="OK">
+                                        <Setter Property="Background"
+                                                Value="{DynamicResource LightSuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                                 Value="NG">
+                                        <Setter Property="Background"
+                                                Value="{DynamicResource LightDangerBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <Grid Margin="0,0,0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Width="4"
+                                            CornerRadius="2"
+                                            Margin="0,0,8,0">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0"
+                                                                 EndPoint="0,1">
+                                                <GradientStop Color="{DynamicResource InfoColor}"
+                                                              Offset="0" />
+                                                <GradientStop Color="{DynamicResource PrimaryColor}"
+                                                              Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
+                                    <TextBlock Grid.Column="1"
+                                               Text="测试总结果"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TitleBrush}" />
+                                </Grid>
+                                <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
+                                           Margin="0,6,0,0"
+                                           FontSize="42"
+                                           FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource SecondaryTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                                             Value="OK">
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource DarkSuccessBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                                             Value="NG">
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource DarkDangerBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <Border Grid.Column="1"
+                                    MinWidth="78"
+                                    Height="34"
+                                    CornerRadius="17"
+                                    Padding="14,5"
+                                    VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background"
+                                                Value="{DynamicResource SecondaryBorderBrush}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
                                                          Value="OK">
-                                                <Setter Property="Foreground"
-                                                        Value="#16A34A" />
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource SuccessBrush}" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
                                                          Value="NG">
-                                                <Setter Property="Foreground"
-                                                        Value="#DC2626" />
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource DangerBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                        <Border Grid.Column="1"
-                                MinWidth="78"
-                                Height="34"
-                                CornerRadius="17"
-                                Padding="14,5"
-                                VerticalAlignment="Center">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Background"
-                                            Value="#D1D5DB" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                                     Value="OK">
-                                            <Setter Property="Background"
-                                                    Value="#22C55E" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                                     Value="NG">
-                                            <Setter Property="Background"
-                                                    Value="#EF4444" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
-                                       FontSize="16"
-                                       FontWeight="Bold"
-                                       Foreground="White"
-                                       TextAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Border>
-                    </Grid>
-                </Border>
+                                </Border.Style>
+                                <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
+                                           FontSize="16"
+                                           FontWeight="Bold"
+                                           Foreground="White"
+                                           TextAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </Border>
 
-                <moduleViews:YieldModuleView Grid.Row="1"
-                                             DataContext="{Binding YieldModule}" />
+                    <moduleViews:YieldModuleView Grid.Row="1"
+                                                 DataContext="{Binding YieldModule}" />
 
-                <moduleViews:IOMonitorModuleView Grid.Row="2"
-                                                 DataContext="{Binding IoMonitorModule}" />
+                    <moduleViews:IOMonitorModuleView Grid.Row="2"
+                                                     DataContext="{Binding IoMonitorModule}" />
 
-                <moduleViews:RealTimeLogModuleView Grid.Row="3"
-                                                   DataContext="{Binding RealTimeLogModule}" />
-            </Grid>
+                    <moduleViews:RealTimeLogModuleView Grid.Row="3"
+                                                       DataContext="{Binding RealTimeLogModule}" />
+                </Grid>
+            </ScrollViewer>
         </Border>
 
         <Border Grid.Column="2"
                 Background="Transparent">
             <Border.Effect>
-                <DropShadowEffect Color="#000000"
+                <DropShadowEffect Color="{DynamicResource ShadowColor}"
                                   Opacity="0.12"
                                   ShadowDepth="2"
                                   BlurRadius="14"

@@ -7,11 +7,9 @@ namespace Astra.Views
     /// </summary>
     public partial class SequenceView : UserControl
     {
-        private ViewModels.SequenceViewModel _currentViewModel;
-      
         public SequenceView()
         {
-            InitializeComponent();                  
+            InitializeComponent();
         }
     }
 }
