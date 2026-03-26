@@ -256,7 +256,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 await StopPublishLoopAsync().ConfigureAwait(false);
 
-                await DisconnectAsync().ConfigureAwait(false);
+                if (!_config.KeepConnectionAlive)
+                {
+                    await DisconnectAsync().ConfigureAwait(false);
+                }
 
                 var dataGroup = GetDataGroup();
                 if (dataGroup != null)

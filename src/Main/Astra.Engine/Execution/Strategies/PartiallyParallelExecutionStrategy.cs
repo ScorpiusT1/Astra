@@ -4,6 +4,7 @@ using Astra.Engine.Execution.WorkFlowEngine;
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -104,6 +105,7 @@ namespace Astra.Engine.Execution.Strategies
             var startTime = DateTime.Now;
             var pausedBefore = workflowContext.ExecutionController?.TotalPausedDuration ?? TimeSpan.Zero;
             workflowContext.OnNodeExecutionStarted?.Invoke(node, nodeContext);
+            var activeStopwatch = Stopwatch.StartNew();
 
             ExecutionResult result;
             try
@@ -123,6 +125,12 @@ namespace Astra.Engine.Execution.Strategies
                 result.StartTime = startTime;
                 result.EndTime = AdjustEndTimeForPause(DateTime.Now, pausedBefore, workflowContext);
             }
+            finally
+            {
+                activeStopwatch.Stop();
+            }
+
+            result.ActiveDurationMs = activeStopwatch.Elapsed.TotalMilliseconds;
 
             node.LastExecutionResult = result;
             workflowContext.OnNodeExecutionCompleted?.Invoke(node, nodeContext, result);

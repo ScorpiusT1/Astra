@@ -1,4 +1,4 @@
-﻿﻿﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Astra.Core.Nodes.Models
 {
@@ -56,6 +56,12 @@ namespace Astra.Core.Nodes.Models
         public TimeSpan? Duration => EndTime.HasValue && StartTime.HasValue
             ? EndTime.Value - StartTime.Value
             : null;
+
+        /// <summary>
+        /// 节点活跃执行耗时（毫秒）
+        /// 仅统计节点 ExecuteAsync 实际运行时间，不含调度排队与外部等待。
+        /// </summary>
+        public double? ActiveDurationMs { get; set; }
 
         /// <summary>
         /// 异常对象（仅用于运行时，不序列化）

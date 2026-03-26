@@ -1,5 +1,6 @@
-﻿using Astra.Plugins.DataAcquisition.Configs;
+using Astra.Plugins.DataAcquisition.Configs;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.ExceptionServices;
@@ -35,7 +36,9 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         private const string DLLPATH = "Lib/x64/brc_daq_sdk.dll";
         private const int BUFFER_SIZE = 1024;
         private const int ARRAY_BUFFER_SIZE = 512;
-        private static readonly object _lockObj = new object();
+        private static readonly object _scanLock = new object();
+        private static readonly object _connectedModulesLock = new object();
+        private static readonly ConcurrentDictionary<string, object> _moduleConnectLocks = new();
 
         #region ============ DLL导入声明 ============
 
@@ -174,17 +177,20 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// <returns>可用设备列表</returns>
         public static List<ModuleInfo> ScanModules()
         {
-            lock (_lockObj)
+            lock (_scanLock)
             {
                 var moduleCount = scan_modules();
 
                 if (moduleCount <= 0)
                 {
-                    _moduleInfos.Clear();
+                    lock (_connectedModulesLock)
+                    {
+                        _moduleInfos.Clear();
+                    }
                     return _moduleInfos;
                 }
 
-                _moduleInfos = Enumerable.Range(0, moduleCount).Select(index =>
+                var scannedInfos = Enumerable.Range(0, moduleCount).Select(index =>
                 {
                     try
                     {
@@ -205,7 +211,22 @@ namespace Astra.Plugins.DataAcquisition.SDKs
                     }
                 }).Where(m => m != null).ToList();
 
-                return _moduleInfos;
+                lock (_connectedModulesLock)
+                {
+                    _moduleInfos = scannedInfos;
+                    return new List<ModuleInfo>(_moduleInfos);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 获取最近一次扫描缓存（不触发新的硬件扫描）。
+        /// </summary>
+        public static List<ModuleInfo> GetCachedModules()
+        {
+            lock (_connectedModulesLock)
+            {
+                return new List<ModuleInfo>(_moduleInfos);
             }
         }
 
@@ -319,9 +340,14 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             if (moduleInfo == null)
                 throw new ArgumentNullException(nameof(moduleInfo));
 
-            lock (_lockObj)
+            var deviceLock = _moduleConnectLocks.GetOrAdd(moduleInfo.DeviceId ?? string.Empty, _ => new object());
+            lock (deviceLock)
             {
-                var index = _moduleInfos.FindIndex((m) => m.DeviceId == moduleInfo.DeviceId);
+                int index;
+                lock (_connectedModulesLock)
+                {
+                    index = _moduleInfos.FindIndex((m) => m.DeviceId == moduleInfo.DeviceId);
+                }
 
                 // ✅ 修复1: 检查索引有效性
                 if (index < 0)
@@ -339,7 +365,17 @@ namespace Astra.Plugins.DataAcquisition.SDKs
                 var brcDevice = new BrcDevice(handle, moduleInfo);
 
                 // 从列表中移除已连接的设备
-                _moduleInfos.RemoveAt(index);
+                lock (_connectedModulesLock)
+                {
+                    if (index < _moduleInfos.Count && _moduleInfos[index].DeviceId == moduleInfo.DeviceId)
+                    {
+                        _moduleInfos.RemoveAt(index);
+                    }
+                    else
+                    {
+                        _moduleInfos.RemoveAll(m => m.DeviceId == moduleInfo.DeviceId);
+                    }
+                }
 
                 return brcDevice;
             }
@@ -609,7 +645,8 @@ namespace Astra.Plugins.DataAcquisition.SDKs
                 if (_disposed)
                     return;
 
-                lock (_lockObj)
+                var deviceLock = _moduleConnectLocks.GetOrAdd(_moduleInfo?.DeviceId ?? string.Empty, _ => new object());
+                lock (deviceLock)
                 {
                     if (disconnect_module(_mHandle) < 0)
                     {

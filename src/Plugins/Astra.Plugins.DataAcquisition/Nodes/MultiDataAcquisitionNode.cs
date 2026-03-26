@@ -19,10 +19,10 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     public class MultiDataAcquisitionNode : Node
     {
 
-        [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 2, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
+        [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 1, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
         public bool StopAcquisitionAfterCompletion { get; set; } = true;
 
-        [Display(Name = "采集时长(秒)", GroupName = "采集卡配置", Order = 1, Description = "为 0 表示只启动不自动停止")]
+        [Display(Name = "采集时长(秒)", GroupName = "采集卡配置", Order = 2, Description = "为 0 表示只启动不自动停止")]
         public double DurationSeconds { get; set; }
 
         /// <summary>
@@ -90,8 +90,10 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             {
                 await WaitIfPausedAsync().ConfigureAwait(false);
 
-                // 并行启动所有未在运行状态的采集卡
-                var startTasks = distinctDevices.Select(async device =>
+                var startCandidates = new ConcurrentBag<IDataAcquisition>();
+
+                // 第一阶段：并行预热（初始化 + 建连），不做硬件启动
+                var prepareTasks = distinctDevices.Select(async device =>
                 {
                     try
                     {
@@ -114,7 +116,50 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                                 $"采集卡初始化失败: {device.DeviceId}, {initResult.ErrorMessage ?? initResult.Message}");
                         }
 
-                        // 启动采集
+                        // 建立连接（为第二阶段统一启动做准备）
+                        if (device is IDevice connectableDevice)
+                        {
+                            var connectResult = await connectableDevice.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                            if (!connectResult.Success)
+                            {
+                                throw new InvalidOperationException(
+                                    $"采集卡连接失败: {device.DeviceId}, {connectResult.ErrorMessage ?? connectResult.Message}");
+                            }
+                        }
+
+                        startCandidates.Add(device);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        startErrors.Add(ex);
+                    }
+                }).ToList();
+
+                await Task.WhenAll(prepareTasks).ConfigureAwait(false);
+                await WaitIfPausedAsync().ConfigureAwait(false);
+
+                if (!startErrors.IsEmpty)
+                {
+                    // 有任意一块采集卡启动失败，则整体返回失败（但已经启动成功的卡仍保持运行）
+                    var errorArray = startErrors.ToArray();
+                    var aggregate = new AggregateException("部分采集卡启动失败", errorArray);
+
+                    return ExecutionResult.Failed("部分采集卡启动失败，请检查日志获取详细信息", aggregate)
+                        .WithOutput("StartErrors", errorArray.Select(e => e.Message).ToArray());
+                }
+
+                // 第二阶段：统一并行启动硬件，尽量压缩设备间起跑偏差
+                var startTasks = startCandidates.Select(async device =>
+                {
+                    try
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        await WaitIfPausedAsync().ConfigureAwait(false);
+
                         var startResult = await device.StartAcquisitionAsync(cancellationToken).ConfigureAwait(false);
                         if (!startResult.Success)
                         {
@@ -139,7 +184,6 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
                 if (!startErrors.IsEmpty)
                 {
-                    // 有任意一块采集卡启动失败，则整体返回失败（但已经启动成功的卡仍保持运行）
                     var errorArray = startErrors.ToArray();
                     var aggregate = new AggregateException("部分采集卡启动失败", errorArray);
 

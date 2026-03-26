@@ -14,6 +14,27 @@ namespace Astra.UI.Converters
         {
             if (value is ExecutionResult result)
             {
+                if (result.ActiveDurationMs.HasValue)
+                {
+                    var activeMs = result.ActiveDurationMs.Value;
+                    if (activeMs < 1000)
+                    {
+                        return $"{activeMs:F0} ms";
+                    }
+                    else if (activeMs < 60_000)
+                    {
+                        return $"{(activeMs / 1000d):F2} s";
+                    }
+                    else if (activeMs < 3_600_000)
+                    {
+                        return $"{(activeMs / 60_000d):F2} min";
+                    }
+                    else
+                    {
+                        return $"{(activeMs / 3_600_000d):F2} h";
+                    }
+                }
+
                 if (result.Duration.HasValue)
                 {
                     var duration = result.Duration.Value;

@@ -188,6 +188,7 @@ namespace Astra.Plugins.DataAcquisition
 
                         if (initResult.Success)
                         {
+                            await PrewarmDeviceConnectionAsync(deviceAsIDevice, cancellationToken).ConfigureAwait(false);
                             _logger?.LogInfo($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
                         }
                         else
@@ -627,6 +628,7 @@ namespace Astra.Plugins.DataAcquisition
                         {
                             if (initResult.Success)
                             {
+                                await PrewarmDeviceConnectionAsync(deviceAsIDevice, CancellationToken.None).ConfigureAwait(false);
                                 _logger?.LogInfo($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册成功", LogCategory.Device);
                             }
                             else
@@ -781,6 +783,33 @@ namespace Astra.Plugins.DataAcquisition
         {
             // 返回只读包装，避免外部修改内部列表
             return _devices.AsReadOnly();
+        }
+
+        /// <summary>
+        /// 预热设备连接：在插件启用/新增设备时先完成连接，
+        /// 可降低首轮并行采集节点启动时的连接阶梯效应。
+        /// </summary>
+        private async Task PrewarmDeviceConnectionAsync(IDevice device, CancellationToken cancellationToken)
+        {
+            if (device == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var connectResult = await device.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                if (!connectResult.Success)
+                {
+                    _logger?.LogWarn(
+                        $"[{Name}] 设备 {device.DeviceName} 预热连接失败（执行时将按需重试）: {connectResult.ErrorMessage ?? connectResult.Message}",
+                        LogCategory.Device);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarn($"[{Name}] 设备 {device.DeviceName} 预热连接异常（执行时将按需重试）: {ex.Message}", LogCategory.Device);
+            }
         }
 
         #endregion

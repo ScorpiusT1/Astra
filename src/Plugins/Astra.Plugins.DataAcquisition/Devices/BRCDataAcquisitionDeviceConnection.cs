@@ -75,23 +75,20 @@ namespace Astra.Plugins.DataAcquisition.Devices
             {
                 try
                 {
-                    // 扫描设备
-                    var modules = BRCSDK.ScanModules();
-                    
-                    // 根据配置的序列号或设备ID查找设备
-                    if (!string.IsNullOrWhiteSpace(_config.SerialNumber))
+                    if (_moduleInfo != null)
                     {
-                        _moduleInfo = modules.FirstOrDefault(m => 
-                            m.DeviceId == _config.SerialNumber || 
-                            (m.ProductName != null && m.ProductName.Contains(_config.SerialNumber)));
-                    }
-                    else
-                    {
-                        // 如果没有序列号，使用第一个可用设备
-                        _moduleInfo = modules.FirstOrDefault();
+                        return true;
                     }
 
-                    return _moduleInfo != null;
+                    if (TryResolveModuleInfoFrom(BRCSDK.GetCachedModules()))
+                    {
+                        return true;
+                    }
+
+                    // 扫描设备
+                    var modules = BRCSDK.ScanModules();
+
+                    return TryResolveModuleInfoFrom(modules);
                 }
                 catch (Exception ex)
                 {
@@ -117,8 +114,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
                 try
                 {
-                    // 确保设备存在
-                    if (!DoCheckDeviceExists())
+                    // 优先复用初始化阶段已解析出的模块信息，避免每次连接都全量扫描设备。
+                    // 在并行启动多个采集节点时，重复扫描会造成明显串行等待。
+                    if (_moduleInfo == null && !DoCheckDeviceExists())
                     {
                         return OperationResult.Failure(
                             $"BRC采集卡 {_config.DeviceName} 未找到", 
@@ -181,7 +179,6 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     // 断开连接
                     _brcDevice.Dispose();
                     _brcDevice = null;
-                    _moduleInfo = null;
 
                     _logger?.LogInformation($"[{_config.DeviceName}] BRC采集卡已断开", LogCategory.Device);
                     return OperationResult.Succeed("BRC采集卡断开成功");
@@ -320,6 +317,27 @@ namespace Astra.Plugins.DataAcquisition.Devices
             {
                 return _moduleInfo;
             }
+        }
+
+        private bool TryResolveModuleInfoFrom(IReadOnlyCollection<BRCSDK.ModuleInfo> modules)
+        {
+            if (modules == null || modules.Count == 0)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_config.SerialNumber))
+            {
+                _moduleInfo = modules.FirstOrDefault(m =>
+                    m.DeviceId == _config.SerialNumber ||
+                    (m.ProductName != null && m.ProductName.Contains(_config.SerialNumber)));
+            }
+            else
+            {
+                _moduleInfo = modules.FirstOrDefault();
+            }
+
+            return _moduleInfo != null;
         }
     }
 }

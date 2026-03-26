@@ -153,6 +153,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         private int _channelCount = 8;
         private int _bufferSize = 4_096;
         private bool _autoStart = true;
+        private bool _keepConnectionAlive = true;
 
         /// <summary>
         /// 采样率（Hz）
@@ -378,6 +379,16 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             get => _autoStart;
             set => SetProperty(ref _autoStart, value);
+        }
+
+        /// <summary>
+        /// 停止采集后保持连接，避免下一轮执行重复连接带来的阶梯延迟。
+        /// </summary>
+        [HotUpdatable]
+        public bool KeepConnectionAlive
+        {
+            get => _keepConnectionAlive;
+            set => SetProperty(ref _keepConnectionAlive, value);
         }
 
         /// <summary>
