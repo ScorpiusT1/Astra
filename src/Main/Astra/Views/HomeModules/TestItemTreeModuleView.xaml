@@ -4,33 +4,100 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:modules="clr-namespace:Astra.ViewModels.HomeModules"
+           
              xmlns:tv="clr-namespace:Astra.UI.Styles.Controls.TreeViewEx;assembly=Astra.UI"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             d:DesignHeight="720"
+             d:DesignWidth="1280">
     <UserControl.Resources>
-        <Style x:Key="StatusBadgeStyle" TargetType="Border">
-            <Setter Property="Padding" Value="6,2" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+
+        <!-- ── Status Badge：外框 Border ── -->
+        <Style x:Key="StatusBadgeStyle"
+               TargetType="Border">
+            <Setter Property="Padding"
+                    Value="8,3" />
+            <Setter Property="CornerRadius"
+                    Value="4" />
+            <Setter Property="Background"
+                    Value="{DynamicResource SecondaryBorderBrush}" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding Status}" Value="Pass">
-                    <Setter Property="Background" Value="{DynamicResource LightSuccessBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Pass">
+                    <Setter Property="Background"
+                            Value="#22C55E" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Status}" Value="Fail">
-                    <Setter Property="Background" Value="{DynamicResource LightDangerBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Fail">
+                    <Setter Property="Background"
+                            Value="#EF4444" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Status}" Value="Running">
-                    <Setter Property="Background" Value="{DynamicResource LightInfoBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource InfoBrush}" />
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Running">
+                    <Setter Property="Background"
+                            Value="#F97316" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Status}" Value="Ready">
-                    <Setter Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource SecondaryBorderBrush}" />
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Ready">
+                    <Setter Property="Background"
+                            Value="{DynamicResource SecondaryBorderBrush}" />
                 </DataTrigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- ── Status Badge：内部文字 ── -->
+        <Style x:Key="StatusTextStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontWeight"
+                    Value="Bold" />
+            <Setter Property="FontSize"
+                    Value="11" />
+            <Setter Property="Foreground"
+                    Value="White" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Ready">
+                    <Setter Property="Foreground"
+                            Value="{DynamicResource SecondaryTextBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- ── 实际值颜色：Pass=绿，Fail=红，其余默认 ── -->
+        <Style x:Key="ActualValueTextStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryTextBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Pass">
+                    <Setter Property="Foreground"
+                            Value="#22C55E" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Fail">
+                    <Setter Property="Foreground"
+                            Value="#EF4444" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ── 根节点 / 叶子节点行背景 ── -->
+        <Style x:Key="RootRowBorderStyle"
+               TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0"
+                                         EndPoint="1,0">
+                        <GradientStop Color="#0A06B6D4"
+                                      Offset="0" />
+                        <GradientStop Color="#00000000"
+                                      Offset="1" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <HierarchicalDataTemplate DataType="{x:Type modules:TestTreeNodeItem}"
@@ -54,50 +121,88 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,4">
+            <!-- ── 标题栏 ── -->
+            <Grid Grid.Row="0"
+                  Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+
+                <!-- 渐变竖条（青→蓝，象征测试/数据） -->
                 <Border Grid.Column="0"
-                        Background="{DynamicResource LightPrimaryBrush}"
-                        CornerRadius="6"
-                        Padding="8,4">
-                    <TextBlock Text="测试项展示模块"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TitleBrush}" />
+                        Width="4"
+                        CornerRadius="2"
+                        Margin="0,0,10,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="0,1">
+                            <GradientStop Color="#06B6D4"
+                                          Offset="0" />
+                            <GradientStop Color="#3B82F6"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
                 </Border>
-                <StackPanel Grid.Column="1"
+
+                <!-- 标题 -->
+                <TextBlock Grid.Column="1"
+                           Text="测试项展示模块"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TitleBrush}" />
+
+                <!-- 右侧：加载进度 + 刷新按钮 -->
+                <StackPanel Grid.Column="2"
                             Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            Margin="8,0,0,0">
-                    <ProgressBar Width="100"
+                            VerticalAlignment="Center">
+                    <ProgressBar Width="80"
                                  Height="4"
-                                 Margin="0,0,8,0"
+                                 Margin="0,0,10,0"
                                  IsIndeterminate="True"
                                  Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <Button MinWidth="72"
-                            Padding="12,6"
-                            Content="刷新"
+                    <Button MinWidth="64"
+                            Padding="10,5"
+                            Content="刷 新"
                             Command="{Binding RefreshCommand}"
                             IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}" />
                 </StackPanel>
             </Grid>
 
-            <TextBlock Text="根节点对应流程节点，子项展示详细测试结果；数据由 ITestItemTreeDataProvider 异步加载。"
-                       Grid.Row="1"
+            <!-- ── 副标题说明 ── -->
+            <TextBlock Grid.Row="1"
+                       Text="根节点对应流程节点，子项展示详细测试结果；数据由 ITestItemTreeDataProvider 异步加载。"
                        Margin="0,0,0,8"
+                       FontSize="12"
                        Foreground="{DynamicResource SecondaryTextBrush}"
                        TextWrapping="Wrap" />
 
-            <TextBlock Grid.Row="2"
-                       Margin="0,0,0,8"
-                       Foreground="{DynamicResource DangerBrush}"
-                       TextWrapping="Wrap"
-                       Visibility="{Binding LoadError, Converter={StaticResource NullToVisibilityConverter}}"
-                       Text="{Binding LoadError}" />
+            <!-- ── 错误提示 ── -->
+            <Border Grid.Row="2"
+                    CornerRadius="6"
+                    Padding="10,6"
+                    Margin="0,0,0,8"
+                    Background="#1AEF4444"
+                    BorderBrush="#55EF4444"
+                    BorderThickness="1"
+                    Visibility="{Binding LoadError, Converter={StaticResource NullToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="6"
+                             Height="6"
+                             Fill="#EF4444"
+                             VerticalAlignment="Center"
+                             Margin="0,0,8,0" />
+                    <TextBlock Foreground="#EF4444"
+                               FontSize="12"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               Text="{Binding LoadError}" />
+                </StackPanel>
+            </Border>
 
+            <!-- ── TreeListView ── -->
             <tv:TreeListView Grid.Row="3"
                              ItemsSource="{Binding Roots}"
                              Padding="0"
@@ -105,45 +210,98 @@
                              StretchLastColumn="True"
                              LastColumnMinWidth="72"
                              Background="{DynamicResource SurfaceBrush}"
-                             BorderThickness="0"
+                             BorderThickness="1"
                              BorderBrush="{DynamicResource BorderBrush}"
                              IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+
+                <!-- 第一列（树形展开列） -->
                 <tv:TreeListView.FirstColumnCellTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="LeafName"
-                                       Text="{Binding Name}"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource PrimaryTextBrush}"
-                                       Visibility="Visible" />
-                            <StackPanel x:Name="RootHeader"
+                        <StackPanel Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+
+                            <!-- 叶子节点：普通文字，左侧小圆点指示状态 -->
+                            <StackPanel x:Name="LeafPanel"
+                                        Orientation="Horizontal"
+                                        Visibility="Visible">
+                                <Ellipse x:Name="StatusDot"
+                                         Width="6"
+                                         Height="6"
+                                         Margin="0,0,7,0"
+                                         VerticalAlignment="Center"
+                                         Fill="{DynamicResource SecondaryBorderBrush}" />
+                                <TextBlock Text="{Binding Name}"
+                                           VerticalAlignment="Center"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                            </StackPanel>
+
+                            <!-- 根节点：加粗 + 数量 -->
+                            <StackPanel x:Name="RootPanel"
                                         Orientation="Horizontal"
                                         Visibility="Collapsed">
                                 <TextBlock Text="{Binding Name}"
                                            FontWeight="SemiBold"
+                                           FontSize="13"
                                            VerticalAlignment="Center"
-                                           Foreground="{DynamicResource PrimaryTextBrush}" />
-                                <TextBlock Text="{Binding Children.Count, StringFormat= ({0})}"
-                                           Margin="6,0,0,0"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                           Foreground="{DynamicResource TitleBrush}" />
+                                <Border CornerRadius="8"
+                                        Padding="6,1"
+                                        Margin="8,0,0,0"
+                                        Background="#1406B6D4"
+                                        BorderBrush="#3306B6D4"
+                                        BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Children.Count, StringFormat={}{0}}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#06B6D4" />
+                                </Border>
                             </StackPanel>
                         </StackPanel>
+
                         <DataTemplate.Triggers>
-                            <DataTrigger Binding="{Binding IsRoot}" Value="True">
-                                <Setter TargetName="LeafName" Property="Visibility" Value="Collapsed" />
-                                <Setter TargetName="RootHeader" Property="Visibility" Value="Visible" />
+                            <DataTrigger Binding="{Binding IsRoot}"
+                                         Value="True">
+                                <Setter TargetName="LeafPanel"
+                                        Property="Visibility"
+                                        Value="Collapsed" />
+                                <Setter TargetName="RootPanel"
+                                        Property="Visibility"
+                                        Value="Visible" />
+                            </DataTrigger>
+                            <!-- 状态点颜色 -->
+                            <DataTrigger Binding="{Binding Status}"
+                                         Value="Pass">
+                                <Setter TargetName="StatusDot"
+                                        Property="Fill"
+                                        Value="#22C55E" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}"
+                                         Value="Fail">
+                                <Setter TargetName="StatusDot"
+                                        Property="Fill"
+                                        Value="#EF4444" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}"
+                                         Value="Running">
+                                <Setter TargetName="StatusDot"
+                                        Property="Fill"
+                                        Value="#06B6D4" />
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>
                 </tv:TreeListView.FirstColumnCellTemplate>
 
                 <tv:TreeListView.Columns>
+                    <!-- 测试项名称 -->
                     <GridViewColumn Header="测试项名称"
                                     Width="240"
                                     CellTemplate="{StaticResource TreeListView.FirstColumnWithExpanderTemplate}" />
+
+                    <!-- 测试项状态 -->
                     <GridViewColumn Header="测试项状态"
                                     Width="118">
                         <GridViewColumn.CellTemplate>
@@ -151,35 +309,42 @@
                                 <Border HorizontalAlignment="Left"
                                         VerticalAlignment="Center">
                                     <Border.Style>
-                                        <Style TargetType="Border" BasedOn="{StaticResource StatusBadgeStyle}">
+                                        <Style TargetType="Border"
+                                               BasedOn="{StaticResource StatusBadgeStyle}">
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                <DataTrigger Binding="{Binding IsRoot}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
                                     <TextBlock Text="{Binding Status}"
-                                               Foreground="{DynamicResource PrimaryTextBrush}"
-                                               FontWeight="SemiBold"
-                                               FontSize="11" />
+                                               Style="{StaticResource StatusTextStyle}" />
                                 </Border>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
+
+                    <!-- 测试项时间 -->
                     <GridViewColumn Header="测试项时间"
                                     Width="130">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
+                                           FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
                                            Text="{Binding TestTime, StringFormat={}{0:HH:mm:ss}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Setter Property="Visibility"
+                                                    Value="Visible" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                <DataTrigger Binding="{Binding IsRoot}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -188,19 +353,23 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
+
+                    <!-- 测试项实际值（Pass=绿，Fail=红） -->
                     <GridViewColumn Header="测试项实际值"
                                     Width="118">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
-                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           FontSize="13"
                                            Text="{Binding ActualValue, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Visible" />
+                                        <Style TargetType="TextBlock"
+                                               BasedOn="{StaticResource ActualValueTextStyle}">
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                <DataTrigger Binding="{Binding IsRoot}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -209,19 +378,25 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
+
+                    <!-- 测试项下限 -->
                     <GridViewColumn Header="测试项下限"
                                     Width="104">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
+                                           FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
                                            Text="{Binding LowerLimit, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Setter Property="Visibility"
+                                                    Value="Visible" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                <DataTrigger Binding="{Binding IsRoot}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -230,19 +405,25 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
+
+                    <!-- 测试项上限 -->
                     <GridViewColumn Header="测试项上限"
                                     Width="104">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
+                                           FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
                                            Text="{Binding UpperLimit, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Setter Property="Visibility"
+                                                    Value="Visible" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRoot}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                <DataTrigger Binding="{Binding IsRoot}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

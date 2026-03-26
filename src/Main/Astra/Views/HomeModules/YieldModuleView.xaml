@@ -4,6 +4,43 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <!-- 良率进度条动画 -->
+        <Style x:Key="YieldProgressBar"
+               TargetType="ProgressBar">
+            <Setter Property="Height"
+                    Value="6" />
+            <Setter Property="Background"
+                    Value="#1F22C55E" />
+            <Setter Property="BorderThickness"
+                    Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border CornerRadius="3"
+                                Background="{TemplateBinding Background}">
+                            <Border x:Name="PART_Track">
+                                <Border x:Name="PART_Indicator"
+                                        HorizontalAlignment="Left"
+                                        CornerRadius="3">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0"
+                                                             EndPoint="1,0">
+                                            <GradientStop Color="#22C55E"
+                                                          Offset="0" />
+                                            <GradientStop Color="#06B6D4"
+                                                          Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                            </Border>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Border Background="{DynamicResource RegionBrush}"
             CornerRadius="12"
             Padding="16"
@@ -11,32 +48,237 @@
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1">
         <StackPanel>
-            <Border Background="{DynamicResource LightPrimaryBrush}"
-                    CornerRadius="6"
-                    Padding="8,4">
-                <TextBlock Text="良率显示模块"
-                           FontSize="16"
+
+            <!-- ── 标题栏 ── -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 渐变竖条 (绿→青，象征良率/通过) -->
+                <Border Grid.Column="0"
+                        Width="4"
+                        CornerRadius="2"
+                        Margin="0,0,10,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="0,1">
+                            <GradientStop Color="#22C55E"
+                                          Offset="0" />
+                            <GradientStop Color="#06B6D4"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- 标题 -->
+                <TextBlock Grid.Column="1"
+                           Text="良率显示模块"
+                           FontSize="15"
                            FontWeight="SemiBold"
+                           VerticalAlignment="Center"
                            Foreground="{DynamicResource TitleBrush}" />
-            </Border>
-            <UniformGrid Columns="4"
+
+                <!-- 右侧良率 Pill -->
+                <Border Grid.Column="2"
+                        CornerRadius="10"
+                        Padding="10,3">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="1,0">
+                            <GradientStop Color="#1A22C55E"
+                                          Offset="0" />
+                            <GradientStop Color="#1A06B6D4"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="7"
+                                 Height="7"
+                                 Fill="#22C55E"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,5,0" />
+                        <TextBlock FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="良率 {0:F2}%">
+                                    <Binding Path="YieldPercent" />
+                                </MultiBinding>
+                            </TextBlock.Text>
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0"
+                                                     EndPoint="1,0">
+                                    <GradientStop Color="#22C55E"
+                                                  Offset="0" />
+                                    <GradientStop Color="#06B6D4"
+                                                  Offset="1" />
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ── 四个统计卡片 ── -->
+            <UniformGrid Columns="2"
                          Margin="0,12,0,0">
-                <StackPanel>
-                    <TextBlock Text="总测试数" Foreground="{DynamicResource ThirdlyTextBrush}" />
-                    <TextBlock Text="{Binding TotalCount}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource DarkPrimaryBrush}" />
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="通过数" Foreground="{DynamicResource ThirdlyTextBrush}" />
-                    <TextBlock Text="{Binding PassCount}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource SuccessBrush}" />
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="失败数" Foreground="{DynamicResource ThirdlyTextBrush}" />
-                    <TextBlock Text="{Binding FailCount}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource DangerBrush}" />
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="当前良率" Foreground="{DynamicResource ThirdlyTextBrush}" />
-                    <TextBlock Text="{Binding YieldPercent, StringFormat={}{0:F2}%}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}" />
-                </StackPanel>
+
+                <!-- 总测试数 -->
+                <Border CornerRadius="8"
+                        Height="80"
+                        Margin="0,0,4,4"
+                        BorderBrush="#333B82F6"
+                        BorderThickness="1">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="1,1">
+                            <GradientStop Color="#0D3B82F6"
+                                          Offset="0" />
+                            <GradientStop Color="#00000000"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <!-- 左侧彩色竖线 -->
+                        <Border Width="4"
+                                HorizontalAlignment="Left"
+                                CornerRadius="8,0,0,8"
+                                Background="#3B82F6" />
+                        <!-- 内容 -->
+                        <StackPanel Margin="14,0,10,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="总测试数"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="{Binding TotalCount}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#3B82F6" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 通过数 -->
+                <Border CornerRadius="8"
+                        Height="80"
+                        Margin="4,0,0,4"
+                        BorderBrush="#3322C55E"
+                        BorderThickness="1">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="1,1">
+                            <GradientStop Color="#0D22C55E"
+                                          Offset="0" />
+                            <GradientStop Color="#00000000"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Border Width="4"
+                                HorizontalAlignment="Left"
+                                CornerRadius="8,0,0,8"
+                                Background="#22C55E" />
+                        <StackPanel Margin="14,0,10,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="通过数"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="{Binding PassCount}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#22C55E" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 失败数 -->
+                <Border CornerRadius="8"
+                        Height="80"
+                        Margin="0,0,4,0"
+                        BorderBrush="#33EF4444"
+                        BorderThickness="1">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="1,1">
+                            <GradientStop Color="#0DEF4444"
+                                          Offset="0" />
+                            <GradientStop Color="#00000000"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Border Width="4"
+                                HorizontalAlignment="Left"
+                                CornerRadius="8,0,0,8"
+                                Background="#EF4444" />
+                        <StackPanel Margin="14,0,10,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="失败数"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="{Binding FailCount}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#EF4444" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 当前良率（最重要，渐变文字 + 进度条） -->
+                <Border CornerRadius="8"
+                        Height="80"
+                        Margin="4,0,0,0"
+                        BorderBrush="#33F97316"
+                        BorderThickness="1">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0"
+                                             EndPoint="1,1">
+                            <GradientStop Color="#0DF97316"
+                                          Offset="0" />
+                            <GradientStop Color="#00000000"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Border Width="4"
+                                HorizontalAlignment="Left"
+                                CornerRadius="8,0,0,8">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0"
+                                                     EndPoint="0,1">
+                                    <GradientStop Color="#F97316"
+                                                  Offset="0" />
+                                    <GradientStop Color="#EAB308"
+                                                  Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <StackPanel Margin="14,0,10,0"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="当前良率"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       Margin="0,0,0,2" />
+                            <TextBlock Text="{Binding YieldPercent,Mode=OneWay,UpdateSourceTrigger=PropertyChanged,StringFormat={}{0:F2}%}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#F97316" />
+                            <!-- 进度条 -->
+                            <ProgressBar Style="{StaticResource YieldProgressBar}"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Value="{Binding YieldPercent,Mode=OneWay,UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
             </UniformGrid>
         </StackPanel>
     </Border>
