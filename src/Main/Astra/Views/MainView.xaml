@@ -236,7 +236,6 @@
                                                    MaxWidth="48" />
                                     </StackPanel>
                                 </Border>
-
                             </Grid>
 
                             <ControlTemplate.Triggers>
@@ -596,23 +595,31 @@
                             ToolTipService.BetweenShowDelay="0"
                             ToolTipService.ShowDuration="60000"
                             Loaded="StatusIndicatorBorder_Loaded">
-                        <Ellipse Width="10"
-                                 Height="10">
-                            <Ellipse.Fill>
-                                <Binding Path="StatusIndicatorStatus"
-                                         Converter="{StaticResource SoftwareStatusToBrushConverter}" />
-                            </Ellipse.Fill>
-                            <Ellipse.Effect>
-                                <DropShadowEffect BlurRadius="6"
-                                                  ShadowDepth="0"
-                                                  Opacity="0.8">
-                                    <DropShadowEffect.Color>
-                                        <Binding Path="StatusIndicatorStatus"
-                                                 Converter="{StaticResource SoftwareStatusToColorConverter}" />
-                                    </DropShadowEffect.Color>
-                                </DropShadowEffect>
-                            </Ellipse.Effect>
-                        </Ellipse>
+                        <StackPanel Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+                            <Ellipse Width="10"
+                                     Height="10">
+                                <Ellipse.Fill>
+                                    <Binding Path="StatusIndicatorStatus"
+                                             Converter="{StaticResource SoftwareStatusToBrushConverter}" />
+                                </Ellipse.Fill>
+                                <Ellipse.Effect>
+                                    <DropShadowEffect BlurRadius="6"
+                                                      ShadowDepth="0"
+                                                      Opacity="0.8">
+                                        <DropShadowEffect.Color>
+                                            <Binding Path="StatusIndicatorStatus"
+                                                     Converter="{StaticResource SoftwareStatusToColorConverter}" />
+                                        </DropShadowEffect.Color>
+                                    </DropShadowEffect>
+                                </Ellipse.Effect>
+                            </Ellipse>
+                            <TextBlock Text="连接状态"
+                                       FontSize="11"
+                                       Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                        </StackPanel>
                     </Border>
                 </StackPanel>
 

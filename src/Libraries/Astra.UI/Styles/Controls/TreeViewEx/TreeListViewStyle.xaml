@@ -5,16 +5,15 @@
     <local:LevelToIndentConverter x:Key="LevelIndentConverter" />
     <local:LevelToIndentMultiConverter x:Key="LevelIndentMultiConverter" />
 
-    <!-- 列头：浅底、仅底部分隔线（无竖线），贴近表格型后台列表 -->
+    <!-- 列头：工业风卡片化表头，强化层级与交互反馈 -->
     <Style x:Key="TreeListView.GridViewColumnHeaderStyle"
            TargetType="{x:Type GridViewColumnHeader}">
-        <Setter Property="Background" Value="{DynamicResource ThirdlyRegionBrush}" />
-        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="Background" Value="#F5F8FC" />
+        <Setter Property="Foreground" Value="#334155" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="12" />
-        <!-- 表头留白：略收紧左右，为长标题留出可换行空间，避免字被列宽裁切 -->
-        <Setter Property="Padding" Value="12,12,14,12" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="Padding" Value="12,6,8,6" />
+        <Setter Property="BorderBrush" Value="#E6EDF5" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -22,29 +21,61 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type GridViewColumnHeader}">
-                    <Border x:Name="HeaderBorder"
-                            Padding="{TemplateBinding Padding}"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            SnapsToDevicePixels="True">
-                        <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
-                                   TextWrapping="Wrap"
-                                   TextTrimming="None"
-                                   Foreground="{TemplateBinding Foreground}"
-                                   FontWeight="{TemplateBinding FontWeight}"
-                                   FontSize="{TemplateBinding FontSize}"
-                                   FontFamily="{TemplateBinding FontFamily}"
-                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                   LineHeight="18" />
-                    </Border>
+                    <Grid SnapsToDevicePixels="True">
+                        <Border x:Name="HeaderBorder"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="0"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="2" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                           TextWrapping="Wrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           FontWeight="{TemplateBinding FontWeight}"
+                                           FontSize="{TemplateBinding FontSize}"
+                                           FontFamily="{TemplateBinding FontFamily}"
+                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                           LineHeight="16" />
+                                <Border Grid.Row="1"
+                                        x:Name="HeaderAccent"
+                                        Background="Transparent"
+                                        CornerRadius="1,0,0,0"
+                                        Margin="0,4,0,0" />
+                            </Grid>
+                        </Border>
+                        <!-- 保留系统识别的拉宽部件：允许拖拽调整列宽 -->
+                        <Thumb x:Name="PART_HeaderGripper"
+                               Width="6"
+                               HorizontalAlignment="Right"
+                               Background="Transparent"
+                               Cursor="SizeWE">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="{x:Type Thumb}">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource SecondaryRegionBrush}" />
+                            <Setter TargetName="HeaderBorder" Property="Background" Value="#EDF3FB" />
+                            <Setter TargetName="HeaderAccent" Property="Background" Value="Transparent" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource ThirdlyRegionBrush}" />
+                            <Setter TargetName="HeaderBorder" Property="Background" Value="#E3ECF8" />
+                            <Setter TargetName="HeaderAccent" Property="Background" Value="Transparent" />
+                        </Trigger>
+                        <Trigger Property="Role" Value="Floating">
+                            <Setter TargetName="HeaderBorder" Property="Opacity" Value="0.95" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -124,6 +155,7 @@
 
     <Style TargetType="{x:Type local:TreeListViewItem}">
         <Setter Property="Background" Value="Transparent" />
+        <Setter Property="IsExpanded" Value="True" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Padding" Value="12,8,12,8" />
         <Setter Property="MinHeight" Value="40" />
@@ -208,6 +240,7 @@
                             <DockPanel>
                                 <GridViewHeaderRowPresenter DockPanel.Dock="Top"
                                                             Columns="{TemplateBinding Columns}"
+                                                            AllowsColumnReorder="{TemplateBinding AllowsColumnReorder}"
                                                             ColumnHeaderContainerStyle="{TemplateBinding ColumnHeaderStyle}" />
                                 <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                               VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">

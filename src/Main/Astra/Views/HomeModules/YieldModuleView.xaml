@@ -57,7 +57,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 渐变竖条 (绿→青，象征良率/通过) -->
+                <!-- 渐变竖条（统一：青→蓝） -->
                 <Border Grid.Column="0"
                         Width="4"
                         CornerRadius="2"
@@ -65,9 +65,9 @@
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0"
                                              EndPoint="0,1">
-                            <GradientStop Color="#22C55E"
-                                          Offset="0" />
                             <GradientStop Color="#06B6D4"
+                                          Offset="0" />
+                            <GradientStop Color="#3B82F6"
                                           Offset="1" />
                         </LinearGradientBrush>
                     </Border.Background>
@@ -84,7 +84,9 @@
                 <!-- 右侧良率 Pill -->
                 <Border Grid.Column="2"
                         CornerRadius="10"
-                        Padding="10,3">
+                        Padding="8,3"
+                        BorderThickness="1"
+                        BorderBrush="#3322C55E">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0"
                                              EndPoint="1,0">
@@ -121,14 +123,19 @@
                     </StackPanel>
                 </Border>
             </Grid>
+            <TextBlock Text="良率为核心指标，辅助展示总数/通过/失败统计。"
+                       Margin="0,10,0,0"
+                       FontSize="12"
+                       LineHeight="18"
+                       Foreground="{DynamicResource SecondaryTextBrush}" />
 
             <!-- ── 四个统计卡片 ── -->
             <UniformGrid Columns="2"
-                         Margin="0,12,0,0">
+                         Margin="0,10,0,0">
 
                 <!-- 总测试数 -->
                 <Border CornerRadius="8"
-                        Height="80"
+                        Height="92"
                         Margin="0,0,4,4"
                         BorderBrush="#333B82F6"
                         BorderThickness="1">
@@ -151,11 +158,11 @@
                         <StackPanel Margin="14,0,10,0"
                                     VerticalAlignment="Center">
                             <TextBlock Text="总测试数"
-                                       FontSize="11"
+                                       FontSize="12"
                                        Foreground="{DynamicResource SecondaryTextBrush}"
                                        Margin="0,0,0,4" />
                             <TextBlock Text="{Binding TotalCount}"
-                                       FontSize="24"
+                                       FontSize="28"
                                        FontWeight="Bold"
                                        Foreground="#3B82F6" />
                         </StackPanel>
@@ -164,7 +171,7 @@
 
                 <!-- 通过数 -->
                 <Border CornerRadius="8"
-                        Height="80"
+                        Height="92"
                         Margin="4,0,0,4"
                         BorderBrush="#3322C55E"
                         BorderThickness="1">
@@ -185,11 +192,11 @@
                         <StackPanel Margin="14,0,10,0"
                                     VerticalAlignment="Center">
                             <TextBlock Text="通过数"
-                                       FontSize="11"
+                                       FontSize="12"
                                        Foreground="{DynamicResource SecondaryTextBrush}"
                                        Margin="0,0,0,4" />
                             <TextBlock Text="{Binding PassCount}"
-                                       FontSize="24"
+                                       FontSize="28"
                                        FontWeight="Bold"
                                        Foreground="#22C55E" />
                         </StackPanel>
@@ -198,7 +205,7 @@
 
                 <!-- 失败数 -->
                 <Border CornerRadius="8"
-                        Height="80"
+                        Height="92"
                         Margin="0,0,4,0"
                         BorderBrush="#33EF4444"
                         BorderThickness="1">
@@ -219,11 +226,11 @@
                         <StackPanel Margin="14,0,10,0"
                                     VerticalAlignment="Center">
                             <TextBlock Text="失败数"
-                                       FontSize="11"
+                                       FontSize="12"
                                        Foreground="{DynamicResource SecondaryTextBrush}"
                                        Margin="0,0,0,4" />
                             <TextBlock Text="{Binding FailCount}"
-                                       FontSize="24"
+                                       FontSize="28"
                                        FontWeight="Bold"
                                        Foreground="#EF4444" />
                         </StackPanel>
@@ -232,7 +239,7 @@
 
                 <!-- 当前良率（最重要，渐变文字 + 进度条） -->
                 <Border CornerRadius="8"
-                        Height="80"
+                        Height="92"
                         Margin="4,0,0,0"
                         BorderBrush="#33F97316"
                         BorderThickness="1">
@@ -262,11 +269,11 @@
                         <StackPanel Margin="14,0,10,0"
                                     VerticalAlignment="Center">
                             <TextBlock Text="当前良率"
-                                       FontSize="11"
+                                       FontSize="12"
                                        Foreground="{DynamicResource SecondaryTextBrush}"
                                        Margin="0,0,0,2" />
                             <TextBlock Text="{Binding YieldPercent,Mode=OneWay,UpdateSourceTrigger=PropertyChanged,StringFormat={}{0:F2}%}"
-                                       FontSize="24"
+                                       FontSize="30"
                                        FontWeight="Bold"
                                        Foreground="#F97316" />
                             <!-- 进度条 -->

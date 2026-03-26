@@ -55,8 +55,9 @@
 
         <!-- 日志条目 DataTemplate -->
         <DataTemplate x:Key="LogItemTemplate">
-            <Border Margin="0,3"
+            <Border Margin="0,4"
                     Padding="0"
+                    MinHeight="82"
                     ClipToBounds="True">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="6"
@@ -68,7 +69,7 @@
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="CornerRadius"
-                                Value="7" />
+                                Value="8" />
                         <Setter Property="Background"
                                 Value="{StaticResource InfoCardBg}" />
                         <Setter Property="BorderThickness"
@@ -102,7 +103,7 @@
 
                     <!-- 左侧 4px 实色竖线 -->
                     <Border Grid.Column="0"
-                            CornerRadius="7,0,0,7">
+                            CornerRadius="8,0,0,8">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Background"
@@ -130,16 +131,19 @@
 
                     <!-- 中间：时间戳 + 消息 -->
                     <StackPanel Grid.Column="1"
-                                Margin="12,9,8,9"
+                                Margin="12,10,8,10"
                                 VerticalAlignment="Center">
                         <TextBlock Text="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm:ss.fff'}"
-                                   FontSize="10"
+                                   FontSize="11"
                                    Foreground="{DynamicResource SecondaryTextBrush}"
-                                   Margin="0,0,0,6" />
+                                   Margin="0,0,0,13" />
                         <TextBlock Text="{Binding Message}"
-                                   FontSize="13"
-                                   FontWeight="Bold"    
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryTextBrush}"
+                                   LineHeight="20"
+                                   TextWrapping="Wrap"
+                                   MaxHeight="40"
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
@@ -148,7 +152,8 @@
                             Margin="0,0,12,0"
                             VerticalAlignment="Center"
                             CornerRadius="4"
-                            Padding="8,3">
+                            Padding="0,3"
+                            MinWidth="52">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Background"
@@ -173,9 +178,10 @@
                             </Style>
                         </Border.Style>
                         <TextBlock Text="{Binding NormalizedLevel}"
-                                   FontSize="10"
+                                   FontSize="11"
                                    FontWeight="Bold"
-                                   Foreground="White" />
+                                   Foreground="White"
+                                   HorizontalAlignment="Center" />
                     </Border>
 
                 </Grid>
@@ -184,7 +190,14 @@
 
     </UserControl.Resources>
 
-    <DockPanel Background="{DynamicResource RegionBrush}">
+    <Border Background="{DynamicResource RegionBrush}"
+            CornerRadius="12"
+            Padding="0"
+            Margin="6"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            ClipToBounds="True">
+        <DockPanel Background="{DynamicResource RegionBrush}">
 
         <!-- 标题栏 -->
         <Grid DockPanel.Dock="Top"
@@ -205,9 +218,9 @@
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0"
                                          EndPoint="0,1">
-                        <GradientStop Color="#F97316"
+                        <GradientStop Color="#06B6D4"
                                       Offset="0" />
-                        <GradientStop Color="#00B4D8"
+                        <GradientStop Color="#3B82F6"
                                       Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>
@@ -215,7 +228,7 @@
 
             <TextBlock Grid.Column="1"
                        Text="实时日志记录模块"
-                       FontSize="14"
+                       FontSize="15"
                        FontWeight="SemiBold"
                        VerticalAlignment="Center"
                        Foreground="{DynamicResource TitleBrush}" />
@@ -223,25 +236,36 @@
             <!-- 右侧日志计数 Badge -->
             <Border Grid.Column="2"
                     CornerRadius="10"
-                    Padding="10,3"
+                    Padding="8,3"
                     VerticalAlignment="Center">
                 <Border.Background>
-                    <SolidColorBrush Color="{DynamicResource SecondaryRegionColor}"
-                                     Opacity="0.8" />
+                    <SolidColorBrush Color="#1406B6D4" />
                 </Border.Background>
-                <TextBlock FontSize="11"
+                <Border BorderBrush="#3306B6D4"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="0">
+                    <TextBlock FontSize="12"
+                               FontWeight="SemiBold"
                            Foreground="{DynamicResource SecondaryTextBrush}">
-                    <Run Text="{Binding Logs.Count, Mode=OneWay}" /><Run Text=" 条" />
-                </TextBlock>
+                        <Run Text="{Binding Logs.Count, Mode=OneWay}" /><Run Text=" 条" />
+                    </TextBlock>
+                </Border>
             </Border>
         </Grid>
+        <TextBlock DockPanel.Dock="Top"
+                   Text="展示最新日志级别、时间与消息内容。"
+                   Margin="16,0,16,8"
+                   FontSize="12"
+                   LineHeight="18"
+                   Foreground="{DynamicResource SecondaryTextBrush}" />
 
         <!-- 分割线 -->
         <Border DockPanel.Dock="Top"
                 Height="1"
                 Margin="16,0,16,8"
                 Background="{DynamicResource BorderBrush}"
-                Opacity="0.4" />
+                Opacity="0.35" />
 
         <!-- 列表区 -->
         <Grid>
@@ -286,9 +310,17 @@
                           HorizontalScrollBarVisibility="Disabled"
                           Padding="16,0,16,12">
                 <ItemsControl ItemsSource="{Binding Logs}"
-                              ItemTemplate="{StaticResource LogItemTemplate}" />
+                              ItemTemplate="{StaticResource LogItemTemplate}">
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Margin"
+                                    Value="0,0,0,1" />
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                </ItemsControl>
             </ScrollViewer>
         </Grid>
 
-    </DockPanel>
+        </DockPanel>
+    </Border>
 </UserControl>

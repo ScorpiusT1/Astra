@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Specialized;
+using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace Astra.UI.Styles.Controls.TreeViewEx
@@ -24,6 +27,10 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
             SetCurrentValue(ColumnsProperty, new GridViewColumnCollection());
             Loaded += OnTreeListViewLoaded;
             SizeChanged += OnTreeListViewSizeChanged;
+            PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+            PreviewMouseMove += OnPreviewMouseMove;
+            DragOver += OnDragOver;
+            Drop += OnDrop;
         }
 
         private void OnTreeListViewLoaded(object sender, RoutedEventArgs e)
@@ -69,6 +76,38 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
                 typeof(TreeListView),
                 new FrameworkPropertyMetadata(60d, (d, _) => ((TreeListView)d).ScheduleStretchLastColumn()));
 
+        /// <summary>
+        /// 是否允许列头拖拽换列。默认关闭，仅保留列宽拉伸能力。
+        /// </summary>
+        public bool AllowsColumnReorder
+        {
+            get => (bool)GetValue(AllowsColumnReorderProperty);
+            set => SetValue(AllowsColumnReorderProperty, value);
+        }
+
+        public static readonly DependencyProperty AllowsColumnReorderProperty =
+            DependencyProperty.Register(
+                nameof(AllowsColumnReorder),
+                typeof(bool),
+                typeof(TreeListView),
+                new FrameworkPropertyMetadata(false));
+
+        /// <summary>
+        /// 是否启用行拖拽换位（同一父节点下重排）。默认关闭。
+        /// </summary>
+        public bool EnableRowDragReorder
+        {
+            get => (bool)GetValue(EnableRowDragReorderProperty);
+            set => SetValue(EnableRowDragReorderProperty, value);
+        }
+
+        public static readonly DependencyProperty EnableRowDragReorderProperty =
+            DependencyProperty.Register(
+                nameof(EnableRowDragReorder),
+                typeof(bool),
+                typeof(TreeListView),
+                new FrameworkPropertyMetadata(false));
+
         private GridViewColumnCollection? _hookedColumns;
 
         private void HookColumnsCollection(GridViewColumnCollection? cols)
@@ -92,6 +131,8 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
         }
 
         private bool _stretchScheduled;
+        private Point _dragStartPoint;
+        private TreeListViewItem? _dragSourceContainer;
 
         private void ScheduleStretchLastColumn()
         {
@@ -204,6 +245,99 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
             var tree = (TreeListView)d;
             tree.HookColumnsCollection(tree.Columns);
             tree.ScheduleStretchLastColumn();
+        }
+
+        private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!EnableRowDragReorder)
+                return;
+
+            _dragStartPoint = e.GetPosition(this);
+            _dragSourceContainer = FindAncestor<TreeListViewItem>(e.OriginalSource as DependencyObject);
+        }
+
+        private void OnPreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!EnableRowDragReorder || e.LeftButton != MouseButtonState.Pressed || _dragSourceContainer == null)
+                return;
+
+            var current = e.GetPosition(this);
+            if (Math.Abs(current.X - _dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(current.Y - _dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            var sourceItem = ItemContainerGenerator.ItemFromContainer(_dragSourceContainer);
+            if (sourceItem == null || Equals(sourceItem, DependencyProperty.UnsetValue))
+                return;
+
+            DragDrop.DoDragDrop(_dragSourceContainer, sourceItem, DragDropEffects.Move);
+        }
+
+        private void OnDragOver(object sender, DragEventArgs e)
+        {
+            if (!EnableRowDragReorder || _dragSourceContainer == null)
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
+
+            var targetContainer = FindAncestor<TreeListViewItem>(e.OriginalSource as DependencyObject);
+            if (targetContainer == null)
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
+
+            var sourceParent = ItemsControl.ItemsControlFromItemContainer(_dragSourceContainer);
+            var targetParent = ItemsControl.ItemsControlFromItemContainer(targetContainer);
+            e.Effects = ReferenceEquals(sourceParent, targetParent) ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void OnDrop(object sender, DragEventArgs e)
+        {
+            if (!EnableRowDragReorder || _dragSourceContainer == null)
+                return;
+
+            var targetContainer = FindAncestor<TreeListViewItem>(e.OriginalSource as DependencyObject);
+            if (targetContainer == null || ReferenceEquals(targetContainer, _dragSourceContainer))
+                return;
+
+            var sourceParent = ItemsControl.ItemsControlFromItemContainer(_dragSourceContainer);
+            var targetParent = ItemsControl.ItemsControlFromItemContainer(targetContainer);
+            if (!ReferenceEquals(sourceParent, targetParent) || sourceParent == null)
+                return;
+
+            var sourceIndex = sourceParent.ItemContainerGenerator.IndexFromContainer(_dragSourceContainer);
+            var targetIndex = targetParent.ItemContainerGenerator.IndexFromContainer(targetContainer);
+            if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex)
+                return;
+
+            if (sourceParent.ItemsSource is IList list && !list.IsReadOnly && sourceIndex < list.Count)
+            {
+                var moving = list[sourceIndex];
+                list.RemoveAt(sourceIndex);
+                if (targetIndex > sourceIndex)
+                    targetIndex--;
+                list.Insert(Math.Max(0, Math.Min(targetIndex, list.Count)), moving);
+                e.Handled = true;
+            }
+        }
+
+        private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+        {
+            while (current != null)
+            {
+                if (current is T target)
+                    return target;
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return null;
         }
     }
 }

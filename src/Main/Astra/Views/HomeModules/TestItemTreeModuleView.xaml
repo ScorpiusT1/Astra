@@ -4,7 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:modules="clr-namespace:Astra.ViewModels.HomeModules"
-           
+             xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
              xmlns:tv="clr-namespace:Astra.UI.Styles.Controls.TreeViewEx;assembly=Astra.UI"
              mc:Ignorable="d"
              d:DesignHeight="720"
@@ -15,9 +15,11 @@
         <Style x:Key="StatusBadgeStyle"
                TargetType="Border">
             <Setter Property="Padding"
-                    Value="8,3" />
+                    Value="10,4" />
             <Setter Property="CornerRadius"
-                    Value="4" />
+                    Value="5" />
+            <Setter Property="MinWidth"
+                    Value="56" />
             <Setter Property="Background"
                     Value="{DynamicResource SecondaryBorderBrush}" />
             <Setter Property="BorderThickness"
@@ -52,10 +54,24 @@
             <Setter Property="FontWeight"
                     Value="Bold" />
             <Setter Property="FontSize"
-                    Value="11" />
+                    Value="13" />
             <Setter Property="Foreground"
                     Value="White" />
+            <Setter Property="TextAlignment"
+                    Value="Center" />
+            <Setter Property="HorizontalAlignment"
+                    Value="Center" />
             <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Pass">
+                    <Setter Property="Text"
+                            Value="OK" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Fail">
+                    <Setter Property="Text"
+                            Value="NG" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding Status}"
                              Value="Ready">
                     <Setter Property="Foreground"
@@ -100,6 +116,60 @@
             </Setter>
         </Style>
 
+        <Style x:Key="ModuleStatPillStyle"
+               TargetType="Border">
+            <Setter Property="CornerRadius"
+                    Value="10" />
+            <Setter Property="Padding"
+                    Value="8,3" />
+            <Setter Property="Margin"
+                    Value="0,0,8,0" />
+            <Setter Property="BorderBrush"
+                    Value="#3306B6D4" />
+            <Setter Property="BorderThickness"
+                    Value="1" />
+            <Setter Property="Background"
+                    Value="#1406B6D4" />
+        </Style>
+
+        <Style x:Key="SummaryCardStyle"
+               TargetType="Border">
+            <Setter Property="CornerRadius"
+                    Value="10" />
+            <Setter Property="Padding"
+                    Value="0" />
+            <Setter Property="Margin"
+                    Value="0,0,6,0" />
+            <Setter Property="BorderBrush"
+                    Value="#D7E1ED" />
+            <Setter Property="BorderThickness"
+                    Value="1" />
+            <Setter Property="Background"
+                    Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#000000"
+                                      Opacity="0.09"
+                                      ShadowDepth="1"
+                                      BlurRadius="10"
+                                      Direction="270" />
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TreeEmptyStateStyle"
+               TargetType="StackPanel">
+            <Setter Property="Visibility"
+                    Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Roots.Count}"
+                             Value="0">
+                    <Setter Property="Visibility"
+                            Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <HierarchicalDataTemplate DataType="{x:Type modules:TestTreeNodeItem}"
                                   ItemsSource="{Binding Children}">
             <Border Visibility="Collapsed" />
@@ -111,10 +181,11 @@
             Padding="16"
             Margin="6"
             BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1"
+            BorderThickness="0"
             VerticalAlignment="Stretch">
         <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -158,6 +229,12 @@
                 <StackPanel Grid.Column="2"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
+                    <Border Style="{StaticResource ModuleStatPillStyle}">
+                        <TextBlock Text="{Binding Roots.Count, StringFormat=节点 {0}}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SecondaryTextBrush}" />
+                    </Border>
                     <ProgressBar Width="80"
                                  Height="4"
                                  Margin="0,0,10,0"
@@ -176,11 +253,94 @@
                        Text="根节点对应流程节点，子项展示详细测试结果；数据由 ITestItemTreeDataProvider 异步加载。"
                        Margin="0,0,0,8"
                        FontSize="12"
+                       LineHeight="18"
                        Foreground="{DynamicResource SecondaryTextBrush}"
                        TextWrapping="Wrap" />
 
+            <!-- ── 统计概览（不含测试结果） ── -->
+            <UniformGrid Grid.Row="2"
+                         Columns="3"
+                         Margin="0,0,0,8">
+                <Border Style="{StaticResource SummaryCardStyle}">
+                    <Grid Height="88">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#3B82F6"
+                                CornerRadius="10,0,0,10" />
+                        <StackPanel Grid.Column="1"
+                                    Margin="10,8,10,8">
+                            <TextBlock Text="测试总时间"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                            <TextBlock Text="{Binding SummaryTime}"
+                                       Margin="0,5,0,0"
+                                       FontSize="20"
+                                       FontWeight="Bold"
+                                       Foreground="#1D4ED8" />
+                            <TextBlock Text="最近一条测试记录"
+                                       Margin="0,3,0,0"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource ThirdlyTextBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource SummaryCardStyle}">
+                    <Grid Height="88">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#22C55E"
+                                CornerRadius="10,0,0,10" />
+                        <StackPanel Grid.Column="1"
+                                    Margin="10,8,10,8">
+                            <TextBlock Text="总成功项"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                            <TextBlock Text="{Binding TotalPassCount}"
+                                       Margin="0,5,0,0"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#15803D" />
+                            <TextBlock Text="OK 项数量"
+                                       Margin="0,3,0,0"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource ThirdlyTextBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <Border Margin="0"
+                        Style="{StaticResource SummaryCardStyle}">
+                    <Grid Height="88">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#EF4444"
+                                CornerRadius="10,0,0,10" />
+                        <StackPanel Grid.Column="1"
+                                    Margin="10,8,10,8">
+                            <TextBlock Text="总失败项"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                            <TextBlock Text="{Binding TotalFailCount}"
+                                       Margin="0,5,0,0"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#B91C1C" />
+                            <TextBlock Text="NG 项数量"
+                                       Margin="0,3,0,0"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource ThirdlyTextBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </UniformGrid>
+
             <!-- ── 错误提示 ── -->
-            <Border Grid.Row="2"
+            <Border Grid.Row="3"
                     CornerRadius="6"
                     Padding="10,6"
                     Margin="0,0,0,8"
@@ -203,24 +363,82 @@
             </Border>
 
             <!-- ── TreeListView ── -->
-            <tv:TreeListView Grid.Row="3"
-                             ItemsSource="{Binding Roots}"
-                             Padding="0"
-                             VerticalAlignment="Stretch"
-                             StretchLastColumn="True"
-                             LastColumnMinWidth="72"
-                             Background="{DynamicResource SurfaceBrush}"
-                             BorderThickness="1"
-                             BorderBrush="{DynamicResource BorderBrush}"
-                             IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto">
+            <Grid Grid.Row="4">
+                <tv:TreeListView ItemsSource="{Binding Roots}"
+                                 Padding="0"
+                                 VerticalAlignment="Stretch"
+                                 StretchLastColumn="False"
+                                 LastColumnMinWidth="0"
+                                 Background="{DynamicResource SurfaceBrush}"
+                                 BorderThickness="1"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <tv:TreeListView.Resources>
+                    <SolidColorBrush x:Key="TreeGroupBrush0"
+                                     Color="#FFEAF4FF" />
+                    <SolidColorBrush x:Key="TreeGroupBrush1"
+                                     Color="#FFEAFBEF" />
+                    <SolidColorBrush x:Key="TreeGroupBrush2"
+                                     Color="#FFFFF2E6" />
+                    <SolidColorBrush x:Key="TreeGroupBrush3"
+                                     Color="#FFF3EDFF" />
+
+                    <Style TargetType="GridViewColumnHeader">
+                        <Setter Property="Height"
+                                Value="35" />
+                        <Setter Property="FontWeight"
+                                Value="SemiBold" />
+                        <Setter Property="Foreground"
+                                Value="{DynamicResource PrimaryTextBrush}" />
+                        <Setter Property="Background"
+                                Value="#EEF3FA" />
+                        <Setter Property="BorderBrush"
+                                Value="{DynamicResource BorderBrush}" />
+                        <Setter Property="BorderThickness"
+                                Value="0,0,1,1" />
+                    </Style>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Height"
+                                Value="32" />
+                        <Setter Property="VerticalContentAlignment"
+                                Value="Center" />
+                    </Style>
+                    <Style TargetType="{x:Type tv:TreeListViewItem}"
+                           BasedOn="{StaticResource {x:Type tv:TreeListViewItem}}">
+                        <Setter Property="Background"
+                                Value="Transparent" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding GroupColorIndex}"
+                                         Value="0">
+                                <Setter Property="Background"
+                                        Value="{StaticResource TreeGroupBrush0}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GroupColorIndex}"
+                                         Value="1">
+                                <Setter Property="Background"
+                                        Value="{StaticResource TreeGroupBrush1}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GroupColorIndex}"
+                                         Value="2">
+                                <Setter Property="Background"
+                                        Value="{StaticResource TreeGroupBrush2}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding GroupColorIndex}"
+                                         Value="3">
+                                <Setter Property="Background"
+                                        Value="{StaticResource TreeGroupBrush3}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </tv:TreeListView.Resources>
 
                 <!-- 第一列（树形展开列） -->
                 <tv:TreeListView.FirstColumnCellTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal"
-                                    VerticalAlignment="Center">
+                        <Grid VerticalAlignment="Center"
+                              ClipToBounds="True">
 
                             <!-- 叶子节点：普通文字，左侧小圆点指示状态 -->
                             <StackPanel x:Name="LeafPanel"
@@ -235,32 +453,45 @@
                                 <TextBlock Text="{Binding Name}"
                                            VerticalAlignment="Center"
                                            FontSize="13"
+                                           MaxWidth="170"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource PrimaryTextBrush}" />
                             </StackPanel>
 
                             <!-- 根节点：加粗 + 数量 -->
-                            <StackPanel x:Name="RootPanel"
-                                        Orientation="Horizontal"
-                                        Visibility="Collapsed">
-                                <TextBlock Text="{Binding Name}"
-                                           FontWeight="SemiBold"
-                                           FontSize="13"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TitleBrush}" />
-                                <Border CornerRadius="8"
-                                        Padding="6,1"
-                                        Margin="8,0,0,0"
-                                        Background="#1406B6D4"
-                                        BorderBrush="#3306B6D4"
-                                        BorderThickness="1"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Children.Count, StringFormat={}{0}}"
-                                               FontSize="11"
+                            <Border x:Name="RootPanel"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
+                                    Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <fa:IconBlock Icon="Cubes"
+                                                  FontSize="11"
+                                                  Margin="0,0,6,0"
+                                                  VerticalAlignment="Center"
+                                                  Foreground="#06B6D4" />
+                                    <TextBlock Text="{Binding Name}"
                                                FontWeight="SemiBold"
-                                               Foreground="#06B6D4" />
-                                </Border>
-                            </StackPanel>
-                        </StackPanel>
+                                               FontSize="13"
+                                               MaxWidth="110"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TitleBrush}" />
+                                    <Border CornerRadius="8"
+                                            Padding="6,1"
+                                            Margin="8,0,0,0"
+                                            Background="#1406B6D4"
+                                            BorderBrush="#3306B6D4"
+                                            BorderThickness="1"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Children.Count, StringFormat={}{0}}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#06B6D4" />
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
 
                         <DataTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsRoot}"
@@ -298,12 +529,12 @@
                 <tv:TreeListView.Columns>
                     <!-- 测试项名称 -->
                     <GridViewColumn Header="测试项名称"
-                                    Width="240"
+                                    Width="220"
                                     CellTemplate="{StaticResource TreeListView.FirstColumnWithExpanderTemplate}" />
 
                     <!-- 测试项状态 -->
                     <GridViewColumn Header="测试项状态"
-                                    Width="118">
+                                    Width="120">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <Border HorizontalAlignment="Left"
@@ -320,9 +551,35 @@
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
-                                    <TextBlock Text="{Binding Status}"
+                                    <TextBlock x:Name="PART_Text"
                                                Style="{StaticResource StatusTextStyle}" />
                                 </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Status}"
+                                                 Value="Pass">
+                                        <Setter TargetName="PART_Text"
+                                                Property="TextBlock.Text"
+                                                Value="OK" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}"
+                                                 Value="Fail">
+                                        <Setter TargetName="PART_Text"
+                                                Property="TextBlock.Text"
+                                                Value="NG" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}"
+                                                 Value="Running">
+                                        <Setter TargetName="PART_Text"
+                                                Property="TextBlock.Text"
+                                                Value="RUN" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}"
+                                                 Value="Ready">
+                                        <Setter TargetName="PART_Text"
+                                                Property="TextBlock.Text"
+                                                Value="READY" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
@@ -356,11 +613,13 @@
 
                     <!-- 测试项实际值（Pass=绿，Fail=红） -->
                     <GridViewColumn Header="测试项实际值"
-                                    Width="118">
+                                    Width="120">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="13"
+                                           TextAlignment="Right"
+                                           HorizontalAlignment="Right"
                                            Text="{Binding ActualValue, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock"
@@ -381,12 +640,14 @@
 
                     <!-- 测试项下限 -->
                     <GridViewColumn Header="测试项下限"
-                                    Width="104">
+                                    Width="110">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
+                                           TextAlignment="Right"
+                                           HorizontalAlignment="Right"
                                            Text="{Binding LowerLimit, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -408,12 +669,14 @@
 
                     <!-- 测试项上限 -->
                     <GridViewColumn Header="测试项上限"
-                                    Width="104">
+                                    Width="110">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate DataType="{x:Type modules:TestTreeNodeItem}">
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="12"
                                            Foreground="{DynamicResource SecondaryTextBrush}"
+                                           TextAlignment="Right"
+                                           HorizontalAlignment="Right"
                                            Text="{Binding UpperLimit, StringFormat={}{0:F3}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -433,7 +696,22 @@
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
                 </tv:TreeListView.Columns>
-            </tv:TreeListView>
+                </tv:TreeListView>
+                <StackPanel Style="{StaticResource TreeEmptyStateStyle}"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center">
+                    <TextBlock Text="暂无测试项数据"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="请先加载测试流程或点击刷新。"
+                               Margin="0,6,0,0"
+                               FontSize="12"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </UserControl>
