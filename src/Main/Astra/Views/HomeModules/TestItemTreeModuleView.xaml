@@ -521,6 +521,7 @@
                 <tv:TreeListView ItemsSource="{Binding Roots}"
                                  Padding="0"
                                  VerticalAlignment="Stretch"
+                                 AllowsColumnReorder="False"
                                  StretchLastColumn="False"
                                  LastColumnMinWidth="0"
                                  Background="{DynamicResource SurfaceBrush}"
@@ -539,7 +540,8 @@
                     <SolidColorBrush x:Key="TreeGroupBrush3"
                                      Color="{DynamicResource LightPauseColor}" />
 
-                    <Style TargetType="GridViewColumnHeader">
+                    <Style TargetType="GridViewColumnHeader"
+                           BasedOn="{StaticResource TreeListView.GridViewColumnHeaderStyle}">
                         <Setter Property="Height"
                                 Value="35" />
                         <Setter Property="FontWeight"
@@ -552,6 +554,8 @@
                                 Value="{DynamicResource BorderBrush}" />
                         <Setter Property="BorderThickness"
                                 Value="0,0,1,1" />
+                        <Setter Property="Cursor"
+                                Value="SizeWE" />
                     </Style>
                     <Style TargetType="ListViewItem">
                         <Setter Property="Height"
