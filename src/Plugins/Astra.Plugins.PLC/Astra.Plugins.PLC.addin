@@ -9,7 +9,7 @@
 		<Author>Astra Team</Author>
 		<Copyright>Copyright © Astra Team</Copyright>
 		<Website />
-		<IconPath />
+		<IconPath>Cogs</IconPath>
 		<Runtime>
 			<Assembly>Astra.Plugins.PLC.dll</Assembly>
 			<TypeName>Astra.Plugins.PLC.PlcPlugin</TypeName>
@@ -20,4 +20,20 @@
 			<Required />
 		</Permissions>
 	</Addin>
+	<Nodes>
+		<NodeInfo
+			Name="PLC读取"
+			TypeName="Astra.Plugins.PLC.Nodes.ReadNode"
+			IconCode="Download"
+			Description="按设备名称查找PLC，支持单地址与多地址读取"
+			Category="PLC"
+			Group="PLC读写" />
+		<NodeInfo
+			Name="PLC写入"
+			TypeName="Astra.Plugins.PLC.Nodes.WriteNode"
+			IconCode="Upload"
+			Description="按设备名称查找PLC，支持单地址与多地址写入"
+			Category="PLC"
+			Group="PLC读写" />
+	</Nodes>
 </AddinManifest>

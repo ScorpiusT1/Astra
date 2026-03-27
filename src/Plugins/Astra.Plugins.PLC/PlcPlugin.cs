@@ -1,5 +1,6 @@
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Configuration.Providers;
+using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Abstractions;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Management;
@@ -19,6 +20,8 @@ namespace Astra.Plugins.PLC
 {
     public class PlcPlugin : IPlugin
     {
+        internal static PlcPlugin? Current { get; private set; }
+
         private IPluginContext? _context;
         private IDeviceManager? _deviceManager;
         private IConfigurationManager? _configurationManager;
@@ -34,6 +37,7 @@ namespace Astra.Plugins.PLC
         public async Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            Current = this;
             _deviceManager = context.ServiceProvider.GetService<IDeviceManager>();
             _configurationManager = context.ServiceProvider.GetService<IConfigurationManager>();
 
@@ -148,8 +152,14 @@ namespace Astra.Plugins.PLC
             }
 
             _devices.Clear();
+            Current = null;
             _disposed = true;
             return ValueTask.CompletedTask;
+        }
+
+        internal IReadOnlyList<IPLC> GetAllPlcs()
+        {
+            return _devices.OfType<IPLC>().ToList().AsReadOnly();
         }
     }
 }
