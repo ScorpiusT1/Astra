@@ -262,6 +262,13 @@
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Left">
                 <!-- 文件操作组 -->
+                <Button ToolTip="新建主流程"
+                        Command="{Binding CreateNewMasterWorkflowCommand}"
+                        Style="{StaticResource IconButtonStyle}"
+                        Margin="0,0,4,0">
+                    <fa:IconBlock Icon="FileCirclePlus"
+                                  FontSize="16" />
+                </Button>
                 <Button ToolTip="打开文件"
                         Command="{Binding OpenFileCommand}"
                         Style="{StaticResource IconButtonStyle}"
@@ -280,7 +287,7 @@
                         Command="{Binding SaveFileAsCommand}"
                         Style="{StaticResource IconButtonStyle}"
                         Margin="0,0,4,0">
-                    <fa:IconBlock Icon="FileCirclePlus"
+                    <fa:IconBlock Icon="FileExport"
                                   FontSize="16" />
                 </Button>
 
@@ -523,8 +530,7 @@
                                          Width="8"
                                          Height="8"
                                          VerticalAlignment="Center"
-                                         Margin="0,0,8,0"
-                                         Visibility="{Binding IsInEditMode, Converter={StaticResource InvertedBooleanToVisibilityConverter}, Mode=OneWay}">
+                                         Margin="0,0,8,0">
                                     <Ellipse.Style>
                                         <Style TargetType="Ellipse">
                                             <!-- 未运行：灰色 -->
@@ -605,6 +611,7 @@
 
                                 <!-- 编辑模式：TextBox -->
                                 <TextBox x:Name="EditNameTextBox"
+                                         Grid.Column="1"
                                          Text="{Binding EditingName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
                                          VerticalAlignment="Center"
                                          VerticalContentAlignment="Center"

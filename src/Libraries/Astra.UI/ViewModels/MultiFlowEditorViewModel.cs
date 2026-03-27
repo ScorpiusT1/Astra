@@ -4786,6 +4786,47 @@ namespace Astra.UI.ViewModels
         }
 
         /// <summary>
+        /// 新建主流程命令
+        /// </summary>
+        [RelayCommand]
+        private void CreateNewMasterWorkflow()
+        {
+            if (HasUnsavedChanges())
+            {
+                var saveResult = MessageBoxHelper.ConfirmSave("当前项目有未保存的更改，是否保存？");
+                if (saveResult == MessageBoxResult.Yes)
+                {
+                    if (!SaveFileInternal())
+                    {
+                        return;
+                    }
+                }
+                else if (saveResult == MessageBoxResult.Cancel)
+                {
+                    return;
+                }
+            }
+
+            if (!MessageBoxHelper.Confirm("将新建一个空的主流程，现有主流程内容会被覆盖。是否继续？", "新建主流程"))
+                return;
+
+            // 真正新建空工程：清空主/子流程及标签页，不保留旧项目结构。
+            ClearAllWorkflows();
+            CurrentFilePath = null;
+            _lastLoadedFilePath = null;
+            ClearAllModifiedFlags();
+            _commandManager?.Clear();
+
+            // 自动创建一个空白子流程并切换到子流程编辑界面。
+            AddNewWorkflow(WorkflowType.Sub);
+            IsMasterWorkflowViewVisible = false;
+            IsMasterWorkflow = false;
+
+            StatusMessage = "已新建空流程项目（子流程）";
+            ToastHelper.ShowSuccess("已新建空流程项目，并切换到子流程编辑界面");
+        }
+
+        /// <summary>
         /// 切换全屏命令
         /// </summary>
         [RelayCommand]
