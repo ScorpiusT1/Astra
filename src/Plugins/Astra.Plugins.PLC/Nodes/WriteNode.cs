@@ -4,8 +4,10 @@ using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Models;
 using Astra.Plugins.PLC.Providers;
 using Astra.UI.Abstractions.Attributes;
+using Astra.UI.PropertyEditors;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
@@ -16,9 +18,10 @@ namespace Astra.Plugins.PLC.Nodes
 {
     public class WriteNode : Node
     {
-        [Display(Name = "PLC设备名称", GroupName = "PLC配置", Order = 1)]
+        [Display(Name = "PLC设备名称(可多选)", GroupName = "PLC配置", Order = 1)]
+        [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(typeof(PlcDeviceProvider), "GetPlcDeviceNames", DisplayMemberPath = ".")]
-        public string PlcDeviceName { get; set; } = string.Empty;
+        public ObservableCollection<string> PlcDeviceNames { get; set; } = new();
 
         [Display(Name = "启用多地址写入", GroupName = "写入配置", Order = 2, Description = "false=单地址写入，true=多地址写入")]
         public bool UseMultiAddress { get; set; }
@@ -37,16 +40,19 @@ namespace Astra.Plugins.PLC.Nodes
             var log = context.CreateExecutionLogger($"PLC写入节点:{Name}");
             try
             {
-                var plc = ResolvePlcByName(PlcDeviceName);
-                if (plc == null)
+                var selectedNames = PlcDeviceNames?
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList() ?? new List<string>();
+                if (selectedNames.Count == 0)
                 {
-                    return ExecutionResult.Failed($"未找到 PLC 设备: {PlcDeviceName}");
+                    return ExecutionResult.Failed("请至少选择一个 PLC 设备");
                 }
 
-                var connectResult = await EnsureConnectedAsync(plc, cancellationToken).ConfigureAwait(false);
-                if (!connectResult.Success)
+                var plcs = ResolvePlcsByNames(selectedNames);
+                if (plcs.Count == 0)
                 {
-                    return ExecutionResult.Failed(connectResult.Message ?? "PLC 连接失败");
+                    return ExecutionResult.Failed($"未找到已选择 PLC 设备: {string.Join(", ", selectedNames)}");
                 }
 
                 if (!UseMultiAddress)
@@ -57,17 +63,45 @@ namespace Astra.Plugins.PLC.Nodes
                     }
 
                     var value = ParseValue(ValueText);
-                    var writeResult = await plc.WriteAsync(Address.Trim(), value, cancellationToken).ConfigureAwait(false);
-                    if (!writeResult.Success)
+                    var errors = new List<string>();
+                    var succeededPlcs = new List<string>();
+                    foreach (var (plcName, plc) in plcs)
                     {
-                        return ExecutionResult.Failed(writeResult.ErrorMessage ?? $"写入失败: {Address}");
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var connectResult = await EnsureConnectedAsync(plc, cancellationToken).ConfigureAwait(false);
+                        if (!connectResult.Success)
+                        {
+                            errors.Add($"{plcName}: {connectResult.Message ?? "PLC连接失败"}");
+                            continue;
+                        }
+
+                        var writeResult = await plc.WriteAsync(Address.Trim(), value, cancellationToken).ConfigureAwait(false);
+                        if (!writeResult.Success)
+                        {
+                            errors.Add($"{plcName}: {writeResult.ErrorMessage ?? $"写入失败: {Address}"}");
+                            continue;
+                        }
+
+                        succeededPlcs.Add(plcName);
                     }
 
-                    log.Info($"写入成功，设备={PlcDeviceName}, 地址={Address}");
-                    return ExecutionResult.Successful("PLC 单地址写入成功")
-                        .WithOutput("PlcDeviceName", PlcDeviceName)
+                    if (succeededPlcs.Count == 0)
+                    {
+                        return ExecutionResult.Failed($"PLC 单地址写入失败: {string.Join(" | ", errors)}");
+                    }
+
+                    log.Info($"写入完成，地址={Address}, 成功PLC数={succeededPlcs.Count}");
+                    var result = ExecutionResult.Successful("PLC 单地址写入完成")
+                        .WithOutput("PlcDeviceNames", plcs.Select(x => x.Name).ToList())
                         .WithOutput("Address", Address.Trim())
-                        .WithOutput("WrittenValue", value);
+                        .WithOutput("WrittenValue", value)
+                        .WithOutput("SucceededPlcNames", succeededPlcs);
+                    if (errors.Count > 0)
+                    {
+                        result = result.WithOutput("WriteErrors", errors);
+                    }
+
+                    return result;
                 }
 
                 var writeMap = ParseWriteMap(MultiWriteText);
@@ -76,16 +110,44 @@ namespace Astra.Plugins.PLC.Nodes
                     return ExecutionResult.Failed("多地址写入模式下 MultiWriteText 不能为空");
                 }
 
-                var batchResult = await plc.BatchWriteAsync(writeMap, cancellationToken).ConfigureAwait(false);
-                if (!batchResult.Success)
+                var batchErrors = new List<string>();
+                var batchSucceededPlcs = new List<string>();
+                foreach (var (plcName, plc) in plcs)
                 {
-                    return ExecutionResult.Failed(batchResult.ErrorMessage ?? "PLC 多地址写入失败");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var connectResult = await EnsureConnectedAsync(plc, cancellationToken).ConfigureAwait(false);
+                    if (!connectResult.Success)
+                    {
+                        batchErrors.Add($"{plcName}: {connectResult.Message ?? "PLC连接失败"}");
+                        continue;
+                    }
+
+                    var batchResult = await plc.BatchWriteAsync(writeMap, cancellationToken).ConfigureAwait(false);
+                    if (!batchResult.Success)
+                    {
+                        batchErrors.Add($"{plcName}: {batchResult.ErrorMessage ?? "多地址写入失败"}");
+                        continue;
+                    }
+
+                    batchSucceededPlcs.Add(plcName);
                 }
 
-                log.Info($"多地址写入完成，设备={PlcDeviceName}, 项数={writeMap.Count}");
-                return ExecutionResult.Successful("PLC 多地址写入成功")
-                    .WithOutput("PlcDeviceName", PlcDeviceName)
-                    .WithOutput("WrittenValues", writeMap);
+                if (batchSucceededPlcs.Count == 0)
+                {
+                    return ExecutionResult.Failed($"PLC 多地址写入失败: {string.Join(" | ", batchErrors)}");
+                }
+
+                log.Info($"多地址写入完成，成功PLC数={batchSucceededPlcs.Count}, 项数={writeMap.Count}");
+                var batchWriteResult = ExecutionResult.Successful("PLC 多地址写入完成")
+                    .WithOutput("PlcDeviceNames", plcs.Select(x => x.Name).ToList())
+                    .WithOutput("WrittenValues", writeMap)
+                    .WithOutput("SucceededPlcNames", batchSucceededPlcs);
+                if (batchErrors.Count > 0)
+                {
+                    batchWriteResult = batchWriteResult.WithOutput("WriteErrors", batchErrors);
+                }
+
+                return batchWriteResult;
             }
             catch (OperationCanceledException)
             {
@@ -98,24 +160,34 @@ namespace Astra.Plugins.PLC.Nodes
             }
         }
 
-        private static IPLC? ResolvePlcByName(string plcDeviceName)
+        private static List<(string Name, IPLC Plc)> ResolvePlcsByNames(IEnumerable<string> plcDeviceNames)
         {
             var plugin = PlcPlugin.Current;
-            if (plugin == null || string.IsNullOrWhiteSpace(plcDeviceName))
+            var result = new List<(string Name, IPLC Plc)>();
+            if (plugin == null)
             {
-                return null;
+                return result;
             }
 
-            return plugin.GetAllPlcs()
-                .FirstOrDefault(p =>
+            var all = plugin.GetAllPlcs();
+            foreach (var name in plcDeviceNames.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var plc = all.FirstOrDefault(p =>
                 {
                     if (p is not IDevice d)
                     {
                         return false;
                     }
 
-                    return string.Equals(d.DeviceName, plcDeviceName, StringComparison.OrdinalIgnoreCase);
+                    return string.Equals(d.DeviceName, name, StringComparison.OrdinalIgnoreCase);
                 });
+                if (plc != null)
+                {
+                    result.Add((name, plc));
+                }
+            }
+
+            return result;
         }
 
         private static async Task<OperationResult> EnsureConnectedAsync(IPLC plc, CancellationToken cancellationToken)
