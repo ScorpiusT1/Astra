@@ -8,7 +8,7 @@ namespace Astra.Engine.Triggers
     /// <summary>
     /// 通用触发器配置：描述一个逻辑触发器及其参数。
     /// </summary>
-    [TreeNodeConfig("触发器", "⏱", typeof(Astra.Engine.Views.TriggerConfigView), typeof(Astra.Engine.ViewModels.TriggerConfigViewModel), order: 6)]
+    [TreeNodeConfig("触发器", "⏱", typeof(Astra.Engine.Views.TriggerConfigView), typeof(Astra.Engine.ViewModels.TriggerConfigViewModel), order: 7)]
     [ConfigUI(typeof(Astra.Engine.Views.TriggerConfigView), typeof(Astra.Engine.ViewModels.TriggerConfigViewModel))]
     public class TriggerConfig : ConfigBase
     {

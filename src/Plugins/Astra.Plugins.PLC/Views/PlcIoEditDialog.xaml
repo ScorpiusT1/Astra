@@ -1,0 +1,222 @@
+<Window x:Class="Astra.Plugins.PLC.Views.PlcIoEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:configs="clr-namespace:Astra.Plugins.PLC.Configs"
+        Title="IO 详情配置"
+        Width="760"
+        Height="620"
+        MinWidth="700"
+        MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="{DynamicResource BackgroundBrush}">
+    <Window.Resources>
+        <Style x:Key="FieldLabelStyle"
+               TargetType="TextBlock">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="FontSize"
+                    Value="12" />
+            <Setter Property="Margin"
+                    Value="0,0,0,6" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Style="{DynamicResource CardStyle}"
+                        Padding="12"
+                        Margin="0,0,0,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0"
+                                    Grid.Column="0"
+                                    Margin="0,0,8,8">
+                            <TextBlock Text="IO名称"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.Name, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="0"
+                                    Grid.Column="1"
+                                    Margin="8,0,0,8">
+                            <TextBlock Text="PLC设备名称"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.PlcDeviceName, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1"
+                                    Grid.Column="0"
+                                    Margin="0,0,8,8">
+                            <TextBlock Text="数据类型"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                      ItemsSource="{Binding IoDataTypeValues}"
+                                      SelectedItem="{Binding Draft.DataType, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1"
+                                    Grid.Column="1"
+                                    Margin="8,0,0,8">
+                            <TextBlock Text="地址"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.Address, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="2"
+                                    Grid.Column="0"
+                                    Margin="0,0,8,8">
+                            <TextBlock Text="输出键(读)"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                      IsEditable="True"
+                                      ItemsSource="{Binding OutputKeyOptions}"
+                                      Text="{Binding Draft.OutputKey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="2"
+                                    Grid.Column="1"
+                                    Margin="8,0,0,8">
+                            <TextBlock Text="标签"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.Tag, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="3"
+                                    Grid.Column="0"
+                                    Margin="0,0,8,0">
+                            <TextBlock Text="管线"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.PipeLabel, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="3"
+                                    Grid.Column="1"
+                                    Margin="8,0,0,0">
+                            <CheckBox Content="启用"
+                                      Style="{DynamicResource ModernCheckBoxStyle}"
+                                      IsChecked="{Binding Draft.IsEnabled}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border
+                        Padding="12"
+                        Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border"
+                               BasedOn="{StaticResource CardStyle}">
+                            <Setter Property="Visibility"
+                                    Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Draft.SupportsScaleOffset}"
+                                             Value="False">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    Margin="0,0,8,0">
+                            <TextBlock Text="Scale"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.Scale, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Margin="8,0,0,0">
+                            <TextBlock Text="Offset"
+                                       Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                     Text="{Binding Draft.Offset, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border
+                        Padding="12">
+                    <Border.Style>
+                        <Style TargetType="Border"
+                               BasedOn="{StaticResource CardStyle}">
+                            <Setter Property="Visibility"
+                                    Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Draft.SupportsLimits}"
+                                             Value="True">
+                                    <Setter Property="Visibility"
+                                            Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <WrapPanel VerticalAlignment="Center">
+                        <CheckBox Content="启用报警"
+                                  Style="{DynamicResource ModernCheckBoxStyle}"
+                                  IsChecked="{Binding Draft.AlarmEnabled}"
+                                  Margin="0,0,16,0" />
+                        <TextBlock Text="下限"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   Margin="0,0,6,0" />
+                        <TextBox Width="100"
+                                 Style="{DynamicResource ModernTextBoxStyle}"
+                                 Margin="0,0,12,0"
+                                 Text="{Binding Draft.LowLimit, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="上限"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   Margin="0,0,6,0" />
+                        <TextBox Width="100"
+                                 Style="{DynamicResource ModernTextBoxStyle}"
+                                 Text="{Binding Draft.HighLimit, UpdateSourceTrigger=PropertyChanged}" />
+                    </WrapPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <DockPanel Grid.Row="1"
+                   Margin="0,12,0,0"
+                   LastChildFill="False">
+            <TextBlock Text="{Binding ValidationMessage}"
+                       Foreground="{DynamicResource DangerBrush}"
+                       VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal"
+                        DockPanel.Dock="Right">
+                <Button Content="取消"
+                        Style="{DynamicResource SecondaryButtonStyle}"
+                        Margin="0,0,8,0"
+                        Padding="18,6"
+                        Click="Cancel_Click" />
+                <Button Content="保存"
+                        Style="{DynamicResource PrimaryButtonStyle}"
+                        Padding="18,6"
+                        Click="Save_Click" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 
 namespace Astra.Plugins.DataAcquisition.Devices
 {
-    [TreeNodeConfig("数据采集", "📊", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
+    [TreeNodeConfig("数据采集", "🛰️", typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
     [ConfigUI(typeof(DataAcquisitionDeviceConfigView), typeof(DataAcquisitionDeviceConfigViewModel))]
   
     public class DataAcquisitionConfig : DeviceConfig,IDeviceSpecificationConstraint

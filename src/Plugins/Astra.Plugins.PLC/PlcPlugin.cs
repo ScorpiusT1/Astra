@@ -26,6 +26,7 @@ namespace Astra.Plugins.PLC
         private IDeviceManager? _deviceManager;
         private IConfigurationManager? _configurationManager;
         private readonly List<IDevice> _devices = new();
+        private readonly List<IOConfig> _ioConfigs = new();
         private bool _disposed;
 
         public string Id => "Astra.Plugins.PLC";
@@ -55,6 +56,12 @@ namespace Astra.Plugins.PLC
                 };
                 _configurationManager.RegisterProvider<S7SiemensPlcDeviceConfig>(options: s7Options);
 
+                var ioOptions = new ConfigProviderOptions<IOConfig>
+                {
+                    DefaultCollectionFileName = $"{Id}.IO.config"
+                };
+                _configurationManager.RegisterProvider<IOConfig>(options: ioOptions);
+
                 var loadResult = await _configurationManager.GetAllAsync<S7SiemensPlcDeviceConfig>();
                 if (loadResult.Success && loadResult.Data != null)
                 {
@@ -64,6 +71,13 @@ namespace Astra.Plugins.PLC
                         cancellationToken.ThrowIfCancellationRequested();
                         _devices.Add(new S7SiemensPlcDevice(cfg));
                     }
+                }
+
+                var ioLoadResult = await _configurationManager.GetAllAsync<IOConfig>();
+                if (ioLoadResult.Success && ioLoadResult.Data != null)
+                {
+                    _ioConfigs.Clear();
+                    _ioConfigs.AddRange(ioLoadResult.Data);
                 }
             }
         }
@@ -160,6 +174,39 @@ namespace Astra.Plugins.PLC
         internal IReadOnlyList<IPLC> GetAllPlcs()
         {
             return _devices.OfType<IPLC>().ToList().AsReadOnly();
+        }
+
+        internal IReadOnlyList<IOConfig> GetAllIoConfigs()
+        {
+            return _ioConfigs.AsReadOnly();
+        }
+
+        internal IoPointModel? FindIoByName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            var n = name.Trim();
+            foreach (var cfg in _ioConfigs)
+            {
+                if (cfg?.IOs == null || cfg.IOs.Count == 0)
+                {
+                    continue;
+                }
+
+                var io = cfg.IOs.FirstOrDefault(i =>
+                    i != null &&
+                    i.IsEnabled &&
+                    string.Equals(i.Name?.Trim(), n, StringComparison.OrdinalIgnoreCase));
+                if (io != null)
+                {
+                    return io;
+                }
+            }
+
+            return null;
         }
     }
 }

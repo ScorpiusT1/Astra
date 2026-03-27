@@ -43,6 +43,9 @@
 	  <None Update="Astra.Plugins.PLC.S7.config.json">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
+    <None Update="Astra.Plugins.PLC.IO.config.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

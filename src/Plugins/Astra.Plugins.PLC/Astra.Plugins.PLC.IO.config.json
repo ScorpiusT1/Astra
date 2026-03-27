@@ -1,0 +1,30 @@
+{
+  "Configs": [
+    {
+      "IOs": [
+        {
+          "Name": "StartButton",
+          "PlcDeviceName": "西门子 PLC #1",
+          "Address": "DB1.DBX0.0",
+          "DataType": 1,
+          "OutputKey": "StartButton",
+          "IsEnabled": true,
+          "Scale": 1.0,
+          "Offset": 0.0,
+          "PipeLabel": "P1",
+          "Tag": "关键",
+          "Description": "启动按钮（示例）"
+        }
+      ],
+      "EnableDragReorder": true,
+      "ConfigId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "ConfigName": "IO配置",
+      "CreatedAt": "0001-01-01T00:00:00",
+      "UpdatedAt": null,
+      "Version": 1,
+      "ConfigTypeName": "Astra.Plugins.PLC.Configs.IOConfig, Astra.Plugins.PLC, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+    }
+  ],
+  "LastModified": "2026-03-27T00:00:00+08:00"
+}
+

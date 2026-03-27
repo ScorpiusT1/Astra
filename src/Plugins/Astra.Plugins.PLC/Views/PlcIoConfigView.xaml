@@ -1,0 +1,543 @@
+<UserControl x:Class="Astra.Plugins.PLC.Views.PlcIoConfigView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:uiBehaviors="clr-namespace:Astra.UI.Behaviors;assembly=Astra.UI"
+             xmlns:configs="clr-namespace:Astra.Plugins.PLC.Configs"
+             xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="560"
+             d:DesignWidth="980">
+    <UserControl.Resources>
+        <ObjectDataProvider x:Key="IoDataTypeValues"
+                            MethodName="GetValues"
+                            ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="configs:PlcIODataType" />
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+
+        <Style x:Key="SectionCardStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource CardStyle}">
+            <Setter Property="Padding"
+                    Value="14" />
+            <Setter Property="CornerRadius"
+                    Value="10" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness"
+                    Value="1" />
+        </Style>
+
+        <Style x:Key="FieldLabelStyle"
+               TargetType="TextBlock">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="FontSize"
+                    Value="12" />
+            <Setter Property="VerticalAlignment"
+                    Value="Center" />
+            <Setter Property="Margin"
+                    Value="0,0,0,6" />
+        </Style>
+
+        <Style x:Key="GroupTitleStyle"
+               TargetType="TextBlock">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="FontSize"
+                    Value="13" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="PageTitleStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="20" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Margin"
+                    Value="0,0,0,2" />
+        </Style>
+
+        <Style x:Key="PageSubtitleStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="12" />
+            <Setter Property="Opacity"
+                    Value="0.78" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="Margin"
+                    Value="0,0,0,10" />
+        </Style>
+
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0"
+                    Margin="0,0,0,6">
+            <TextBlock Text="IO配置"
+                       Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Text="配置 PLC IO 点位、地址映射和报警阈值。"
+                       Style="{StaticResource PageSubtitleStyle}" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Style="{StaticResource SectionCardStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+
+                    <DockPanel LastChildFill="False">
+                        <hc:SearchBar Width="280"
+                                      Height="34"
+                                      hc:InfoElement.Placeholder="按名称/地址/标签搜索"
+                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+                       
+                    </DockPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right">
+                    <Border Margin="0,0,10,0"
+                            Padding="10,5"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource LightPrimaryBrush}"
+                            BorderBrush="{DynamicResource PrimaryBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                        <TextBlock Foreground="{DynamicResource DarkPrimaryBrush}">
+                            <Run Text="IO总数: " />
+                            <Run Text="{Binding IOs.Count, Mode=OneWay}" />
+                        </TextBlock>
+                    </Border>
+                    <Button Content="新增 IO"
+                            Style="{DynamicResource PrimaryButtonStyle}"
+                            Height="34"
+                            Margin="0,0,10,0"
+                            Padding="18,7"
+                            Command="{Binding AddIoCommand}" />
+                    <Border Width="1"
+                            Height="20"
+                            Margin="0,0,10,0"
+                            Background="{DynamicResource BorderBrush}"
+                            VerticalAlignment="Center" />
+                    <Button Content="删除选中"
+                            Style="{DynamicResource DangerButtonStyle}"
+                            Height="34"
+                            Padding="18,7"
+                            IsEnabled="{Binding HasSelection}"
+                            Command="{Binding RemoveSelectedIoCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="0" />
+                <ColumnDefinition Width="0" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Style="{StaticResource SectionCardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0">
+                        <TextBlock Text="IO 总览"
+                                   Style="{StaticResource GroupTitleStyle}" />
+                        <TextBlock DockPanel.Dock="Right"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   Text="勾选启用，点击行进入详情编辑" />
+                    </DockPanel>
+
+                    <Grid Grid.Row="2">
+                        <DataGrid ItemsSource="{Binding IoListView}"
+                                  SelectedItem="{Binding SelectedIo}"
+                                  uiBehaviors:DataGridRowReorderBehavior.EnableRowReorder="true"
+                                  uiBehaviors:DataGridRowReorderBehavior.ReorderCommand="{Binding ReorderIoCommand}"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserResizeColumns="True"
+                                  SelectionMode="Single"
+                                  HeadersVisibility="Column"
+                                  IsReadOnly="False"
+                                  PreviewMouseRightButtonDown="DataGrid_PreviewMouseRightButtonDown"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  Style="{DynamicResource ModernDataGridStyle}"
+                                  ColumnHeaderStyle="{StaticResource ResizableModernDataGridColumnHeaderStyle}"
+                                  RowStyle="{StaticResource EnhancedModernDataGridRowStyle}"
+                                  RowBackground="Transparent"
+                                  AlternatingRowBackground="{DynamicResource ThirdlyRegionBrush}"
+                                  AlternationCount="2"
+                                  GridLinesVisibility="Horizontal"
+                                  HorizontalGridLinesBrush="{DynamicResource BorderBrush}">
+                            <DataGrid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="复制当前IO"
+                                              Command="{Binding PlacementTarget.DataContext.CopySelectedIoCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <fa:IconBlock Icon="Copy"
+                                                          Foreground="{DynamicResource PrimaryBrush}" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="粘贴新增IO"
+                                              Command="{Binding PlacementTarget.DataContext.PasteToSelectedIoCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <fa:IconBlock Icon="Paste"
+                                                          Foreground="{DynamicResource PrimaryBrush}" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
+                            <DataGrid.Columns>
+                                <DataGridCheckBoxColumn Header="启用"
+                                                        Binding="{Binding IsEnabled}"
+                                                        Width="60" />
+                                <DataGridTextColumn Header="IO名称"
+                                                    Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="*" />
+                                <DataGridTextColumn Header="地址"
+                                                    Binding="{Binding Address, TargetNullValue=—, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="1.8*" />
+                                <DataGridTextColumn Header="管线"
+                                                    Binding="{Binding PipeLabel, TargetNullValue=—, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="*" />
+                                <DataGridTextColumn Header="标签"
+                                                    Binding="{Binding Tag, TargetNullValue=—, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="*" />
+                                <DataGridTemplateColumn Header="编辑"
+                                                        Width="132"
+                                                        IsReadOnly="True">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Padding="10,2"
+                                                    MinWidth="96"
+                                                    Height="28"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Style="{DynamicResource PrimaryButtonStyle}"
+                                                    Command="{Binding DataContext.EditIoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <fa:IconBlock Icon="Edit"
+                                                                  FontSize="11"
+                                                                  Margin="0,0,6,0"
+                                                                  VerticalAlignment="Center"
+                                                                  Foreground="{DynamicResource ReverseTextBrush}" />
+                                                    <TextBlock Text="编辑"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource ReverseTextBrush}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border IsHitTestVisible="False"
+                                Background="{DynamicResource RegionBrush}"
+                                CornerRadius="8"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
+                                Padding="24">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IOs.Count, Mode=OneWay}"
+                                                     Value="0">
+                                            <Setter Property="Visibility"
+                                                    Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="暂无 IO 点位"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Margin="0,4,0,0"
+                                           Text="点击右上角“新增 IO”开始配置。"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Visibility="Collapsed">
+                <Border.Style>
+                    <Style TargetType="Border"
+                           BasedOn="{StaticResource SectionCardStyle}">
+                        <Setter Property="Visibility"
+                                Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsEditing}"
+                                         Value="True">
+                                <Setter Property="Visibility"
+                                        Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="IO 详细配置"
+                                       Style="{StaticResource GroupTitleStyle}" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="{Binding SelectedIo.Name, StringFormat=当前编辑: {0}}"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="2"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Border Style="{StaticResource SectionCardStyle}"
+                                    Background="{DynamicResource SecondaryRegionBrush}"
+                                    Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="基础信息"
+                                               Style="{StaticResource GroupTitleStyle}"
+                                               Margin="0,0,0,10" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel Grid.Row="0"
+                                                    Grid.Column="0"
+                                                    Margin="0,0,8,8">
+                                            <TextBlock Text="IO名称"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.Name, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0"
+                                                    Grid.Column="1"
+                                                    Margin="8,0,0,8">
+                                            <TextBlock Text="PLC设备名称"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.PlcDeviceName, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="1"
+                                                    Grid.Column="0"
+                                                    Margin="0,0,8,8">
+                                            <TextBlock Text="数据类型"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                                      ItemsSource="{Binding Source={StaticResource IoDataTypeValues}}"
+                                                      SelectedItem="{Binding SelectedIo.DataType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1"
+                                                    Grid.Column="1"
+                                                    Margin="8,0,0,8">
+                                            <TextBlock Text="地址"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.Address, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2"
+                                                    Grid.Column="0"
+                                                    Margin="0,0,8,8">
+                                            <TextBlock Text="输出键(读)"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="False"
+                                                      ItemsSource="{Binding OutputKeyOptions}"
+                                                      Text="{Binding SelectedIo.OutputKey, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2"
+                                                    Grid.Column="1"
+                                                    Margin="8,0,0,8">
+                                            <TextBlock Text="标签"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.Tag, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="3"
+                                                    Grid.Column="0"
+                                                    Margin="0,0,8,0">
+                                            <TextBlock Text="管线"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.PipeLabel, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="0,10,0,0"
+                                    Background="{DynamicResource SecondaryRegionBrush}"
+                                    Padding="12">
+                                <Border.Style>
+                                    <Style TargetType="Border"
+                                           BasedOn="{StaticResource SectionCardStyle}">
+                                        <Setter Property="Visibility"
+                                                Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedIo.SupportsScaleOffset}"
+                                                         Value="False">
+                                                <Setter Property="Visibility"
+                                                        Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Text="缩放与偏移"
+                                               Style="{StaticResource GroupTitleStyle}"
+                                               Margin="0,0,0,10" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0"
+                                                    Margin="0,0,8,0">
+                                            <TextBlock Text="Scale"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.Scale, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1"
+                                                    Margin="8,0,0,0">
+                                            <TextBlock Text="Offset"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
+                                                     Text="{Binding SelectedIo.Offset, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="0,10,0,0"
+                                    Background="{DynamicResource LightWarningBrush}"
+                                    BorderBrush="{DynamicResource WarningBrush}"
+                                    Padding="12">
+                                <Border.Style>
+                                    <Style TargetType="Border"
+                                           BasedOn="{StaticResource SectionCardStyle}">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedIo.SupportsLimits}"
+                                                         Value="True">
+                                                <Setter Property="Visibility"
+                                                        Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Text="报警阈值（仅数值类型）"
+                                               Style="{StaticResource GroupTitleStyle}"
+                                               Margin="0,0,0,10" />
+                                    <WrapPanel VerticalAlignment="Center">
+                                        <CheckBox Content="启用报警"
+                                                  Style="{DynamicResource ModernCheckBoxStyle}"
+                                                  IsChecked="{Binding SelectedIo.AlarmEnabled}"
+                                                  Margin="0,0,16,0" />
+                                        <TextBlock Text="下限"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   Margin="0,0,6,0" />
+                                        <TextBox Width="96"
+                                                 Margin="0,0,12,0"
+                                                 Style="{DynamicResource ModernTextBoxStyle}"
+                                                 Text="{Binding SelectedIo.LowLimit, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="上限"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                   Margin="0,0,6,0" />
+                                        <TextBox Width="96"
+                                                 Style="{DynamicResource ModernTextBoxStyle}"
+                                                 Text="{Binding SelectedIo.HighLimit, UpdateSourceTrigger=PropertyChanged}" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel Margin="0,12,0,0"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right">
+                                <Button Content="取消"
+                                        Style="{DynamicResource SecondaryButtonStyle}"
+                                        Height="34"
+                                        Margin="0,0,8,0"
+                                        Padding="18,6"
+                                        Command="{Binding CancelEditCommand}" />
+                                <Button Content="保存"
+                                        Style="{DynamicResource PrimaryButtonStyle}"
+                                        Height="34"
+                                        Padding="18,6"
+                                        Command="{Binding SaveIoCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,4 +1,5 @@
 using Astra.Plugins.DataAcquisition.ViewModels;
+using Astra.UI.Helpers;
 using NAudio.Gui;
 using ScottPlot;
 using ScottPlot.Plottables;
@@ -23,7 +24,7 @@ namespace Astra.Plugins.DataAcquisition.Views
         {
             InitializeComponent();
 
-            SetFont(WaveformPlot);
+            ApplyScottPlotStyle();
             DataContextChanged -= OnDataContextChanged;
             DataContextChanged += OnDataContextChanged;
         }
@@ -51,6 +52,7 @@ namespace Astra.Plugins.DataAcquisition.Views
             var plt = WaveformPlot.Plot;
             plt.Clear();
             _signalsByChannelId.Clear();
+            ApplyScottPlotStyle();
 
             plt.Axes.Left.Label.Text = "幅值";
             plt.Axes.Bottom.Label.Text = "时间 (s)";
@@ -105,22 +107,10 @@ namespace Astra.Plugins.DataAcquisition.Views
             }
         }
 
-        private void SetFont(WpfPlot wpfPlot, string font = "微软雅黑")
+        private void ApplyScottPlotStyle()
         {
-            var multiPlot = wpfPlot.Multiplot;
-
-            if (multiPlot == null || multiPlot.Subplots == null)
-            {
-                return;
-            }
-
-            int count = multiPlot.Subplots.Count;
-
-            for (int i = 0; i < count; i++)
-            {
-                var plot = multiPlot.GetPlot(i);
-                plot.Font.Set(font);
-            }
+            var styleOptions = ScottPlotStyleHelper.CreateThemeStyleOptions();
+            ScottPlotStyleHelper.ApplyToPlotAndSubplots(WaveformPlot.Plot, WaveformPlot.Multiplot, styleOptions);
         }
     }
 }

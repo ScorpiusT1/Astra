@@ -12,7 +12,17 @@ namespace Astra.Core.Nodes.Models
         Raw = 1,
         Algorithm = 2,
         Feature = 3,
-        Debug = 4
+        Debug = 4,
+
+        /// <summary>
+        /// 单值/标量数据（如数值、布尔、枚举等）。
+        /// </summary>
+        Scalar = 5,
+
+        /// <summary>
+        /// 文本数据（如 string、JSON 文本等）。
+        /// </summary>
+        Text = 6
     }
 
     /// <summary>
