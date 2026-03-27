@@ -12,7 +12,7 @@
     </ResourceDictionary.MergedDictionaries>
 
     <!-- 转换器已移动到 Themes/Converters.xaml，通过 Controls.xaml 引入 -->
-    
+
     <!-- ==================== 工具箱字体资源 ==================== -->
     <FontFamily x:Key="ToolboxFontFamily">Segoe UI</FontFamily>
     <System:Double x:Key="ToolboxFontSizeSmall">10</System:Double>
@@ -332,193 +332,163 @@
                                 <!-- 让弹出面板仅根据内容自适应大小，避免 400x400 的透明区域遮挡画布左侧鼠标事件 -->
                                 <Grid Margin="10">
 
-                                        <Border Background="{DynamicResource PrimaryTextBrush}"
-                                                CornerRadius="14"
-                                                Margin="0,8,8,12"
-                                                IsHitTestVisible="False">
-                                           
+                                    <Border Background="{DynamicResource PrimaryTextBrush}"
+                                            CornerRadius="14"
+                                            Margin="0,8,8,12"
+                                            IsHitTestVisible="False">
 
-                                            <Border.Effect>
-                                                <DropShadowEffect BlurRadius="20"
-                                                                  ShadowDepth="4"
-                                                                  Opacity="0.5"
-                                                                  Direction="0"
-                                                                  Color="{DynamicResource ShadowColor}" />
-                                            </Border.Effect>
-                                        </Border>
 
-                    
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="20"
+                                                              ShadowDepth="4"
+                                                              Opacity="0.5"
+                                                              Direction="0"
+                                                              Color="{DynamicResource ShadowColor}" />
+                                        </Border.Effect>
+                                    </Border>
 
-                                        <Border x:Name="PART_ToolPanel"
-                                                Style="{DynamicResource ToolboxPanelStyle}"
-                                                MaxHeight="{TemplateBinding PanelMaxHeight}"
-                                                ClipToBounds="True"
-                                                IsHitTestVisible="True">
 
-                                            <StackPanel>
-                                                <!-- 标题区 -->
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
 
-                                                    <!-- 装饰性色块 - 深色渐变 -->
-                                                    <Border Width="5"
-                                                            Height="20"
-                                                            CornerRadius="2.5"
-                                                            Margin="0,0,10,0"
-                                                            VerticalAlignment="Center">
-                                                        <Border.Background>
-                                                            <LinearGradientBrush StartPoint="0,0"
-                                                                                 EndPoint="0,1">
-                                                                <GradientStop Color="{DynamicResource PrimaryColor}"
-                                                                              Offset="0" />
-                                                                <GradientStop Color="{DynamicResource DarkPrimaryColor}"
-                                                                              Offset="1" />
-                                                            </LinearGradientBrush>
-                                                        </Border.Background>
-                                                        <Border.Effect>
-                                                            <DropShadowEffect Color="{DynamicResource PrimaryColor}"
-                                                                              Opacity="0.4"
-                                                                              BlurRadius="8"
-                                                                              ShadowDepth="0" />
-                                                        </Border.Effect>
-                                                    </Border>
+                                    <Border x:Name="PART_ToolPanel"
+                                            Style="{DynamicResource ToolboxPanelStyle}"
+                                            MaxHeight="{TemplateBinding PanelMaxHeight}"
+                                            ClipToBounds="True"
+                                            IsHitTestVisible="True">
 
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding CurrentCategory.Name, RelativeSource={RelativeSource TemplatedParent}}"
-                                                               Style="{DynamicResource ToolboxPanelTitleStyle}"
-                                                               VerticalAlignment="Center" />
-                                                </Grid>
+                                        <StackPanel>
+                                            <!-- 标题区 -->
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
 
-                                                <Border Style="{DynamicResource ToolboxPanelSeparatorStyle}" />
+                                                <!-- 装饰性色块 - 深色渐变 -->
+                                                <Border Width="5"
+                                                        Height="20"
+                                                        CornerRadius="2.5"
+                                                        Margin="0,0,10,0"
+                                                        VerticalAlignment="Center">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,0"
+                                                                             EndPoint="0,1">
+                                                            <GradientStop Color="{DynamicResource PrimaryColor}"
+                                                                          Offset="0" />
+                                                            <GradientStop Color="{DynamicResource DarkPrimaryColor}"
+                                                                          Offset="1" />
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                    <Border.Effect>
+                                                        <DropShadowEffect Color="{DynamicResource PrimaryColor}"
+                                                                          Opacity="0.4"
+                                                                          BlurRadius="8"
+                                                                          ShadowDepth="0" />
+                                                    </Border.Effect>
+                                                </Border>
 
-                                                <!-- 工具项区域 -->
-                                                <ScrollViewer x:Name="PART_ToolsScrollViewer"
-                                                              MaxHeight="{TemplateBinding ToolsMaxHeight}"
-                                                              HorizontalScrollBarVisibility="Disabled"
-                                                              VerticalScrollBarVisibility="Auto"
-                                                              Background="Transparent"
-                                                              BorderThickness="0"
-                                                              Padding="0">
-                                                    <!-- 使用 CollectionViewSource 对当前类别工具按 GroupName 分组 -->
-                                                    <ScrollViewer.Resources>
-                                                        <CollectionViewSource x:Key="GroupedTools"
-                                                                              Source="{Binding CurrentCategory.Tools, RelativeSource={RelativeSource TemplatedParent}}">
-                                                            <CollectionViewSource.GroupDescriptions>
-                                                                <PropertyGroupDescription PropertyName="GroupName" />
-                                                            </CollectionViewSource.GroupDescriptions>
-                                                        </CollectionViewSource>
-                                                    </ScrollViewer.Resources>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding CurrentCategory.Name, RelativeSource={RelativeSource TemplatedParent}}"
+                                                           Style="{DynamicResource ToolboxPanelTitleStyle}"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
 
-                                                    <ItemsControl x:Name="PART_ToolsItemsControl"
-                                                                  ItemsSource="{Binding Source={StaticResource GroupedTools}}">
-                                                        <ItemsControl.GroupStyle>
-                                                            <GroupStyle>
-                                                                <GroupStyle.HeaderTemplate>
-                                                                    <DataTemplate>
-                                                                        <!-- 组标题：仅当组名不为空时显示 -->
-                                                                        <TextBlock Text="{Binding Name}"
-                                                                                   FontFamily="{StaticResource ToolboxFontFamily}"
-                                                                                   FontSize="12"
-                                                                                   FontWeight="SemiBold"
-                                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
-                                                                                   Margin="4,8,0,4">
-                                                                            <TextBlock.Visibility>
-                                                                                <!-- Name 为 null 时折叠，不占用 UI 空间 -->
-                                                                                <Binding Path="Name" Converter="{StaticResource NullToVisibilityConverter}" />
-                                                                            </TextBlock.Visibility>
-                                                                        </TextBlock>
-                                                                    </DataTemplate>
-                                                                </GroupStyle.HeaderTemplate>
-                                                                <GroupStyle.Panel>
-                                                                    <ItemsPanelTemplate>
-                                                                        <UniformGrid x:Name="PART_ToolsUniformGrid" />
-                                                                    </ItemsPanelTemplate>
-                                                                </GroupStyle.Panel>
-                                                            </GroupStyle>
-                                                        </ItemsControl.GroupStyle>
+                                            <Border Style="{DynamicResource ToolboxPanelSeparatorStyle}" />
 
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <Button Style="{DynamicResource ToolboxPanelItemStyle}"
-                                                                        Tag="{Binding CurrentCategory.Name, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
-                                                                        ToolTip="{Binding Name}">
-                                                                    <StackPanel Orientation="Vertical"
-                                                                                HorizontalAlignment="Center"
-                                                                                VerticalAlignment="Center"
-                                                                                Margin="0,2">
-                                                                        <!-- 图标容器 - 加深渐变色 -->
-                                                                        <Border x:Name="ToolIconContainer"
-                                                                                Width="44"
-                                                                                Height="44"
-                                                                                HorizontalAlignment="Center"
-                                                                                VerticalAlignment="Center"
-                                                                                CornerRadius="11"
-                                                                                Margin="0,0,0,8">
-                                                                            <Border.Background>
-                                                                                <LinearGradientBrush StartPoint="0,0"
-                                                                                                     EndPoint="1,1">
-                                                                                    <!-- 左上角：深色 -->
-                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
-                                                                                                  Offset="0" />
-                                                                                    <!-- 中间：深色为主 -->
-                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
-                                                                                                  Offset="0.7" />
-                                                                                    <!-- 右下角：保持深色（不使用浅色）-->
-                                                                                    <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
-                                                                                                  Offset="1" />
-                                                                                </LinearGradientBrush>
-                                                                            </Border.Background>
-                                                                            <Border.Effect>
-                                                                                <DropShadowEffect Opacity="0.6"
-                                                                                                  BlurRadius="16"
-                                                                                                  ShadowDepth="6"
-                                                                                                  Direction="270">
-                                                                                    <DropShadowEffect.Color>
-                                                                                        <Binding Path="CurrentCategory.CategoryColor" 
-                                                                                                 RelativeSource="{RelativeSource AncestorType=controls:NodeToolBox}"
-                                                                                                 Converter="{StaticResource BrushToColorConverter}">
-                                                                                            <Binding.FallbackValue>
-                                                                                                <StaticResource ResourceKey="SecondaryTextColor" />
-                                                                                            </Binding.FallbackValue>
-                                                                                            <Binding.TargetNullValue>
-                                                                                                <StaticResource ResourceKey="SecondaryTextColor" />
-                                                                                            </Binding.TargetNullValue>
-                                                                                        </Binding>
-                                                                                    </DropShadowEffect.Color>
-                                                                                </DropShadowEffect>
-                                                                            </Border.Effect>
+                                            <!-- 工具项区域 -->
+                                            <ScrollViewer x:Name="PART_ToolsScrollViewer"
+                                                          MaxHeight="{TemplateBinding ToolsMaxHeight}"
+                                                          HorizontalScrollBarVisibility="Disabled"
+                                                          VerticalScrollBarVisibility="Auto"
+                                                          Background="Transparent"
+                                                          BorderThickness="0"
+                                                          Padding="0">
+                                                <ItemsControl x:Name="PART_ToolsItemsControl"
+                                                              ItemsSource="{Binding CurrentCategory.Tools, RelativeSource={RelativeSource TemplatedParent}}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <UniformGrid Columns="3" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
 
-                                                                            <fa:IconBlock Icon="{Binding IconCode, Converter={StaticResource IconConverter}}"
-                                                                                          FontSize="22"
-                                                                                          HorizontalAlignment="Center"
-                                                                                          VerticalAlignment="Center"
-                                                                                          Foreground="White" />
-                                                                        </Border>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Style="{DynamicResource ToolboxPanelItemStyle}"
+                                                                    Tag="{Binding CurrentCategory.Name, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}}"
+                                                                    ToolTip="{Binding Name}">
+                                                                <StackPanel Orientation="Vertical"
+                                                                            HorizontalAlignment="Center"
+                                                                            VerticalAlignment="Center"
+                                                                            Margin="0,2">
+                                                                    <!-- 图标容器 - 加深渐变色 -->
+                                                                    <Border x:Name="ToolIconContainer"
+                                                                            Width="44"
+                                                                            Height="44"
+                                                                            HorizontalAlignment="Center"
+                                                                            VerticalAlignment="Center"
+                                                                            CornerRadius="11"
+                                                                            Margin="0,0,0,8">
+                                                                        <Border.Background>
+                                                                            <LinearGradientBrush StartPoint="0,0"
+                                                                                                 EndPoint="1,1">
+                                                                                <!-- 左上角：深色 -->
+                                                                                <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
+                                                                                              Offset="0" />
+                                                                                <!-- 中间：深色为主 -->
+                                                                                <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
+                                                                                              Offset="0.7" />
+                                                                                <!-- 右下角：保持深色（不使用浅色）-->
+                                                                                <GradientStop Color="{Binding CurrentCategory.CategoryColor, RelativeSource={RelativeSource AncestorType=controls:NodeToolBox}, Converter={StaticResource BrushToColorConverter}}"
+                                                                                              Offset="1" />
+                                                                            </LinearGradientBrush>
+                                                                        </Border.Background>
+                                                                        <Border.Effect>
+                                                                            <DropShadowEffect Opacity="0.6"
+                                                                                              BlurRadius="16"
+                                                                                              ShadowDepth="6"
+                                                                                              Direction="270">
+                                                                                <DropShadowEffect.Color>
+                                                                                    <Binding Path="CurrentCategory.CategoryColor"
+                                                                                             RelativeSource="{RelativeSource AncestorType=controls:NodeToolBox}"
+                                                                                             Converter="{StaticResource BrushToColorConverter}">
+                                                                                        <Binding.FallbackValue>
+                                                                                            <StaticResource ResourceKey="SecondaryTextColor" />
+                                                                                        </Binding.FallbackValue>
+                                                                                        <Binding.TargetNullValue>
+                                                                                            <StaticResource ResourceKey="SecondaryTextColor" />
+                                                                                        </Binding.TargetNullValue>
+                                                                                    </Binding>
+                                                                                </DropShadowEffect.Color>
+                                                                            </DropShadowEffect>
+                                                                        </Border.Effect>
 
-                                                                        <!-- 文字（仅面板显示）-->
-                                                                        <TextBlock Text="{Binding Name}"
-                                                                                   FontFamily="{StaticResource ToolboxFontFamily}"
-                                                                                   FontSize="11"
-                                                                                   FontWeight="Medium"
-                                                                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                                                   HorizontalAlignment="Center"
-                                                                                   TextAlignment="Center"
-                                                                                   TextWrapping="Wrap"
-                                                                                   TextTrimming="CharacterEllipsis"
-                                                                                   MaxWidth="76"
-                                                                                   LineHeight="15"
-                                                                                   LineStackingStrategy="BlockLineHeight" />
-                                                                    </StackPanel>
-                                                                </Button>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </ScrollViewer>
-                                            </StackPanel>
-                                        </Border>
+                                                                        <fa:IconBlock Icon="{Binding IconCode, Converter={StaticResource IconConverter}}"
+                                                                                      FontSize="22"
+                                                                                      HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center"
+                                                                                      Foreground="White" />
+                                                                    </Border>
+
+                                                                    <!-- 文字（仅面板显示）-->
+                                                                    <TextBlock Text="{Binding Name}"
+                                                                               FontFamily="{StaticResource ToolboxFontFamily}"
+                                                                               FontSize="11"
+                                                                               FontWeight="Medium"
+                                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                               HorizontalAlignment="Center"
+                                                                               TextAlignment="Center"
+                                                                               TextWrapping="Wrap"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               MaxWidth="76"
+                                                                               LineHeight="15"
+                                                                               LineStackingStrategy="BlockLineHeight" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
                             </Popup>
                         </Grid>
