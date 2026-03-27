@@ -16,7 +16,6 @@
              d:DataContext="{d:DesignInstance Type=viewmodels:SequenceViewModel}"
              mc:Ignorable="d"
              Background="{DynamicResource SurfaceBrush}">
-
     <Grid>
         <!-- 多流程编辑器控件 -->
         <multiFlowEditor:MultiFlowEditor DataContext="{Binding MultiFlowEditor}" />

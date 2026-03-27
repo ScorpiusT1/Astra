@@ -58,7 +58,8 @@ namespace Astra.Services.Home
             var subWorkflows = loadResult.Data.SubWorkflows?.Values?.ToList() ?? new List<WorkFlowNode>();
 
             // 以“子流程”为根节点，子流程中的每个节点作为测试项叶子节点。
-            foreach (var workflow in subWorkflows.OrderBy(x => x?.Name))
+            // 根节点保持脚本内原始顺序，不再按名称排序。
+            foreach (var workflow in subWorkflows)
             {
                 if (workflow == null)
                 {
@@ -73,7 +74,8 @@ namespace Astra.Services.Home
                     TestTime = DateTime.Now
                 };
 
-                foreach (var node in (workflow.Nodes ?? new List<Node>()).OrderBy(x => x?.Name))
+                var orderedNodes = SortNodesByTopology(workflow);
+                foreach (var node in orderedNodes)
                 {
                     if (node == null)
                     {
@@ -125,6 +127,90 @@ namespace Astra.Services.Home
                 NodeExecutionState.Running => "Running",
                 _ => "Ready"
             };
+        }
+
+        private static IReadOnlyList<Node> SortNodesByTopology(WorkFlowNode workflow)
+        {
+            var nodes = (workflow.Nodes ?? new List<Node>())
+                .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
+                .ToList();
+            if (nodes.Count <= 1)
+                return nodes;
+
+            var nodeById = nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+            var originalIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                originalIndex[nodes[i].Id] = i;
+            }
+
+            var indegree = new Dictionary<string, int>(StringComparer.Ordinal);
+            var adjacency = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                indegree[node.Id] = 0;
+                adjacency[node.Id] = new List<string>();
+            }
+
+            var flowConnections = (workflow.Connections ?? new List<Connection>())
+                .Where(c =>
+                    c != null &&
+                    c.Type == ConnectionType.Flow &&
+                    !string.IsNullOrWhiteSpace(c.SourceNodeId) &&
+                    !string.IsNullOrWhiteSpace(c.TargetNodeId) &&
+                    !string.Equals(c.SourceNodeId, c.TargetNodeId, StringComparison.Ordinal) &&
+                    nodeById.ContainsKey(c.SourceNodeId) &&
+                    nodeById.ContainsKey(c.TargetNodeId))
+                .ToList();
+
+            foreach (var connection in flowConnections)
+            {
+                var source = connection.SourceNodeId;
+                var target = connection.TargetNodeId;
+                adjacency[source].Add(target);
+                indegree[target]++;
+            }
+
+            var ordered = new List<Node>(nodes.Count);
+            var queue = nodes
+                .Where(n => indegree[n.Id] == 0)
+                .OrderBy(n => originalIndex[n.Id])
+                .ToList();
+
+            while (queue.Count > 0)
+            {
+                var current = queue[0];
+                queue.RemoveAt(0);
+                ordered.Add(current);
+
+                foreach (var targetId in adjacency[current.Id])
+                {
+                    indegree[targetId]--;
+                    if (indegree[targetId] == 0)
+                    {
+                        queue.Add(nodeById[targetId]);
+                    }
+                }
+
+                queue = queue
+                    .OrderBy(n => originalIndex[n.Id])
+                    .ToList();
+            }
+
+            if (ordered.Count == nodes.Count)
+                return ordered;
+
+            // 图中存在环时，先保留已排好的 DAG 部分，再按原始顺序补齐未入队节点。
+            var orderedIds = new HashSet<string>(ordered.Select(n => n.Id), StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                if (!orderedIds.Contains(node.Id))
+                {
+                    ordered.Add(node);
+                }
+            }
+
+            return ordered;
         }
     }
 }

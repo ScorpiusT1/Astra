@@ -163,7 +163,7 @@
                         <TextBox Style="{StaticResource ModernFormTextBoxStyle}"
                                  IsReadOnly="True"
                                  Opacity="0.85"
-                                
+
                                  Text="{Binding Config.DutCount}" />
                     </StackPanel>
                 </Grid>
@@ -235,6 +235,7 @@
                                                   IsEditable="False"
                                                   ItemsSource="{Binding DataContext.WorkflowOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                   DisplayMemberPath="Name"
+
                                                   SelectedValuePath="Id"
                                                   SelectedValue="{Binding WorkflowId, UpdateSourceTrigger=PropertyChanged}"
                                                   Text="{Binding WorkflowName, Mode=OneWay}" />
