@@ -30,6 +30,7 @@ namespace Astra.UI.Controls
         private MenuItem _deleteMenuItem;
         private MenuItem _toggleEnabledMenuItem;
         private MenuItem _copyMenuItem;
+        private bool _isImeComposing;
         
         // 拖拽移动相关字段
         private bool _isDragging;
@@ -80,8 +81,11 @@ namespace Astra.UI.Controls
 
             if (_editTextBox != null)
             {
-                _editTextBox.LostFocus += EditTextBox_LostFocus;
+                _editTextBox.LostKeyboardFocus += EditTextBox_LostKeyboardFocus;
                 _editTextBox.KeyDown += EditTextBox_KeyDown;
+                TextCompositionManager.AddPreviewTextInputStartHandler(_editTextBox, EditTextBox_PreviewTextInputStart);
+                TextCompositionManager.AddPreviewTextInputUpdateHandler(_editTextBox, EditTextBox_PreviewTextInputUpdate);
+                TextCompositionManager.AddPreviewTextInputHandler(_editTextBox, EditTextBox_PreviewTextInput);
             }
 
             if (_titleTextBlock != null)
@@ -1129,6 +1133,7 @@ namespace Astra.UI.Controls
         {
             if (_editTextBox != null)
             {
+                _isImeComposing = false;
                 _editTextBox.Text = Title;
                 _editTextBox.Visibility = Visibility.Visible;
 
@@ -1166,10 +1171,22 @@ namespace Astra.UI.Controls
             IsEditing = false;
         }
 
-        private void EditTextBox_LostFocus(object sender, RoutedEventArgs e)
+        private void EditTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
-            // 失去焦点时自动完成重命名
-            ExitEditMode();
+            // IME 组合输入期间可能发生临时焦点切换，延迟确认后再决定是否结束编辑
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!IsEditing || _editTextBox == null)
+                    return;
+
+                if (_isImeComposing)
+                    return;
+
+                if (!_editTextBox.IsKeyboardFocusWithin)
+                {
+                    ExitEditMode();
+                }
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
         private void EditTextBox_KeyDown(object sender, KeyEventArgs e)
@@ -1177,12 +1194,14 @@ namespace Astra.UI.Controls
             if (e.Key == Key.Enter)
             {
                 // Enter 键确认并移除焦点
+                _isImeComposing = false;
                 ExitEditMode();
                 e.Handled = true;
             }
             else if (e.Key == Key.Escape)
             {
                 // Esc 键取消编辑，恢复原标题
+                _isImeComposing = false;
                 if (_editTextBox != null)
                 {
                     _editTextBox.Text = Title; // 恢复原值
@@ -1190,6 +1209,22 @@ namespace Astra.UI.Controls
                 ExitEditMode();
                 e.Handled = true;
             }
+        }
+
+        private void EditTextBox_PreviewTextInputStart(object sender, TextCompositionEventArgs e)
+        {
+            _isImeComposing = true;
+        }
+
+        private void EditTextBox_PreviewTextInputUpdate(object sender, TextCompositionEventArgs e)
+        {
+            _isImeComposing = true;
+        }
+
+        private void EditTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // 组合输入提交后恢复，允许后续 LostKeyboardFocus 正常结束编辑
+            _isImeComposing = false;
         }
 
         /// <summary>
