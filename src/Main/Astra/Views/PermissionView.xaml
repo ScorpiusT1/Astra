@@ -144,69 +144,69 @@
                                    VerticalAlignment="Center" />
                         <!-- 调试信息 -->
                         <!--<TextBlock Text="{Binding IsAdministrator}"
-                                   FontSize="12"
-                                   Foreground="Red"
-                                   VerticalAlignment="Center"
-                                   Margin="20,0,0,0" />-->
+                        FontSize="12"
+                        Foreground="Red"
+                        VerticalAlignment="Center"
+                        Margin="20,0,0,0" />-->
                     </StackPanel>
 
                     <!--<StackPanel Orientation="Horizontal"
-                                HorizontalAlignment="Right">
-                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="280"
-                                 Style="{StaticResource ModernTextBoxStyle}"
-                                 Margin="0,0,12,0">
-                            <TextBox.Template>
-                                <ControlTemplate TargetType="TextBox">
-                                    <Border x:Name="border"
-                                            Background="{TemplateBinding Background}"
-                                            BorderBrush="{TemplateBinding BorderBrush}"
-                                            BorderThickness="{TemplateBinding BorderThickness}"
-                                            CornerRadius="10">
-                                        <Grid>
-                                            <ScrollViewer x:Name="PART_ContentHost"
-                                                          Margin="{TemplateBinding Padding}"
-                                                          VerticalAlignment="Center" />
-                                            <TextBlock Text="🔍 搜索用户..."
-                                                       Foreground="{DynamicResource ThirdlyTextBrush}"
-                                                       VerticalAlignment="Center"
-                                                       Margin="14,0"
-                                                       IsHitTestVisible="False">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility"
-                                                                Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource TemplatedParent}}"
-                                                                         Value="">
-                                                                <Setter Property="Visibility"
-                                                                        Value="Visible" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Grid>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsFocused"
-                                                 Value="True">
-                                            <Setter TargetName="border"
-                                                    Property="BorderBrush"
-                                                    Value="{DynamicResource PrimaryBrush}" />
-                                            <Setter TargetName="border"
-                                                    Property="BorderThickness"
-                                                    Value="2" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </TextBox.Template>
-                        </TextBox>
+                    HorizontalAlignment="Right">
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                    Width="280"
+                    Style="{StaticResource ModernTextBoxStyle}"
+                    Margin="0,0,12,0">
+                    <TextBox.Template>
+                    <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="border"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="10">
+                    <Grid>
+                    <ScrollViewer x:Name="PART_ContentHost"
+                    Margin="{TemplateBinding Padding}"
+                    VerticalAlignment="Center" />
+                    <TextBlock Text="🔍 搜索用户..."
+                    Foreground="{DynamicResource ThirdlyTextBrush}"
+                    VerticalAlignment="Center"
+                    Margin="14,0"
+                    IsHitTestVisible="False">
+                    <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                    <Setter Property="Visibility"
+                    Value="Collapsed" />
+                    <Style.Triggers>
+                    <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource TemplatedParent}}"
+                    Value="">
+                    <Setter Property="Visibility"
+                    Value="Visible" />
+                    </DataTrigger>
+                    </Style.Triggers>
+                    </Style>
+                    </TextBlock.Style>
+                    </TextBlock>
+                    </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                    <Trigger Property="IsFocused"
+                    Value="True">
+                    <Setter TargetName="border"
+                    Property="BorderBrush"
+                    Value="{DynamicResource PrimaryBrush}" />
+                    <Setter TargetName="border"
+                    Property="BorderThickness"
+                    Value="2" />
+                    </Trigger>
+                    </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                    </TextBox.Template>
+                    </TextBox>
 
-                        <Button Style="{StaticResource InfoButtonStyle}"
-                                Content="🔄 刷新"
-                                Command="{Binding LoadUsersCommand}"
-                                Padding="16,12" />
+                    <Button Style="{StaticResource InfoButtonStyle}"
+                    Content="🔄 刷新"
+                    Command="{Binding LoadUsersCommand}"
+                    Padding="16,12" />
                     </StackPanel>-->
                 </Grid>
 
@@ -236,10 +236,10 @@
                         <TextBlock Text="密码 *"
                                    Style="{StaticResource FieldLabelStyle}" />
                         <hc:PasswordBox x:Name="PasswordBox"
-                                     Style="{StaticResource ModernPasswordBoxStyle}"
-                                     helpers:PasswordHelper.Attach="True"
-                                     helpers:PasswordHelper.Password="{Binding NewPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     MaxLength="100" />
+                                        Style="{StaticResource ModernPasswordBoxStyle}"
+                                        UnsafePassword="{Binding NewPassword,Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        IsSafeEnabled="False"
+                                        MaxLength="100" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="2"
@@ -455,9 +455,9 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
-                                               
+
                                                 <Button Content="🗑️ 删除"
-                                                       
+
                                                         Margin="0"
                                                         Padding="16,8"
                                                         Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
