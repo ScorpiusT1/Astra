@@ -3,13 +3,14 @@ using System;
 using System.Windows;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using HandyControl.Controls;
 
 namespace Astra.UI.Windows
 {
     /// <summary>
     /// 节点属性编辑窗口，内部嵌入 PropertyEditorControl，用于编辑 Node 的公共属性
     /// </summary>
-    public partial class NodePropertyEditorWindow : Window
+    public partial class NodePropertyEditorWindow : HandyControl.Controls.Window
     {
         public Node TargetNode { get; }
         private readonly Node _editableNode;
@@ -122,59 +123,6 @@ namespace Astra.UI.Windows
             Close();
         }
 
-        private void RootBorder_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (e.ClickCount == 2)
-            {
-                ToggleMaximizeRestore();
-                return;
-            }
-
-            if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
-            {
-                try
-                {
-                    DragMove();
-                }
-                catch
-                {
-                    // 忽略拖动异常
-                }
-            }
-        }
-
-        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
-        {
-            WindowState = WindowState.Minimized;
-        }
-
-        private void MaximizeButton_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleMaximizeRestore();
-        }
-
-        private void ToggleMaximizeRestore()
-        {
-            WindowState = WindowState == WindowState.Maximized
-                ? WindowState.Normal
-                : WindowState.Maximized;
-
-            UpdateMaximizeButtonGlyph();
-        }
-
-        private void Window_StateChanged(object sender, EventArgs e)
-        {
-            UpdateMaximizeButtonGlyph();
-        }
-
-        private void UpdateMaximizeButtonGlyph()
-        {
-            if (MaximizeButton == null)
-                return;
-
-            // E923: Restore, E922: Maximize
-            MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
-        }
     }
 }
 

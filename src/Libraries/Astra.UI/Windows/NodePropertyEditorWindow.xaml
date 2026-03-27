@@ -1,96 +1,42 @@
-<Window x:Class="Astra.UI.Windows.NodePropertyEditorWindow"
+<hc:Window x:Class="Astra.UI.Windows.NodePropertyEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
         xmlns:ui="clr-namespace:Astra.UI.Controls"
-        xmlns:helpers="clr-namespace:Astra.UI.Helpers"
         Title="节点属性"
         SizeToContent="Manual"
         Width="820"
         Height="600"
         WindowStartupLocation="CenterOwner"
-        WindowStyle="None"
         ResizeMode="CanResize"
-        Background="Transparent"
-        AllowsTransparency="True"
+        Background="{DynamicResource BackgroundBrush}"
+        NonClientAreaBackground="{DynamicResource SurfaceBrush}"
+        NonClientAreaForeground="{DynamicResource PrimaryTextBrush}"
+        ShowIcon="False"
         ShowInTaskbar="True"
-        StateChanged="Window_StateChanged">
+        >
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-    <Border x:Name="RootBorder"
-            Background="{DynamicResource SurfaceBrush}"
-            CornerRadius="16"
-            BorderBrush="{DynamicResource PrimaryBrush}"
-            BorderThickness="1.5"
-            helpers:BorderClipHelper.ClipToBounds="True"
-            MouseLeftButtonDown="RootBorder_MouseLeftButtonDown">
-        <Border.RenderTransform>
-            <TranslateTransform />
-        </Border.RenderTransform>
-        <Border.Effect>
-            <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                              Opacity="0.2"
-                              BlurRadius="32"
-                              ShadowDepth="6" />
-        </Border.Effect>
+        <!-- 属性编辑器主体 -->
+        <ScrollViewer Grid.Row="0"
+                      Margin="0,0,0,16"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      CanContentScroll="False">
+            <ui:PropertyEditorControl x:Name="PropertyEditor"
+                                      ShowSearchBox="False"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch" />
+        </ScrollViewer>
 
-        <Grid Margin="32,24">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <!-- 标题 -->
-            <Grid Grid.Row="0"
-                  Margin="0,0,0,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="🧩 节点属性"
-                               FontSize="18"
-                               FontWeight="Bold"
-                               Foreground="{DynamicResource PrimaryTextBrush}" />
-                    <TextBlock Text="{Binding TargetNode.Name, RelativeSource={RelativeSource AncestorType=Window}}"
-                               FontSize="11"
-                               Foreground="{DynamicResource SecondaryTextBrush}"
-                               Margin="0,6,0,0"
-                               TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Top">
-                    <Button Content="&#xE921;"
-                            Style="{StaticResource CaptionButtonStyle}"
-                            Click="MinimizeButton_Click" />
-                    <Button x:Name="MaximizeButton"
-                            Content="&#xE922;"
-                            Style="{StaticResource CaptionButtonStyle}"
-                            Click="MaximizeButton_Click" />
-                    <Button x:Name="CloseButton"
-                            Margin="4,0,0,0"
-                            Style="{DynamicResource CloseButtonStyle}"
-                            Click="CancelButton_Click" />
-                </StackPanel>
-            </Grid>
-
-            <!-- 属性编辑器主体 -->
-            <ScrollViewer Grid.Row="1"
-                          Margin="0,0,0,16"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto"
-                          CanContentScroll="False">
-                <ui:PropertyEditorControl x:Name="PropertyEditor"
-                                          ShowSearchBox="False"
-                                          HorizontalAlignment="Stretch"
-                                          VerticalAlignment="Stretch" />
-            </ScrollViewer>
-
-            <!-- 底部确认 / 取消按钮 -->
-            <StackPanel Grid.Row="2"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right">
+        <!-- 底部确认 / 取消按钮 -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
                 <Button Content="取消"
                         Width="120"
                         Height="44"
@@ -165,8 +111,7 @@
                         </Style>
                     </Button.Style>
                 </Button>
-            </StackPanel>
-        </Grid>
-    </Border>
-</Window>
+        </StackPanel>
+    </Grid>
+</hc:Window>
 
