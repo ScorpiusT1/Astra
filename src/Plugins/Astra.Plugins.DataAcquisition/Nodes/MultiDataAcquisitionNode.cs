@@ -6,6 +6,7 @@ using Astra.Core.Nodes.Ui;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Attributes;
+using Astra.UI.Abstractions.Interfaces;
 using Astra.UI.PropertyEditors;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
@@ -17,8 +18,40 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// <summary>
     /// 多采集卡采集节点：在一个脚本节点中同时控制多个采集卡的启动。
     /// </summary>
-    public class MultiDataAcquisitionNode : Node
+    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider
     {
+        private bool _usePropertyPanelForChartAxis = true;
+
+        [Display(Name = "显示图表按钮", GroupName = "基础配置", Order = 3, Description = "开启后在首页测试项操作栏显示「打开图表」；需同时开启「在主页测试项中显示」。关闭后若本次执行仍输出了曲线数据，按钮仍可出现。")]
+        public bool ShowHomeChartButton { get; set; } = true;
+
+        [Display(Name = "在属性面板配置坐标轴", GroupName = "图表", Order = 0, Description = "开启后使用下方 X/Y 轴标签与单位；关闭后隐藏下方四项，由节点代码在输出中指定轴信息（本节点使用内置默认：样本 / 数值）。")]
+        public bool UsePropertyPanelForChartAxis
+        {
+            get => _usePropertyPanelForChartAxis;
+            set
+            {
+                if (_usePropertyPanelForChartAxis == value)
+                {
+                    return;
+                }
+
+                _usePropertyPanelForChartAxis = value;
+                OnPropertyChanged();
+            }
+        }
+
+        [Display(Name = "图表 X 轴标签", GroupName = "图表", Order = 1, Description = "主页测试项图表窗口底部轴标题。")]
+        public string ChartXAxisLabel { get; set; } = "";
+
+        [Display(Name = "图表 X 轴单位", GroupName = "图表", Order = 2, Description = "显示在 X 轴标题后的单位，可留空。")]
+        public string ChartXAxisUnit { get; set; } = string.Empty;
+
+        [Display(Name = "图表 Y 轴标签", GroupName = "图表", Order = 3, Description = "主页测试项图表窗口左侧轴标题。")]
+        public string ChartYAxisLabel { get; set; } = "";
+
+        [Display(Name = "图表 Y 轴单位", GroupName = "图表", Order = 4, Description = "显示在 Y 轴标题后的单位，可留空。")]
+        public string ChartYAxisUnit { get; set; } = string.Empty;
 
         [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 1, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
         public bool StopAcquisitionAfterCompletion { get; set; } = true;
@@ -33,6 +66,52 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(typeof(DataAcquisitionCardProvider), "GetDataAcquisitionNames", DisplayMemberPath = ".")]
         public List<string> DataAcquisitionDeviceNames { get; set; } = new();
+
+        /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴标签（节点代码侧默认）。</summary>
+        private const string CodeDefinedChartXAxisLabel = "时间";
+
+        /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴单位。</summary>
+        private const string CodeDefinedChartXAxisUnit = "s";
+
+        /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的纵轴标签（节点代码侧默认）。</summary>
+        private const string CodeDefinedChartYAxisLabel = "幅值";
+
+        /// <summary>关闭「在属性面板配置坐标轴」且无法从传感器解析单位时，纵轴单位回退值。</summary>
+        private const string CodeDefinedChartYAxisUnitFallback = "";
+
+        public bool IsPropertyVisible(string propertyName)
+        {
+            if (string.IsNullOrEmpty(propertyName))
+            {
+                return true;
+            }
+
+            if (propertyName is nameof(ChartXAxisLabel) or nameof(ChartXAxisUnit) or nameof(ChartYAxisLabel) or nameof(ChartYAxisUnit))
+            {
+                return UsePropertyPanelForChartAxis;
+            }
+
+            return true;
+        }
+
+        /// <param name="physicalYAxisUnitFromSensor">关闭「在属性面板配置坐标轴」时，由灵敏度转换写入的纵轴物理单位字符串。</param>
+        private (string XLabel, string XUnit, string YLabel, string YUnit) ResolveChartAxisOutputs(string? physicalYAxisUnitFromSensor = null)
+        {
+            if (UsePropertyPanelForChartAxis)
+            {
+                return (
+                    ChartXAxisLabel ?? string.Empty,
+                    ChartXAxisUnit ?? string.Empty,
+                    ChartYAxisLabel ?? string.Empty,
+                    ChartYAxisUnit ?? string.Empty);
+            }
+
+            var yUnit = string.IsNullOrWhiteSpace(physicalYAxisUnitFromSensor)
+                ? CodeDefinedChartYAxisUnitFallback
+                : physicalYAxisUnitFromSensor.Trim();
+
+            return (CodeDefinedChartXAxisLabel, CodeDefinedChartXAxisUnit, CodeDefinedChartYAxisLabel, yUnit);
+        }
 
         protected override async Task<ExecutionResult> ExecuteCoreAsync(
             NodeContext context,
@@ -301,6 +380,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             {
                 var rawDataKeys = new List<string>();
                 var activeSet = new HashSet<string>(activeDeviceListForOutput);
+                string? codePathPhysicalYUnit = null;
 
                 foreach (var device in distinctDevices)
                 {
@@ -320,11 +400,27 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         continue;
                     }
 
+                    var dataForArtifact = dataFile;
+                    if (!UsePropertyPanelForChartAxis &&
+                        NvhMemoryFileSensitivityConversion.TryCreatePhysicalChannelCopy(
+                            dataFile,
+                            daqDevice,
+                            out var physicalFile,
+                            out var yUnitFromSensor) &&
+                        physicalFile != null)
+                    {
+                        dataForArtifact = physicalFile;
+                        if (string.IsNullOrEmpty(codePathPhysicalYUnit))
+                        {
+                            codePathPhysicalYUnit = yUnitFromSensor;
+                        }
+                    }
+
                     var artifactRef = context.StoreArtifact(
                         nodeId: Id,
                         category: DataArtifactCategory.Raw,
                         artifactName: $"{device.DeviceId}:raw",
-                        data: dataFile,
+                        data: dataForArtifact,
                         displayName: $"{(device as IDevice)?.DeviceName ?? device.DeviceId}-RawData",
                         description: $"Device={device.DeviceId}, Node={Id}, Duration={DurationSeconds}s",
                         preview: new Dictionary<string, object>
@@ -358,10 +454,15 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
                 if (rawDataKeys.Count > 0)
                 {
+                    var axis = ResolveChartAxisOutputs(codePathPhysicalYUnit);
                     result = result
                         .WithOutput("RawDataKeys", rawDataKeys)
                         .WithOutput(NodeUiOutputKeys.HasChartData, true)
-                        .WithOutput(NodeUiOutputKeys.ChartArtifactKey, rawDataKeys[0]);
+                        .WithOutput(NodeUiOutputKeys.ChartArtifactKey, rawDataKeys[0])
+                        .WithOutput(NodeUiOutputKeys.ChartXAxisLabel, axis.XLabel)
+                        .WithOutput(NodeUiOutputKeys.ChartXAxisUnit, axis.XUnit)
+                        .WithOutput(NodeUiOutputKeys.ChartYAxisLabel, axis.YLabel)
+                        .WithOutput(NodeUiOutputKeys.ChartYAxisUnit, axis.YUnit);
                 }
             }
 
