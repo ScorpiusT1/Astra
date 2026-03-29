@@ -2,7 +2,10 @@ using Astra.Core.Foundation.Common;
 using Astra.Core.Logs;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Ui;
+using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +20,8 @@ namespace Astra.UI.Services
         private readonly IWorkFlowManager _workFlowManager;
         private readonly IWorkflowEngineProvider _workflowEngineProvider;
         private readonly IExecutionLogSink? _executionLogSink;
+        private readonly INodeExecutionUiHydrator? _nodeExecutionUiHydrator;
+        private readonly IServiceProvider? _serviceProvider;
         private readonly object _stateLock = new object();
 
         private string _currentWorkflowKey;
@@ -29,11 +34,15 @@ namespace Astra.UI.Services
         public WorkflowExecutionSessionService(
             IWorkFlowManager workFlowManager,
             IWorkflowEngineProvider workflowEngineProvider,
-            IExecutionLogSink? executionLogSink = null)
+            IExecutionLogSink? executionLogSink = null,
+            INodeExecutionUiHydrator? nodeExecutionUiHydrator = null,
+            IServiceProvider? serviceProvider = null)
         {
             _workFlowManager = workFlowManager ?? throw new ArgumentNullException(nameof(workFlowManager));
             _workflowEngineProvider = workflowEngineProvider ?? throw new ArgumentNullException(nameof(workflowEngineProvider));
             _executionLogSink = executionLogSink;
+            _nodeExecutionUiHydrator = nodeExecutionUiHydrator;
+            _serviceProvider = serviceProvider;
         }
 
         public bool IsRunning
@@ -105,6 +114,11 @@ namespace Astra.UI.Services
             }
 
             context ??= new NodeContext();
+            if (context.ServiceProvider == null && _serviceProvider != null)
+            {
+                context.ServiceProvider = _serviceProvider;
+            }
+
             if (_executionLogSink != null)
             {
                 context.SetMetadata(ExecutionContextMetadataKeys.UiLogWriter, (Action<string, string>)((level, message) =>
@@ -246,6 +260,85 @@ namespace Astra.UI.Services
             return OperationResult.Failure(string.IsNullOrWhiteSpace(lastError) ? "停止失败" : lastError);
         }
 
+        public OperationResult PauseAllTrackedSessions()
+        {
+            var executionIds = ResolveAllTrackedExecutionIds(WorkFlowExecutionStatus.Running);
+            if (executionIds.Count == 0)
+            {
+                return OperationResult.Failure("没有可暂停的已跟踪执行");
+            }
+
+            var ok = 0;
+            string lastErr = null;
+            foreach (var id in executionIds)
+            {
+                var r = _workFlowManager.PauseWorkFlowExecution(id);
+                if (r.Success)
+                {
+                    ok++;
+                }
+                else
+                {
+                    lastErr = r.Message;
+                }
+            }
+
+            return ok > 0
+                ? OperationResult.Succeed($"已暂停 {ok} 个执行实例")
+                : OperationResult.Failure(string.IsNullOrWhiteSpace(lastErr) ? "暂停失败" : lastErr);
+        }
+
+        public OperationResult ResumeAllTrackedSessions()
+        {
+            var executionIds = ResolveAllTrackedExecutionIds(WorkFlowExecutionStatus.Paused);
+            if (executionIds.Count == 0)
+            {
+                return OperationResult.Failure("没有可恢复的已跟踪执行");
+            }
+
+            var ok = 0;
+            string lastErr = null;
+            foreach (var id in executionIds)
+            {
+                var r = _workFlowManager.ResumeWorkFlowExecution(id);
+                if (r.Success)
+                {
+                    ok++;
+                }
+                else
+                {
+                    lastErr = r.Message;
+                }
+            }
+
+            return ok > 0
+                ? OperationResult.Succeed($"已恢复 {ok} 个执行实例")
+                : OperationResult.Failure(string.IsNullOrWhiteSpace(lastErr) ? "恢复失败" : lastErr);
+        }
+
+        private List<string> ResolveAllTrackedExecutionIds(WorkFlowExecutionStatus requiredStatus)
+        {
+            lock (_stateLock)
+            {
+                var runningResult = _workFlowManager.GetRunningWorkFlows();
+                if (!runningResult.Success || runningResult.Data == null || _startedWorkflowKeys.Count == 0)
+                {
+                    return new List<string>();
+                }
+
+                return runningResult.Data
+                    .Where(x =>
+                        x != null &&
+                        x.Status == requiredStatus &&
+                        !string.IsNullOrWhiteSpace(x.ExecutionId) &&
+                        !string.IsNullOrWhiteSpace(x.WorkFlowKey) &&
+                        _startedWorkflowKeys.Contains(x.WorkFlowKey))
+                    .Select(x => x.ExecutionId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+            }
+        }
+
         private async Task<string> ResolveExecutionIdAsync(string workflowKey, CancellationToken cancellationToken)
         {
             // 启动后短时间轮询运行列表，获取本次 executionId。
@@ -332,7 +425,8 @@ namespace Astra.UI.Services
                         ExecutionId = ResolveExecutionId(e.Context),
                         WorkflowKey = ResolveWorkflowKey(e.Context),
                         NodeId = e.Node.Id,
-                        State = NodeExecutionState.Running
+                        State = NodeExecutionState.Running,
+                        DetailMessage = null
                     });
                 };
 
@@ -343,12 +437,16 @@ namespace Astra.UI.Services
                         return;
                     }
 
+                    _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(e.Context, e.Node.Id, e.Result);
+
                     NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
                     {
                         ExecutionId = ResolveExecutionId(e.Context),
                         WorkflowKey = ResolveWorkflowKey(e.Context),
                         NodeId = e.Node.Id,
-                        State = MapState(e.Result)
+                        State = MapState(e.Result),
+                        DetailMessage = BuildNodeDetailMessage(e.Result),
+                        UiPayload = NodeUiPayloadFactory.FromOutputData(e.Result?.OutputData)
                     });
                 };
 
@@ -390,6 +488,63 @@ namespace Astra.UI.Services
             if (result.ResultType == ExecutionResultType.Cancelled) return NodeExecutionState.Cancelled;
             if (result.IsSkipped || result.ResultType == ExecutionResultType.Skipped) return NodeExecutionState.Skipped;
             return result.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
+        }
+
+        private static string? BuildNodeDetailMessage(ExecutionResult? r)
+        {
+            if (r == null)
+            {
+                return "未返回结果";
+            }
+
+            if (r.IsSkipped || r.ResultType == ExecutionResultType.Skipped)
+            {
+                return string.IsNullOrWhiteSpace(r.Message) ? "已跳过" : r.Message.Trim();
+            }
+
+            if (r.ResultType == ExecutionResultType.Cancelled)
+            {
+                return string.IsNullOrWhiteSpace(r.Message) ? "已取消" : r.Message.Trim();
+            }
+
+            if (!r.Success)
+            {
+                var parts = new List<string>();
+                if (r.OutputData != null &&
+                    r.OutputData.TryGetValue(NodeUiOutputKeys.Summary, out var sumObj) &&
+                    sumObj != null &&
+                    !string.IsNullOrWhiteSpace(sumObj.ToString()))
+                {
+                    parts.Add(sumObj.ToString()!.Trim());
+                }
+
+                if (!string.IsNullOrWhiteSpace(r.Message))
+                {
+                    parts.Add(r.Message.Trim());
+                }
+
+                if (!string.IsNullOrWhiteSpace(r.ErrorCode))
+                {
+                    parts.Add($"错误码 {r.ErrorCode}");
+                }
+
+                if (r.Exception != null && !string.IsNullOrWhiteSpace(r.Exception.Message))
+                {
+                    parts.Add(r.Exception.Message);
+                }
+
+                return parts.Count > 0 ? string.Join(" · ", parts) : "执行失败";
+            }
+
+            if (r.OutputData != null &&
+                r.OutputData.TryGetValue(NodeUiOutputKeys.Summary, out var okSum) &&
+                okSum != null &&
+                !string.IsNullOrWhiteSpace(okSum.ToString()))
+            {
+                return okSum.ToString()!.Trim();
+            }
+
+            return string.IsNullOrWhiteSpace(r.Message) ? string.Empty : r.Message.Trim();
         }
     }
 }
