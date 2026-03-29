@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -84,8 +85,47 @@ namespace Astra.UI.Behaviors
                 return;
             }
 
+            // 在文本框、复选框等控件上拖选时不得启动行拖拽，否则 DoDragDrop 会抢占鼠标并表现为“禁用”光标。
+            if (ShouldIgnoreRowDragMouseDown(e.OriginalSource as DependencyObject))
+            {
+                SetDragSourceItem(grid, null);
+                return;
+            }
+
             SetDragStartPoint(grid, e.GetPosition(grid));
             SetDragSourceItem(grid, GetRowItemFromEvent(e));
+        }
+
+        /// <summary>
+        /// 鼠标按下是否发生在应保留给控件自身交互（拖选文字、点选复选框等）的区域。
+        /// </summary>
+        private static bool ShouldIgnoreRowDragMouseDown(DependencyObject? source)
+        {
+            while (source != null && source is not DataGridRow)
+            {
+                switch (source)
+                {
+                    case TextBox:
+                    case RichTextBox:
+                    case PasswordBox:
+                    case ComboBox:
+                    case CheckBox:
+                    case ButtonBase:
+                    case Slider:
+                    case ScrollBar:
+                    case Thumb:
+                        return true;
+                }
+
+                if (source is ComboBoxItem)
+                {
+                    return true;
+                }
+
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return false;
         }
 
         private static void GridOnPreviewMouseMove(object sender, MouseEventArgs e)
