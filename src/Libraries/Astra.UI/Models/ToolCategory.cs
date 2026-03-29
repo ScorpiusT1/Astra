@@ -18,6 +18,8 @@ namespace Astra.UI.Models
         private bool _isEnabled = true;
         private Brush _categoryColor;
         private Brush _categoryLightColor;
+        private int _sortOrder;
+        private int? _pluginOrder;
 
         public ToolCategory()
         {
@@ -113,6 +115,38 @@ namespace Astra.UI.Models
                 {
                     _categoryLightColor = value;
                     OnPropertyChanged(nameof(CategoryLightColor));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 在工具箱根列表中的排序键（通常取该分类下节点的最小 <c>Order</c>）。
+        /// </summary>
+        public int SortOrder
+        {
+            get => _sortOrder;
+            set
+            {
+                if (_sortOrder != value)
+                {
+                    _sortOrder = value;
+                    OnPropertyChanged(nameof(SortOrder));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 所属插件在工具箱根层的顺序（来自 .addin 中 Addin/<c>Order</c>）；未指定时为 null，排序时视为最后。
+        /// </summary>
+        public int? PluginOrder
+        {
+            get => _pluginOrder;
+            set
+            {
+                if (_pluginOrder != value)
+                {
+                    _pluginOrder = value;
+                    OnPropertyChanged(nameof(PluginOrder));
                 }
             }
         }

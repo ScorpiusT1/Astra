@@ -44,6 +44,13 @@ namespace Astra.Core.Plugins.Manifest
         /// </summary>
         [XmlAttribute("Group")]
         public string Group { get; set; }
+
+        /// <summary>
+        /// 排序序号（可选，默认 0）- 用于工具箱中根分类及分类内节点的显示顺序，数值越小越靠前；
+        /// 同 Order 时保持清单中节点声明顺序。
+        /// </summary>
+        [XmlAttribute("Order")]
+        public int Order { get; set; }
     }
 }
 
