@@ -12,6 +12,7 @@
              d:DesignWidth="1280">
     <Grid Margin="14">
         <Grid.Resources>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <Style x:Key="HomeRegionCardStyle"
                    TargetType="Border">
                 <Setter Property="Background"
@@ -39,7 +40,7 @@
                 <Setter Property="Padding"
                         Value="12,0" />
                 <Setter Property="Foreground"
-                        Value="White" />
+                        Value="{DynamicResource ReverseTextBrush}" />
                 <Setter Property="BorderThickness"
                         Value="0" />
                 <Setter Property="Cursor"
@@ -126,140 +127,139 @@
                                   BlurRadius="14"
                                   Direction="270" />
             </Border.Effect>
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <!-- Auto：按模块自然高度占位；勿用默认 *，否则与日志行分星高后 IO 区过矮且内部 ScrollViewer 无法形成有限视口 -->
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0"
-                            Margin="6"
-                            Padding="14,12"
-                            CornerRadius="12"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background"
-                                        Value="{DynamicResource LightPrimaryBrush}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                                 Value="OK">
-                                        <Setter Property="Background"
-                                                Value="{DynamicResource LightSuccessBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                                 Value="NG">
-                                        <Setter Property="Background"
-                                                Value="{DynamicResource LightDangerBrush}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <Grid Margin="0,0,0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0"
-                                            Width="4"
-                                            CornerRadius="2"
-                                            Margin="0,0,8,0">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0"
-                                                                 EndPoint="0,1">
-                                                <GradientStop Color="{DynamicResource InfoColor}"
-                                                              Offset="0" />
-                                                <GradientStop Color="{DynamicResource PrimaryColor}"
-                                                              Offset="1" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                    </Border>
-                                    <TextBlock Grid.Column="1"
-                                               Text="测试总结果"
-                                               FontSize="15"
-                                               FontWeight="SemiBold"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TitleBrush}" />
-                                </Grid>
-                                <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
-                                           Margin="0,6,0,0"
-                                           FontSize="42"
-                                           FontWeight="Bold">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground"
-                                                    Value="{DynamicResource SecondaryTextBrush}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                                             Value="OK">
-                                                    <Setter Property="Foreground"
-                                                            Value="{DynamicResource DarkSuccessBrush}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
-                                                             Value="NG">
-                                                    <Setter Property="Foreground"
-                                                            Value="{DynamicResource DarkDangerBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
-                            <Border Grid.Column="1"
-                                    MinWidth="78"
-                                    Height="34"
-                                    CornerRadius="17"
-                                    Padding="14,5"
-                                    VerticalAlignment="Center">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background"
-                                                Value="{DynamicResource SecondaryBorderBrush}" />
+                <Border Grid.Row="0"
+                        Margin="6"
+                        Padding="14,12"
+                        CornerRadius="12"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background"
+                                    Value="{DynamicResource LightPrimaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                             Value="OK">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource LightSuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                             Value="NG">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource LightDangerBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0"
+                                        Width="4"
+                                        CornerRadius="2"
+                                        Margin="0,0,8,0">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0"
+                                                             EndPoint="0,1">
+                                            <GradientStop Color="{DynamicResource InfoColor}"
+                                                          Offset="0" />
+                                            <GradientStop Color="{DynamicResource PrimaryColor}"
+                                                          Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Text="测试总结果"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TitleBrush}" />
+                            </Grid>
+                            <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
+                                       Margin="0,6,0,0"
+                                       FontSize="42"
+                                       FontWeight="Bold">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground"
+                                                Value="{DynamicResource SecondaryTextBrush}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
                                                          Value="OK">
-                                                <Setter Property="Background"
-                                                        Value="{DynamicResource SuccessBrush}" />
+                                                <Setter Property="Foreground"
+                                                        Value="{DynamicResource DarkSuccessBrush}" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
                                                          Value="NG">
-                                                <Setter Property="Background"
-                                                        Value="{DynamicResource DangerBrush}" />
+                                                <Setter Property="Foreground"
+                                                        Value="{DynamicResource DarkDangerBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
-                                           FontSize="16"
-                                           FontWeight="Bold"
-                                           Foreground="White"
-                                           TextAlignment="Center"
-                                           VerticalAlignment="Center" />
-                            </Border>
-                        </Grid>
-                    </Border>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                MinWidth="78"
+                                Height="34"
+                                CornerRadius="17"
+                                Padding="14,5"
+                                VerticalAlignment="Center">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource SecondaryBorderBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                                     Value="OK">
+                                            <Setter Property="Background"
+                                                    Value="{DynamicResource SuccessBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding TestItemTreeModule.SummaryResult}"
+                                                     Value="NG">
+                                            <Setter Property="Background"
+                                                    Value="{DynamicResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding TestItemTreeModule.SummaryResult}"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource ReverseTextBrush}"
+                                       TextAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                </Border>
 
-                    <moduleViews:YieldModuleView Grid.Row="1"
-                                                 DataContext="{Binding YieldModule}" />
+                <moduleViews:YieldModuleView Grid.Row="1"
+                                             DataContext="{Binding YieldModule}" />
 
-                    <moduleViews:IOMonitorModuleView Grid.Row="2"
-                                                     DataContext="{Binding IoMonitorModule}" />
+                <moduleViews:IOMonitorModuleView Grid.Row="2"
+                                                 DataContext="{Binding IoMonitorModule}"
+                                                 Visibility="{Binding HasMonitorPoints,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                    <moduleViews:RealTimeLogModuleView Grid.Row="3"
-                                                       DataContext="{Binding RealTimeLogModule}" />
-                </Grid>
-            </ScrollViewer>
+                <moduleViews:RealTimeLogModuleView Grid.Row="3"
+                                                   DataContext="{Binding RealTimeLogModule}" />
+            </Grid>
         </Border>
 
         <Border Grid.Column="2"

@@ -15,7 +15,8 @@
              xmlns:multiFlowEditor="clr-namespace:Astra.UI.Styles.Controls;assembly=Astra.UI"
              d:DataContext="{d:DesignInstance Type=viewmodels:SequenceViewModel}"
              mc:Ignorable="d"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}"
+             Loaded="SequenceView_OnLoaded">
     <Grid>
         <!-- 多流程编辑器控件 -->
         <multiFlowEditor:MultiFlowEditor DataContext="{Binding MultiFlowEditor}" />

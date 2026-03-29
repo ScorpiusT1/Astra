@@ -22,11 +22,14 @@ namespace Astra.Engine.Execution.Strategies
         /// </summary>
         public async Task<ExecutionResult> ExecuteAsync(WorkFlowExecutionContext context)
         {
+            if (context.DetectedStrategy?.HasCycle == true)
+            {
+                return ExecutionResult.Failed("存在循环依赖，无法执行");
+            }
+
             var workflow = context.Workflow;
             var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
             var outputs = new Dictionary<string, object>();
-            var hasNonSkippedFailure = false;
-            ExecutionResult firstFailureResult = null;
             MarkDisabledNodesAsSkipped(workflow, context);
 
             // 构建图与入度
@@ -51,6 +54,7 @@ namespace Astra.Engine.Execution.Strategies
 
             var ready = new Queue<Node>(enabledNodes.Where(n => inDegree[n.Id] == 0));
             int processed = 0;
+            var reportWorkflowFailed = false;
 
             while (ready.Count > 0)
             {
@@ -74,19 +78,23 @@ namespace Astra.Engine.Execution.Strategies
                     CancellationToken = context.CancellationToken
                 };
 
-                await Parallel.ForEachAsync(batch, options, async (node, ct) =>
+                await Parallel.ForEachAsync(batch, options, async (batchNode, ct) =>
                 {
                     if (context.ExecutionController != null)
                     {
                         await context.ExecutionController.WaitIfPausedAsync(ct);
                     }
 
+                    var node = WorkflowNodeFailurePolicy.ResolveExecutionNode(workflow, batchNode);
                     var nodeContext = PrepareNodeContext(node, workflow, context.NodeContext);
                     var nodeResult = await ExecuteNodeAsync(node, nodeContext, context, ct);
                     results.Add((node, nodeResult));
                 });
 
-                foreach (var (node, result) in results)
+                var batchOrdered = results.ToList();
+                batchOrdered.Sort((a, b) => string.CompareOrdinal(a.node.Id, b.node.Id));
+
+                foreach (var (node, result) in batchOrdered)
                 {
                     processed++;
                     foreach (var kvp in result.OutputData)
@@ -95,19 +103,22 @@ namespace Astra.Engine.Execution.Strategies
                         workflow.Variables[$"{node.Name}_{kvp.Key}"] = kvp.Value;
                     }
 
-                    if (!result.Success && !result.IsSkipped)
+                    if (!result.Success && !result.IsSkipped &&
+                        WorkflowNodeFailurePolicy.ShouldAbortRemainingAfterFailedStep(workflow, node))
                     {
-                        if (workflow.Configuration.StopOnError && !node.ContinueOnFailure)
-                        {
-                            return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
-                                .WithOutputs(outputs);
-                        }
+                        reportWorkflowFailed = true;
+                    }
+                }
 
-                        hasNonSkippedFailure = true;
-                        firstFailureResult ??= result;
+                // 必须在整批结果上完成入度更新：并行分支上某一节点失败时，不得在未处理同批其它节点前就 return，
+                // 否则仅依赖另一分支的下游（如 A→B 与 C 并行时）将永远无法入队。
+                foreach (var (node, result) in batchOrdered)
+                {
+                    if (!WorkflowNodeFailurePolicy.ShouldReleaseDownstreamEdges(workflow, node, result))
+                    {
+                        continue;
                     }
 
-                    // 入度更新
                     foreach (var neighborId in graph[node.Id])
                     {
                         inDegree[neighborId]--;
@@ -123,13 +134,28 @@ namespace Astra.Engine.Execution.Strategies
 
             if (processed != enabledNodes.Count)
             {
-                return ExecutionResult.Failed("检测到循环依赖，复杂图执行未完成");
+                foreach (var n in enabledNodes)
+                {
+                    if (n.LastExecutionResult != null)
+                    {
+                        continue;
+                    }
+
+                    // 因上游失败未调度：保持未执行（Idle），不记为 Skipped（跳过用于禁用/条件等主动跳过）
+                    n.LastExecutionResult = null;
+                    n.ExecutionState = NodeExecutionState.Idle;
+                    processed++;
+                }
+
+                if (processed != enabledNodes.Count)
+                {
+                    return ExecutionResult.Failed("检测到循环依赖，复杂图执行未完成");
+                }
             }
 
-            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
+            if (reportWorkflowFailed)
             {
-                return ExecutionResult.Failed($"复杂图执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
-                    .WithOutputs(outputs);
+                return ExecutionResult.Failed("复杂图执行完成，但有节点失败且未允许继续").WithOutputs(outputs);
             }
 
             return ExecutionResult.Successful($"复杂图执行完成，共执行 {processed} 个节点").WithOutputs(outputs);

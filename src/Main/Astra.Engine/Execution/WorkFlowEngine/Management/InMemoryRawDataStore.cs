@@ -2,6 +2,7 @@ using Astra.Core.Nodes.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 
@@ -119,6 +120,35 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 HitCount = Interlocked.Read(ref _hitCount),
                 MissCount = Interlocked.Read(ref _missCount)
             };
+        }
+
+        public bool TrySnapshotByPrefix(string prefix, out IReadOnlyList<KeyValuePair<string, object>> items)
+        {
+            items = Array.Empty<KeyValuePair<string, object>>();
+            if (string.IsNullOrWhiteSpace(prefix))
+            {
+                return false;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var list = new List<KeyValuePair<string, object>>();
+            foreach (var kvp in _data)
+            {
+                if (kvp.Key == null || !kvp.Key.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (kvp.Value.IsExpired(now))
+                {
+                    continue;
+                }
+
+                list.Add(new KeyValuePair<string, object>(kvp.Key, kvp.Value.Value));
+            }
+
+            items = list;
+            return true;
         }
 
         private void CleanupIfNeeded()

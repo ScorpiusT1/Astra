@@ -68,7 +68,16 @@ namespace Astra.Services
             {
                 var defaultViewType = defaultContextAssembly.GetType(viewType.FullName);
                 if (defaultViewType != null)
-                    viewTypeToUse = defaultViewType;
+                {
+                    // 主输出目录与 Plugins\<插件名> 可能各有一份同名 DLL。若强行改用默认上下文中的类型，
+                    // 易实例化到未随插件项目重新生成的主目录副本，InitializeComponent 会找不到 BAML。
+                    string locDefault = defaultContextAssembly.Location;
+                    string locView = viewAssembly.Location;
+                    bool samePhysicalFile = !string.IsNullOrEmpty(locDefault) && !string.IsNullOrEmpty(locView)
+                        && string.Equals(Path.GetFullPath(locDefault), Path.GetFullPath(locView), StringComparison.OrdinalIgnoreCase);
+                    if (samePhysicalFile)
+                        viewTypeToUse = defaultViewType;
+                }
             }
 
             if (defaultContextAssembly == null && !string.IsNullOrEmpty(viewAssembly.Location) && File.Exists(viewAssembly.Location))
@@ -83,10 +92,10 @@ namespace Astra.Services
                 catch { /* 继续使用插件上下文中的类型 */ }
             }
 
-            Assembly targetAssembly = defaultContextAssembly ?? viewAssembly;
-            if (targetAssembly != null)
+            Assembly reflectionAssembly = viewTypeToUse.Assembly;
+            if (reflectionAssembly != null)
             {
-                using (AssemblyLoadContext.EnterContextualReflection(targetAssembly))
+                using (AssemblyLoadContext.EnterContextualReflection(reflectionAssembly))
                 {
                     return Activator.CreateInstance(viewTypeToUse);
                 }

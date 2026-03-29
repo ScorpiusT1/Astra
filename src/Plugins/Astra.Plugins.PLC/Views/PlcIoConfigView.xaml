@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:uiBehaviors="clr-namespace:Astra.UI.Behaviors;assembly=Astra.UI"
              xmlns:configs="clr-namespace:Astra.Plugins.PLC.Configs"
+             xmlns:interlock="clr-namespace:Astra.Core.Triggers.Interlock;assembly=Astra.Core"
              xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
              xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
@@ -17,6 +18,14 @@
                             ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="configs:PlcIODataType" />
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+
+        <ObjectDataProvider x:Key="InterlockActionValues"
+                            MethodName="GetValues"
+                            ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="interlock:InterlockRuleAction" />
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
 
@@ -136,6 +145,7 @@
                             Style="{DynamicResource PrimaryButtonStyle}"
                             Height="34"
                             Margin="0,0,10,0"
+                            VerticalAlignment="Center"
                             Padding="18,7"
                             Command="{Binding AddIoCommand}" />
                     <Border Width="1"
@@ -146,6 +156,7 @@
                     <Button Content="删除选中"
                             Style="{DynamicResource DangerButtonStyle}"
                             Height="34"
+                            VerticalAlignment="Center"
                             Padding="18,7"
                             IsEnabled="{Binding HasSelection}"
                             Command="{Binding RemoveSelectedIoCommand}" />
@@ -218,22 +229,61 @@
                                                           Foreground="{DynamicResource PrimaryBrush}" />
                                         </MenuItem.Icon>
                                     </MenuItem>
+                                    <Separator />
+                                    <MenuItem Header="删除"
+                                              Command="{Binding PlacementTarget.DataContext.RemoveSelectedIoCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              IsEnabled="{Binding PlacementTarget.DataContext.HasSelection, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                        <MenuItem.Icon>
+                                            <fa:IconBlock Icon="Trash"
+                                                          Foreground="{DynamicResource DangerBrush}" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
                             <DataGrid.Columns>
-                                <DataGridCheckBoxColumn Header="启用"
-                                                        Binding="{Binding IsEnabled}"
-                                                        Width="60" />
+                                <DataGridTemplateColumn Header="启用"
+                                                        Width="72">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center"
+                                                      IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
                                 <DataGridTextColumn Header="IO名称"
                                                     Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                                     Width="*" />
+                                
+                                <DataGridTemplateColumn Header="监控"
+                                                        Width="72">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center"
+                                                      IsChecked="{Binding MonitorOnHome, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="联锁"
+                                                        Width="72">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center"
+                                                      IsChecked="{Binding SafetyInterlockEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                              
                                 <DataGridTextColumn Header="地址"
                                                     Binding="{Binding Address, TargetNullValue=—, UpdateSourceTrigger=PropertyChanged}"
                                                     Width="1.8*" />
                                 <DataGridTextColumn Header="管线"
                                                     Binding="{Binding PipeLabel, TargetNullValue=—, UpdateSourceTrigger=PropertyChanged}"
                                                     Width="*" />
-                                <DataGridTextColumn Header="标签"
+                                <DataGridTextColumn Header="描述"
                                                     Binding="{Binding Tag, TargetNullValue=—, UpdateSourceTrigger=PropertyChanged}"
                                                     Width="*" />
                                 <DataGridTemplateColumn Header="编辑"
@@ -425,6 +475,85 @@
                                             <TextBox Style="{DynamicResource ModernTextBoxStyle}"
                                                      Text="{Binding SelectedIo.PipeLabel, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="0,10,0,0"
+                                    Style="{StaticResource SectionCardStyle}"
+                                    Background="{DynamicResource SecondaryRegionBrush}"
+                                    Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="安全联锁"
+                                               Style="{StaticResource GroupTitleStyle}"
+                                               Margin="0,0,0,10" />
+                                    <CheckBox Content="启用安全联锁（BOOL / Auto 类型）"
+                                              Style="{DynamicResource ModernCheckBoxStyle}"
+                                              IsChecked="{Binding SelectedIo.SafetyInterlockEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                              IsEnabled="{Binding SelectedIo.SupportsSafetyInterlockDataType}" />
+                                    <TextBlock Margin="0,6,0,0"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource WarningBrush}"
+                                               TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedIo.SupportsSafetyInterlockDataType}" Value="False">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                        联锁读取 BOOL，请将数据类型设为 BOOL 或 Auto。
+                                    </TextBlock>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding SelectedIo.SafetyInterlockEnabled}" Value="True" />
+                                                            <Condition Binding="{Binding SelectedIo.SupportsSafetyInterlockDataType}" Value="True" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Row="0"
+                                                    Grid.Column="0"
+                                                    Margin="0,0,8,8">
+                                            <TextBlock Text="IO 为 True 时动作"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                                      ItemsSource="{Binding Source={StaticResource InterlockActionValues}}"
+                                                      SelectedItem="{Binding SelectedIo.SafetyInterlockActionOnTrue, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0"
+                                                    Grid.Column="1"
+                                                    Margin="8,0,0,8">
+                                            <TextBlock Text="IO 为 False 时动作"
+                                                       Style="{StaticResource FieldLabelStyle}" />
+                                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                                      ItemsSource="{Binding Source={StaticResource InterlockActionValues}}"
+                                                      SelectedItem="{Binding SelectedIo.SafetyInterlockActionOnFalse, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <CheckBox Grid.Row="1"
+                                                  Grid.ColumnSpan="2"
+                                                  Content="边沿触发（仅值变化时执行动作，推荐）"
+                                                  Style="{DynamicResource ModernCheckBoxStyle}"
+                                                  IsChecked="{Binding SelectedIo.SafetyInterlockEdgeTriggered, UpdateSourceTrigger=PropertyChanged}" />
                                     </Grid>
                                 </StackPanel>
                             </Border>

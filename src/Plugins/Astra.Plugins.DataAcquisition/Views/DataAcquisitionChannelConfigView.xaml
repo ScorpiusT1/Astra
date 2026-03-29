@@ -258,7 +258,7 @@
                                         <TextBlock Text="{Binding ChannelId, StringFormat='通道 {0}'}"
                                                    FontSize="14"
                                                    FontWeight="Bold"
-                                                   Foreground="White"
+                                                   Foreground="{DynamicResource ReverseTextBrush}"
                                                    VerticalAlignment="Center" />
                                     </Border>
 

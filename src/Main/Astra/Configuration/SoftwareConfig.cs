@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Astra.Core.Configuration.Base;
+using Astra.Core.Triggers.Configuration;
 using Astra.UI.Abstractions.Attributes;
 
 namespace Astra.Configuration
@@ -20,6 +21,10 @@ namespace Astra.Configuration
         private string _currentWorkflowId = string.Empty;
         private string _currentWorkflowName = string.Empty;
         private bool _enableHomeSequenceLinkage = true;
+        private int _barcodeMinLength = 6;
+        private int _barcodeMaxLength = 32;
+        private bool _safetyInterlockEnabled = true;
+        private int _safetyInterlockPollIntervalMs = 100;
         private bool _isSyncingCounts;
 
         public SoftwareConfig() : base()
@@ -150,6 +155,62 @@ namespace Astra.Configuration
         {
             get => _enableHomeSequenceLinkage;
             set => SetProperty(ref _enableHomeSequenceLinkage, value);
+        }
+
+        /// <summary>
+        /// Home 手动扫码模式下，允许的条码最小长度（字符数，与 <see cref="BarcodeMaxLength"/> 共同构成闭区间）。
+        /// </summary>
+        public int BarcodeMinLength
+        {
+            get => _barcodeMinLength;
+            set
+            {
+                var v = value < 1 ? 1 : value;
+                if (SetProperty(ref _barcodeMinLength, v) && _barcodeMaxLength < _barcodeMinLength)
+                {
+                    _barcodeMaxLength = _barcodeMinLength;
+                    OnPropertyChanged(nameof(BarcodeMaxLength));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Home 手动扫码模式下，允许的条码最大长度（字符数）。
+        /// </summary>
+        public int BarcodeMaxLength
+        {
+            get => _barcodeMaxLength;
+            set
+            {
+                var v = value < 1 ? 1 : value;
+                if (SetProperty(ref _barcodeMaxLength, v) && _barcodeMinLength > _barcodeMaxLength)
+                {
+                    _barcodeMinLength = _barcodeMaxLength;
+                    OnPropertyChanged(nameof(BarcodeMinLength));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否启用安全联锁监控（由 IO 配置中带联锁的 BOOL 点位生成规则）。
+        /// </summary>
+        public bool SafetyInterlockEnabled
+        {
+            get => _safetyInterlockEnabled;
+            set => SetProperty(ref _safetyInterlockEnabled, value);
+        }
+
+        /// <summary>
+        /// 安全联锁轮询周期（毫秒），范围建议 50～60000。
+        /// </summary>
+        public int SafetyInterlockPollIntervalMs
+        {
+            get => _safetyInterlockPollIntervalMs;
+            set
+            {
+                var v = value < 50 ? 50 : (value > 60_000 ? 60_000 : value);
+                SetProperty(ref _safetyInterlockPollIntervalMs, v);
+            }
         }
 
         /// <summary>
@@ -295,7 +356,7 @@ namespace Astra.Configuration
         }
 
         /// <summary>
-        /// 绑定的触发器配置 ID，对应 TriggerConfig 的 ConfigId。
+        /// 绑定的触发器配置 ID，对应 <see cref="TriggerBaseConfig"/> 派生类型的 ConfigId。
         /// </summary>
         public string TriggerConfigId
         {

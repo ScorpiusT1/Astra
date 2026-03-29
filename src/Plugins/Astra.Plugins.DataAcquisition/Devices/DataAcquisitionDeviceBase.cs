@@ -75,6 +75,33 @@ namespace Astra.Plugins.DataAcquisition.Devices
             return channel;
         }
 
+        /// <summary>
+        /// 当前配置中已启用通道的名称（与 NVH Signal 组内通道名一致，参见 <see cref="InitializeDataStructures"/>）。
+        /// </summary>
+        public IReadOnlyList<string> GetConfiguredEnabledChannelNames()
+        {
+            var list = new List<string>();
+            if (_config?.Channels == null)
+            {
+                return list;
+            }
+
+            foreach (var channelConfig in _config.Channels)
+            {
+                if (channelConfig == null || !channelConfig.Enabled)
+                {
+                    continue;
+                }
+
+                var name = string.IsNullOrWhiteSpace(channelConfig.ChannelName)
+                    ? $"Channel{channelConfig.ChannelId}"
+                    : channelConfig.ChannelName.Trim();
+                list.Add(name);
+            }
+
+            return list;
+        }
+
         public async Task<OperationResult> DisposeAsync()
         {
             await StopAcquisitionAsync().ConfigureAwait(false);

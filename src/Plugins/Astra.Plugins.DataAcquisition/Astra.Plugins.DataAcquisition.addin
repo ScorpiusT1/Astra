@@ -10,6 +10,7 @@
 		<Copyright>Copyright © Astra Team</Copyright>
 		<Website />
 		<IconPath />
+		<Order>1</Order>
 		<Runtime>
 			<Assembly>Astra.Plugins.DataAcquisition.dll</Assembly>
 			<TypeName>Astra.Plugins.DataAcquisition.DataAcquisitionPlugin</TypeName>

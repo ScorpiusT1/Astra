@@ -1,4 +1,3 @@
-﻿﻿using Astra.Core.Triggers.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,9 +19,9 @@ namespace Astra.Core.Triggers.Models
         public bool IsTriggered { get; set; }
 
         /// <summary>  
-        /// 触发源类型  
+        /// 触发源标识（如 PLCMonitor）
         /// </summary>  
-        public TriggerSource Source { get; set; }
+        public string Source { get; set; } = string.Empty;
 
         /// <summary>  
         /// 触发数据（包含SN等）  
@@ -43,7 +42,7 @@ namespace Astra.Core.Triggers.Models
         /// <summary>  
         /// 创建触发结果  
         /// </summary>  
-        public static TriggerResult Triggered(TriggerSource source, Dictionary<string, object> data)
+        public static TriggerResult Triggered(string source, Dictionary<string, object> data)
         {
             return new TriggerResult
             {
@@ -56,7 +55,7 @@ namespace Astra.Core.Triggers.Models
         /// <summary>  
         /// 便捷方法：创建触发结果（带SN）  
         /// </summary>  
-        public static TriggerResult TriggeredWithSN(TriggerSource source, string sn, Dictionary<string, object> additionalData = null)
+        public static TriggerResult TriggeredWithSN(string source, string sn, Dictionary<string, object> additionalData = null)
         {
             var data = additionalData ?? new Dictionary<string, object>();
             data["SN"] = sn;

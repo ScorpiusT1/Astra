@@ -10,6 +10,7 @@
 		<Copyright>Copyright © Astra Team</Copyright>
 		<Website />
 		<IconPath>Cogs</IconPath>
+		<Order>2</Order>
 		<Runtime>
 			<Assembly>Astra.Plugins.PLC.dll</Assembly>
 			<TypeName>Astra.Plugins.PLC.PlcPlugin</TypeName>
@@ -23,14 +24,14 @@
 	<Nodes>
 		<NodeInfo
 			Name="PLC读取"
-			TypeName="Astra.Plugins.PLC.Nodes.ReadNode"
+			TypeName="Astra.Plugins.PLC.Nodes.ReadIoNode"
 			IconCode="Download"
 			Description="按设备名称查找PLC，支持单地址与多地址读取"
 			Category="PLC"
 			Group="PLC读写" />
 		<NodeInfo
 			Name="PLC写入"
-			TypeName="Astra.Plugins.PLC.Nodes.WriteNode"
+			TypeName="Astra.Plugins.PLC.Nodes.WriteIoNode"
 			IconCode="Upload"
 			Description="按设备名称查找PLC，支持单地址与多地址写入"
 			Category="PLC"

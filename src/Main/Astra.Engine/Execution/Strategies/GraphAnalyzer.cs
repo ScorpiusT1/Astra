@@ -11,14 +11,17 @@ namespace Astra.Engine.Execution.Strategies
     public class GraphAnalyzer
     {
         private readonly WorkFlowNode _workflow;
+        private readonly HashSet<string>? _mainPhaseOnlyIds;
 
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="workflow">要分析的工作流</param>
-        public GraphAnalyzer(WorkFlowNode workflow)
+        /// <param name="mainPhaseOnlyIds">非 null 时仅分析主执行阶段节点（排除「最后执行」节点）之间的子图</param>
+        public GraphAnalyzer(WorkFlowNode workflow, HashSet<string>? mainPhaseOnlyIds = null)
         {
             _workflow = workflow;
+            _mainPhaseOnlyIds = mainPhaseOnlyIds;
         }
 
         /// <summary>
@@ -28,7 +31,7 @@ namespace Astra.Engine.Execution.Strategies
         /// <returns>排序后的节点列表，如果存在循环依赖则返回null</returns>
         public List<Node> TopologicalSort()
         {
-            var enabledNodes = _workflow.Nodes.Where(n => n.IsEnabled).ToList();
+            var enabledNodes = GetEnabledNodesForAnalysis();
             var inDegree = new Dictionary<string, int>();
             var graph = new Dictionary<string, List<string>>();
 
@@ -41,6 +44,12 @@ namespace Astra.Engine.Execution.Strategies
             // 拓扑依赖：无论是 Flow 还是 Data 连接，只要存在连接关系就参与顺序约束
             foreach (var conn in _workflow.Connections.Where(c => c != null))
             {
+                if (_mainPhaseOnlyIds != null &&
+                    (!_mainPhaseOnlyIds.Contains(conn.SourceNodeId) || !_mainPhaseOnlyIds.Contains(conn.TargetNodeId)))
+                {
+                    continue;
+                }
+
                 if (!graph.ContainsKey(conn.SourceNodeId) || !graph.ContainsKey(conn.TargetNodeId))
                     continue;
 
@@ -80,6 +89,17 @@ namespace Astra.Engine.Execution.Strategies
         public bool HasCycle()
         {
             return TopologicalSort() == null;
+        }
+
+        private List<Node> GetEnabledNodesForAnalysis()
+        {
+            var q = _workflow.Nodes.Where(n => n.IsEnabled);
+            if (_mainPhaseOnlyIds != null)
+            {
+                q = q.Where(n => _mainPhaseOnlyIds.Contains(n.Id));
+            }
+
+            return q.ToList();
         }
     }
 }

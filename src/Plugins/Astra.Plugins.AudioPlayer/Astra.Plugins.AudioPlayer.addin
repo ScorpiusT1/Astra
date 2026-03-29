@@ -1,15 +1,15 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <AddinManifest>
 	<Schema>http://pluginsystem.org/schema/v1</Schema>
 	<Addin>
-		<Id>Astra.Plugins.AcquisitionCard</Id>
+		<Id>Astra.Plugins.AudioPlayer</Id>
 		<Name>音频播放器插件</Name>
 		<Version>1.0.0</Version>
 		<Description>提供NVH（噪声、振动）测试设备的数据播放功能</Description>
 		<Author>Astra Team</Author>
 		<Copyright>Copyright © Astra Team</Copyright>
 		<Website />
-		<IconPath />
+		<IconPath>Headphones</IconPath>
 		<Runtime>
 			<Assembly>Astra.Plugins.AudioPlayer.dll</Assembly>
 			<TypeName>Astra.Plugins.AudioPlayer.AudioPlayerPlugin</TypeName>
@@ -20,4 +20,18 @@
 			<Required />
 		</Permissions>
 	</Addin>
+	<Nodes>
+		<NodeInfo
+			Name="实时采集监听"
+			TypeName="Astra.Plugins.AudioPlayer.Nodes.RealtimeAcquisitionAudioPlaybackNode"
+			IconCode="Volume2"
+			Description="订阅采集卡在消息总线上的实时数据并播放指定通道（需采集已启动）"
+			Category="音频" />
+		<NodeInfo
+			Name="采集后播放"
+			TypeName="Astra.Plugins.AudioPlayer.Nodes.PostAcquisitionAudioPlaybackNode"
+			IconCode="Play"
+			Description="在多采集节点完成后，从 Raw 数据播放指定通道（请顺序连接：多采集 → 本节点）"
+			Category="音频" />
+	</Nodes>
 </AddinManifest>

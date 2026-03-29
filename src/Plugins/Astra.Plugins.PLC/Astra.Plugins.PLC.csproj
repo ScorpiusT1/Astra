@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="S7netplus" Version="0.20.0" />
   </ItemGroup>
 
@@ -44,6 +44,9 @@
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
     <None Update="Astra.Plugins.PLC.IO.config.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Astra.Plugins.PLC.PlcTrigger.config.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

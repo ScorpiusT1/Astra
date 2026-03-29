@@ -88,6 +88,12 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                     return ExecutionResult.Failed($"工作流验证失败: {string.Join(", ", validation.Errors)}");
                 }
 
+                // 反序列化旧脚本时 Configuration 可能为 null，会导致 MaxParallelism/StopOnError 等读取不一致
+                if (workflow.Configuration == null)
+                {
+                    workflow.Configuration = new WorkFlowConfiguration();
+                }
+
                 // 2. 检测策略
                 var detectedStrategy = DetectStrategy(workflow);
                 OnStrategyDetected(new StrategyDetectedEventArgs { Strategy = detectedStrategy });
@@ -128,16 +134,24 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 executionContext.OnNodeExecutionCompleted = (node, ctx, result) => OnNodeExecutionCompleted(new NodeExecutionEventArgs { Node = node, Context = ctx, Result = result });
                 executionContext.OnProgressChanged = (progress) => OnProgressChanged(new ProgressChangedEventArgs { Progress = progress });
 
-                // 6. 执行
-                var result = await strategy.ExecuteAsync(executionContext);
+                // 6. 主阶段执行
+                var mainResult = await strategy.ExecuteAsync(executionContext);
 
-                // 7. 更新统计
-                result.StartTime = startTime;
-                result.EndTime = DateTime.Now;
-                Statistics.TotalDuration = result.Duration;
+                // 7. 最后执行阶段（与主阶段失败正交；取消则不再运行）
+                ExecutionResult finalResult = mainResult;
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    var finallyOutcome = await FinallyPhaseRunner.RunAsync(executionContext);
+                    finalResult = CombineMainAndFinallyResults(mainResult, finallyOutcome);
+                }
+
+                // 8. 更新统计
+                finalResult.StartTime = startTime;
+                finalResult.EndTime = DateTime.Now;
+                Statistics.TotalDuration = finalResult.Duration;
                 Statistics.ExecutionStrategy = detectedStrategy.Type.ToString();
 
-                return result;
+                return finalResult;
             }
             catch (OperationCanceledException)
             {
@@ -238,6 +252,44 @@ namespace Astra.Engine.Execution.WorkFlowEngine
             }
 
             return string.Empty;
+        }
+
+        /// <summary>
+        /// 合并主阶段与最后执行阶段结果：最后阶段失败优先返回失败；主阶段失败仍保留为主因。
+        /// </summary>
+        private static ExecutionResult CombineMainAndFinallyResults(ExecutionResult main, ExecutionResult finalPhase)
+        {
+            if (finalPhase == null)
+            {
+                return main;
+            }
+
+            if (finalPhase.Success && string.IsNullOrEmpty(finalPhase.Message))
+            {
+                return main;
+            }
+
+            if (!finalPhase.Success && !finalPhase.IsSkipped)
+            {
+                if (!main.Success && !main.IsSkipped)
+                {
+                    return ExecutionResult.Failed($"{main.Message}；最后执行阶段：{finalPhase.Message}", finalPhase.Exception ?? main.Exception);
+                }
+
+                return ExecutionResult.Failed($"最后执行阶段失败: {finalPhase.Message}", finalPhase.Exception);
+            }
+
+            if (!main.Success && !main.IsSkipped)
+            {
+                return main;
+            }
+
+            if (string.IsNullOrEmpty(main.Message))
+            {
+                return finalPhase;
+            }
+
+            return ExecutionResult.Successful($"{main.Message}；{finalPhase.Message}");
         }
 
         /// <summary>

@@ -41,7 +41,7 @@
             <Button x:Name="CloseButton"
                     Grid.Row="0"
                     Grid.RowSpan="2"
-                    HorizontalAlignment="Right"
+                    HorizontalAlignment="Right"                   
                     VerticalAlignment="Top"
                     Margin="0,-8,-8,0"
                     Panel.ZIndex="10"

@@ -2,6 +2,7 @@ using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Models;
+using Astra.Plugins.PLC.Configs;
 using Astra.Plugins.PLC.Providers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
@@ -14,32 +15,20 @@ using System.Threading.Tasks;
 
 namespace Astra.Plugins.PLC.Nodes
 {
-    public class ReadNode : Node
+    public class ReadIoNode : Node
     {
+        /// <summary>供属性编辑器绑定：列出当前所选 PLC 下已启用的配置 IO 名称。</summary>
+        public IEnumerable<string> ConfiguredIoNameOptions => PlcIoProvider.GetIoNamesForPlcDevice(PlcDeviceName);
+
         [Display(Name = "PLC设备名称", GroupName = "PLC配置", Order = 1)]
         [Editor(typeof(ComboBoxPropertyEditor))]
         [ItemsSource(typeof(PlcDeviceProvider), "GetPlcDeviceNames", DisplayMemberPath = ".")]
         public string PlcDeviceName { get; set; } = string.Empty;
 
-        [Display(Name = "使用IO配置库", GroupName = "读取配置", Order = 2, Description = "true=按IO名称选择并自动取地址/输出键；false=手工填写地址")]
-        public bool UseIoConfig { get; set; }
-
-        [Display(Name = "IO名称", GroupName = "读取配置", Order = 3, Description = "从 IO 配置库选择 IO 名称")]
-        [Editor(typeof(ComboBoxPropertyEditor))]
-        [ItemsSource(typeof(PlcIoProvider), "GetIoNames", DisplayMemberPath = ".")]
-        public string IoName { get; set; } = string.Empty;
-
-        [Display(Name = "启用多地址读取", GroupName = "读取配置", Order = 2, Description = "false=单地址读取，true=多地址读取")]
-        public bool UseMultiAddress { get; set; }
-
-        [Display(Name = "单地址", GroupName = "读取配置", Order = 3, Description = "示例: DB1.DBW0")]
-        public string Address { get; set; } = string.Empty;
-
-        [Display(Name = "单地址输出键", GroupName = "读取配置", Order = 4, Description = "为空时默认使用 Value")]
-        public string OutputKey { get; set; } = "Value";
-
-        [Display(Name = "多地址映射", GroupName = "读取配置", Order = 5, Description = "每行一项: 键=地址 或 键:地址；仅地址时键与地址相同")]
-        public string MultiAddressText { get; set; } = string.Empty;
+        [Display(Name = "IO名称", GroupName = "读取配置", Order = 2, Description = "多选；须为 IO 配置中已启用且绑定当前 PLC 的点位；单选为单点读取，多选为批量读取；输出键与缩放取自各 IO 配置")]
+        [Editor(typeof(CheckComboBoxPropertyEditor))]
+        [ItemsSource(nameof(ConfiguredIoNameOptions), DisplayMemberPath = ".")]
+        public List<string> IoNames { get; set; } = new();
 
         protected override async Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
@@ -58,32 +47,32 @@ namespace Astra.Plugins.PLC.Nodes
                     return ExecutionResult.Failed($"未找到已选择 PLC 设备: {selectedName}");
                 }
 
-                if (!UseMultiAddress)
+                var nameList = NormalizeIoNameList(IoNames);
+                if (nameList.Count == 0)
                 {
-                    var address = Address?.Trim() ?? string.Empty;
-                    var key = string.IsNullOrWhiteSpace(OutputKey) ? "Value" : OutputKey.Trim();
+                    return ExecutionResult.Failed("请至少选择一个 IO（须在 IO 配置中维护并启用）");
+                }
 
-                    if (UseIoConfig)
+                if (nameList.Count == 1)
+                {
+                    var ioName = nameList[0];
+                    var io = PlcIoProvider.FindByName(ioName);
+                    if (io == null)
                     {
-                        var io = PlcIoProvider.FindByName(IoName);
-                        if (io == null)
-                        {
-                            return ExecutionResult.Failed("未找到已选择 IO 点位配置（请检查 IO名称 或点位是否启用）");
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(io.PlcDeviceName) &&
-                            !string.Equals(io.PlcDeviceName.Trim(), selectedName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return ExecutionResult.Failed($"IO点位绑定的PLC设备为 {io.PlcDeviceName}，与当前选择 {selectedName} 不一致");
-                        }
-
-                        address = io.Address?.Trim() ?? string.Empty;
-                        key = string.IsNullOrWhiteSpace(io.OutputKey) ? (io.Name?.Trim() ?? key) : io.OutputKey.Trim();
+                        return ExecutionResult.Failed("未找到该 IO 点位配置（请检查名称是否存在于 IO 配置且已启用）");
                     }
 
+                    var plcMismatch = ValidateIoPlcBinding(io, selectedName);
+                    if (plcMismatch != null)
+                    {
+                        return plcMismatch;
+                    }
+
+                    var address = io.Address?.Trim() ?? string.Empty;
+                    var key = ResolveOutputKey(io);
                     if (string.IsNullOrWhiteSpace(address))
                     {
-                        return ExecutionResult.Failed("单地址读取模式下 Address 不能为空");
+                        return ExecutionResult.Failed("该 IO 在配置中地址为空");
                     }
 
                     cancellationToken.ThrowIfCancellationRequested();
@@ -100,30 +89,25 @@ namespace Astra.Plugins.PLC.Nodes
                     }
 
                     var value = readResult.Data!;
-                    if (UseIoConfig)
+                    if (io.TryApplyScaleOffset(value, out var scaled))
                     {
-                        var io = PlcIoProvider.FindByName(IoName);
-                        if (io != null && io.TryApplyScaleOffset(value, out var scaled))
-                        {
-                            value = scaled!;
-                        }
+                        value = scaled!;
                     }
+
                     context.SetGlobalVariable(key, value);
 
                     log.Info($"读取完成，PLC={selectedName}, 地址={address}");
-                    var result = ExecutionResult.Successful("PLC 单地址读取完成")
+                    return ExecutionResult.Successful("PLC 单点读取完成")
                         .WithOutput("PlcDeviceName", selectedName)
                         .WithOutput("PlcDeviceNames", new List<string> { selectedName })
                         .WithOutput("Address", address)
                         .WithOutput("ReadValue", value)
                         .WithOutput("OutputKey", key);
-                    return result;
                 }
 
-                var addressMap = ParseAddressMap(MultiAddressText);
-                if (addressMap.Count == 0)
+                if (!TryBuildMultiReadMaps(nameList, selectedName, out var addressMap, out var ioByKey, out var buildError))
                 {
-                    return ExecutionResult.Failed("多地址读取模式下 MultiAddressText 不能为空");
+                    return ExecutionResult.Failed(buildError ?? "多 IO 读取配置无效");
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -142,11 +126,17 @@ namespace Astra.Plugins.PLC.Nodes
                 var values = batchResult.Data ?? new Dictionary<string, object>();
                 foreach (var kv in values)
                 {
-                    context.SetGlobalVariable(kv.Key, kv.Value);
+                    var val = kv.Value;
+                    if (ioByKey.TryGetValue(kv.Key, out var io) && io.TryApplyScaleOffset(val, out var scaled))
+                    {
+                        val = scaled!;
+                    }
+
+                    context.SetGlobalVariable(kv.Key, val);
                 }
 
-                log.Info($"多地址读取完成，PLC={selectedName}, 项数={values.Count}");
-                return ExecutionResult.Successful("PLC 多地址读取完成")
+                log.Info($"多 IO 读取完成，PLC={selectedName}, 项数={values.Count}");
+                return ExecutionResult.Successful("PLC 多 IO 读取完成")
                     .WithOutput("PlcDeviceName", selectedName)
                     .WithOutput("PlcDeviceNames", new List<string> { selectedName })
                     .WithOutput("ReadValues", values);
@@ -162,46 +152,91 @@ namespace Astra.Plugins.PLC.Nodes
             }
         }
 
-        private static Dictionary<string, string> ParseAddressMap(string text)
+        private static List<string> NormalizeIoNameList(IEnumerable<string>? names)
         {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(text))
+            if (names == null)
             {
-                return result;
+                return new List<string>();
             }
 
-            var lines = text.Replace(";", Environment.NewLine)
-                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var raw in lines)
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<string>();
+            foreach (var raw in names)
             {
-                var line = raw.Trim();
-                if (line.Length == 0 || line.StartsWith("#"))
+                var n = raw?.Trim() ?? string.Empty;
+                if (n.Length == 0 || !seen.Add(n))
                 {
                     continue;
                 }
 
-                var idx = line.IndexOf('=');
-                if (idx < 0)
-                {
-                    idx = line.IndexOf(':');
-                }
-
-                if (idx <= 0 || idx >= line.Length - 1)
-                {
-                    result[line] = line;
-                    continue;
-                }
-
-                var key = line[..idx].Trim();
-                var address = line[(idx + 1)..].Trim();
-                if (key.Length > 0 && address.Length > 0)
-                {
-                    result[key] = address;
-                }
+                list.Add(n);
             }
 
-            return result;
+            return list;
+        }
+
+        private static string ResolveOutputKey(IoPointModel io)
+        {
+            return string.IsNullOrWhiteSpace(io.OutputKey) ? (io.Name?.Trim() ?? "Value") : io.OutputKey.Trim();
+        }
+
+        private static ExecutionResult? ValidateIoPlcBinding(IoPointModel io, string selectedPlcName)
+        {
+            if (!string.IsNullOrWhiteSpace(io.PlcDeviceName) &&
+                !string.Equals(io.PlcDeviceName.Trim(), selectedPlcName, StringComparison.OrdinalIgnoreCase))
+            {
+                return ExecutionResult.Failed($"IO 绑定的 PLC 为 {io.PlcDeviceName}，与当前选择 {selectedPlcName} 不一致");
+            }
+
+            return null;
+        }
+
+        private static bool TryBuildMultiReadMaps(
+            IReadOnlyList<string> ioNames,
+            string selectedPlcName,
+            out Dictionary<string, string> addressMap,
+            out Dictionary<string, IoPointModel> ioByKey,
+            out string? error)
+        {
+            addressMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ioByKey = new Dictionary<string, IoPointModel>(StringComparer.OrdinalIgnoreCase);
+            error = null;
+
+            foreach (var rawName in ioNames)
+            {
+                var io = PlcIoProvider.FindByName(rawName);
+                if (io == null)
+                {
+                    error = $"未找到 IO「{rawName}」（须在 IO 配置中存在且已启用）";
+                    return false;
+                }
+
+                var plcErr = ValidateIoPlcBinding(io, selectedPlcName);
+                if (plcErr != null)
+                {
+                    error = plcErr.Message ?? $"IO「{rawName}」与当前 PLC 不匹配";
+                    return false;
+                }
+
+                var addr = io.Address?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(addr))
+                {
+                    error = $"IO「{rawName}」在配置中地址为空";
+                    return false;
+                }
+
+                var key = ResolveOutputKey(io);
+                if (addressMap.ContainsKey(key))
+                {
+                    error = $"多条 IO 映射到同一输出键「{key}」，请调整各 IO 的「输出键(读)」";
+                    return false;
+                }
+
+                addressMap[key] = addr;
+                ioByKey[key] = io;
+            }
+
+            return true;
         }
 
         private static IPLC ResolvePlcByName(string plcDeviceName)

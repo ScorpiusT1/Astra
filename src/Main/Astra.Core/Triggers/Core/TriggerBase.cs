@@ -1,4 +1,4 @@
-﻿﻿using Astra.Core.Triggers.Args;
+using Astra.Core.Triggers.Args;
 using Astra.Core.Triggers.Configuration;
 using Astra.Core.Triggers.Enums;
 using Astra.Core.Triggers.Models;
@@ -285,7 +285,7 @@ namespace Astra.Core.Triggers
         /// <summary>
         /// 【事件驱动型触发器】便捷方法：直接触发
         /// </summary>
-        protected async Task RaiseTriggerAsync(TriggerSource source, string sn, Dictionary<string, object> additionalData = null)
+        protected async Task RaiseTriggerAsync(string source, string sn, Dictionary<string, object> additionalData = null)
         {
             var result = TriggerResult.TriggeredWithSN(source, sn, additionalData);
             await RaiseTriggerAsync(result);

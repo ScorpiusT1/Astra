@@ -26,7 +26,9 @@ using Astra.Services.Logging;
 using Astra.Services.Navigation;
 using Astra.Services.Session;
 using Astra.Core.Nodes.Management;
+using Astra.Core.Nodes.Ui;
 using Astra.Engine.Execution.WorkFlowEngine.Management;
+using Astra.Engine.Triggers;
 using Astra.UI.Services;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,7 +40,15 @@ using System.IO;
 using Astra.Core.Plugins.Loading;
 using Astra.Core.Plugins.Discovery;
 using Astra.Core.Plugins.UI;
+using Astra.Core.Plugins;
+using Astra.Core.Archiving;
 using Astra.Core.Configuration;
+using Astra.Core.Triggers;
+using Astra.Core.Triggers.Interlock;
+using Astra.Core.Triggers.Manager;
+using Astra.Engine.Triggers.Interlock;
+using Astra.Services.Interlock;
+using Astra.Services.WorkflowArchive;
 
 namespace Astra.Services.Startup
 {
@@ -165,10 +175,42 @@ namespace Astra.Services.Startup
             services.AddSingleton<ITestItemTreeDataProvider, WorkflowNodeTestItemTreeDataProvider>();
             services.AddSingleton<IYieldDailyStatsService, YieldDailyStatsService>();
             services.AddSingleton<IHomeWorkflowExecutionService, HomeWorkflowExecutionService>();
+            services.AddSingleton<IConfiguredMasterWorkflowExecutor>(sp => sp.GetRequiredService<IHomeWorkflowExecutionService>());
+            services.AddSingleton<IScanModeState, HomeScanModeState>();
+            services.AddSingleton<TriggerManager>();
+            services.AddSingleton<IAutoTriggerLogSink, AutoTriggerUiLogSink>();
+            services.AddSingleton<ISoftwareConfigAutoTriggerWorkflowResolver, SoftwareConfigAutoTriggerWorkflowResolver>();
+            services.AddSingleton<ITriggerObserver, HomeTriggerWorkflowObserver>();
+            services.AddSingleton<IAutoTriggerLifecycle, AutoTriggerLifecycleService>();
+            services.AddSingleton<IAutoTriggerWorkflowHandler, AutoTriggerWorkflowHandlerService>();
+            services.AddSingleton<IAutoTriggerHomeRunContext>(sp => sp.GetRequiredService<ViewModels.HomeViewModel>());
+            services.AddSingleton<IManualBarcodeContext, ManualBarcodeContext>();
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
-            services.AddSingleton<IWorkFlowManager, WorkFlowManager>();
+            services.AddSingleton(new WorkflowArchiveOptions());
+            services.AddSingleton<IWorkflowArchiveService, DefaultWorkflowArchiveService>();
+            services.AddSingleton<IWorkFlowManager>(sp => new WorkFlowManager(
+                defaultEngine: null,
+                maxHistorySize: 1000,
+                nodeRunCollector: null,
+                workflowArchiveService: sp.GetService<IWorkflowArchiveService>()));
             services.AddSingleton<IWorkflowEngineProvider, DefaultWorkflowEngineProvider>();
-            services.AddSingleton<IWorkflowExecutionSessionService, WorkflowExecutionSessionService>();
+            services.AddSingleton<ChartDisplayDataCache>();
+            services.AddSingleton<IChartDisplayDataCache>(sp => sp.GetRequiredService<ChartDisplayDataCache>());
+            services.AddSingleton<IChartCurveDataCache>(sp => sp.GetRequiredService<ChartDisplayDataCache>());
+            services.AddSingleton<INodeExecutionUiHydrator, ChartDisplayUiHydrator>();
+            services.AddSingleton<IWorkflowExecutionSessionService>(sp => new WorkflowExecutionSessionService(
+                sp.GetRequiredService<IWorkFlowManager>(),
+                sp.GetRequiredService<IWorkflowEngineProvider>(),
+                sp.GetService<IExecutionLogSink>(),
+                sp.GetService<INodeExecutionUiHydrator>(),
+                sp));
+            services.AddSingleton<ITestExecutionInterlockController, TestExecutionInterlockController>();
+            services.AddSingleton<SafetyInterlockIoReaderBridge>();
+            services.AddSingleton<ISafetyInterlockIoReader>(sp => sp.GetRequiredService<SafetyInterlockIoReaderBridge>());
+            services.AddSingleton<SafetyInterlockRulesProviderBridge>();
+            services.AddSingleton<ISafetyInterlockRulesProvider>(sp => sp.GetRequiredService<SafetyInterlockRulesProviderBridge>());
+            services.AddSingleton<ISafetyInterlockGlobalOptionsSource, SafetyInterlockGlobalOptionsFromSoftwareConfig>();
+            services.AddSingleton<ISafetyInterlockMonitor, SafetyInterlockMonitorService>();
             services.AddSingleton<IUiLogService, UiLogService>();
             services.AddSingleton<IExecutionLogSink, ExecutionLogSink>();
 
@@ -240,8 +282,7 @@ namespace Astra.Services.Startup
                 manager.RegisterProvider<TestExecutionConfig>();
                 // 软件配置（线体 / 工站 / DUT / 脚本 / 触发器映射）
                 manager.RegisterProvider<Astra.Configuration.SoftwareConfig>();
-                // 触发器配置（手动/扫码/PLC 等触发器定义）
-                manager.RegisterProvider<Astra.Engine.Triggers.TriggerConfig>();
+                // PLC 触发器配置由 Astra.Plugins.PLC 在插件初始化时注册
 
                 return manager;
             });
@@ -478,6 +519,12 @@ namespace Astra.Services.Startup
 
                 return pluginHost;
             });
+
+            if (!IsServiceRegistered<ILoadedPluginsAccessor>())
+            {
+                services.AddSingleton<ILoadedPluginsAccessor>(sp =>
+                    new LoadedPluginsAccessor(sp.GetRequiredService<IPluginHost>()));
+            }
 
             services.AddSingleton<IPluginViewFactory>(provider =>
             {

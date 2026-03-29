@@ -9,7 +9,8 @@ namespace Astra.Core.Configuration.Abstractions
     ///   1. 启动时调用 RegisterProvider&lt;T&gt; 为每种配置类型注册持久化提供者
     ///   2. 使用 GetAsync / GetAllAsync 读取配置
     ///   3. 使用 SaveAsync / DeleteAsync 写入配置（自动更新缓存并通知订阅者）
-    ///   4. 使用 Subscribe&lt;T&gt; 监听变更事件，UI 刷新无需轮询
+        ///   4. 使用 Subscribe&lt;T&gt; 监听变更事件，UI 刷新无需轮询。
+        ///   派发时按「订阅类型是否可赋值自当前配置运行时类型」匹配，故 Subscribe&lt;基类/接口&gt; 可收到子类保存通知。
     /// </summary>
     public interface IConfigurationManager
     {

@@ -2,15 +2,31 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:configs="clr-namespace:Astra.Plugins.PLC.Configs"
+        xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
+        xmlns:interlock="clr-namespace:Astra.Core.Triggers.Interlock;assembly=Astra.Core"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="IO 详情配置"
         Width="760"
-        Height="620"
         MinWidth="700"
-        MinHeight="560"
+        MinHeight="280"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize"
-        Background="{DynamicResource BackgroundBrush}">
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        helpers:WindowIconHelper.IconGeometryKey="AppLogoGeometry"
+        Loaded="PlcIoEditDialog_OnLoaded">
     <Window.Resources>
+        <ObjectDataProvider x:Key="InterlockActionValues"
+                            MethodName="GetValues"
+                            ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="interlock:InterlockRuleAction" />
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+
         <Style x:Key="FieldLabelStyle"
                TargetType="TextBlock">
             <Setter Property="Foreground"
@@ -20,16 +36,63 @@
             <Setter Property="Margin"
                     Value="0,0,0,6" />
         </Style>
+        <Style x:Key="SectionTitleStyle"
+               TargetType="TextBlock">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="FontSize"
+                    Value="13" />
+            <Setter Property="FontWeight"
+                    Value="SemiBold" />
+        </Style>
     </Window.Resources>
 
-    <Grid Margin="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource SurfaceBrush}"
+            CornerRadius="16"
+            BorderBrush="{DynamicResource PrimaryBrush}"
+            BorderThickness="1.5"
+            helpers:BorderClipHelper.ClipToBounds="True"
+            MouseLeftButtonDown="RootBorder_MouseLeftButtonDown">
+        <Border.Effect>
+            <DropShadowEffect Color="{DynamicResource ShadowColor}"
+                              Opacity="0.2"
+                              BlurRadius="32"
+                              ShadowDepth="6" />
+        </Border.Effect>
 
-        <ScrollViewer Grid.Row="0"
-                      VerticalScrollBarVisibility="Auto">
+        <Grid Margin="32,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 标题 -->
+            <StackPanel Grid.Row="0"
+                        Margin="0,0,0,16">
+                <TextBlock Text="IO 详情配置"
+                           FontSize="22"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                <TextBlock Text="编辑 PLC 点、联锁、缩放与报警等"
+                           FontSize="13"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           Margin="0,6,0,0" />
+            </StackPanel>
+
+            <!-- 关闭 -->
+            <Button x:Name="CloseButton"
+                    Grid.Row="0"
+                    Grid.RowSpan="2"
+                    Margin="0,-8,-8,0"
+                    Style="{DynamicResource CloseButtonStyle}"
+                    Click="CloseButton_Click" />
+
+            <ScrollViewer x:Name="ContentScroll"
+                          Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
                 <Border Style="{DynamicResource CardStyle}"
                         Padding="12"
@@ -40,6 +103,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -59,8 +123,9 @@
                                     Margin="8,0,0,8">
                             <TextBlock Text="PLC设备名称"
                                        Style="{StaticResource FieldLabelStyle}" />
-                            <TextBox Style="{DynamicResource ModernTextBoxStyle}"
-                                     Text="{Binding Draft.PlcDeviceName, UpdateSourceTrigger=PropertyChanged}" />
+                            <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                      ItemsSource="{Binding PlcDeviceNames}"
+                                      SelectedItem="{Binding Draft.PlcDeviceName, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
 
                         <StackPanel Grid.Row="1"
@@ -116,8 +181,115 @@
                                       Style="{DynamicResource ModernCheckBoxStyle}"
                                       IsChecked="{Binding Draft.IsEnabled}" />
                         </StackPanel>
+
+                        <StackPanel Grid.Row="4"
+                                    Grid.Column="0"
+                                    Margin="0,8,8,0">
+                            <CheckBox Content="监控"
+                                      Style="{DynamicResource ModernCheckBoxStyle}"
+                                      IsChecked="{Binding Draft.MonitorOnHome, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="4"
+                                    Grid.Column="1"
+                                    Margin="8,8,0,0">
+                            <CheckBox Content="安全联锁"
+                                      Style="{DynamicResource ModernCheckBoxStyle}"
+                                      IsChecked="{Binding Draft.SafetyInterlockEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding Draft.SupportsSafetyInterlockDataType}" />
+                        </StackPanel>
                     </Grid>
                 </Border>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Draft.SupportsSafetyInterlockDataType}"
+                                                   Value="True" />
+                                        <Condition Binding="{Binding Draft.SafetyInterlockEnabled}"
+                                                   Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Border Style="{DynamicResource CardStyle}"
+                            
+                            Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="安全联锁"
+                                   Style="{StaticResource SectionTitleStyle}"
+                                   Margin="0,0,0,10" />
+                        <TextBlock Margin="0,0,0,8"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Draft.SupportsSafetyInterlockDataType}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            联锁按 BOOL 读取 PLC，请将数据类型设为 BOOL 或 Auto。
+                        </TextBlock>
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding Draft.SafetyInterlockEnabled}" Value="True" />
+                                                <Condition Binding="{Binding Draft.SupportsSafetyInterlockDataType}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0"
+                                        Grid.Column="0"
+                                        Margin="0,0,8,8">
+                                <TextBlock Text="IO 为 True 时动作"
+                                           Style="{StaticResource FieldLabelStyle}" />
+                                <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                          ItemsSource="{Binding Source={StaticResource InterlockActionValues}}"
+                                          SelectedItem="{Binding Draft.SafetyInterlockActionOnTrue, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="0"
+                                        Grid.Column="1"
+                                        Margin="8,0,0,8">
+                                <TextBlock Text="IO 为 False 时动作"
+                                           Style="{StaticResource FieldLabelStyle}" />
+                                <ComboBox Style="{DynamicResource ModernComboBoxStyle}"
+                                          ItemsSource="{Binding Source={StaticResource InterlockActionValues}}"
+                                          SelectedItem="{Binding Draft.SafetyInterlockActionOnFalse, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <CheckBox Grid.Row="1"
+                                      Grid.ColumnSpan="2"
+                                      Content="边沿触发（仅值变化时执行动作，推荐）"
+                                      Style="{DynamicResource ModernCheckBoxStyle}"
+                                      IsChecked="{Binding Draft.SafetyInterlockEdgeTriggered, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                    </StackPanel>
+                    </Border>
+                </Grid>
 
                 <Border
                         Padding="12"
@@ -183,7 +355,7 @@
                                    VerticalAlignment="Center"
                                    Foreground="{DynamicResource SecondaryTextBrush}"
                                    Margin="0,0,6,0" />
-                        <TextBox Width="100"
+                        <TextBox Width="150"
                                  Style="{DynamicResource ModernTextBoxStyle}"
                                  Margin="0,0,12,0"
                                  Text="{Binding Draft.LowLimit, UpdateSourceTrigger=PropertyChanged}" />
@@ -191,32 +363,97 @@
                                    VerticalAlignment="Center"
                                    Foreground="{DynamicResource SecondaryTextBrush}"
                                    Margin="0,0,6,0" />
-                        <TextBox Width="100"
+                        <TextBox Width="150"
                                  Style="{DynamicResource ModernTextBoxStyle}"
                                  Text="{Binding Draft.HighLimit, UpdateSourceTrigger=PropertyChanged}" />
                     </WrapPanel>
                 </Border>
             </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
 
-        <DockPanel Grid.Row="1"
-                   Margin="0,12,0,0"
-                   LastChildFill="False">
-            <TextBlock Text="{Binding ValidationMessage}"
-                       Foreground="{DynamicResource DangerBrush}"
-                       VerticalAlignment="Center" />
-            <StackPanel Orientation="Horizontal"
-                        DockPanel.Dock="Right">
-                <Button Content="取消"
-                        Style="{DynamicResource SecondaryButtonStyle}"
-                        Margin="0,0,8,0"
-                        Padding="18,6"
-                        Click="Cancel_Click" />
-                <Button Content="保存"
-                        Style="{DynamicResource PrimaryButtonStyle}"
-                        Padding="18,6"
-                        Click="Save_Click" />
-            </StackPanel>
-        </DockPanel>
-    </Grid>
+            <DockPanel Grid.Row="2"
+                       Margin="0,16,0,0"
+                       LastChildFill="False">
+                <TextBlock Text="{Binding ValidationMessage}"
+                           Foreground="{DynamicResource DangerBrush}"
+                           VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal"
+                            DockPanel.Dock="Right">
+                    <Button Content="取消"
+                            Width="120"
+                            Height="44"
+                            Margin="0,0,12,0"
+                            Click="Cancel_Click"
+                            Background="{DynamicResource ThirdlyRegionBrush}"
+                            Foreground="{DynamicResource PrimaryTextBrush}"
+                            FontSize="14"
+                            FontWeight="Medium"
+                            BorderThickness="0"
+                            Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="border"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="10"
+                                                    Padding="20,10">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver"
+                                                         Value="True">
+                                                    <Setter TargetName="border"
+                                                            Property="Background"
+                                                            Value="{DynamicResource SecondaryRegionBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="保存"
+                            Width="120"
+                            Height="44"
+                            Click="Save_Click"
+                            Background="{DynamicResource PrimaryBrush}"
+                            Foreground="{DynamicResource ReverseTextBrush}"
+                            FontSize="14"
+                            FontWeight="Medium"
+                            BorderThickness="0"
+                            Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="border"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="10"
+                                                    Padding="20,10">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver"
+                                                         Value="True">
+                                                    <Setter TargetName="border"
+                                                            Property="Background"
+                                                            Value="{DynamicResource DarkPrimaryBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Grid>
+    </Border>
 </Window>

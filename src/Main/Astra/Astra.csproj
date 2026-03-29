@@ -51,6 +51,7 @@
     <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj" />
     <ProjectReference Include="..\..\Libraries\NavStack\NavStack.csproj" />
+    <ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj" />
     <ProjectReference Include="..\Astra.Contract\Astra.Contract.csproj" />
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\Astra.Engine\Astra.Engine.csproj" />
@@ -58,6 +59,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="FontAwesome.Sharp" Version="6.6.0" />
     <PackageReference Include="HandyControl" Version="3.5.1" />
@@ -87,5 +89,16 @@
   </ItemGroup>
 
   <!-- ⭐ 插件需手动构建：在解决方案中单独生成各插件项目，或使用 msbuild 指定插件 .csproj。主程序构建时不再自动生成插件。 -->
+
+  <!--
+    防呆：全仓库扫描未发现会把 Astra.Plugins.PLC.dll 复制到 exe 旁的 csproj/wix/发布配置；
+    若历史构建或手工拷贝导致主输出根目录出现该文件，可能与 Plugins\PLC 重复加载。
+  -->
+  <Target Name="WarnIfPluginDllBesideMainExe" AfterTargets="Build">
+    <Warning
+      Code="ASTRA001"
+      Text="主输出目录存在 Astra.Plugins.PLC.dll，可能与 Bin\$(Configuration)\Plugins\PLC 中的副本重复加载。请删除此文件或检查复制来源。路径: $(TargetDir)Astra.Plugins.PLC.dll"
+      Condition="Exists('$(TargetDir)Astra.Plugins.PLC.dll')" />
+  </Target>
 
 </Project>

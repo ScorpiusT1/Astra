@@ -61,6 +61,11 @@ namespace Astra.Core.Nodes.Models
         bool Remove(string key);
         int RemoveByPrefix(string keyPrefix);
         RawDataStoreStats GetStats();
+
+        /// <summary>
+        /// 快照指定前缀下的键值（用于归档等）。不支持时返回 false。
+        /// </summary>
+        bool TrySnapshotByPrefix(string prefix, out IReadOnlyList<KeyValuePair<string, object>> items);
     }
 
     /// <summary>

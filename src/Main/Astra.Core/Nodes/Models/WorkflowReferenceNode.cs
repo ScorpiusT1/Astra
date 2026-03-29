@@ -1,6 +1,7 @@
-﻿using Astra.Core.Nodes.Geometry;
+using Astra.Core.Nodes.Geometry;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,6 +45,14 @@ namespace Astra.Core.Nodes.Models
         /// 输出参数映射（子流程输出参数 -> 主流程变量）
         /// </summary>
         public Dictionary<string, string> OutputParameterMapping { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>与基类 <see cref="Node.ExecuteLast"/> 同源；仅主流程引用块在属性面板展示。</summary>
+        [Display(Name = "最后执行", GroupName = "基础配置", Order = 3, Description = "勾选后在主流程常规子流程之后执行；前方失败或中止后仍会执行。")]
+        public new bool ExecuteLast
+        {
+            get => base.ExecuteLast;
+            set => base.ExecuteLast = value;
+        }
 
         /// <summary>
         /// 初始化端口（为流程引用节点创建输入和输出端口）

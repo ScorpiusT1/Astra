@@ -5,6 +5,7 @@ using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Configuration;
 using Astra.Configuration;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Ui;
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
@@ -167,14 +168,19 @@ namespace Astra.ViewModels.HomeModules
 
             Application.Current?.Dispatcher?.InvokeAsync(() =>
             {
-                if (!TryUpdateNodeStatus(Roots, e.NodeId, e.State))
+                if (!TryUpdateNodeStatus(Roots, e.NodeId, e.State, e.DetailMessage, e.UiPayload))
                     return;
 
                 UpdateSummary(Roots.ToList());
             });
         }
 
-        private bool TryUpdateNodeStatus(IEnumerable<TestTreeNodeItem> nodes, string nodeId, NodeExecutionState state)
+        private bool TryUpdateNodeStatus(
+            IEnumerable<TestTreeNodeItem> nodes,
+            string nodeId,
+            NodeExecutionState state,
+            string? detailMessage,
+            IReadOnlyDictionary<string, object>? uiPayload)
         {
             foreach (var node in nodes)
             {
@@ -183,6 +189,14 @@ namespace Astra.ViewModels.HomeModules
                     var now = DateTime.Now;
                     node.Status = MapStatus(state);
                     node.TestTime = now;
+                    ApplyNodeStatusMessage(node, state, detailMessage);
+
+                    if (uiPayload != null)
+                    {
+                        ApplyUiPayload(node, uiPayload);
+                    }
+
+                    node.IsChartButtonVisible = ShowChartAction && node.HasChartData;
 
                     if (state == NodeExecutionState.Running)
                     {
@@ -217,11 +231,99 @@ namespace Astra.ViewModels.HomeModules
                     return true;
                 }
 
-                if (TryUpdateNodeStatus(node.Children, nodeId, state))
+                if (TryUpdateNodeStatus(node.Children, nodeId, state, detailMessage, uiPayload))
                     return true;
             }
 
             return false;
+        }
+
+        private static void ApplyUiPayload(TestTreeNodeItem node, IReadOnlyDictionary<string, object> payload)
+        {
+            if (TryGetDouble(payload, NodeUiOutputKeys.ActualValue, out var av))
+            {
+                node.ActualValue = av;
+            }
+
+            if (TryGetDouble(payload, NodeUiOutputKeys.LowerLimit, out var lo))
+            {
+                node.LowerLimit = lo;
+            }
+
+            if (TryGetDouble(payload, NodeUiOutputKeys.UpperLimit, out var hi))
+            {
+                node.UpperLimit = hi;
+            }
+
+            if (payload.TryGetValue(NodeUiOutputKeys.HasChartData, out var hc) && hc is bool hasChart)
+            {
+                node.HasChartData = hasChart;
+            }
+
+            if (payload.TryGetValue(NodeUiOutputKeys.ChartArtifactKey, out var ck) && ck is string key && !string.IsNullOrWhiteSpace(key))
+            {
+                node.ChartArtifactKey = key.Trim();
+            }
+        }
+
+        private static bool TryGetDouble(IReadOnlyDictionary<string, object> payload, string key, out double value)
+        {
+            value = default;
+            if (!payload.TryGetValue(key, out var o) || o == null)
+            {
+                return false;
+            }
+
+            var t = o.GetType();
+            if (t == typeof(double))
+            {
+                value = (double)o;
+                return true;
+            }
+
+            if (t == typeof(float))
+            {
+                value = (float)o;
+                return true;
+            }
+
+            if (t == typeof(int))
+            {
+                value = (int)o;
+                return true;
+            }
+
+            if (o is IConvertible conv)
+            {
+                try
+                {
+                    value = Convert.ToDouble(conv, System.Globalization.CultureInfo.InvariantCulture);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private static void ApplyNodeStatusMessage(TestTreeNodeItem node, NodeExecutionState state, string? detailMessage)
+        {
+            if (node.IsRoot)
+            {
+                return;
+            }
+
+            if (state == NodeExecutionState.Running)
+            {
+                node.StatusMessage = string.IsNullOrWhiteSpace(detailMessage) ? "运行中…" : detailMessage.Trim();
+            }
+            else
+            {
+                node.StatusMessage = detailMessage ?? string.Empty;
+            }
         }
 
         private static string MapStatus(NodeExecutionState state)
@@ -231,6 +333,8 @@ namespace Astra.ViewModels.HomeModules
                 NodeExecutionState.Success => "Pass",
                 NodeExecutionState.Failed => "Fail",
                 NodeExecutionState.Running => "Running",
+                NodeExecutionState.Skipped => "Skip",
+                NodeExecutionState.Cancelled => "Cancel",
                 _ => "Ready"
             };
         }
@@ -271,14 +375,16 @@ namespace Astra.ViewModels.HomeModules
             }
         }
 
-        private static void ApplyChartButtonVisibility(TestTreeNodeItem node, bool visible)
+        private void ApplyChartButtonVisibility(TestTreeNodeItem node, bool showChartActionPreference)
         {
             if (!node.IsRoot)
-                node.IsChartButtonVisible = visible;
+            {
+                node.IsChartButtonVisible = showChartActionPreference && node.HasChartData;
+            }
 
             foreach (var child in node.Children)
             {
-                ApplyChartButtonVisibility(child, visible);
+                ApplyChartButtonVisibility(child, showChartActionPreference);
             }
         }
 
@@ -411,8 +517,16 @@ namespace Astra.ViewModels.HomeModules
                 node.TestDurationSeconds = 0d;
                 node.StartedAt = null;
                 node.CompletedAt = null;
+                node.StatusMessage = string.Empty;
                 if (node.IsRoot)
                     node.Status = "Ready";
+
+                if (!node.IsRoot)
+                {
+                    node.HasChartData = false;
+                    node.ChartArtifactKey = string.Empty;
+                    node.IsChartButtonVisible = false;
+                }
 
                 if (node.Children.Count > 0)
                     ResetNodeDurations(node.Children);
@@ -446,6 +560,8 @@ namespace Astra.ViewModels.HomeModules
         {
             if (!root.IsRoot)
                 return;
+
+            root.StatusMessage = string.Empty;
 
             var leaves = new List<TestTreeNodeItem>();
             CollectLeaves(root, leaves);
@@ -589,7 +705,19 @@ namespace Astra.ViewModels.HomeModules
         private int _groupColorIndex;
 
         [ObservableProperty]
-        private bool _isChartButtonVisible = true;
+        private bool _isChartButtonVisible;
+
+        /// <summary>是否存在可供图表展示的曲线数据（与总开关共同决定图表按钮是否可见）。</summary>
+        [ObservableProperty]
+        private bool _hasChartData;
+
+        /// <summary>最近一次执行写入的 Raw 产物键（展示用）。</summary>
+        [ObservableProperty]
+        private string _chartArtifactKey = string.Empty;
+
+        /// <summary>节点执行过程中的说明（错误、跳过原因、成功附加信息等）。</summary>
+        [ObservableProperty]
+        private string _statusMessage = string.Empty;
 
         public ObservableCollection<TestTreeNodeItem> Children { get; } = new();
     }

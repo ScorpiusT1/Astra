@@ -7,3 +7,4 @@ global using Astra.Core.Configuration.Helpers;
 global using Astra.Core.Configuration.Providers;
 global using Astra.Core.Configuration.Services;
 global using Astra.Core.Configuration.Validation;
+global using Astra.Core.Triggers.Configuration;

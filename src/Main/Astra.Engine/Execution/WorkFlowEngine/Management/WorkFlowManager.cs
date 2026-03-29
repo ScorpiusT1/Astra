@@ -1,3 +1,4 @@
+using Astra.Core.Archiving;
 using Astra.Core.Devices;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Management;
@@ -34,6 +35,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         private readonly IWorkFlowEngine _defaultEngine;
         private readonly INodeRunCollector _nodeRunCollector;
         private readonly int _maxHistorySize;
+        private readonly IWorkflowArchiveService _workflowArchiveService;
 
         /// <summary>
         /// 工作流注册事件
@@ -60,7 +62,11 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         /// </summary>
         /// <param name="defaultEngine">默认工作流引擎，如果为null则使用默认引擎</param>
         /// <param name="maxHistorySize">最大历史记录数，默认1000</param>
-        public WorkFlowManager(IWorkFlowEngine defaultEngine = null, int maxHistorySize = 1000, INodeRunCollector nodeRunCollector = null)
+        public WorkFlowManager(
+            IWorkFlowEngine defaultEngine = null,
+            int maxHistorySize = 1000,
+            INodeRunCollector nodeRunCollector = null,
+            IWorkflowArchiveService workflowArchiveService = null)
         {
             _workflows = new ConcurrentDictionary<string, WorkFlowNode>();
             _runningExecutions = new ConcurrentDictionary<string, WorkFlowExecutionInfo>();
@@ -73,6 +79,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             _defaultEngine = defaultEngine ?? WorkFlowEngineFactory.CreateDefault();
             _nodeRunCollector = nodeRunCollector ?? new InMemoryNodeRunCollector();
             _maxHistorySize = maxHistorySize;
+            _workflowArchiveService = workflowArchiveService;
             EnsureEngineWired(_defaultEngine);
         }
 
@@ -355,6 +362,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 WorkFlow = workflow
             });
 
+            OperationResult<ExecutionResult>? completionResult = null;
             try
             {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, controller.Token);
@@ -377,7 +385,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     Duration = executionInfo.Duration ?? TimeSpan.Zero
                 });
 
-                return OperationResult<ExecutionResult>.Succeed(result);
+                completionResult = OperationResult<ExecutionResult>.Succeed(result);
             }
             catch (OperationCanceledException)
             {
@@ -394,7 +402,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     Duration = executionInfo.Duration ?? TimeSpan.Zero
                 });
 
-                return OperationResult<ExecutionResult>.Succeed(executionInfo.Result);
+                completionResult = OperationResult<ExecutionResult>.Succeed(executionInfo.Result);
             }
             catch (Exception ex)
             {
@@ -411,25 +419,69 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     Duration = executionInfo.Duration ?? TimeSpan.Zero
                 });
 
-                return OperationResult<ExecutionResult>.Failure($"工作流执行失败: {ex.Message}", ErrorCodes.ExecutionFailed);
+                completionResult = OperationResult<ExecutionResult>.Failure($"工作流执行失败: {ex.Message}", ErrorCodes.ExecutionFailed);
             }
-            finally
+
+            await TryArchiveBeforeRawCleanupAsync(
+                    context,
+                    executionId,
+                    key,
+                    workflow.Name,
+                    executionInfo.Status)
+                .ConfigureAwait(false);
+
+            if (context.GetRawDataStore() is IRawDataStore store)
             {
-                if (context.GetRawDataStore() is IRawDataStore store)
-                {
-                    // 建议业务节点使用 executionId:xxx 作为 key 前缀，便于执行结束后快速回收
-                    store.RemoveByPrefix($"{executionId}:");
-                }
+                // 建议业务节点使用 executionId:xxx 作为 key 前缀，便于执行结束后快速回收
+                store.RemoveByPrefix($"{executionId}:");
+            }
 
-                // 从正在执行的列表中移除
-                _runningExecutions.TryRemove(executionId, out _);
-                if (_executionControllers.TryRemove(executionId, out var executionController))
-                {
-                    executionController.Dispose();
-                }
+            _runningExecutions.TryRemove(executionId, out _);
+            if (_executionControllers.TryRemove(executionId, out var executionController))
+            {
+                executionController.Dispose();
+            }
 
-                // 添加到历史记录
-                AddToHistory(executionInfo);
+            AddToHistory(executionInfo);
+
+            return completionResult
+                   ?? OperationResult<ExecutionResult>.Failure("工作流执行未完成", ErrorCodes.ExecutionFailed);
+        }
+
+        private async Task TryArchiveBeforeRawCleanupAsync(
+            NodeContext context,
+            string executionId,
+            string workFlowKey,
+            string workFlowName,
+            WorkFlowExecutionStatus status)
+        {
+            if (_workflowArchiveService == null || context == null)
+            {
+                return;
+            }
+
+            _runRecords.TryGetValue(executionId, out var runRecord);
+            var request = new WorkflowArchiveRequest
+            {
+                Trigger = WorkflowArchiveTrigger.EngineBeforeRawCleanup,
+                ExecutionId = executionId,
+                WorkFlowKey = workFlowKey,
+                WorkFlowName = workFlowName ?? string.Empty,
+                NodeContext = context,
+                ExecutionStatus = status,
+                RunRecord = runRecord
+            };
+
+            try
+            {
+                // 归档优先完成，避免因用户 CancellationToken 已处于取消状态而跳过落盘
+                await _workflowArchiveService
+                    .ArchiveAsync(request, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WorkFlowManager] 工作流归档失败: {ex.Message}");
             }
         }
 

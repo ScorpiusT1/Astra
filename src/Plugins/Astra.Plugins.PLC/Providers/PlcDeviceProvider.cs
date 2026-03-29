@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace Astra.Plugins.PLC.Providers
 {
-    internal static class PlcDeviceProvider
+    public static class PlcDeviceProvider
     {
         public static List<string> GetPlcDeviceNames()
         {

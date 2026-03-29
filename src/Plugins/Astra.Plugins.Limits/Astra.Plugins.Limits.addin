@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AddinManifest>
+	<Schema>http://pluginsystem.org/schema/v1</Schema>
+	<Addin>
+		<Id>Astra.Plugins.Limits</Id>
+		<Name>范围卡控插件</Name>
+		<Version>1.0.0</Version>
+		<Description>值卡控、曲线卡控与组合卡控节点</Description>
+		<Author>Astra Team</Author>
+		<Copyright>Copyright © Astra Team</Copyright>
+		<Website />
+		<IconPath>RulerCombined</IconPath>
+		<Order>3</Order>
+		<Runtime>
+			<Assembly>Astra.Plugins.Limits.dll</Assembly>
+			<TypeName>Astra.Plugins.Limits.LimitsPlugin</TypeName>
+			<TargetFramework>net8.0-windows</TargetFramework>
+		</Runtime>
+		<Dependencies />
+		<Permissions>
+			<Required />
+		</Permissions>
+	</Addin>
+	<Nodes>
+		<NodeInfo
+			Name="值范围卡控"
+			TypeName="Astra.Plugins.Limits.Nodes.ValueLimitCheckNode"
+			IconCode="RulerVertical"
+			Description="从全局变量读取标量并与上下限比较；可选关联 Raw 曲线仅用于图表展示"
+			Category="测试/卡控" />
+		<NodeInfo
+			Name="曲线范围卡控"
+			TypeName="Astra.Plugins.Limits.Nodes.CurveLimitCheckNode"
+			IconCode="MagnifyingGlassChart"
+			Description="从 Raw 数据存储读取 NVH 曲线，逐点检查是否在上下限带内"
+			Category="测试/卡控" />
+		<NodeInfo
+			Name="值与曲线卡控"
+			TypeName="Astra.Plugins.Limits.Nodes.ValueAndCurveLimitCheckNode"
+			IconCode="LayerGroup"
+			Description="可分别启用值卡控与曲线卡控；可仅做值卡控同时保留曲线展示"
+			Category="测试/卡控" />
+	</Nodes>
+</AddinManifest>

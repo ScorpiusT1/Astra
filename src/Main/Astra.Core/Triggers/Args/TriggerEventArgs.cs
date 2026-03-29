@@ -1,5 +1,3 @@
-﻿﻿using Astra.Core.Triggers.Enums;
-
 namespace Astra.Core.Triggers.Args
 {
 
@@ -11,9 +9,9 @@ namespace Astra.Core.Triggers.Args
     public class TriggerEventArgs : EventArgs
     {
         /// <summary>
-        /// 触发源类型
+        /// 触发源标识（如 PLCMonitor）
         /// </summary>
-        public TriggerSource Source { get; set; }
+        public string Source { get; set; } = string.Empty;
 
         /// <summary>
         /// 触发时间
@@ -28,9 +26,9 @@ namespace Astra.Core.Triggers.Args
         /// <summary>
         /// 构造函数
         /// </summary>
-        public TriggerEventArgs(TriggerSource source)
+        public TriggerEventArgs(string source)
         {
-            Source = source;
+            Source = source ?? string.Empty;
             TriggerTime = DateTime.Now;
             AdditionalData = new Dictionary<string, object>();
         }

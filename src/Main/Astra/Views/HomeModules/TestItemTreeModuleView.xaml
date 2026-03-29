@@ -48,10 +48,11 @@
                     <Setter Property="Background"
                             Value="{DynamicResource SecondaryBorderBrush}" />
                 </DataTrigger>
+                <!-- 跳过：与流程图节点 Skipped 一致，使用信息色（青） -->
                 <DataTrigger Binding="{Binding Status}"
                              Value="Skip">
                     <Setter Property="Background"
-                            Value="{DynamicResource WarningBrush}" />
+                            Value="{DynamicResource InfoBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Status}"
                              Value="Cancel">
@@ -109,6 +110,11 @@
                              Value="Fail">
                     <Setter Property="Foreground"
                             Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}"
+                             Value="Skip">
+                    <Setter Property="Foreground"
+                            Value="{DynamicResource InfoBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -841,6 +847,12 @@
                                             Property="Fill"
                                             Value="{DynamicResource InfoBrush}" />
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}"
+                                             Value="Skip">
+                                    <Setter TargetName="StatusDot"
+                                            Property="Fill"
+                                            Value="{DynamicResource InfoBrush}" />
+                                </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>
                     </tv:TreeListView.FirstColumnCellTemplate>
@@ -1047,7 +1059,7 @@
                                                     <DataTrigger Binding="{Binding Status}"
                                                                  Value="Skip">
                                                         <Setter Property="Foreground"
-                                                                Value="{DynamicResource WarningBrush}" />
+                                                                Value="{DynamicResource InfoBrush}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Status}"
                                                                  Value="Cancel">

@@ -1,18 +1,14 @@
-using System;
+using System.Collections.Generic;
+using System.Linq;
+using Astra.Configuration;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-using Astra.Configuration;
-using Astra.Core.Configuration;
-using Astra.Core.Configuration.Abstractions;
-using Astra.Engine.Triggers;
-using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Astra.ViewModels
 {
@@ -25,6 +21,8 @@ namespace Astra.ViewModels
         private FileSystemWatcher? _solutionsWatcher;
         private FileSystemWatcher? _baseDirectoryWatcher;
         private DispatcherTimer? _workflowOptionsDebounceTimer;
+        private DispatcherTimer? _triggerOptionsDebounceTimer;
+        private readonly Action<TriggerBaseConfig, ConfigChangeType> _onTriggerConfigChangedHandler;
         private bool _isDisposed;
 
         [ObservableProperty]
@@ -40,10 +38,12 @@ namespace Astra.ViewModels
         {
             _config = config ?? new SoftwareConfig();
             _configurationManager = configurationManager;
+            _onTriggerConfigChangedHandler = OnTriggerConfigChanged;
 
             HookDutEvents();
             LoadWorkflowOptionsFromSolutions();
             InitializeWorkflowOptionsWatcher();
+            InitializeTriggerOptionsSubscription();
             _ = LoadTriggerOptionsAsync();
         }
 
@@ -424,12 +424,89 @@ namespace Astra.ViewModels
             RefreshWorkflowOptions();
         }
 
+        /// <summary>
+        /// 监听触发器配置的增删改，防抖后刷新软件配置页「触发器」下拉选项。
+        /// </summary>
+        private void InitializeTriggerOptionsSubscription()
+        {
+            if (_configurationManager == null)
+                return;
+
+            _configurationManager.Subscribe<TriggerBaseConfig>(_onTriggerConfigChangedHandler);
+
+            _triggerOptionsDebounceTimer = new DispatcherTimer(
+                TimeSpan.FromMilliseconds(300),
+                DispatcherPriority.Background,
+                OnTriggerOptionsDebounceTimerTick,
+                Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher);
+            _triggerOptionsDebounceTimer.Stop();
+        }
+
+        private void OnTriggerConfigChanged(TriggerBaseConfig config, ConfigChangeType changeType)
+        {
+            if (_isDisposed)
+                return;
+
+            // 删除触发器后立即刷新下拉并清理无效引用；增改仍防抖，避免连续保存时频繁拉全量。
+            if (changeType == ConfigChangeType.Deleted)
+            {
+                _ = LoadTriggerOptionsAsync();
+                return;
+            }
+
+            ScheduleTriggerOptionsRefresh();
+        }
+
+        private void ScheduleTriggerOptionsRefresh()
+        {
+            if (_isDisposed)
+                return;
+
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            if (dispatcher.CheckAccess())
+            {
+                RestartTriggerOptionsDebounceTimer();
+                return;
+            }
+
+            dispatcher.BeginInvoke(new Action(RestartTriggerOptionsDebounceTimer), DispatcherPriority.Background);
+        }
+
+        private void RestartTriggerOptionsDebounceTimer()
+        {
+            if (_triggerOptionsDebounceTimer == null || _isDisposed)
+                return;
+
+            _triggerOptionsDebounceTimer.Stop();
+            _triggerOptionsDebounceTimer.Start();
+        }
+
+        private void OnTriggerOptionsDebounceTimerTick(object? sender, EventArgs e)
+        {
+            if (_triggerOptionsDebounceTimer != null)
+                _triggerOptionsDebounceTimer.Stop();
+
+            _ = LoadTriggerOptionsAsync();
+        }
+
         public void Dispose()
         {
             if (_isDisposed)
                 return;
 
             _isDisposed = true;
+
+            if (_configurationManager != null)
+            {
+                _configurationManager.Unsubscribe<TriggerBaseConfig>(_onTriggerConfigChangedHandler);
+            }
+
+            if (_triggerOptionsDebounceTimer != null)
+            {
+                _triggerOptionsDebounceTimer.Stop();
+                _triggerOptionsDebounceTimer.Tick -= OnTriggerOptionsDebounceTimerTick;
+                _triggerOptionsDebounceTimer = null;
+            }
 
             if (Config?.Duts != null)
             {
@@ -488,9 +565,6 @@ namespace Astra.ViewModels
         {
             try
             {
-                TriggerOptions.Clear();
-                TriggerOptions.Add(SelectionOption.Empty("未选择"));
-
                 if (_configurationManager == null)
                     return;
 
@@ -498,33 +572,83 @@ namespace Astra.ViewModels
                 if (all?.Success != true || all.Data == null)
                     return;
 
-                var triggers = all.Data
-                    .OfType<TriggerConfig>()
+                var triggerRows = all.Data
+                    .OfType<TriggerBaseConfig>()
                     .Select(t => new SelectionOption
                     {
                         Id = t.ConfigId,
-                        Name = string.IsNullOrWhiteSpace(t.ConfigName) ? t.GetDisplayName() : t.ConfigName
+                        Name = string.IsNullOrWhiteSpace(t.ConfigName)
+                            ? (t is ConfigBase cb ? cb.GetDisplayName() : t.ConfigId)
+                            : t.ConfigName
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.Id) && !string.IsNullOrWhiteSpace(x.Name))
                     .OrderBy(x => x.Name)
                     .ToList();
 
-                System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher == null)
+                    return;
+
+                // 必须在 UI 线程上快照 → Clear → 再填回，否则 TriggerOptions.Clear() 会令 ComboBox 失去选中项，
+                // SelectedValue 双向绑定可能把 DutConfig.TriggerConfigId 写成空，导致返回软件配置页后不显示已选触发器。
+                await dispatcher.InvokeAsync(() =>
                 {
-                    foreach (var t in triggers)
+                    Dictionary<DutConfig, string>? triggerIdSnapshot = null;
+                    if (Config?.Duts != null)
+                    {
+                        triggerIdSnapshot = new Dictionary<DutConfig, string>();
+                        foreach (var d in Config.Duts)
+                        {
+                            if (d == null)
+                                continue;
+                            triggerIdSnapshot[d] = d.TriggerConfigId ?? string.Empty;
+                        }
+                    }
+
+                    TriggerOptions.Clear();
+                    TriggerOptions.Add(SelectionOption.Empty("未选择"));
+                    foreach (var t in triggerRows)
                         TriggerOptions.Add(t);
 
                     if (Config?.Duts == null)
                         return;
+
+                    var clearedOrphanTriggerRef = false;
 
                     foreach (var dut in Config.Duts)
                     {
                         if (dut == null)
                             continue;
 
-                        var trigger = TriggerOptions.FirstOrDefault(x => string.Equals(x.Id, dut.TriggerConfigId, StringComparison.OrdinalIgnoreCase));
-                        dut.TriggerName = trigger?.Name ?? string.Empty;
+                        if (triggerIdSnapshot != null
+                            && triggerIdSnapshot.TryGetValue(dut, out var savedId)
+                            && !string.IsNullOrWhiteSpace(savedId)
+                            && string.IsNullOrWhiteSpace(dut.TriggerConfigId))
+                        {
+                            dut.TriggerConfigId = savedId;
+                        }
+
+                        var id = dut.TriggerConfigId?.Trim() ?? string.Empty;
+                        if (string.IsNullOrEmpty(id))
+                        {
+                            dut.TriggerName = string.Empty;
+                            continue;
+                        }
+
+                        var trigger = TriggerOptions.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+                        if (trigger == null)
+                        {
+                            dut.TriggerConfigId = string.Empty;
+                            dut.TriggerName = string.Empty;
+                            clearedOrphanTriggerRef = true;
+                            continue;
+                        }
+
+                        dut.TriggerName = trigger.Name;
                     }
+
+                    if (clearedOrphanTriggerRef)
+                        _ = PublishSoftwareConfigUpdatedAsync();
                 });
             }
             catch

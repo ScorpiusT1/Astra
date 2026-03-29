@@ -24,8 +24,6 @@ namespace Astra.Engine.Execution.Strategies
             var workflow = context.Workflow;
             var enabledNodes = context.DetectedStrategy?.Nodes ?? new List<Node>();
             var outputs = new Dictionary<string, object>();
-            var hasNonSkippedFailure = false;
-            ExecutionResult firstFailureResult = null;
             MarkDisabledNodesAsSkipped(workflow, context);
 
             if (enabledNodes.Count == 0)
@@ -43,13 +41,14 @@ namespace Astra.Engine.Execution.Strategies
             var lockObj = new object();
             int completedCount = 0;
 
-            await Parallel.ForEachAsync(enabledNodes, options, async (node, ct) =>
+            await Parallel.ForEachAsync(enabledNodes, options, async (listedNode, ct) =>
             {
                 if (context.ExecutionController != null)
                 {
                     await context.ExecutionController.WaitIfPausedAsync(ct);
                 }
 
+                var node = WorkflowNodeFailurePolicy.ResolveExecutionNode(workflow, listedNode);
                 var isolatedContext = CreateIsolatedNodeContext(context.NodeContext);
                 var nodeResult = await ExecuteNodeAsync(node, isolatedContext, context, ct);
 
@@ -70,21 +69,12 @@ namespace Astra.Engine.Execution.Strategies
 
                 if (!result.Success && !result.IsSkipped)
                 {
-                    if (workflow.Configuration.StopOnError && !node.ContinueOnFailure)
+                    if (WorkflowNodeFailurePolicy.ShouldAbortRemainingAfterFailedStep(workflow, node))
                     {
                         return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
                             .WithOutputs(outputs);
                     }
-
-                    hasNonSkippedFailure = true;
-                    firstFailureResult ??= result;
                 }
-            }
-
-            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
-            {
-                return ExecutionResult.Failed($"并行执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
-                    .WithOutputs(outputs);
             }
 
             return ExecutionResult.Successful($"并行执行完成，共执行 {enabledNodes.Count} 个节点")

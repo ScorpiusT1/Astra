@@ -1,4 +1,4 @@
-﻿﻿using Astra.Core.Triggers.Configuration;
+﻿using Astra.Core.Triggers.Configuration;
 using Astra.Core.Triggers;
 using Astra.Core.Triggers.Enums;
 using Astra.Core.Triggers.Args;
@@ -295,6 +295,9 @@ namespace Astra.Core.Triggers.Manager
         /// </summary>
         private Task HandleSerialModeAsync(TriggerEventArgs e)
         {
+            // 串行模式依赖队列处理器；宿主应在进入自动监听时调用 StartAutoListeningAsync（会先启队列），此处再兜底。
+            StartQueueProcessor();
+
             if (_testQueue.Count >= _executionConfig.MaxQueueLength)
             {
                 Console.WriteLine($"[TriggerManager] ⚠ 队列已满({_executionConfig.MaxQueueLength})，SN: {e.GetSN()} 被丢弃");
@@ -477,7 +480,7 @@ namespace Astra.Core.Triggers.Manager
                     }
                     else
                     {
-                        await Task.Delay(100, _queueCts.Token);
+                        await Task.Delay(50, _queueCts.Token);
                     }
                 }
 
@@ -585,6 +588,45 @@ namespace Astra.Core.Triggers.Manager
 
             Console.WriteLine($"[TriggerManager] 启动触发器: {triggerId}");
             await trigger.StartAsync();
+        }
+
+        /// <summary>
+        /// 进入自动监听：启动全部已注册触发器。
+        /// <para>
+        /// 在 <see cref="TestExecutionConfig.ExecutionMode"/> 为 <see cref="TestExecutionMode.Serial"/> 时，会<strong>先</strong>启动串行队列处理器
+        ///（与 <see cref="SwitchModeAsync"/> 中单触发器场景一致），避免仅依赖首次 <see cref="HandleSerialModeAsync"/> 才创建队列的竞态。
+        /// </para>
+        /// <para>
+        /// <see cref="SwitchModeAsync"/> 适用于「一次只激活一个触发器」的切换；本方法适用于 Home 自动模式下多路 PLC/触发器同时轮询。
+        /// </para>
+        /// </summary>
+        public async Task StartAutoListeningAsync(CancellationToken cancellationToken = default)
+        {
+            _currentMode = WorkMode.Auto;
+
+            if (_executionConfig.ExecutionMode == TestExecutionMode.Serial)
+            {
+                StartQueueProcessor();
+            }
+
+            List<string> ids;
+            lock (_triggers)
+            {
+                ids = new List<string>(_triggers.Keys);
+            }
+
+            foreach (var id in ids)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    await StartTriggerAsync(id).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[TriggerManager] StartTriggerAsync({id}) 失败: {ex.Message}");
+                }
+            }
         }
 
         /// <summary>

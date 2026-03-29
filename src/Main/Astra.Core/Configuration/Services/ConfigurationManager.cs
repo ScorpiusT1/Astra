@@ -335,19 +335,30 @@ namespace Astra.Core.Configuration
 
         private void Publish(IConfig config, ConfigChangeType changeType)
         {
-            var type = config.GetType();
-            if (!_subscribers.TryGetValue(type, out var list)) return;
+            var runtimeType = config.GetType();
 
-            List<Delegate> snapshot;
-            lock (list) snapshot = list.ToList();
-
-            foreach (var d in snapshot)
+            void InvokeList(List<Delegate> list)
             {
-                try { d.DynamicInvoke(config, changeType); }
-                catch (Exception ex)
+                List<Delegate> snapshot;
+                lock (list) snapshot = list.ToList();
+
+                foreach (var d in snapshot)
                 {
-                    _logger?.LogWarning(ex, "配置变更通知回调异常 [{Type}/{ChangeType}]", type.Name, changeType);
+                    try { d.DynamicInvoke(config, changeType); }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "配置变更通知回调异常 [{Type}/{ChangeType}]", runtimeType.Name, changeType);
+                    }
                 }
+            }
+
+            // 按订阅类型是否可赋值自当前运行时类型派发，使 Subscribe<基类/接口> 能收到子类保存通知，
+            // 并兼容插件与主程序各加载一份同名程序集时运行时类型与 Subscribe<具体T> 键不一致的情况。
+            foreach (var kv in _subscribers)
+            {
+                if (!kv.Key.IsAssignableFrom(runtimeType))
+                    continue;
+                InvokeList(kv.Value);
             }
         }
     }

@@ -1,4 +1,5 @@
 using Astra.Core.Foundation.Common;
+using Astra.Core.Triggers.Interlock;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
@@ -48,6 +49,36 @@ namespace Astra.Plugins.PLC.Configs
         private bool alarmEnabled;
 
         /// <summary>
+        /// 是否在首页「IO 监控」模块中显示并轮询该点位（取消勾选则不在首页展示）。默认为 true，避免仅配置名称/地址却未注意到需单独勾选。
+        /// </summary>
+        [ObservableProperty]
+        private bool monitorOnHome = false;
+
+        /// <summary>
+        /// 是否参与安全联锁（BOOL/Auto 类型）；动作在下方字段配置。
+        /// </summary>
+        [ObservableProperty]
+        private bool safetyInterlockEnabled;
+
+        [ObservableProperty]
+        private InterlockRuleAction safetyInterlockActionOnTrue = InterlockRuleAction.PauseAllTests;
+
+        [ObservableProperty]
+        private InterlockRuleAction safetyInterlockActionOnFalse = InterlockRuleAction.ResumeAllTests;
+
+        /// <summary>
+        /// 为 true 时仅在 IO 值变化时执行动作（推荐）。
+        /// </summary>
+        [ObservableProperty]
+        private bool safetyInterlockEdgeTriggered = true;
+
+        /// <summary>
+        /// 当前数据类型是否可作为安全联锁 BOOL 读取（联锁服务按 BOOL 读 PLC）。
+        /// </summary>
+        public bool SupportsSafetyInterlockDataType =>
+            DataType is PlcIODataType.Bool or PlcIODataType.Auto;
+
+        /// <summary>
         /// 下限阈值（仅数值类型有效）。
         /// </summary>
         [ObservableProperty]
@@ -93,6 +124,7 @@ namespace Astra.Plugins.PLC.Configs
         {
             OnPropertyChanged(nameof(SupportsScaleOffset));
             OnPropertyChanged(nameof(SupportsLimits));
+            OnPropertyChanged(nameof(SupportsSafetyInterlockDataType));
             OnPropertyChanged(nameof(IsConfigured));
 
             // 非数值类型自动归一化，避免出现无意义配置
@@ -145,6 +177,11 @@ namespace Astra.Plugins.PLC.Configs
                 {
                     errors.Add("下限不能大于上限");
                 }
+            }
+
+            if (SafetyInterlockEnabled && !SupportsSafetyInterlockDataType)
+            {
+                errors.Add("安全联锁仅支持数据类型为 BOOL 或 Auto 的 IO");
             }
 
             return errors.Count > 0
@@ -222,6 +259,11 @@ namespace Astra.Plugins.PLC.Configs
                 PipeLabel = PipeLabel,
                 Tag = Tag,
                 AlarmEnabled = AlarmEnabled,
+                MonitorOnHome = MonitorOnHome,
+                SafetyInterlockEnabled = SafetyInterlockEnabled,
+                SafetyInterlockActionOnTrue = SafetyInterlockActionOnTrue,
+                SafetyInterlockActionOnFalse = SafetyInterlockActionOnFalse,
+                SafetyInterlockEdgeTriggered = SafetyInterlockEdgeTriggered,
                 LowLimit = LowLimit,
                 HighLimit = HighLimit
             };
@@ -241,6 +283,11 @@ namespace Astra.Plugins.PLC.Configs
             PipeLabel = snapshot.PipeLabel;
             Tag = snapshot.Tag;
             AlarmEnabled = snapshot.AlarmEnabled;
+            MonitorOnHome = snapshot.MonitorOnHome;
+            SafetyInterlockEnabled = snapshot.SafetyInterlockEnabled;
+            SafetyInterlockActionOnTrue = snapshot.SafetyInterlockActionOnTrue;
+            SafetyInterlockActionOnFalse = snapshot.SafetyInterlockActionOnFalse;
+            SafetyInterlockEdgeTriggered = snapshot.SafetyInterlockEdgeTriggered;
             LowLimit = snapshot.LowLimit;
             HighLimit = snapshot.HighLimit;
         }

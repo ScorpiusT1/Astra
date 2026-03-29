@@ -24,8 +24,6 @@ namespace Astra.Engine.Execution.Strategies
             var workflow = context.Workflow;
             var sequencedNodes = context.DetectedStrategy?.Nodes ?? new List<Node>();
             var outputs = new Dictionary<string, object>();
-            var hasNonSkippedFailure = false;
-            ExecutionResult firstFailureResult = null;
             MarkDisabledNodesAsSkipped(workflow, context);
 
             if (sequencedNodes.Count == 0)
@@ -40,7 +38,8 @@ namespace Astra.Engine.Execution.Strategies
                     await context.ExecutionController.WaitIfPausedAsync(context.CancellationToken);
                 }
 
-                var node = sequencedNodes[i];
+                var listedNode = sequencedNodes[i];
+                var node = WorkflowNodeFailurePolicy.ResolveExecutionNode(workflow, listedNode);
                 var nodeContext = i == 0 ? context.NodeContext : PrepareNodeContext(node, workflow, context.NodeContext);
 
                 var nodeResult = await ExecuteNodeAsync(node, nodeContext, context);
@@ -55,27 +54,18 @@ namespace Astra.Engine.Execution.Strategies
 
                 if (!nodeResult.Success && !nodeResult.IsSkipped)
                 {
-                    // 如果全局配置了 StopOnError=true：
-                    // - 本节点未开启 ContinueOnFailure => 立即终止工作流
-                    // - 本节点开启 ContinueOnFailure => 记录失败并继续执行下游
-                    if (workflow.Configuration.StopOnError && !node.ContinueOnFailure)
+                    if (WorkflowNodeFailurePolicy.ShouldAbortRemainingAfterFailedStep(workflow, node))
                     {
                         return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {nodeResult.Message}", nodeResult.Exception)
                             .WithOutputs(outputs);
                     }
-
-                    hasNonSkippedFailure = true;
-                    firstFailureResult ??= nodeResult;
                 }
 
                 context.CancellationToken.ThrowIfCancellationRequested();
             }
 
-            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
-            {
-                return ExecutionResult.Failed($"顺序执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
-                    .WithOutputs(outputs);
-            }
+            // 已勾选「失败继续」的失败不应在整单级再次判 Failed，否则主流程会误认为子流程未跑完，
+            // 从而跳过下游引用；单步失败仍保留在各 Node.LastExecutionResult 中。
 
             return ExecutionResult.Successful($"顺序执行完成，共执行 {sequencedNodes.Count} 个节点")
                 .WithOutputs(outputs);

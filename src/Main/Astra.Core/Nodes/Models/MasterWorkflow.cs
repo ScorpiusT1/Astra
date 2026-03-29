@@ -1,5 +1,4 @@
-using Astra.Core.Nodes.Geometry;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
@@ -159,73 +158,6 @@ namespace Astra.Core.Nodes.Models
         {
             return SubWorkflowReferences.FirstOrDefault(r => r.SubWorkflowId == subWorkflowId);
         }
-    }
-
-    /// <summary>
-    /// 子流程引用（在主流程画布上显示的流程节点信息）
-    /// </summary>
-    public class WorkflowReference
-    {
-        public WorkflowReference()
-        {
-            Id = Guid.NewGuid().ToString();
-            Position = new Point2D(0, 0);
-            Size = new Size2D(200, 150);
-        }
-
-        /// <summary>
-        /// 引用节点唯一标识
-        /// </summary>
-        [JsonProperty(Order = 1)]
-        public string Id { get; set; }
-
-        /// <summary>
-        /// 引用的子流程ID
-        /// </summary>
-        [JsonProperty(Order = 2)]
-        public string SubWorkflowId { get; set; }
-
-        /// <summary>
-        /// 在主流程画布上的位置
-        /// </summary>
-        [JsonProperty(Order = 3)]
-        public Point2D Position { get; set; }
-
-        /// <summary>
-        /// 在主流程画布上的大小
-        /// </summary>
-        [JsonProperty(Order = 4)]
-        public Size2D Size { get; set; }
-
-        /// <summary>
-        /// 显示名称（可以覆盖子流程的名称）
-        /// </summary>
-        [JsonProperty(Order = 5)]
-        public string DisplayName { get; set; }
-
-        /// <summary>
-        /// 参数映射（子流程输入参数 -> 主流程变量或常量）
-        /// </summary>
-        [JsonProperty(Order = 6)]
-        public Dictionary<string, string> InputParameterMapping { get; set; } = new Dictionary<string, string>();
-
-        /// <summary>
-        /// 输出参数映射（子流程输出参数 -> 主流程变量）
-        /// </summary>
-        [JsonProperty(Order = 7)]
-        public Dictionary<string, string> OutputParameterMapping { get; set; } = new Dictionary<string, string>();
-
-        /// <summary>
-        /// 单节点失败后是否继续执行其后继节点
-        /// </summary>
-        [JsonProperty(Order = 8)]
-        public bool ContinueOnFailure { get; set; } = false;
-
-        /// <summary>
-        /// 节点是否启用
-        /// </summary>
-        [JsonProperty(Order = 9)]
-        public bool IsEnabled { get; set; } = true;
     }
 }
 

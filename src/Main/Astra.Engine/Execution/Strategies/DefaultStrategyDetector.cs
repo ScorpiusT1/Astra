@@ -18,6 +18,7 @@ namespace Astra.Engine.Execution.Strategies
         public DetectedExecutionStrategy Detect(WorkFlowNode workflow)
         {
             var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
+            var enabledMainNodes = enabledNodes.Where(n => !n.ExecuteLast).ToList();
             // 调度依赖：无论是 Flow 还是 Data 连接，只要有连接关系就参与拓扑排序/分批执行。
             // 这样可以避免 UI 层 ConnectionType 推断不一致导致错误并行。
             var dependencyConnections = (workflow.Connections ?? Enumerable.Empty<Connection>())
@@ -34,21 +35,38 @@ namespace Astra.Engine.Execution.Strategies
                 };
             }
 
-            // 1. 无连接 → 并行
-            if (dependencyConnections.Count == 0)
+            // 启用节点均为「最后执行」：主阶段为空，由 FinallyPhaseRunner 单独处理
+            if (enabledMainNodes.Count == 0)
+            {
+                return new DetectedExecutionStrategy
+                {
+                    Type = ExecutionStrategyType.Sequential,
+                    Description = "主执行阶段无节点（仅最后执行）",
+                    Reason = "启用节点均为最后执行",
+                    Nodes = new List<Node>()
+                };
+            }
+
+            var mainIds = new HashSet<string>(enabledMainNodes.Select(n => n.Id));
+            var mainPhaseConnections = dependencyConnections
+                .Where(c => mainIds.Contains(c.SourceNodeId) && mainIds.Contains(c.TargetNodeId))
+                .ToList();
+
+            // 1. 无连接 → 并行（主阶段子图）
+            if (mainPhaseConnections.Count == 0)
             {
                 return new DetectedExecutionStrategy
                 {
                     Type = ExecutionStrategyType.Parallel,
-                    Description = $"并行执行 {enabledNodes.Count} 个独立节点",
+                    Description = $"并行执行 {enabledMainNodes.Count} 个独立节点",
                     Reason = "无连接关系，所有节点相互独立",
-                    Nodes = enabledNodes,
-                    ExpectedParallelism = Math.Min(enabledNodes.Count, workflow.Configuration.MaxParallelism)
+                    Nodes = enabledMainNodes,
+                    ExpectedParallelism = Math.Min(enabledMainNodes.Count, workflow.Configuration.MaxParallelism)
                 };
             }
 
             // 2. 简单线性序列
-            if (IsSimpleSequence(workflow, dependencyConnections, out var sequencedNodes))
+            if (IsSimpleSequence(workflow, mainPhaseConnections, enabledMainNodes, out var sequencedNodes))
             {
                 return new DetectedExecutionStrategy
                 {
@@ -60,7 +78,7 @@ namespace Astra.Engine.Execution.Strategies
             }
 
             // 3. 部分并行（分层）
-            if (DetectPartiallyParallel(workflow, dependencyConnections, out var parallelGroups, out var dependencies))
+            if (DetectPartiallyParallel(workflow, mainPhaseConnections, enabledMainNodes, out var parallelGroups, out var dependencies))
             {
                 return new DetectedExecutionStrategy
                 {
@@ -72,8 +90,8 @@ namespace Astra.Engine.Execution.Strategies
                 };
             }
 
-            // 4. 复杂图
-            var graphAnalyzer = new GraphAnalyzer(workflow);
+            // 4. 复杂图（仅主阶段子图）
+            var graphAnalyzer = new GraphAnalyzer(workflow, mainIds);
 
             if (graphAnalyzer.HasCycle())
             {
@@ -99,19 +117,29 @@ namespace Astra.Engine.Execution.Strategies
         /// <summary>
         /// 检测是否为简单线性序列
         /// </summary>
-        private bool IsSimpleSequence(WorkFlowNode workflow, List<Connection> dependencyConnections, out List<Node> sequencedNodes)
+        private bool IsSimpleSequence(
+            WorkFlowNode workflow,
+            List<Connection> dependencyConnections,
+            List<Node> enabledNodes,
+            out List<Node> sequencedNodes)
         {
             sequencedNodes = new List<Node>();
-            var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
 
-            // 线性序列的流程依赖连接数应为 N-1
-            if (dependencyConnections.Count != enabledNodes.Count - 1)
+            // 同一对节点可同时存在 Flow + Data 等多条线，拓扑上仍是一条依赖边，需按 (源, 目标) 去重后再判线性链
+            var uniqueEdges = dependencyConnections
+                .Where(c => c != null)
+                .GroupBy(c => (c.SourceNodeId, c.TargetNodeId))
+                .Select(g => g.First())
+                .ToList();
+
+            // 线性序列的依赖边数应为 N-1（去重后）
+            if (uniqueEdges.Count != enabledNodes.Count - 1)
                 return false;
 
             foreach (var node in enabledNodes)
             {
-                var inputCount = dependencyConnections.Count(c => c.TargetNodeId == node.Id);
-                var outputCount = dependencyConnections.Count(c => c.SourceNodeId == node.Id);
+                var inputCount = uniqueEdges.Count(c => c.TargetNodeId == node.Id);
+                var outputCount = uniqueEdges.Count(c => c.SourceNodeId == node.Id);
 
                 if (!((inputCount == 0 && outputCount == 1) ||
                       (inputCount == 1 && outputCount == 1) ||
@@ -121,7 +149,7 @@ namespace Astra.Engine.Execution.Strategies
                 }
             }
 
-            var startNode = enabledNodes.FirstOrDefault(n => dependencyConnections.All(c => c.TargetNodeId != n.Id));
+            var startNode = enabledNodes.FirstOrDefault(n => uniqueEdges.All(c => c.TargetNodeId != n.Id));
             if (startNode == null) return false;
 
             var current = startNode;
@@ -129,7 +157,7 @@ namespace Astra.Engine.Execution.Strategies
 
             while (true)
             {
-                var nextConnections = dependencyConnections
+                var nextConnections = uniqueEdges
                     .Where(c => c.SourceNodeId == current.Id)
                     .ToList();
                 if (nextConnections.Count == 0) break;
@@ -151,13 +179,13 @@ namespace Astra.Engine.Execution.Strategies
         private bool DetectPartiallyParallel(
             WorkFlowNode workflow,
             List<Connection> dependencyConnections,
+            List<Node> enabledNodes,
             out List<List<Node>> parallelGroups,
             out Dictionary<string, List<string>> dependencies)
         {
             parallelGroups = new List<List<Node>>();
             dependencies = new Dictionary<string, List<string>>();
 
-            var enabledNodes = workflow.Nodes.Where(n => n.IsEnabled).ToList();
             var inDegree = new Dictionary<string, int>();
             var graph = new Dictionary<string, List<string>>();
 

@@ -3,6 +3,8 @@ using Astra.Services.Logging;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Configuration;
 using Astra.Core.Configuration;
+using Astra.Core.Triggers;
+using Astra.UI.Helpers;
 using Astra.UI.Services;
 using Astra.ViewModels.HomeModules;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -16,7 +18,7 @@ using System.Windows;
 
 namespace Astra.ViewModels
 {
-    public partial class HomeViewModel : ObservableObject, IDisposable
+    public partial class HomeViewModel : ObservableObject, IDisposable, IAutoTriggerHomeRunContext
     {
         private bool _disposed;
         private bool _hasPendingYieldRecord;
@@ -26,14 +28,26 @@ namespace Astra.ViewModels
         private readonly IConfigurationManager _configurationManager;
         private readonly IWorkflowExecutionSessionService _workflowExecutionSessionService;
         private readonly IHomeWorkflowExecutionService _homeWorkflowExecutionService;
+        private readonly IManualBarcodeContext _manualBarcodeContext;
         private readonly Action<SoftwareConfig, ConfigChangeType> _softwareConfigChangedHandler;
         private readonly SequenceViewModel _sequenceViewModel;
         private readonly IUiLogService _uiLogService;
+        private readonly IScanModeState _homeScanModeState;
+        private readonly IAutoTriggerLifecycle _autoTriggerLifecycle;
         private CancellationTokenSource? _homeRunCts;
         private Task? _homeRunTask;
 
         [ObservableProperty]
         private bool _isSequenceLinkageEnabled = true;
+
+        /// <summary>
+        /// true：开始测试前弹出扫码窗并校验条码长度；false：直接开始。
+        /// </summary>
+        [ObservableProperty]
+        private bool _isManualScanMode;
+
+        private int _barcodeMinLength = 6;
+        private int _barcodeMaxLength = 32;
 
         [ObservableProperty]
         private bool _isTestRunning;
@@ -59,15 +73,21 @@ namespace Astra.ViewModels
             IConfigurationManager configurationManager,
             IWorkflowExecutionSessionService workflowExecutionSessionService,
             IHomeWorkflowExecutionService homeWorkflowExecutionService,
+            IManualBarcodeContext manualBarcodeContext,
             IUiLogService uiLogService,
-            SequenceViewModel sequenceViewModel)
+            SequenceViewModel sequenceViewModel,
+            IScanModeState homeScanModeState,
+            IAutoTriggerLifecycle autoTriggerLifecycle)
         {
             _yieldDailyStatsService = yieldDailyStatsService;
             _configurationManager = configurationManager;
             _workflowExecutionSessionService = workflowExecutionSessionService;
             _homeWorkflowExecutionService = homeWorkflowExecutionService;
+            _manualBarcodeContext = manualBarcodeContext ?? throw new ArgumentNullException(nameof(manualBarcodeContext));
             _sequenceViewModel = sequenceViewModel;
             _uiLogService = uiLogService;
+            _homeScanModeState = homeScanModeState ?? throw new ArgumentNullException(nameof(homeScanModeState));
+            _autoTriggerLifecycle = autoTriggerLifecycle ?? throw new ArgumentNullException(nameof(autoTriggerLifecycle));
             YieldModule = new YieldModuleViewModel(_yieldDailyStatsService);
             RealTimeLogModule = new RealTimeLogModuleViewModel(uiLogService);
             TestItemTreeModule = new TestItemTreeModuleViewModel(testItemTreeDataProvider, configurationManager, workflowExecutionSessionService);
@@ -82,6 +102,16 @@ namespace Astra.ViewModels
                 _sequenceViewModel.MultiFlowEditor.SequenceFileSaved += OnSequenceFileSaved;
             }
 
+            _homeScanModeState.IsAutoScanMode = !IsManualScanMode;
+
+            OnIsManualScanModeChanged(false);
+        }
+
+        partial void OnIsManualScanModeChanged(bool value)
+        {
+            _homeScanModeState.IsAutoScanMode = !value;
+            _ = _autoTriggerLifecycle.ApplyCurrentModeAsync();
+            StartTestCommand.NotifyCanExecuteChanged();
         }
 
         partial void OnIsSequenceLinkageEnabledChanged(bool value)
@@ -130,9 +160,29 @@ namespace Astra.ViewModels
             YieldModule.ReloadFromStorage();
         }
 
+        /// <summary>
+        /// 仅用于<strong>手动</strong>运行模式：扫码（或联动序列）后启动测试。
+        /// 自动模式下由 PLC 等触发器在后台轮询，满足条件即自动执行脚本，无需也不应点此按钮。
+        /// </summary>
         [RelayCommand(CanExecute = nameof(CanStartTest))]
-        private Task StartTest()
+        private Task StartTestAsync()
         {
+            if (!IsManualScanMode)
+            {
+                return Task.CompletedTask;
+            }
+
+            string? manualSn = null;
+            if (!TryGetManualBarcodeFromDialog(out manualSn))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (IsSequenceLinkageEnabled)
+                _manualBarcodeContext.PendingBarcode = manualSn;
+            else
+                _manualBarcodeContext.PendingBarcode = null;
+
             RealTimeLogModule.ClearLogsCommand.Execute(null);
             TestItemTreeModule.ResetForNewRun();
             _hasPendingYieldRecord = true;
@@ -152,11 +202,29 @@ namespace Astra.ViewModels
             _homeRunCts?.Cancel();
             _homeRunCts?.Dispose();
             _homeRunCts = new CancellationTokenSource();
-            _homeRunTask = RunStandaloneFromHomeAsync(_homeRunCts.Token);
+            _homeRunTask = RunStandaloneFromHomeAsync(_homeRunCts.Token, manualSn);
             return Task.CompletedTask;
         }
 
-        private bool CanStartTest() => !IsTestRunning;
+        [RelayCommand]
+        private void SelectManualScanMode() => IsManualScanMode = true;
+
+        [RelayCommand]
+        private void SelectAutoScanMode() => IsManualScanMode = false;
+
+        private bool TryGetManualBarcodeFromDialog(out string? barcode)
+        {
+            barcode = null;
+            var min = Math.Min(_barcodeMinLength, _barcodeMaxLength);
+            var max = Math.Max(_barcodeMinLength, _barcodeMaxLength);
+            var owner = Application.Current?.MainWindow;
+            if (!ScanCodeDialog.Show(owner, out var text, "扫码", "请使用扫码枪扫描，或手动输入条码后确定。", min, max))
+                return false;
+            barcode = text;
+            return !string.IsNullOrEmpty(barcode);
+        }
+
+        private bool CanStartTest() => !IsTestRunning && IsManualScanMode;
 
         [RelayCommand(CanExecute = nameof(CanPauseTest))]
         private void PauseTest()
@@ -240,11 +308,11 @@ namespace Astra.ViewModels
 
         private bool CanCancelTest() => IsTestRunning;
 
-        private async Task RunStandaloneFromHomeAsync(CancellationToken cancellationToken)
+        private async Task RunStandaloneFromHomeAsync(CancellationToken cancellationToken, string? manualBarcode)
         {
             try
             {
-                await _homeWorkflowExecutionService.ExecuteCurrentConfiguredMasterAsync(cancellationToken).ConfigureAwait(false);
+                await _homeWorkflowExecutionService.ExecuteCurrentConfiguredMasterAsync(cancellationToken, manualBarcode).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -266,6 +334,64 @@ namespace Astra.ViewModels
             }
         }
 
+        bool IAutoTriggerHomeRunContext.IsSequenceLinkageEnabled => IsSequenceLinkageEnabled;
+
+        bool IAutoTriggerHomeRunContext.IsExecutionBusy =>
+            Application.Current?.Dispatcher?.Invoke(() => IsTestRunning || _workflowExecutionSessionService.IsRunning) ?? false;
+
+        async Task<AutoTriggerPrepareResult> IAutoTriggerHomeRunContext.TryPrepareAutoTriggerRunAsync(CancellationToken externalCancellation)
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                return default;
+            }
+
+            return await dispatcher.InvokeAsync(() =>
+            {
+                if (IsSequenceLinkageEnabled)
+                {
+                    return new AutoTriggerPrepareResult { Started = false };
+                }
+
+                if (IsTestRunning || _workflowExecutionSessionService.IsRunning)
+                {
+                    _uiLogService.Warn("已有测试在执行，自动触发已忽略。");
+                    return new AutoTriggerPrepareResult { Started = false };
+                }
+
+                RealTimeLogModule.ClearLogsCommand.Execute(null);
+                TestItemTreeModule.ResetForNewRun();
+                _hasPendingYieldRecord = true;
+                _isCurrentRunCanceled = false;
+                _manualBarcodeContext.PendingBarcode = null;
+                TestItemTreeModule.BeginStandaloneExecutionEventSession();
+                IsTestRunning = true;
+                IsTestPaused = false;
+                _homeRunCts?.Cancel();
+                _homeRunCts?.Dispose();
+                _homeRunCts = CancellationTokenSource.CreateLinkedTokenSource(externalCancellation);
+                return new AutoTriggerPrepareResult { Started = true, LinkedCancellation = _homeRunCts };
+            });
+        }
+
+        async Task IAutoTriggerHomeRunContext.CompleteAutoTriggerRunAsync()
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                return;
+            }
+
+            await dispatcher.InvokeAsync(() =>
+            {
+                TestItemTreeModule.EndStandaloneExecutionEventSession();
+                TestItemTreeModule.StopRunTimer();
+                IsTestRunning = false;
+                IsTestPaused = false;
+            });
+        }
+
         private async Task LoadLinkageConfigAsync()
         {
             try
@@ -285,6 +411,8 @@ namespace Astra.ViewModels
                     Application.Current?.Dispatcher?.Invoke(() =>
                     {
                         IsSequenceLinkageEnabled = latest.EnableHomeSequenceLinkage;
+                        _barcodeMinLength = latest.BarcodeMinLength;
+                        _barcodeMaxLength = latest.BarcodeMaxLength;
                     });
                 }
             }
@@ -302,6 +430,8 @@ namespace Astra.ViewModels
             Application.Current?.Dispatcher?.Invoke(() =>
             {
                 IsSequenceLinkageEnabled = config.EnableHomeSequenceLinkage;
+                _barcodeMinLength = config.BarcodeMinLength;
+                _barcodeMaxLength = config.BarcodeMaxLength;
             });
         }
 
@@ -369,6 +499,7 @@ namespace Astra.ViewModels
             _homeRunCts?.Dispose();
             RealTimeLogModule?.Dispose();
             TestItemTreeModule?.Dispose();
+            IoMonitorModule?.Dispose();
             _disposed = true;
         }
     }

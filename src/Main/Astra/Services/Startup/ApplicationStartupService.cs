@@ -1,10 +1,13 @@
 using Astra.Core.Access.Services;
+using Astra.Bootstrap.Core;
 using Astra.Bootstrap.Services;
 using Astra.Services.Session;
 using Astra.UI.Helpers;
 using Astra.Utilities;
 using Astra.Views;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
 using System;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -24,6 +27,11 @@ namespace Astra.Services.Startup
         private readonly Action<int> _shutdownAction;
         private ApplicationBootstrapper<MainView> _bootstrapper;
 
+        /// <summary>
+        /// 保持与 <see cref="AttachBootstrapLoggerToSerilog"/> 中 <see cref="MicrosoftLoggerBootstrapAdapter"/> 配套的工厂存活，避免被提前释放。
+        /// </summary>
+        private static ILoggerFactory _bootstrapLoggerFactory;
+
         public ApplicationStartupService(Dispatcher dispatcher, Action<int> shutdownAction)
         {
             _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -41,7 +49,8 @@ namespace Astra.Services.Startup
                 _bootstrapper = CreateBootstrapper();
                 ConfigureSplashScreen(_bootstrapper);
                 ConfigureServices(_bootstrapper);
-  
+                AttachBootstrapLoggerToSerilog(_bootstrapper);
+
                 // ⭐ 使用泛型版本的 RunAsync，返回 BootstrapResult<MainView>
                 // 流程：启动 SplashScreen → 注册服务 → 构建 ServiceProvider → 加载插件 → 创建主窗口 → 显示主窗口 → 窗口加载完成后初始化导航
                 var result = await _bootstrapper.RunAsync();
@@ -90,6 +99,26 @@ namespace Astra.Services.Startup
                 var configurator = new ServiceRegistrationConfigurator();
                 configurator.ConfigureServices(services);
             });
+        }
+
+        /// <summary>
+        /// 将 <see cref="ApplicationBootstrapper"/> 的 <c>_context.Logger</c> 接到 Serilog（与 application-.log 同一管道）。
+        /// 若未调用 <see cref="ApplicationBootstrapper.UseLogger"/>，则 <c>Logger?.LogInfo</c> 全部为空操作，不会写入文件。
+        /// </summary>
+        private static void AttachBootstrapLoggerToSerilog(ApplicationBootstrapper<MainView> bootstrapper)
+        {
+            if (Log.Logger == null)
+            {
+                return;
+            }
+
+            _bootstrapLoggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder.AddSerilog(Log.Logger, dispose: false);
+            });
+
+            var ilogger = _bootstrapLoggerFactory.CreateLogger("Astra.Bootstrap.ApplicationBootstrapper");
+            bootstrapper.UseLogger(new MicrosoftLoggerBootstrapAdapter(ilogger));
         }
 
         /// <summary>

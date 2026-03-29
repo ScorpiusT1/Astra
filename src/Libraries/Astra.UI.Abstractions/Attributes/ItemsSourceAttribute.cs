@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -42,6 +42,11 @@ namespace Astra.UI.Abstractions.Attributes
         /// 显示成员路径
         /// </summary>
         public string DisplayMemberPath { get; set; }
+
+        /// <summary>
+        /// 若设置，则 ComboBox 使用 <see cref="System.Windows.Controls.Primitives.Selector.SelectedValue"/> 与该项的该路径绑定（用于项为复杂类型、持久化存简单键的场景）。
+        /// </summary>
+        public string? SelectedValuePath { get; set; }
 
         public ItemsSourceAttribute(string propertyName)
         {

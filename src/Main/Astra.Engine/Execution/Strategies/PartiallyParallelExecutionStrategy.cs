@@ -2,8 +2,8 @@ using Astra.Core.Nodes.Models;
 using Astra.Engine.Execution.NodeExecutor;
 using Astra.Engine.Execution.WorkFlowEngine;
 using System;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -30,11 +30,12 @@ namespace Astra.Engine.Execution.Strategies
                 return ExecutionResult.Successful("无可执行层");
             }
 
+            var forward = WorkflowDependencyTraversal.BuildForwardAdjacency(workflow);
+            var blocked = new HashSet<string>(StringComparer.Ordinal);
             var outputs = new Dictionary<string, object>();
-            var hasNonSkippedFailure = false;
-            ExecutionResult firstFailureResult = null;
             int totalLayers = groups.Count;
             int finishedLayers = 0;
+            var reportWorkflowFailed = false;
 
             foreach (var layer in groups)
             {
@@ -51,19 +52,31 @@ namespace Astra.Engine.Execution.Strategies
 
                 var results = new ConcurrentBag<(Node node, ExecutionResult result)>();
 
-                await Parallel.ForEachAsync(layer, options, async (node, ct) =>
+                await Parallel.ForEachAsync(layer, options, async (listedNode, ct) =>
                 {
                     if (context.ExecutionController != null)
                     {
                         await context.ExecutionController.WaitIfPausedAsync(ct);
                     }
 
-                    var isolatedContext = CreateIsolatedNodeContext(context.NodeContext);
-                    var nodeResult = await ExecuteNodeAsync(node, isolatedContext, context, ct);
+                    var node = WorkflowNodeFailurePolicy.ResolveExecutionNode(workflow, listedNode);
+                    if (blocked.Contains(node.Id))
+                    {
+                        // 因上游失败未调度执行：保持「未执行」态，与主动跳过（禁用/条件）区分
+                        node.LastExecutionResult = null;
+                        node.ExecutionState = NodeExecutionState.Idle;
+                        return;
+                    }
+
+                    var nodeContext = PrepareNodeContext(node, workflow, context.NodeContext);
+                    var nodeResult = await ExecuteNodeAsync(node, nodeContext, context, ct);
                     results.Add((node, nodeResult));
                 });
 
-                foreach (var (node, result) in results)
+                var ordered = results.ToList();
+                ordered.Sort((a, b) => string.CompareOrdinal(a.node.Id, b.node.Id));
+
+                foreach (var (node, result) in ordered)
                 {
                     foreach (var kvp in result.OutputData)
                     {
@@ -71,16 +84,18 @@ namespace Astra.Engine.Execution.Strategies
                         workflow.Variables[$"{node.Name}_{kvp.Key}"] = kvp.Value;
                     }
 
-                    if (!result.Success && !result.IsSkipped && workflow.Configuration.StopOnError)
+                    if (!result.Success && !result.IsSkipped &&
+                        WorkflowNodeFailurePolicy.ShouldAbortRemainingAfterFailedStep(workflow, node))
                     {
-                        if (!node.ContinueOnFailure)
-                        {
-                            return ExecutionResult.Failed($"节点 '{node.Name}' 执行失败: {result.Message}", result.Exception)
-                                .WithOutputs(outputs);
-                        }
+                        reportWorkflowFailed = true;
+                    }
 
-                        hasNonSkippedFailure = true;
-                        firstFailureResult ??= result;
+                    if (!WorkflowNodeFailurePolicy.ShouldReleaseDownstreamEdges(workflow, node, result))
+                    {
+                        foreach (var d in WorkflowDependencyTraversal.CollectDescendants(forward, node.Id))
+                        {
+                            blocked.Add(d);
+                        }
                     }
                 }
 
@@ -88,13 +103,43 @@ namespace Astra.Engine.Execution.Strategies
                 context.OnProgressChanged?.Invoke((int)(finishedLayers * 100.0 / totalLayers));
             }
 
-            if (workflow.Configuration.StopOnError && hasNonSkippedFailure)
+            if (reportWorkflowFailed)
             {
-                return ExecutionResult.Failed($"部分并行执行过程中发生失败：{firstFailureResult?.Message}", firstFailureResult?.Exception)
-                    .WithOutputs(outputs);
+                return ExecutionResult.Failed("部分并行执行完成，但有节点失败且未允许继续").WithOutputs(outputs);
             }
 
             return ExecutionResult.Successful($"部分并行执行完成，共 {totalLayers} 层").WithOutputs(outputs);
+        }
+
+        /// <summary>
+        /// 准备节点执行上下文（与复杂图策略一致：合并来自所有输入连线的上游输出）
+        /// </summary>
+        private static NodeContext PrepareNodeContext(Node node, WorkFlowNode workflow, NodeContext baseContext)
+        {
+            var ctx = new NodeContext
+            {
+                InputData = new Dictionary<string, object>(),
+                GlobalVariables = new Dictionary<string, object>(baseContext.GlobalVariables),
+                ServiceProvider = baseContext.ServiceProvider,
+                ExecutionId = baseContext.ExecutionId,
+                ParentWorkFlow = baseContext.ParentWorkFlow,
+                Metadata = new Dictionary<string, object>(baseContext.Metadata ?? new Dictionary<string, object>())
+            };
+
+            var inputConnections = workflow.GetInputConnections(node.Id);
+            foreach (var conn in inputConnections)
+            {
+                var prev = workflow.GetNode(conn.SourceNodeId);
+                if (prev?.LastExecutionResult != null)
+                {
+                    foreach (var kvp in prev.LastExecutionResult.OutputData)
+                    {
+                        ctx.InputData[kvp.Key] = kvp.Value;
+                    }
+                }
+            }
+
+            return ctx;
         }
 
         /// <summary>
@@ -152,19 +197,6 @@ namespace Astra.Engine.Execution.Strategies
             return rawEndTime - pausedDelta;
         }
 
-        private static NodeContext CreateIsolatedNodeContext(NodeContext baseContext)
-        {
-            return new NodeContext
-            {
-                InputData = new Dictionary<string, object>(baseContext?.InputData ?? new Dictionary<string, object>()),
-                GlobalVariables = new Dictionary<string, object>(baseContext?.GlobalVariables ?? new Dictionary<string, object>()),
-                Metadata = new Dictionary<string, object>(baseContext?.Metadata ?? new Dictionary<string, object>()),
-                ServiceProvider = baseContext?.ServiceProvider,
-                ExecutionId = baseContext?.ExecutionId,
-                ParentWorkFlow = baseContext?.ParentWorkFlow
-            };
-        }
-
         private static void MarkDisabledNodesAsSkipped(WorkFlowNode workflow, WorkFlowExecutionContext workflowContext)
         {
             var disabledNodes = workflow.Nodes.Where(n => !n.IsEnabled).ToList();
@@ -179,4 +211,3 @@ namespace Astra.Engine.Execution.Strategies
         }
     }
 }
-

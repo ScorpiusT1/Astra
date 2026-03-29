@@ -1,10 +1,6 @@
-﻿using Astra.Core.Plugins.Abstractions;
+using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using NVHDataBridge.IO.WAV;
 
 namespace Astra.Plugins.AudioPlayer
 {
@@ -18,32 +14,32 @@ namespace Astra.Plugins.AudioPlayer
 
         public Task<HealthCheckResult> CheckHealthAsync()
         {
-            throw new NotImplementedException();
+            return Task.FromResult(HealthCheckResult.Healthy(Name, "音频播放器插件已加载"));
         }
 
         public void Dispose()
         {
-            throw new NotImplementedException();
         }
 
         public ValueTask DisposeAsync()
         {
-            throw new NotImplementedException();
+            return ValueTask.CompletedTask;
         }
 
         public Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            RealtimeAudioPlayer.PreloadWasapiRenderDevices();
+            return Task.CompletedTask;
         }
 
         public Task OnDisableAsync(CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public Task OnEnableAsync(CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
     }
 }

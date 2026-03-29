@@ -614,7 +614,7 @@
                                     </DropShadowEffect>
                                 </Ellipse.Effect>
                             </Ellipse>
-                            <TextBlock Text="连接状态"
+                            <TextBlock Text="软件状态"
                                        FontSize="11"
                                        Margin="6,0,0,0"
                                        VerticalAlignment="Center"

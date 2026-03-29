@@ -2,6 +2,7 @@ using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Ui;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Attributes;
@@ -357,7 +358,10 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
                 if (rawDataKeys.Count > 0)
                 {
-                    result = result.WithOutput("RawDataKeys", rawDataKeys);
+                    result = result
+                        .WithOutput("RawDataKeys", rawDataKeys)
+                        .WithOutput(NodeUiOutputKeys.HasChartData, true)
+                        .WithOutput(NodeUiOutputKeys.ChartArtifactKey, rawDataKeys[0]);
                 }
             }
 

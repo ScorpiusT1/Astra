@@ -1,7 +1,8 @@
-﻿﻿﻿﻿using Astra.Core.Nodes.Geometry;
+using Astra.Core.Nodes.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using Newtonsoft.Json;
 using System.Threading;
@@ -56,6 +57,14 @@ namespace Astra.Core.Nodes.Models
 
         [JsonProperty(Order = 23)]
         public WorkFlowConfiguration Configuration { get; set; }
+
+        /// <summary>与基类 <see cref="Node.ExecuteLast"/> 同源；仅流程容器在属性面板展示。</summary>
+        [Display(Name = "最后执行", GroupName = "基础配置", Order = 3, Description = "勾选后在本流程常规步骤之后执行；前方失败或中止后仍会执行。")]
+        public new bool ExecuteLast
+        {
+            get => base.ExecuteLast;
+            set => base.ExecuteLast = value;
+        }
 
         // ===== 辅助方法（仅数据操作，无执行逻辑） =====
 

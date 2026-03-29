@@ -1,4 +1,4 @@
-using Astra.Core.Logs;
+﻿using Astra.Core.Logs;
 using Astra.Core.Nodes.Geometry;
 using Newtonsoft.Json;
 using System;
@@ -106,7 +106,21 @@ namespace Astra.Core.Nodes.Models
 
         [JsonProperty(Order = 10)]
         public bool IsLocked { get; set; }
-        
+
+        /// <summary>
+        /// 最后执行：常规调度阶段结束后执行；主阶段因失败提前结束时仍会执行（与 <see cref="ContinueOnFailure"/> 正交）。
+        /// 属性面板通过 <see cref="WorkFlowNode"/> / <see cref="WorkflowReferenceNode"/> 上的显示元数据暴露。
+        /// </summary>
+        [JsonProperty(Order = 15)]
+        public bool ExecuteLast { get; set; }
+
+        /// <summary>
+        /// 是否在首页「测试项」模块中展示：子流程根节点关闭则整组不展示；子节点关闭则仅隐藏对应测试项行。
+        /// </summary>
+        [JsonProperty(Order = 16)]
+        [Display(Name = "在主页测试项中显示", GroupName = "基础配置", Order = 1, Description = "关闭后不在首页测试项模块中展示。")]
+        public bool ShowInHomeTestItems { get; set; } = true;
+
         /// <summary>
         /// 节点是否被选中（用于 UI 框选等交互）
         /// </summary>

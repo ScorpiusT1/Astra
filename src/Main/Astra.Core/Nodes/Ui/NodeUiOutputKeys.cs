@@ -1,0 +1,40 @@
+namespace Astra.Core.Nodes.Ui
+{
+    /// <summary>
+    /// 节点输出到主页/图表 UI 的 <see cref="ExecutionResult.OutputData"/> 键名（集中封装，禁止散落字符串）。
+    /// </summary>
+    public static class NodeUiOutputKeys
+    {
+        public const string ActualValue = "Ui.ActualValue";
+        public const string LowerLimit = "Ui.LowerLimit";
+        public const string UpperLimit = "Ui.UpperLimit";
+        public const string ValueCheckPass = "Ui.ValueCheckPass";
+        public const string CurveCheckPass = "Ui.CurveCheckPass";
+        public const string HasChartData = "Ui.HasChartData";
+        public const string ChartArtifactKey = "Ui.ChartArtifactKey";
+
+        /// <summary>
+        /// 内联图表快照（仅适合较小数据；大数据请用 Raw 存储挂载 <see cref="ChartDisplayPayload"/>）。
+        /// </summary>
+        public const string ChartPayloadSnapshot = "Ui.ChartPayloadSnapshot";
+
+        public const string Summary = "Ui.Summary";
+        public const string FailReason = "Ui.FailReason";
+        public const string CurveFailDetail = "Ui.CurveFailDetail";
+
+        /// <summary>所有供事件/UI 同步的键（用于从 OutputData 过滤）。</summary>
+        public static readonly string[] All =
+        {
+            ActualValue,
+            LowerLimit,
+            UpperLimit,
+            ValueCheckPass,
+            CurveCheckPass,
+            HasChartData,
+            ChartArtifactKey,
+            Summary,
+            FailReason,
+            CurveFailDetail
+        };
+    }
+}

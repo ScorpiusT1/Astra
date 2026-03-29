@@ -132,6 +132,7 @@ namespace Astra.Plugins.PLC.ViewModels
                 Name = GenerateNextIoName(),
                 DataType = PlcIODataType.Auto,
                 IsEnabled = true,
+                MonitorOnHome = false,
                 Scale = 1.0,
                 Offset = 0.0
             };
@@ -162,6 +163,9 @@ namespace Astra.Plugins.PLC.ViewModels
             }
 
             SelectedIo = io;
+
+            // 表格内 CheckBox 等绑定在部分时机未提交到模型；打开对话框前先冲刷 UI 绑定
+            Application.Current?.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
 
             var dialog = new PlcIoEditDialog(io, OutputKeyOptions)
             {

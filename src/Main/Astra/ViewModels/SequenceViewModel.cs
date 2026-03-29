@@ -10,10 +10,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
-using System.Collections.Generic;
 using System.Linq;
 using Astra.Core.Nodes.Geometry;
 using Astra.Core.Configuration.Abstractions;
@@ -26,6 +26,7 @@ using System.Text.Json.Serialization;
 using Astra.UI.Helpers;
 using System.Threading.Tasks;
 using Astra.Core.Configuration;
+using Astra.Core.Triggers;
 using NavStack.Core;
 
 namespace Astra.ViewModels
@@ -51,15 +52,19 @@ namespace Astra.ViewModels
         public SequenceViewModel(
             IFrameNavigationService navigationService,
             IPluginHost pluginHost,
-            IManifestSerializer manifestSerializer,
+            IEnumerable<IManifestSerializer> manifestSerializers,
             IWorkflowExecutionSessionService workflowExecutionSessionService,
-            IConfigurationManager configurationManager)
+            IConfigurationManager configurationManager,
+            IManualBarcodeContext manualBarcodeContext,
+            IScanModeState scanModeState)
         {
             _ = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             _configurationManager = configurationManager ?? throw new ArgumentNullException(nameof(configurationManager));
-            
+            _ = manualBarcodeContext ?? throw new ArgumentNullException(nameof(manualBarcodeContext));
+            _ = scanModeState ?? throw new ArgumentNullException(nameof(scanModeState));
+
             // 创建 MultiFlowEditorViewModel 实例
-            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializer, workflowExecutionSessionService);
+            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializers, workflowExecutionSessionService, manualBarcodeContext, scanModeState);
             
             Debug.WriteLine("[SequenceViewModel] 已创建 MultiFlowEditorViewModel");
 

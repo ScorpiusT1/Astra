@@ -209,7 +209,7 @@ await manager.StartTriggerAsync("API");
 ## ⚠️ 注意事项
 
 1. **命名空间**
-   - 所有触发器实现位于 `Astra.Engine.Triggers` 命名空间
+   - PLC 触发器实现位于 `Astra.Plugins.PLC.Triggers`；触发器基类与契约在 `Astra.Core.Triggers`
 
 2. **依赖注入**
    - 当前未使用 DI，未来可以考虑通过 DI 注入设备连接器

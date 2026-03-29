@@ -5,6 +5,7 @@ using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Dependencies;
 using Astra.Core.Plugins.Discovery;
 using Astra.Core.Plugins.Models;
+using Astra.Core.Triggers;
 using Astra.Core.Plugins.Validation;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -80,7 +81,7 @@ namespace Astra.Bootstrap.Services
 
             try
             {
-                _context.Logger?.LogInfo("=== 应用程序启动开始 ===");
+                _context.Logger?.LogInfo("============================================= 应用程序启动开始 =============================================");
 
                 // 1. 显示启动画面
                 ShowSplashScreen();
@@ -343,7 +344,9 @@ namespace Astra.Bootstrap.Services
         /// <summary>
         /// 在所有服务构建完成后加载插件
         /// ⭐ 这样可以确保插件系统使用主程序构建的全局 ServiceProvider
-        /// 流程：注册服务 → 构建 ServiceProvider → 创建 IPluginHost → 加载插件
+        /// 流程：注册服务 → 构建 ServiceProvider → 创建 IPluginHost → 加载插件。
+        /// 因此插件 <c>InitializeAsync</c> 晚于 <c>BuildServiceProvider</c>，无法在此时向 <see cref="IServiceCollection"/> 追加注册；
+        /// 需在注册阶段放入桥接单例（如 <c>SafetyInterlockIoReaderBridge</c>、<c>SafetyInterlockRulesProviderBridge</c>），由插件在初始化时注入具体实现。
         /// </summary>
         private async Task LoadPluginsAfterServiceProviderBuilt(IPluginHost pluginHost, CancellationToken cancellationToken)
         {
@@ -661,6 +664,17 @@ namespace Astra.Bootstrap.Services
                 {
                     _context.Logger?.LogInfo("未发现插件或未成功加载插件");
                     // 进度已在上面更新到 90%
+                }
+
+                try
+                {
+                    var lifecycle = _context.ServiceProvider?.GetService<IAutoTriggerLifecycle>();
+                    if (lifecycle != null)
+                        await lifecycle.NotifyTriggersRegisteredAsync(cancellationToken);
+                }
+                catch (Exception exNotify)
+                {
+                    _context.Logger?.LogWarning($"PLC 自动触发模式同步：{exNotify.Message}");
                 }
             }
             catch (Exception ex)

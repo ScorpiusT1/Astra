@@ -1,40 +1,87 @@
+using Astra.UI.Abstractions.Home;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Windows;
+using System.Windows.Threading;
 
 namespace Astra.ViewModels.HomeModules
 {
-    public partial class IOMonitorModuleViewModel : ObservableObject
+    public partial class IOMonitorModuleViewModel : ObservableObject, IDisposable
     {
-        public ObservableCollection<IOPointItem> Points { get; } = new();
+        private bool _disposed;
+
+        public ObservableCollection<IoMonitorPointItem> Points { get; } = new();
+
+        /// <summary>是否有首页监控点位（用于在无 IO 时隐藏整模块）。与 Points 同步，避免仅依赖计算属性时早于界面绑定丢失通知。</summary>
+        [ObservableProperty]
+        private bool _hasMonitorPoints;
+
+        /// <summary>监控点位数量（供标题绑定；ObservableCollection 变更时由 CollectionChanged 通知）。</summary>
+        public int MonitorPointCount => Points.Count;
 
         public IOMonitorModuleViewModel()
         {
-            InitializeDefaultPoints();
+            Points.CollectionChanged += OnPointsCollectionChanged;
+            IoMonitorRuntimeRegistry.RuntimeRegistered += OnIoMonitorRuntimeRegistered;
+
+            if (IoMonitorRuntimeRegistry.TryGet() != null)
+            {
+                TryAttach();
+            }
+            else
+            {
+                Application.Current?.Dispatcher.BeginInvoke(TryAttach, DispatcherPriority.ApplicationIdle);
+            }
+
+            SyncHasMonitorPoints();
         }
 
-        private void InitializeDefaultPoints()
+        private void OnIoMonitorRuntimeRegistered(object? sender, EventArgs e)
         {
-            // 模拟 8 个 IO 点位，统一在一个集合中展示
-            Points.Add(new IOPointItem { Name = "DI_急停", Value = "False", IsOn = false });
-            Points.Add(new IOPointItem { Name = "DI_安全门", Value = "True", IsOn = true });
-            Points.Add(new IOPointItem { Name = "DO_蜂鸣器", Value = "False", IsOn = false });
-            Points.Add(new IOPointItem { Name = "AO_风机频率", Value = "45 Hz", IsOn = true });
-            Points.Add(new IOPointItem { Name = "DI_气压开关", Value = "True", IsOn = true });
-            Points.Add(new IOPointItem { Name = "DI_治具到位", Value = "False", IsOn = false });
-            Points.Add(new IOPointItem { Name = "DO_夹具气缸", Value = "True", IsOn = true });
-            Points.Add(new IOPointItem { Name = "AO_加热温度", Value = "72 °C", IsOn = true });
+            Application.Current?.Dispatcher.BeginInvoke(TryAttach, DispatcherPriority.Normal);
         }
-    }
 
-    public partial class IOPointItem : ObservableObject
-    {
-        [ObservableProperty]
-        private string _name = string.Empty;
+        private void OnPointsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            SyncHasMonitorPoints();
+            OnPropertyChanged(nameof(MonitorPointCount));
+        }
 
-        [ObservableProperty]
-        private string _value = string.Empty;
+        private void TryAttach()
+        {
+            if (_disposed)
+            {
+                return;
+            }
 
-        [ObservableProperty]
-        private bool _isOn;
+            IoMonitorRuntimeRegistry.TryGet()?.Attach(Points);
+            SyncHasMonitorPoints();
+        }
+
+        private void SyncHasMonitorPoints()
+        {
+            HasMonitorPoints = Points.Count > 0;
+        }
+
+        /// <summary>视图 Loaded 或 DataContext 就绪后调用，与早于界面创建的 VM、Idle 上完成的 Attach 对齐可见性绑定。</summary>
+        public void RefreshVisibilityAfterLoad()
+        {
+            SyncHasMonitorPoints();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            IoMonitorRuntimeRegistry.RuntimeRegistered -= OnIoMonitorRuntimeRegistered;
+            Points.CollectionChanged -= OnPointsCollectionChanged;
+            IoMonitorRuntimeRegistry.TryGet()?.Detach();
+        }
     }
 }

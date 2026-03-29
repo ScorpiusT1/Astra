@@ -11,7 +11,8 @@
 
     <UserControl.Resources>
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
-        <Geometry x:Key="GithubGeometry">F1 M 512,64 C 268,64 72,260 72,504 C 72,700 200,867 377,926 C 402,931 411,916 411,903 C 411,892 410,860 410,819 C 272,849 243,761 243,761 C 220,703 187,687 187,687 C 142,656 191,657 191,657 C 241,661 267,709 267,709 C 311,784 383,763 411,750 C 415,717 428,695 442,683 C 332,670 217,628 217,440 C 217,387 236,344 267,309 C 262,297 245,247 272,180 C 272,180 314,166 410,232 C 449,221 490,215 531,215 C 572,215 613,221 652,232 C 748,166 790,180 790,180 C 817,247 800,297 795,309 C 826,344 845,387 845,440 C 845,629 729,669 619,683 C 637,699 653,730 653,777 C 653,845 652,888 652,903 C 652,916 661,932 686,926 C 863,867 992,700 992,504 C 992,260 796,64 552,64 C 538,64 525,64 512,64 Z</Geometry>
+        <!-- 空状态路径：日志面板外框 + 左侧色带位 + 多行横线（模拟日志文本流），与「实时日志」语义一致 -->
+        <Geometry x:Key="LogEmptyStateGeometry">F1 M 88,96 L 936,96 Q 952,96 952,112 L 952,912 Q 952,928 936,928 L 88,928 Q 72,928 72,912 L 72,112 Q 72,96 88,96 Z M 152,168 L 152,832 M 208,232 L 848,232 M 208,312 L 784,312 M 208,392 L 816,392 M 208,472 L 736,472 M 208,552 L 864,552 M 208,632 L 768,632 M 208,712 L 832,712 M 208,792 L 888,792</Geometry>
 
         <!-- 卡片背景渐变（末端保留淡色，不完全透明） -->
         <LinearGradientBrush x:Key="InfoCardBg"
@@ -317,14 +318,14 @@
                                      Stretch="Uniform">
                                 <hc:AnimationPath HorizontalAlignment="Center"
                                                   VerticalAlignment="Center"
-                                                  Duration="0:0:6"
+                                                  Duration="0:0:4.5"
                                                   Stretch="Uniform"
                                                   Width="1024"
                                                   Height="1024"
-                                                  StrokeThickness="20"
-                                                  Opacity="0.4"
+                                                  StrokeThickness="14"
+                                                  Opacity="0.42"
                                                   Stroke="{DynamicResource PrimaryBrush}"
-                                                  Data="{StaticResource GithubGeometry}" />
+                                                  Data="{StaticResource LogEmptyStateGeometry}" />
                             </Viewbox>
                         </hc:TransitioningContentControl>
                         <TextBlock Text="等待日志数据…"
