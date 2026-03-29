@@ -56,12 +56,29 @@ namespace Astra.Services.Home
 
             var roots = new List<TestTreeNodeItem>();
             var subWorkflows = loadResult.Data.SubWorkflows?.Values?.ToList() ?? new List<WorkFlowNode>();
+            var refBySubId = (loadResult.Data.MasterWorkflow?.SubWorkflowReferences ?? Enumerable.Empty<WorkflowReference>())
+                .Where(r => r != null && !string.IsNullOrWhiteSpace(r.SubWorkflowId))
+                .ToDictionary(r => r.SubWorkflowId!, r => r, StringComparer.Ordinal);
 
             // 以“子流程”为根节点，子流程中的每个节点作为测试项叶子节点。
             // 根节点保持脚本内原始顺序，不再按名称排序。
+            // 整组是否展示：子流程根节点 ShowInHomeTestItems 与主流程引用 WorkflowReference.ShowInHomeTestItems 须同时为 true
+            //（仅在子流程 Tab 改时可能只更新 WorkFlowNode；仅在主流程画布改时可能只更新引用，故两处都要判断）。
             foreach (var workflow in subWorkflows)
             {
                 if (workflow == null)
+                {
+                    continue;
+                }
+
+                var showFromWorkflow = workflow.ShowInHomeTestItems;
+                var showFromReference = true;
+                if (refBySubId.TryGetValue(workflow.Id, out var reference))
+                {
+                    showFromReference = reference.ShowInHomeTestItems;
+                }
+
+                if (!showFromWorkflow || !showFromReference)
                 {
                     continue;
                 }
@@ -77,7 +94,7 @@ namespace Astra.Services.Home
                 var orderedNodes = SortNodesByTopology(workflow);
                 foreach (var node in orderedNodes)
                 {
-                    if (node == null)
+                    if (node == null || !node.ShowInHomeTestItems)
                     {
                         continue;
                     }

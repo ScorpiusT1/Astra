@@ -31,12 +31,18 @@ namespace Astra.Services.Home
             _uiLogService = uiLogService;
         }
 
-        public async Task ExecuteCurrentConfiguredMasterAsync(CancellationToken cancellationToken)
+        public async Task ExecuteCurrentConfiguredMasterAsync(CancellationToken cancellationToken, string? manualBarcode = null)
         {
             var scriptPath = await ResolveCurrentWorkflowPathAsync().ConfigureAwait(false);
+            await ExecuteConfiguredMasterAtPathAsync(scriptPath, cancellationToken, manualBarcode).ConfigureAwait(false);
+        }
+
+        public async Task ExecuteConfiguredMasterAtPathAsync(string? masterWorkflowFilePath, CancellationToken cancellationToken, string? snForGlobalVariable = null)
+        {
+            var scriptPath = masterWorkflowFilePath?.Trim();
             if (string.IsNullOrWhiteSpace(scriptPath) || !File.Exists(scriptPath))
             {
-                _uiLogService.Error("Home 独立执行失败：未找到当前配置的主流程脚本。");
+                _uiLogService.Error("Home 独立执行失败：未找到主流程脚本文件或路径无效。");
                 return;
             }
 
@@ -54,27 +60,54 @@ namespace Astra.Services.Home
                 return;
             }
 
-            var canContinue = new Dictionary<string, bool>(StringComparer.Ordinal);
-            var completed = new HashSet<string>(StringComparer.Ordinal);
+            var mainPlan = BuildFilteredStandaloneExecutionPlan(plan, executeLast: false);
+            var finallyPlan = BuildFilteredStandaloneExecutionPlan(plan, executeLast: true);
 
             if (!plan.HasDependencies)
             {
-                var tasks = plan.OrderedNodes.Select(async node =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (!node.IsEnabled)
-                    {
-                        _uiLogService.Info($"Home 独立执行：跳过禁用子流程 {node.DisplayName}");
-                        return false;
-                    }
-
-                    return await ExecuteSubWorkflowAsync(node.Workflow, cancellationToken).ConfigureAwait(false);
-                });
-
-                await Task.WhenAll(tasks).ConfigureAwait(false);
+                await RunHomeParallelBatchAsync(mainPlan.OrderedNodes, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
+                await RunHomeParallelBatchAsync(finallyPlan.OrderedNodes, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
                 return;
             }
+
+            await RunHomeDependencyPhaseAsync(mainPlan, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
+            await RunHomeDependencyPhaseAsync(finallyPlan, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
+        }
+
+        private async Task RunHomeParallelBatchAsync(
+            IReadOnlyList<StandaloneExecutionNode> nodes,
+            CancellationToken cancellationToken,
+            string? snForGlobalVariable)
+        {
+            if (nodes == null || nodes.Count == 0)
+                return;
+
+            var tasks = nodes.Select(async node =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!node.IsEnabled)
+                {
+                    _uiLogService.Info($"Home 独立执行：跳过禁用子流程 {node.DisplayName}");
+                    return;
+                }
+
+                await ExecuteSubWorkflowAsync(node.Workflow, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
+            });
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+
+        private async Task RunHomeDependencyPhaseAsync(
+            StandaloneExecutionPlan plan,
+            CancellationToken cancellationToken,
+            string? snForGlobalVariable)
+        {
+            if (plan.Nodes.Count == 0)
+                return;
+
+            var canContinue = new Dictionary<string, bool>(StringComparer.Ordinal);
+            var completed = new HashSet<string>(StringComparer.Ordinal);
 
             var inDegree = plan.Nodes.Values.ToDictionary(n => n.RefId, n => n.PredecessorIds.Count, StringComparer.Ordinal);
             var queue = new Queue<string>(inDegree.Where(x => x.Value == 0).Select(x => x.Key));
@@ -121,7 +154,7 @@ namespace Astra.Services.Home
 
                 var runTasks = runnable.Select(async node =>
                 {
-                    var ok = await ExecuteSubWorkflowAsync(node.Workflow, cancellationToken).ConfigureAwait(false);
+                    var ok = await ExecuteSubWorkflowAsync(node.Workflow, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
                     return (node, ok);
                 }).ToList();
 
@@ -152,10 +185,57 @@ namespace Astra.Services.Home
             }
         }
 
-        private async Task<bool> ExecuteSubWorkflowAsync(WorkFlowNode workflow, CancellationToken cancellationToken)
+        private static StandaloneExecutionPlan BuildFilteredStandaloneExecutionPlan(StandaloneExecutionPlan source, bool executeLast)
         {
+            var nodes = source.Nodes.Values
+                .Where(n => n.ExecuteLast == executeLast)
+                .ToDictionary(
+                    n => n.RefId,
+                    n => new StandaloneExecutionNode
+                    {
+                        RefId = n.RefId,
+                        DisplayName = n.DisplayName,
+                        Workflow = n.Workflow,
+                        IsEnabled = n.IsEnabled,
+                        ContinueOnFailure = n.ContinueOnFailure,
+                        ExecuteLast = n.ExecuteLast
+                    },
+                    StringComparer.Ordinal);
+
+            var orderedNodes = source.OrderedNodes.Where(n => nodes.ContainsKey(n.RefId)).ToList();
+
+            var successors = nodes.Keys.ToDictionary(id => id, _ => new List<string>(), StringComparer.Ordinal);
+            foreach (var srcId in nodes.Keys)
+            {
+                if (!source.Successors.TryGetValue(srcId, out var outs))
+                    continue;
+                foreach (var tgtId in outs)
+                {
+                    if (!nodes.ContainsKey(tgtId))
+                        continue;
+                    successors[srcId].Add(tgtId);
+                    nodes[tgtId].PredecessorIds.Add(srcId);
+                }
+            }
+
+            var depCount = successors.Values.Sum(l => l.Count);
+            return new StandaloneExecutionPlan
+            {
+                Nodes = nodes,
+                OrderedNodes = orderedNodes,
+                Successors = successors,
+                HasDependencies = depCount > 0
+            };
+        }
+
+        private async Task<bool> ExecuteSubWorkflowAsync(WorkFlowNode workflow, CancellationToken cancellationToken, string? manualBarcode)
+        {
+            var context = new NodeContext();
+            if (!string.IsNullOrWhiteSpace(manualBarcode))
+                context.SetGlobalVariable("SN", manualBarcode);
+
             var start = await _workflowExecutionSessionService
-                .StartAsync(workflow.Id, workflow, new NodeContext(), cancellationToken)
+                .StartAsync(workflow.Id, workflow, context, cancellationToken)
                 .ConfigureAwait(false);
 
             if (!start.Success || start.ExecutionTask == null)
@@ -218,7 +298,8 @@ namespace Astra.Services.Home
                     DisplayName = string.IsNullOrWhiteSpace(reference.DisplayName) ? (workflow.Name ?? "未命名子流程") : reference.DisplayName,
                     Workflow = workflow,
                     IsEnabled = reference.IsEnabled,
-                    ContinueOnFailure = reference.ContinueOnFailure
+                    ContinueOnFailure = reference.ContinueOnFailure,
+                    ExecuteLast = reference.ExecuteLast
                 };
 
                 nodes[reference.Id] = node;
@@ -235,7 +316,8 @@ namespace Astra.Services.Home
                         DisplayName = workflow.Name ?? "未命名子流程",
                         Workflow = workflow,
                         IsEnabled = true,
-                        ContinueOnFailure = true
+                        ContinueOnFailure = true,
+                        ExecuteLast = false
                     });
                 }
 
@@ -280,6 +362,7 @@ namespace Astra.Services.Home
             public WorkFlowNode Workflow { get; init; } = default!;
             public bool IsEnabled { get; init; } = true;
             public bool ContinueOnFailure { get; init; }
+            public bool ExecuteLast { get; init; }
             public List<string> PredecessorIds { get; } = new();
         }
 
