@@ -79,6 +79,26 @@
 
     <Color x:Key="DarkOpacityColor">#40000000</Color>
 
+    <!-- 全透明（渐变等） -->
+    <Color x:Key="TransparentColor">#00000000</Color>
+
+    <!-- 首页模块卡片：半透明描边与淡色底（基于主题色） -->
+    <Color x:Key="PrimaryColorBorderTint">#332196F3</Color>
+    <Color x:Key="PrimaryColorCardWash">#0D2196F3</Color>
+    <Color x:Key="SuccessColorBorderTint">#334CAF50</Color>
+    <Color x:Key="SuccessColorCardWash">#0D4CAF50</Color>
+    <Color x:Key="DangerColorBorderTint">#33F44336</Color>
+    <Color x:Key="DangerColorCardWash">#0DF44336</Color>
+    <Color x:Key="WarningColorBorderTint">#33FF9800</Color>
+    <Color x:Key="WarningColorCardWash">#0DFF9800</Color>
+
+    <!-- IO 监控标题区信息色描边/淡底、点位卡片中性/开启渐变 -->
+    <Color x:Key="InfoColorBorderTint">#3300BCD4</Color>
+    <Color x:Key="InfoColorFillTint">#1400BCD4</Color>
+    <Color x:Key="IoMonitorNeutralGradientStart">#1F9E9E9E</Color>
+    <Color x:Key="IoMonitorNeutralGradientEnd">#0A9E9E9E</Color>
+    <Color x:Key="IoMonitorOnGradientStart">#1F4CAF50</Color>
+    <Color x:Key="IoMonitorOnGradientEnd">#0A4CAF50</Color>
 
 
     <!-- ==================== Brush 资源 ==================== -->
@@ -138,6 +158,9 @@
                      Color="{DynamicResource BorderColor}" />
     <SolidColorBrush x:Key="SecondaryBorderBrush"
                      Color="{DynamicResource SecondaryBorderColor}" />
+
+    <SolidColorBrush x:Key="TransparentBrush"
+                     Color="{DynamicResource TransparentColor}" />
 
     <SolidColorBrush x:Key="BackgroundBrush"
                      Color="{DynamicResource BackgroundColor}" />

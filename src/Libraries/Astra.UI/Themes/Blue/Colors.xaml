@@ -74,6 +74,24 @@
     <!-- 阴影色 -->
     <Color x:Key="ShadowColor">#000000</Color>
 
+    <Color x:Key="TransparentColor">#00000000</Color>
+
+    <Color x:Key="PrimaryColorBorderTint">#3300D9FF</Color>
+    <Color x:Key="PrimaryColorCardWash">#0D00D9FF</Color>
+    <Color x:Key="SuccessColorBorderTint">#3300FF88</Color>
+    <Color x:Key="SuccessColorCardWash">#0D00FF88</Color>
+    <Color x:Key="DangerColorBorderTint">#33FF3366</Color>
+    <Color x:Key="DangerColorCardWash">#0DFF3366</Color>
+    <Color x:Key="WarningColorBorderTint">#33FFD93D</Color>
+    <Color x:Key="WarningColorCardWash">#0DFFD93D</Color>
+
+    <Color x:Key="InfoColorBorderTint">#3300D9FF</Color>
+    <Color x:Key="InfoColorFillTint">#1400D9FF</Color>
+    <Color x:Key="IoMonitorNeutralGradientStart">#1F80B3E6</Color>
+    <Color x:Key="IoMonitorNeutralGradientEnd">#0A80B3E6</Color>
+    <Color x:Key="IoMonitorOnGradientStart">#1F00FF88</Color>
+    <Color x:Key="IoMonitorOnGradientEnd">#0A00FF88</Color>
+
     <!-- ==================== Brush 资源 ==================== -->
 
     <SolidColorBrush x:Key="LightPrimaryBrush"
@@ -131,6 +149,9 @@
                      Color="{DynamicResource BorderColor}" />
     <SolidColorBrush x:Key="SecondaryBorderBrush"
                      Color="{DynamicResource SecondaryBorderColor}" />
+
+    <SolidColorBrush x:Key="TransparentBrush"
+                     Color="{DynamicResource TransparentColor}" />
 
     <SolidColorBrush x:Key="BackgroundBrush"
                      Color="{DynamicResource BackgroundColor}" />
