@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -37,6 +38,8 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
         {
             HookColumnsCollection(Columns);
             ScheduleStretchLastColumn();
+            // 首帧布局后模板、纵向滚动条与 ViewportWidth 才稳定，再补一次
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => ScheduleStretchLastColumn());
         }
 
         private void OnTreeListViewSizeChanged(object sender, SizeChangedEventArgs e)
@@ -75,6 +78,41 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
                 typeof(double),
                 typeof(TreeListView),
                 new FrameworkPropertyMetadata(60d, (d, _) => ((TreeListView)d).ScheduleStretchLastColumn()));
+
+        /// <summary>
+        /// 为 true 时，在布局后按各列当前宽度比例分配控件可用宽度，使所有列共同铺满水平空间。
+        /// 启用时优先于 <see cref="StretchLastColumn"/>。
+        /// </summary>
+        public bool StretchAllColumns
+        {
+            get => (bool)GetValue(StretchAllColumnsProperty);
+            set => SetValue(StretchAllColumnsProperty, value);
+        }
+
+        public static readonly DependencyProperty StretchAllColumnsProperty =
+            DependencyProperty.Register(
+                nameof(StretchAllColumns),
+                typeof(bool),
+                typeof(TreeListView),
+                new FrameworkPropertyMetadata(false, (d, _) => ((TreeListView)d).ScheduleStretchLastColumn()));
+
+        /// <summary>
+        /// 指定某一列（0-based）吸收「控件可用宽度 − 其余各列宽度」的剩余空间。
+        /// 为 -1 且 <see cref="StretchLastColumn"/> 为 true 时，行为与原先「只拉伸最后一列」一致。
+        /// 与 <see cref="StretchAllColumns"/> 互斥：全列比例拉伸时忽略本属性。
+        /// </summary>
+        public int StretchFillColumnIndex
+        {
+            get => (int)GetValue(StretchFillColumnIndexProperty);
+            set => SetValue(StretchFillColumnIndexProperty, value);
+        }
+
+        public static readonly DependencyProperty StretchFillColumnIndexProperty =
+            DependencyProperty.Register(
+                nameof(StretchFillColumnIndex),
+                typeof(int),
+                typeof(TreeListView),
+                new FrameworkPropertyMetadata(-1, (d, _) => ((TreeListView)d).ScheduleStretchLastColumn()));
 
         /// <summary>
         /// 是否允许列头拖拽换列。默认关闭，仅保留列宽拉伸能力。
@@ -131,49 +169,255 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
         }
 
         private bool _stretchScheduled;
+        private bool _stretchRepeatRequested;
+        private ScrollViewer? _partOuterScroll;
+        private ScrollViewer? _partItemsScroll;
         private Point _dragStartPoint;
         private TreeListViewItem? _dragSourceContainer;
 
+        /// <summary>列线、Thumb 与 DPI 舍入可能使渲染宽度略大于列宽之和，预留少量 DIP 避免外层横向滚动条。</summary>
+        private const double ColumnLayoutFudgeDip = 16.0;
+
+        public override void OnApplyTemplate()
+        {
+            if (_partItemsScroll != null)
+            {
+                _partItemsScroll.SizeChanged -= OnPartItemsScrollSizeChanged;
+                _partItemsScroll.ScrollChanged -= OnPartItemsScrollScrollChanged;
+            }
+
+            if (_partOuterScroll != null)
+                _partOuterScroll.SizeChanged -= OnPartOuterScrollSizeChanged;
+
+            base.OnApplyTemplate();
+
+            _partOuterScroll = GetTemplateChild("PART_OuterScroll") as ScrollViewer;
+            _partItemsScroll = GetTemplateChild("PART_ItemsScroll") as ScrollViewer;
+
+            if (_partItemsScroll != null)
+            {
+                _partItemsScroll.SizeChanged += OnPartItemsScrollSizeChanged;
+                // 出现/隐藏纵向滚动条时 ViewportWidth 会变，但控件 ActualWidth 常不变，SizeChanged 不会触发，导致填充列未重算而出现横向条
+                _partItemsScroll.ScrollChanged += OnPartItemsScrollScrollChanged;
+            }
+
+            if (_partOuterScroll != null)
+                _partOuterScroll.SizeChanged += OnPartOuterScrollSizeChanged;
+
+            ScheduleStretchLastColumn();
+        }
+
+        private void OnPartItemsScrollScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (Math.Abs(e.ViewportWidthChange) > 0.01)
+                ScheduleStretchLastColumn();
+        }
+
+        private void OnPartItemsScrollSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged)
+                ScheduleStretchLastColumn();
+        }
+
+        private void OnPartOuterScrollSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged)
+                ScheduleStretchLastColumn();
+        }
+
         private void ScheduleStretchLastColumn()
         {
-            if (!StretchLastColumn)
+            if (!StretchAllColumns && !StretchLastColumn && StretchFillColumnIndex < 0)
                 return;
             if (_stretchScheduled)
+            {
+                _stretchRepeatRequested = true;
                 return;
+            }
+
             _stretchScheduled = true;
-            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, StretchLastColumnToFill);
+            _stretchRepeatRequested = false;
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, RunStretchLastColumnPass);
+        }
+
+        private void RunStretchLastColumnPass()
+        {
+            StretchLastColumnToFill();
+            _stretchScheduled = false;
+            if (_stretchRepeatRequested)
+            {
+                _stretchRepeatRequested = false;
+                ScheduleStretchLastColumn();
+            }
         }
 
         private void StretchLastColumnToFill()
         {
-            _stretchScheduled = false;
-            if (!StretchLastColumn)
+            if (StretchAllColumns)
+            {
+                StretchAllColumnsProportional();
                 return;
+            }
 
             var columns = Columns;
             if (columns == null || columns.Count < 2)
                 return;
 
+            var fillIndex = ResolveStretchFillColumnIndex(columns);
+            if (fillIndex < 0)
+                return;
+
+            var available = GetAvailableWidthForColumns();
+            if (available <= 2)
+                return;
+
+            double sumOthers = 0;
+            for (var i = 0; i < columns.Count; i++)
+            {
+                if (i == fillIndex)
+                    continue;
+                var w = columns[i].Width;
+                if (double.IsNaN(w) || w <= 0)
+                    return;
+                sumOthers += w;
+            }
+
+            var fillCol = columns[fillIndex];
+            var target = Math.Max(LastColumnMinWidth, available - sumOthers);
+            if (Math.Abs(fillCol.Width - target) > 0.5)
+                fillCol.Width = target;
+
+            // 列宽舍入可能需多轮收束，否则合计仍微大于视口会误出横向滚动条
+            for (var iter = 0; iter < 8; iter++)
+            {
+                double total = 0;
+                for (var i = 0; i < columns.Count; i++)
+                    total += columns[i].Width;
+                if (total <= available + 0.5)
+                    break;
+                var over = total - available;
+                var w = fillCol.Width - over;
+                if (w < LastColumnMinWidth - 0.5)
+                    break;
+                fillCol.Width = Math.Max(LastColumnMinWidth, w);
+            }
+        }
+
+        private int ResolveStretchFillColumnIndex(GridViewColumnCollection columns)
+        {
+            if (StretchFillColumnIndex >= 0)
+                return StretchFillColumnIndex < columns.Count ? StretchFillColumnIndex : -1;
+            if (StretchLastColumn)
+                return columns.Count - 1;
+            return -1;
+        }
+
+        private double GetAvailableWidthForColumns()
+        {
             double available = ActualWidth;
             if (available <= 2 || double.IsNaN(available))
-                return;
+                return 0;
 
             available -= Padding.Left + Padding.Right;
             available -= BorderThickness.Left + BorderThickness.Right;
 
-            double sumFixed = 0;
-            for (var i = 0; i < columns.Count - 1; i++)
+            // 与行区域一致：内层 ScrollViewer 出现纵向滚动条时 ViewportWidth 小于列头；外层视口亦参与取 min，避免略宽。
+            var itemsViewport = TryGetItemsAreaViewportWidth();
+            if (itemsViewport > 2 && !double.IsNaN(itemsViewport))
+                available = Math.Min(available, itemsViewport);
+
+            if (_partOuterScroll != null)
+            {
+                var ow = _partOuterScroll.ViewportWidth;
+                if (ow > 2 && !double.IsNaN(ow))
+                    available = Math.Min(available, ow);
+            }
+
+            available -= ColumnLayoutFudgeDip;
+            return available > 2 ? available : 0;
+        }
+
+        /// <summary>
+        /// 优先使用模板部件 <c>PART_ItemsScroll</c>；无部件时按 Border→ScrollViewer→DockPanel→内层 ScrollViewer 回退查找。
+        /// </summary>
+        private double TryGetItemsAreaViewportWidth()
+        {
+            if (_partItemsScroll != null && _partItemsScroll.ViewportWidth > 2 && !double.IsNaN(_partItemsScroll.ViewportWidth))
+                return _partItemsScroll.ViewportWidth;
+
+            if (VisualTreeHelper.GetChildrenCount(this) == 0)
+                return 0;
+            if (VisualTreeHelper.GetChild(this, 0) is not Border border)
+                return 0;
+            if (VisualTreeHelper.GetChildrenCount(border) == 0)
+                return 0;
+            if (VisualTreeHelper.GetChild(border, 0) is not ScrollViewer outerSv)
+                return 0;
+            if (VisualTreeHelper.GetChildrenCount(outerSv) == 0)
+                return 0;
+            if (VisualTreeHelper.GetChild(outerSv, 0) is not DockPanel dock)
+                return 0;
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(dock); i++)
+            {
+                if (VisualTreeHelper.GetChild(dock, i) is ScrollViewer innerSv)
+                    return innerSv.ViewportWidth;
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// 按布局前各列宽度比例为所有列分配可用宽度，末列吸收舍入误差。
+        /// </summary>
+        private void StretchAllColumnsProportional()
+        {
+            var columns = Columns;
+            if (columns == null || columns.Count == 0)
+                return;
+
+            var available = GetAvailableWidthForColumns();
+            if (available <= 2)
+                return;
+
+            var snapshot = new double[columns.Count];
+            double sum = 0;
+            for (var i = 0; i < columns.Count; i++)
             {
                 var w = columns[i].Width;
                 if (double.IsNaN(w) || w <= 0)
                     return;
-                sumFixed += w;
+                snapshot[i] = w;
+                sum += w;
+            }
+
+            if (sum <= 0)
+                return;
+
+            double allocated = 0;
+            for (var i = 0; i < columns.Count - 1; i++)
+            {
+                var c = columns[i];
+                var target = available * (snapshot[i] / sum);
+                if (Math.Abs(c.Width - target) > 0.5)
+                    c.Width = target;
+                allocated += c.Width;
             }
 
             var last = columns[^1];
-            var target = Math.Max(LastColumnMinWidth, available - sumFixed);
-            if (Math.Abs(last.Width - target) > 0.5)
-                last.Width = target;
+            var lastTarget = available - allocated;
+            if (Math.Abs(last.Width - lastTarget) > 0.5)
+                last.Width = lastTarget;
+
+            double total = 0;
+            for (var i = 0; i < columns.Count; i++)
+                total += columns[i].Width;
+            if (total > available + 0.5)
+            {
+                var over = total - available;
+                var w = last.Width - over;
+                if (w > 2)
+                    last.Width = w;
+            }
         }
 
         protected override DependencyObject GetContainerForItemOverride()

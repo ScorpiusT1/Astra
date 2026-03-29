@@ -227,6 +227,11 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="BorderThickness" Value="0" />
+        <!-- Auto：仅当内容宽于视口时出现横向滚动条；宽屏时由 StretchLastColumn / StretchFillColumnIndex 铺满 -->
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility"
+                Value="Auto" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility"
+                Value="Auto" />
         <Setter Property="ColumnHeaderStyle" Value="{StaticResource TreeListView.GridViewColumnHeaderStyle}" />
         <Setter Property="Template">
             <Setter.Value>
@@ -235,14 +240,17 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             Background="{TemplateBinding Background}">
-                        <ScrollViewer HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                        <ScrollViewer x:Name="PART_OuterScroll"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
                                       VerticalScrollBarVisibility="Disabled">
                             <DockPanel>
                                 <GridViewHeaderRowPresenter DockPanel.Dock="Top"
                                                             Columns="{TemplateBinding Columns}"
                                                             AllowsColumnReorder="{TemplateBinding AllowsColumnReorder}"
                                                             ColumnHeaderContainerStyle="{TemplateBinding ColumnHeaderStyle}" />
-                                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                <!-- Hidden：不显示内层横向条，但允许行内容宽于视口，由 PART_OuterScroll 统一横向滚动（Disabled 会把行宽钳在视口内，外层永远不出现横条） -->
+                                <ScrollViewer x:Name="PART_ItemsScroll"
+                                              HorizontalScrollBarVisibility="Hidden"
                                               VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
                                     <ItemsPresenter />
                                 </ScrollViewer>
