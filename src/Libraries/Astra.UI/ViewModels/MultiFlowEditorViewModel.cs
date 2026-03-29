@@ -29,6 +29,7 @@ using System.IO;
 using Astra.Core.Foundation.Common;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Windows.Threading;
 
 namespace Astra.UI.ViewModels
 {
@@ -93,8 +94,9 @@ namespace Astra.UI.ViewModels
 
         private IPluginHost _pluginHost;
 
-        private IManifestSerializer _manifestSerializer;
+        private readonly IReadOnlyList<IManifestSerializer> _manifestSerializers;
         private readonly IWorkflowExecutionSessionService _workflowExecutionSessionService;
+        private readonly IManualBarcodeContext? _manualBarcodeContext;
         private Task<OperationResult<ExecutionResult>> _executionTask;
         private CancellationTokenSource _masterExecutionCts;
         private string _activeExecutionId;
@@ -103,6 +105,11 @@ namespace Astra.UI.ViewModels
         private readonly Dictionary<string, DateTime> _nodeRunningSinceUtc = new Dictionary<string, DateTime>();
         private readonly Dictionary<string, long> _nodeStateVersions = new Dictionary<string, long>();
         private const int MinRunningVisualMs = 120;
+
+        /// <summary>
+        /// 是否已安排过“插件就绪后”再填充工具箱（避免构造过早、LoadedPlugins 仍为空时只加载到部分插件节点）。
+        /// </summary>
+        private bool _pluginToolboxIdleLoadScheduled;
 
         /// <summary>
         /// 多流程序列化服务
@@ -403,12 +410,14 @@ namespace Astra.UI.ViewModels
 
         public MultiFlowEditorViewModel(
             IPluginHost pluginHost,
-            IManifestSerializer manifestSerializer,
-            IWorkflowExecutionSessionService workflowExecutionSessionService)
+            IEnumerable<IManifestSerializer> manifestSerializers,
+            IWorkflowExecutionSessionService workflowExecutionSessionService,
+            IManualBarcodeContext? manualBarcodeContext = null)
         {
             _pluginHost = pluginHost;
-            _manifestSerializer = manifestSerializer;
+            _manifestSerializers = manifestSerializers?.Where(s => s != null).ToList() ?? new List<IManifestSerializer>();
             _workflowExecutionSessionService = workflowExecutionSessionService;
+            _manualBarcodeContext = manualBarcodeContext;
             if (_workflowExecutionSessionService != null)
             {
                 _workflowExecutionSessionService.NodeExecutionChanged += OnNodeExecutionChanged;
@@ -482,20 +491,8 @@ namespace Astra.UI.ViewModels
                     return;
                 }
 
-                //// 获取清单序列化器（如果已注册）
-                //// 注意：如果服务提供者中没有注册序列化器，PluginNodeService 会使用默认的 XML 序列化器
-                var serializers = new List<IManifestSerializer>();
-                try
-                {
-                    // 尝试从服务提供者获取序列化器
-                    var xmlSerializer = _manifestSerializer;
-                    if (xmlSerializer != null)
-                        serializers.Add(xmlSerializer);
-                }
-                catch { }
-
-                // 创建插件节点服务
-                _pluginNodeService = new PluginNodeService(pluginHost, serializers.Count > 0 ? serializers : null);
+                // 传入宿主注册的全部 IManifestSerializer（含 Xml/Json/Yaml），避免只解析到“最后一个”单例
+                _pluginNodeService = new PluginNodeService(pluginHost, _manifestSerializers);
 
                 Debug.WriteLine($"[SequenceViewModel] 插件节点服务已初始化，已加载插件数量: {pluginHost.LoadedPlugins.Count}");
             }
@@ -532,7 +529,47 @@ namespace Astra.UI.ViewModels
                 EdgeItemsSource = new ObservableCollection<Edge>();
             }
 
-            // 从插件加载节点工具类别
+            // 工具箱条目依赖 IPluginHost.LoadedPlugins；VM 构造可能早于插件加载完成，故延后到 ApplicationIdle 再填充。
+            // 序列页 Loaded 时会再调用 <see cref="RefreshPluginToolBoxFromPlugins"/> 兜底。
+            if (!_pluginToolboxIdleLoadScheduled)
+            {
+                _pluginToolboxIdleLoadScheduled = true;
+                SchedulePluginToolBoxLoadWhenPluginsReady();
+            }
+        }
+
+        /// <summary>
+        /// 在 UI 线程空闲时从当前已加载插件重建工具箱（用于插件晚于 VM 构造完成注册的场景）。
+        /// </summary>
+        private void SchedulePluginToolBoxLoadWhenPluginsReady()
+        {
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            dispatcher.BeginInvoke(new Action(() =>
+            {
+                RefreshPluginToolBoxFromPlugins();
+            }), DispatcherPriority.ApplicationIdle);
+        }
+
+        /// <summary>
+        /// 从插件清单重新加载 NodeToolBox 工具类别（会清空再填充；可在序列视图 Loaded 时调用以与插件加载时序对齐）。
+        /// </summary>
+        public void RefreshPluginToolBoxFromPlugins()
+        {
+            if (_pluginNodeService == null)
+            {
+                Debug.WriteLine("[MultiFlowEditorViewModel] 插件节点服务未初始化，跳过工具箱刷新");
+                return;
+            }
+
+            if (ToolBoxItemsSource == null)
+            {
+                ToolBoxItemsSource = new ObservableCollection<ToolCategory>();
+            }
+            else
+            {
+                ToolBoxItemsSource.Clear();
+            }
+
             LoadToolCategoriesFromPlugins();
         }
 
@@ -2779,6 +2816,7 @@ namespace Astra.UI.ViewModels
             }
 
             SaveCurrentTabState();
+            ResetAllExecutionVisualStateBeforeRun();
 
             // 执行前快速校验（用于定位“为什么只跑了一个节点”）
             if (CurrentTab?.Type == WorkflowType.Sub)
@@ -2984,6 +3022,7 @@ namespace Astra.UI.ViewModels
 
             // 启动前必须同步当前画布的未保存变更，否则只会执行上次保存过的节点集合
             SaveCurrentTabState();
+            ResetAllExecutionVisualStateBeforeRun();
 
             IsPaused = false;
 
@@ -3144,6 +3183,7 @@ namespace Astra.UI.ViewModels
 
             // 启动前必须同步当前画布的未保存变更，否则只会执行上次保存过的节点集合
             SaveCurrentTabState();
+            ResetAllExecutionVisualStateBeforeRun();
 
             // 与 Play() 保持一致：输出执行前的节点/连接数量，便于定位“为什么只跑一个节点”
             var nodes = subWorkflow?.Nodes;
@@ -3903,11 +3943,16 @@ namespace Astra.UI.ViewModels
                 .ToDictionary(x => x.Key, x => x.Value?.Value)
                 ?? new Dictionary<string, object>();
 
-            return new NodeContext
+            var context = new NodeContext
             {
                 InputData = new Dictionary<string, object>(),
                 GlobalVariables = globalVariables
             };
+
+            if (!string.IsNullOrWhiteSpace(_manualBarcodeContext?.PendingBarcode))
+                context.SetGlobalVariable("SN", _manualBarcodeContext.PendingBarcode);
+
+            return context;
         }
 
         private async Task ExecuteMasterWorkflowAsync(CancellationToken cancellationToken)
@@ -4244,6 +4289,113 @@ namespace Astra.UI.ViewModels
                 .ToList();
         }
 
+        /// <summary>
+        /// 每次开始执行前清空上一轮留在界面上的执行态（子流程节点、主流程引用块、Tab 标题指示器、节点动画辅助字典）。
+        /// </summary>
+        private void ResetAllExecutionVisualStateBeforeRun()
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+
+            void Core()
+            {
+                lock (_nodeStateVisualLock)
+                {
+                    _nodeRunningSinceUtc.Clear();
+                    _nodeStateVersions.Clear();
+                }
+
+                ProcessTime = 0;
+
+                if (SubWorkflowTabs != null)
+                {
+                    foreach (var tab in SubWorkflowTabs)
+                    {
+                        if (tab == null)
+                        {
+                            continue;
+                        }
+
+                        tab.TabExecutionState = NodeExecutionState.Idle;
+                        if (tab.Type == WorkflowType.Sub)
+                        {
+                            ResetWorkFlowNodeExecutionVisuals(tab.GetSubWorkflow());
+                        }
+                    }
+                }
+
+                if (MasterWorkflowTab?.Nodes != null)
+                {
+                    foreach (var node in MasterWorkflowTab.Nodes)
+                    {
+                        if (node == null)
+                        {
+                            continue;
+                        }
+
+                        node.LastExecutionResult = null;
+                        node.ExecutionState = NodeExecutionState.Idle;
+                    }
+                }
+
+                if (MasterWorkflowTab != null)
+                {
+                    MasterWorkflowTab.TabExecutionState = NodeExecutionState.Idle;
+                }
+            }
+
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                Core();
+                return;
+            }
+
+            dispatcher.Invoke(Core);
+        }
+
+        private static void ResetWorkFlowNodeExecutionVisuals(WorkFlowNode? wf)
+        {
+            if (wf == null)
+            {
+                return;
+            }
+
+            wf.LastExecutionResult = null;
+            wf.ExecutionState = NodeExecutionState.Idle;
+
+            if (wf.Nodes == null)
+            {
+                return;
+            }
+
+            foreach (var n in wf.Nodes)
+            {
+                if (n == null)
+                {
+                    continue;
+                }
+
+                n.LastExecutionResult = null;
+                n.ExecutionState = NodeExecutionState.Idle;
+            }
+        }
+
+        /// <summary>
+        /// 子流程内是否有未跳过的失败节点（用于引擎整单 Success 与节点级失败并存时的展示与统计）。
+        /// </summary>
+        private static bool HasNonSkippedNodeFailure(WorkFlowNode? workflow)
+        {
+            if (workflow?.Nodes == null)
+            {
+                return false;
+            }
+
+            return workflow.Nodes.Any(n =>
+                n != null &&
+                n.LastExecutionResult != null &&
+                !n.LastExecutionResult.Success &&
+                !n.LastExecutionResult.IsSkipped);
+        }
+
         private async Task<bool> ExecuteSubWorkflowInMasterAsync(
             WorkFlowNode workflow,
             string runningMessage,
@@ -4279,8 +4431,10 @@ namespace Astra.UI.ViewModels
             }
 
             UpdateMasterReferenceNodeResult(workflow, result.Data);
+            var anyNodeFailed = HasNonSkippedNodeFailure(workflow);
             var state = result.Data.ResultType == ExecutionResultType.Cancelled
                 ? NodeExecutionState.Cancelled
+                : anyNodeFailed ? NodeExecutionState.Failed
                 : result.Data.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
             UpdateMasterReferenceNodeState(workflow, state);
             SetTabExecutionState(workflow, state);
@@ -4461,10 +4615,12 @@ namespace Astra.UI.ViewModels
             if (operationResult?.Data != null)
             {
                 var execResult = operationResult.Data;
+                var anyNodeFailed = HasNonSkippedNodeFailure(workflow);
                 SetTabExecutionState(
                     workflow,
                     execResult.ResultType == ExecutionResultType.Cancelled
                         ? NodeExecutionState.Cancelled
+                        : anyNodeFailed ? NodeExecutionState.Failed
                         : execResult.Success ? NodeExecutionState.Success : NodeExecutionState.Failed);
             }
             else
@@ -4514,10 +4670,13 @@ namespace Astra.UI.ViewModels
                     return;
                 }
 
-                IsStatusError = !result.Data.Success;
-                StatusMessage = result.Data.Success
+                var anyNodeFailed = HasNonSkippedNodeFailure(workflow);
+                IsStatusError = !result.Data.Success || anyNodeFailed;
+                StatusMessage = result.Data.Success && !anyNodeFailed
                     ? result.Data.Message ?? "流程执行完成"
-                    : result.Data.Message ?? "流程执行失败";
+                    : anyNodeFailed
+                        ? $"流程已跑完，但有步骤失败（见节点状态）：{result.Data.Message}"
+                        : result.Data.Message ?? "流程执行失败";
             }
             catch (Exception ex)
             {
