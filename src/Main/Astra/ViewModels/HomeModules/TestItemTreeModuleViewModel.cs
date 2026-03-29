@@ -196,7 +196,8 @@ namespace Astra.ViewModels.HomeModules
                         ApplyUiPayload(node, uiPayload);
                     }
 
-                    node.IsChartButtonVisible = ShowChartAction && node.HasChartData;
+                    node.IsChartButtonVisible = ShowChartAction &&
+                        (node.SupportsHomeChartButton || node.HasChartData);
 
                     if (state == NodeExecutionState.Running)
                     {
@@ -379,7 +380,8 @@ namespace Astra.ViewModels.HomeModules
         {
             if (!node.IsRoot)
             {
-                node.IsChartButtonVisible = showChartActionPreference && node.HasChartData;
+                node.IsChartButtonVisible = showChartActionPreference &&
+                    (node.SupportsHomeChartButton || node.HasChartData);
             }
 
             foreach (var child in node.Children)
@@ -510,7 +512,7 @@ namespace Astra.ViewModels.HomeModules
             _acceptStandaloneExecutionEvents = false;
         }
 
-        private static void ResetNodeDurations(IEnumerable<TestTreeNodeItem> nodes)
+        private void ResetNodeDurations(IEnumerable<TestTreeNodeItem> nodes)
         {
             foreach (var node in nodes)
             {
@@ -525,7 +527,7 @@ namespace Astra.ViewModels.HomeModules
                 {
                     node.HasChartData = false;
                     node.ChartArtifactKey = string.Empty;
-                    node.IsChartButtonVisible = false;
+                    node.IsChartButtonVisible = ShowChartAction && node.SupportsHomeChartButton;
                 }
 
                 if (node.Children.Count > 0)
@@ -707,9 +709,13 @@ namespace Astra.ViewModels.HomeModules
         [ObservableProperty]
         private bool _isChartButtonVisible;
 
-        /// <summary>是否存在可供图表展示的曲线数据（与总开关共同决定图表按钮是否可见）。</summary>
+        /// <summary>是否存在可供图表展示的曲线数据（与总开关、<see cref="SupportsHomeChartButton"/> 共同决定图表按钮是否可见）。</summary>
         [ObservableProperty]
         private bool _hasChartData;
+
+        /// <summary>节点类型实现 <see cref="Astra.Core.Nodes.Ui.IHomeTestItemChartNode"/>，加载树时设置；新运行开始时不清除。</summary>
+        [ObservableProperty]
+        private bool _supportsHomeChartButton;
 
         /// <summary>最近一次执行写入的 Raw 产物键（展示用）。</summary>
         [ObservableProperty]

@@ -2,6 +2,7 @@ using Astra.Configuration;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Serialization;
+using Astra.Core.Nodes.Ui;
 using Astra.ViewModels.HomeModules;
 using System;
 using System.Collections.Generic;
@@ -108,7 +109,8 @@ namespace Astra.Services.Home
                         ActualValue = 0,
                         LowerLimit = 0,
                         UpperLimit = 0,
-                        IsRoot = false
+                        IsRoot = false,
+                        SupportsHomeChartButton = node is IHomeTestItemChartNode cap && cap.ShowHomeChartButton
                     });
                 }
 

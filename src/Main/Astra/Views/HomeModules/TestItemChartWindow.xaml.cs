@@ -16,8 +16,8 @@ namespace Astra.Views.HomeModules
         {
             InitializeComponent();
 
-            ItemPlot.Plot.Axes.Bottom.Label.Text = "X";
-            ItemPlot.Plot.Axes.Left.Label.Text = "Y";
+            ItemPlot.Plot.Axes.Bottom.Label.Text = string.Empty;
+            ItemPlot.Plot.Axes.Left.Label.Text = string.Empty;
             ApplyItemPlotStyleToAllPlots();
 
             Loaded += OnLoaded;
@@ -51,10 +51,21 @@ namespace Astra.Views.HomeModules
                 return;
             }
 
-            var bottom = string.IsNullOrWhiteSpace(payload.BottomAxisLabel) ? "X" : payload.BottomAxisLabel;
-            var left = string.IsNullOrWhiteSpace(payload.LeftAxisLabel) ? "Y" : payload.LeftAxisLabel;
-            plot.Axes.Bottom.Label.Text = bottom;
-            plot.Axes.Left.Label.Text = left;
+            // 底部 = 横轴标签 + 横轴单位；左侧 = 纵轴标签 + 纵轴单位（与 ChartDisplayPayload 字段一一对应）。
+            var bottomAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.BottomAxisLabel, payload.BottomAxisUnit);
+            var leftAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.LeftAxisLabel, payload.LeftAxisUnit);
+            if (string.IsNullOrWhiteSpace(bottomAxisTitle))
+            {
+                bottomAxisTitle = "X";
+            }
+
+            if (string.IsNullOrWhiteSpace(leftAxisTitle))
+            {
+                leftAxisTitle = "Y";
+            }
+
+            plot.Axes.Bottom.Label.Text = bottomAxisTitle;
+            plot.Axes.Left.Label.Text = leftAxisTitle;
 
             switch (payload.Kind)
             {

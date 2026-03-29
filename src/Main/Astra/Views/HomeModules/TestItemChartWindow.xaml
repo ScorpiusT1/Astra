@@ -10,6 +10,7 @@
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BackgroundBrush}">
     <Grid Margin="16">
+        <!-- 坐标轴标题由代码后置根据 ChartDisplayPayload 设置：底部/左侧各为「轴标签 + 单位」（单位为空则仅显示标签）。 -->
         <Border
                 CornerRadius="10"
                 BorderBrush="{DynamicResource BorderBrush}"

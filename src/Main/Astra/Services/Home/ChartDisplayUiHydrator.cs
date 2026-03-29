@@ -27,7 +27,7 @@ namespace Astra.Services.Home
             if (result.OutputData.TryGetValue(NodeUiOutputKeys.ChartPayloadSnapshot, out var snap) &&
                 snap is ChartDisplayPayload inlineSnapshot)
             {
-                _cache.SetPayload(nodeId, inlineSnapshot);
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(inlineSnapshot, result.OutputData));
                 return;
             }
 
@@ -53,7 +53,7 @@ namespace Astra.Services.Home
 
             if (raw is ChartDisplayPayload payloadFromStore)
             {
-                _cache.SetPayload(nodeId, payloadFromStore);
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(payloadFromStore, result.OutputData));
                 return;
             }
 
@@ -68,14 +68,15 @@ namespace Astra.Services.Home
                 return;
             }
 
-            _cache.SetPayload(nodeId, new ChartDisplayPayload
+            var nvhPayload = new ChartDisplayPayload
             {
                 Kind = ChartPayloadKind.Signal1D,
                 SignalY = samples,
                 SamplePeriod = 1.0,
                 BottomAxisLabel = "样本",
                 LeftAxisLabel = "数值"
-            });
+            };
+            _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(nvhPayload, result.OutputData));
         }
     }
 }

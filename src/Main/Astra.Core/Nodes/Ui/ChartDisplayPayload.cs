@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Astra.Core.Nodes.Ui
 {
     /// <summary>
@@ -31,8 +33,14 @@ namespace Astra.Core.Nodes.Ui
         /// <summary>底部轴标题（如时间、频率）。</summary>
         public string BottomAxisLabel { get; init; } = string.Empty;
 
+        /// <summary>底部轴单位（可选，与 <see cref="BottomAxisLabel"/> 在 UI 中组合显示）。</summary>
+        public string BottomAxisUnit { get; init; } = string.Empty;
+
         /// <summary>左侧轴标题（如幅值）。</summary>
         public string LeftAxisLabel { get; init; } = string.Empty;
+
+        /// <summary>左侧轴单位（可选）。</summary>
+        public string LeftAxisUnit { get; init; } = string.Empty;
 
         // --- Signal1D ---
         public double[]? SignalY { get; init; }
@@ -62,6 +70,84 @@ namespace Astra.Core.Nodes.Ui
         /// <summary>可选：在图上绘制水平参考线（卡控上限）。</summary>
         public double? HorizontalLimitUpper { get; init; }
 
+        /// <summary>
+        /// 将 <paramref name="outputData"/> 中的轴标题/单位（若存在键）覆盖到 <paramref name="payload"/>，用于执行结果与 Raw/内联快照合并。
+        /// </summary>
+        public static ChartDisplayPayload MergeAxisMetadata(ChartDisplayPayload payload, IDictionary<string, object>? outputData)
+        {
+            if (outputData == null || outputData.Count == 0)
+            {
+                return payload;
+            }
+
+            var bottomLabel = payload.BottomAxisLabel;
+            var bottomUnit = payload.BottomAxisUnit;
+            var leftLabel = payload.LeftAxisLabel;
+            var leftUnit = payload.LeftAxisUnit;
+
+            if (outputData.TryGetValue(NodeUiOutputKeys.ChartXAxisLabel, out var xl))
+            {
+                bottomLabel = xl?.ToString() ?? string.Empty;
+            }
+
+            if (outputData.TryGetValue(NodeUiOutputKeys.ChartXAxisUnit, out var xu))
+            {
+                bottomUnit = xu?.ToString() ?? string.Empty;
+            }
+
+            if (outputData.TryGetValue(NodeUiOutputKeys.ChartYAxisLabel, out var yl))
+            {
+                leftLabel = yl?.ToString() ?? string.Empty;
+            }
+
+            if (outputData.TryGetValue(NodeUiOutputKeys.ChartYAxisUnit, out var yu))
+            {
+                leftUnit = yu?.ToString() ?? string.Empty;
+            }
+
+            return new ChartDisplayPayload
+            {
+                Kind = payload.Kind,
+                BottomAxisLabel = bottomLabel,
+                BottomAxisUnit = bottomUnit,
+                LeftAxisLabel = leftLabel,
+                LeftAxisUnit = leftUnit,
+                SignalY = payload.SignalY,
+                SamplePeriod = payload.SamplePeriod,
+                X = payload.X,
+                Y = payload.Y,
+                HeatmapZ = payload.HeatmapZ,
+                HeatmapXCoordinates = payload.HeatmapXCoordinates,
+                HeatmapYCoordinates = payload.HeatmapYCoordinates,
+                SegmentLines = payload.SegmentLines,
+                HorizontalLimitLower = payload.HorizontalLimitLower,
+                HorizontalLimitUpper = payload.HorizontalLimitUpper
+            };
+        }
+
+        /// <summary>组合轴标题与单位，用于 ScottPlot 轴标签（单位为空则只显示标题）。</summary>
+        public static string FormatAxisTitle(string label, string unit)
+        {
+            var l = label?.Trim() ?? string.Empty;
+            var u = unit?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(l) && string.IsNullOrEmpty(u))
+            {
+                return string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(u))
+            {
+                return l;
+            }
+
+            if (string.IsNullOrEmpty(l))
+            {
+                return u;
+            }
+
+            return $"{l} ({u})";
+        }
+
         /// <summary>深拷贝，避免缓存与执行上下文共享数组引用。</summary>
         public ChartDisplayPayload Clone()
         {
@@ -69,7 +155,9 @@ namespace Astra.Core.Nodes.Ui
             {
                 Kind = Kind,
                 BottomAxisLabel = BottomAxisLabel,
+                BottomAxisUnit = BottomAxisUnit,
                 LeftAxisLabel = LeftAxisLabel,
+                LeftAxisUnit = LeftAxisUnit,
                 SignalY = Clone1D(SignalY),
                 SamplePeriod = SamplePeriod,
                 X = Clone1D(X),

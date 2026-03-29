@@ -13,6 +13,18 @@ namespace Astra.Core.Nodes.Ui
         public const string HasChartData = "Ui.HasChartData";
         public const string ChartArtifactKey = "Ui.ChartArtifactKey";
 
+        /// <summary>主页图表横轴标题（与 <see cref="ChartDisplayPayload.BottomAxisLabel"/> 一致）。</summary>
+        public const string ChartXAxisLabel = "Ui.ChartXAxisLabel";
+
+        /// <summary>主页图表横轴单位（与 <see cref="ChartDisplayPayload.BottomAxisUnit"/> 一致）。</summary>
+        public const string ChartXAxisUnit = "Ui.ChartXAxisUnit";
+
+        /// <summary>主页图表纵轴标题（与 <see cref="ChartDisplayPayload.LeftAxisLabel"/> 一致）。</summary>
+        public const string ChartYAxisLabel = "Ui.ChartYAxisLabel";
+
+        /// <summary>主页图表纵轴单位（与 <see cref="ChartDisplayPayload.LeftAxisUnit"/> 一致）。</summary>
+        public const string ChartYAxisUnit = "Ui.ChartYAxisUnit";
+
         /// <summary>
         /// 内联图表快照（仅适合较小数据；大数据请用 Raw 存储挂载 <see cref="ChartDisplayPayload"/>）。
         /// </summary>
@@ -32,6 +44,10 @@ namespace Astra.Core.Nodes.Ui
             CurveCheckPass,
             HasChartData,
             ChartArtifactKey,
+            ChartXAxisLabel,
+            ChartXAxisUnit,
+            ChartYAxisLabel,
+            ChartYAxisUnit,
             Summary,
             FailReason,
             CurveFailDetail
