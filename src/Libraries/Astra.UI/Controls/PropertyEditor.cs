@@ -562,7 +562,7 @@ namespace Astra.UI.Controls
             switch (SortMode)
             {
                 case PropertySortMode.Categorized:
-                    // ✅ 修复：使用 CategoryGroupOrder 而不是 GroupOrder
+                    // 组顺序：CategoryGroupOrder（越小越靠前）；组内：Order（越小越靠前）
                     PropertiesView.SortDescriptions.Add(
                         new SortDescription(nameof(PropertyDescriptor.CategoryGroupOrder), ListSortDirection.Ascending));
                     PropertiesView.SortDescriptions.Add(
@@ -581,10 +581,16 @@ namespace Astra.UI.Controls
                 case PropertySortMode.DefinitionOrder:
                     PropertiesView.SortDescriptions.Add(
                         new SortDescription(nameof(PropertyDescriptor.Order), ListSortDirection.Ascending));
+                    PropertiesView.SortDescriptions.Add(
+                        new SortDescription(nameof(PropertyDescriptor.DisplayName), ListSortDirection.Ascending));
                     break;
             }
         }
 
+        /// <summary>
+        /// 计算每个分类（组）在列表中的顺序键：优先取该组内最小的 <see cref="PropertyDescriptor.GroupOrder"/>（显式分组序）；
+        /// 若均未设置（均为 int.MaxValue），则取该组内最小的 <see cref="PropertyDescriptor.Order"/>，保证仅写属性 Order 时组顺序也为越小越靠前。
+        /// </summary>
         private void UpdateCategoryGroupOrders()
         {
             if (Properties == null) return;
@@ -593,14 +599,20 @@ namespace Astra.UI.Controls
                 .GroupBy(p => p.Category ?? "常规")
                 .ToDictionary(
                     g => g.Key,
-                    g => g.Select(p => p.GroupOrder).DefaultIfEmpty(int.MaxValue).Min());
+                    g =>
+                    {
+                        var minGroup = g.Select(p => p.GroupOrder).DefaultIfEmpty(int.MaxValue).Min();
+                        if (minGroup < int.MaxValue)
+                            return minGroup;
+                        return g.Select(p => p.Order).DefaultIfEmpty(int.MaxValue).Min();
+                    });
 
             foreach (var property in Properties)
             {
                 var category = property.Category ?? "常规";
-                if (categoryGroupOrders.TryGetValue(category, out var minGroupOrder))
+                if (categoryGroupOrders.TryGetValue(category, out var orderKey))
                 {
-                    property.CategoryGroupOrder = minGroupOrder;
+                    property.CategoryGroupOrder = orderKey;
                 }
             }
         }
