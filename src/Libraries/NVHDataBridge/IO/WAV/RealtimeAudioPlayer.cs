@@ -1,6 +1,7 @@
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,7 +32,7 @@ namespace NVHDataBridge.IO.WAV
     {
         #region 私有字段
 
-        private readonly WaveOutEvent _waveOut;
+        private readonly WasapiOut _wasapiOut;
         private readonly BufferedWaveProvider _bufferedProvider;
         private readonly WaveFormat _waveFormat;
         private readonly object _lockObject = new object();
@@ -80,8 +81,8 @@ namespace NVHDataBridge.IO.WAV
         /// </summary>
         public float Volume
         {
-            get => _waveOut.Volume;
-            set => _waveOut.Volume = Math.Clamp(value, 0.0f, 1.0f);
+            get => _wasapiOut.Volume;
+            set => _wasapiOut.Volume = Math.Clamp(value, 0.0f, 1.0f);
         }
 
         /// <summary>
@@ -102,7 +103,113 @@ namespace NVHDataBridge.IO.WAV
         /// <summary>
         /// 获取是否正在播放
         /// </summary>
-        public bool IsPlaying => _waveOut.PlaybackState == PlaybackState.Playing;
+        public bool IsPlaying => _wasapiOut.PlaybackState == PlaybackState.Playing;
+
+        #endregion
+
+        #region 播放设备枚举（WASAPI 渲染端点）
+
+        private static readonly object WasapiRenderDevicesCacheLock = new object();
+
+        private static IReadOnlyList<AudioDeviceInfo>? _cachedWasapiRenderDevices;
+
+        private static DateTime _wasapiRenderDevicesCacheUtc;
+
+        /// <summary>
+        /// 枚举结果缓存有效期；过期后下次 <see cref="EnumerateWasapiRenderDevices"/> 会重新枚举。
+        /// </summary>
+        private static readonly TimeSpan WasapiRenderDevicesCacheTtl = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// 立即枚举并填充 <see cref="EnumerateWasapiRenderDevices"/> 使用的缓存（可在插件启动时调用以减少首次打开属性下拉的延迟）。
+        /// </summary>
+        public static void PreloadWasapiRenderDevices()
+        {
+            try
+            {
+                lock (WasapiRenderDevicesCacheLock)
+                {
+                    _cachedWasapiRenderDevices = EnumerateWasapiRenderDevicesUncached();
+                    _wasapiRenderDevicesCacheUtc = DateTime.UtcNow;
+                }
+            }
+            catch
+            {
+                // 预加载失败不抛异常；首次下拉仍会走枚举
+            }
+        }
+
+        /// <summary>
+        /// 清除播放设备缓存，下次枚举将重新查询系统（例如插拔音频设备后可调用）。
+        /// </summary>
+        public static void InvalidateWasapiRenderDevicesCache()
+        {
+            lock (WasapiRenderDevicesCacheLock)
+            {
+                _cachedWasapiRenderDevices = null;
+            }
+        }
+
+        /// <summary>
+        /// 枚举当前用户会话下可用的音频输出（播放）设备。
+        /// 结果在短时间内会缓存，避免属性面板等频繁刷新时重复访问 MMDevice API。
+        /// 选择时请使用 <see cref="AudioDeviceInfo.MmDeviceId"/> 传入构造函数（与 Windows 设备列表一致，优于已废弃的 WaveOut 序号）。
+        /// </summary>
+        public static IReadOnlyList<AudioDeviceInfo> EnumerateWasapiRenderDevices()
+        {
+            lock (WasapiRenderDevicesCacheLock)
+            {
+                if (_cachedWasapiRenderDevices != null &&
+                    DateTime.UtcNow - _wasapiRenderDevicesCacheUtc < WasapiRenderDevicesCacheTtl)
+                {
+                    return _cachedWasapiRenderDevices;
+                }
+
+                _cachedWasapiRenderDevices = EnumerateWasapiRenderDevicesUncached();
+                _wasapiRenderDevicesCacheUtc = DateTime.UtcNow;
+                return _cachedWasapiRenderDevices;
+            }
+        }
+
+        private static IReadOnlyList<AudioDeviceInfo> EnumerateWasapiRenderDevicesUncached()
+        {
+            var list = new List<AudioDeviceInfo>();
+            using var enumerator = new MMDeviceEnumerator();
+            var index = 0;
+            foreach (var d in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+            {
+                list.Add(new AudioDeviceInfo
+                {
+                    DeviceNumber = index++,
+                    MmDeviceId = d.ID,
+                    ProductName = d.FriendlyName,
+                    Channels = 2
+                });
+            }
+
+            return list;
+        }
+
+        /// <summary>
+        /// 使用 WASAPI 设备 ID 解析友好名称（无效时返回 null）。
+        /// </summary>
+        public static string? TryGetWasapiRenderDeviceFriendlyName(string? mmDeviceId)
+        {
+            if (string.IsNullOrWhiteSpace(mmDeviceId))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var enumerator = new MMDeviceEnumerator();
+                return enumerator.GetDevice(mmDeviceId).FriendlyName;
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         #endregion
 
@@ -115,7 +222,11 @@ namespace NVHDataBridge.IO.WAV
         /// <param name="channels">通道数（1=单声道，2=立体声）</param>
         /// <param name="bitsPerSample">位深度（16或32，默认16）</param>
         /// <param name="bufferLengthMs">缓冲区长度（毫秒），默认1000ms</param>
-        public RealtimeAudioPlayer(int sampleRate, int channels, int bitsPerSample = 16, int bufferLengthMs = DEFAULT_BUFFER_LENGTH_MS)
+        /// <param name="playbackMmDeviceId">
+        /// 可选：WASAPI 输出设备 ID（与 <see cref="EnumerateWasapiRenderDevices"/> 中 <see cref="AudioDeviceInfo.MmDeviceId"/> 相同）。
+        /// 为 null 或空白时使用系统默认播放设备。
+        /// </param>
+        public RealtimeAudioPlayer(int sampleRate, int channels, int bitsPerSample = 16, int bufferLengthMs = DEFAULT_BUFFER_LENGTH_MS, string? playbackMmDeviceId = null)
         {
             if (sampleRate <= 0)
                 throw new ArgumentException("采样率必须大于0", nameof(sampleRate));
@@ -137,9 +248,19 @@ namespace NVHDataBridge.IO.WAV
                 DiscardOnBufferOverflow = false
             };
 
-            _waveOut = new WaveOutEvent();
-            _waveOut.Init(_bufferedProvider);
-            _waveOut.PlaybackStopped += WaveOut_PlaybackStopped;
+            if (string.IsNullOrWhiteSpace(playbackMmDeviceId))
+            {
+                _wasapiOut = new WasapiOut(AudioClientShareMode.Shared, true, 200);
+            }
+            else
+            {
+                using var enumerator = new MMDeviceEnumerator();
+                var device = enumerator.GetDevice(playbackMmDeviceId);
+                _wasapiOut = new WasapiOut(device, AudioClientShareMode.Shared, true, 200);
+            }
+
+            _wasapiOut.Init(_bufferedProvider);
+            _wasapiOut.PlaybackStopped += WasapiOut_PlaybackStopped;
         }
 
         #endregion
@@ -157,7 +278,7 @@ namespace NVHDataBridge.IO.WAV
             {
                 if (!_isStarted)
                 {
-                    _waveOut.Play();
+                    _wasapiOut.Play();
                     _isStarted = true;
                 }
             }
@@ -170,7 +291,7 @@ namespace NVHDataBridge.IO.WAV
         {
             lock (_lockObject)
             {
-                _waveOut.Stop();
+                _wasapiOut.Stop();
                 _bufferedProvider.ClearBuffer();
                 _isStarted = false;
             }
@@ -182,7 +303,7 @@ namespace NVHDataBridge.IO.WAV
         public void Pause()
         {
             ThrowIfDisposed();
-            _waveOut.Pause();
+            _wasapiOut.Pause();
         }
 
         /// <summary>
@@ -191,9 +312,9 @@ namespace NVHDataBridge.IO.WAV
         public void Resume()
         {
             ThrowIfDisposed();
-            if (_waveOut.PlaybackState == NAudio.Wave.PlaybackState.Paused)
+            if (_wasapiOut.PlaybackState == NAudio.Wave.PlaybackState.Paused)
             {
-                _waveOut.Play();
+                _wasapiOut.Play();
             }
         }
 
@@ -360,7 +481,7 @@ namespace NVHDataBridge.IO.WAV
         /// <summary>
         /// 播放停止事件处理
         /// </summary>
-        private void WaveOut_PlaybackStopped(object sender, StoppedEventArgs e)
+        private void WasapiOut_PlaybackStopped(object sender, StoppedEventArgs e)
         {
             OnPlaybackStopped();
         }
@@ -394,7 +515,7 @@ namespace NVHDataBridge.IO.WAV
             lock (_lockObject)
             {
                 Stop();
-                _waveOut?.Dispose();
+                _wasapiOut?.Dispose();
             }
 
             _isDisposed = true;

@@ -14,6 +14,11 @@ namespace NVHDataBridge.IO.WAV
         public int DeviceNumber { get; set; }
 
         /// <summary>
+        /// WASAPI 渲染端点 ID（MMDevice.ID），用于按设备输出。
+        /// </summary>
+        public string? MmDeviceId { get; set; }
+
+        /// <summary>
         /// 设备产品名称
         /// </summary>
         public string ProductName { get; set; }
