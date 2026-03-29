@@ -4,42 +4,6 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
-    <UserControl.Resources>
-        <!-- 良率进度条动画 -->
-        <Style x:Key="YieldProgressBar"
-               TargetType="ProgressBar">
-            <Setter Property="Height"
-                    Value="6" />
-            <Setter Property="Background"
-                    Value="{DynamicResource LightSuccessBrush}" />
-            <Setter Property="BorderThickness"
-                    Value="0" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ProgressBar">
-                        <Border CornerRadius="3"
-                                Background="{TemplateBinding Background}">
-                            <Border x:Name="PART_Track">
-                                <Border x:Name="PART_Indicator"
-                                        HorizontalAlignment="Left"
-                                        CornerRadius="3">
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0"
-                                                             EndPoint="1,0">
-                                            <GradientStop Color="{DynamicResource SuccessColor}"
-                                                          Offset="0" />
-                                            <GradientStop Color="{DynamicResource InfoColor}"
-                                                          Offset="1" />
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                </Border>
-                            </Border>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </UserControl.Resources>
 
     <Border Background="{DynamicResource RegionBrush}"
             CornerRadius="12"
@@ -55,7 +19,6 @@
         </Border.ContextMenu>
         <StackPanel>
 
-            <!-- ── 标题栏 ── -->
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -63,23 +26,12 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 渐变竖条（统一：青→蓝） -->
                 <Border Grid.Column="0"
                         Width="4"
                         CornerRadius="2"
-                        Margin="0,0,10,0">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0"
-                                             EndPoint="0,1">
-                            <GradientStop Color="{DynamicResource InfoColor}"
-                                          Offset="0" />
-                            <GradientStop Color="{DynamicResource PrimaryColor}"
-                                          Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                        Margin="0,0,10,0"
+                        Background="{StaticResource HomeModuleTitleInfoToPrimaryBrush}" />
 
-                <!-- 标题 -->
                 <TextBlock Grid.Column="1"
                            Text="良率显示模块"
                            FontSize="15"
@@ -87,7 +39,6 @@
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TitleBrush}" />
 
-                <!-- 右侧良率 Pill -->
                 <Border Grid.Column="2"
                         CornerRadius="10"
                         Padding="8,3"
@@ -135,159 +86,58 @@
                        LineHeight="18"
                        Foreground="{DynamicResource SecondaryTextBrush}" />
 
-            <!-- ── 四个统计卡片 ── -->
             <UniformGrid Columns="2"
                          Margin="0,10,0,0">
 
-                <!-- 总测试数 -->
-                <Border CornerRadius="8"
-                        Height="92"
-                        Margin="0,0,4,4"
-                        BorderBrush="#333B82F6"
-                        BorderThickness="1">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0"
-                                             EndPoint="1,1">
-                            <GradientStop Color="#0D3B82F6"
-                                          Offset="0" />
-                            <GradientStop Color="#00000000"
-                                          Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
+                <Border Style="{StaticResource YieldStatCardTotalStyle}">
                     <Grid>
-                        <!-- 左侧彩色竖线 -->
-                        <Border Width="4"
-                                HorizontalAlignment="Left"
-                                CornerRadius="8,0,0,8"
-                                Background="#3B82F6" />
-                        <!-- 内容 -->
-                        <StackPanel Margin="14,0,10,0"
-                                    VerticalAlignment="Center">
+                        <Border Style="{StaticResource YieldStatCardPrimaryStripeStyle}" />
+                        <StackPanel Style="{StaticResource YieldStatCardContentPanelStyle}">
                             <TextBlock Text="总测试数"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource SecondaryTextBrush}"
-                                       Margin="0,0,0,4" />
+                                       Style="{StaticResource YieldStatCardMetricLabelStyle}" />
                             <TextBlock Text="{Binding TotalCount}"
-                                       FontSize="28"
-                                       FontWeight="Bold"
-                                       Foreground="#3B82F6" />
+                                       Style="{StaticResource YieldStatCardMetricValuePrimaryStyle}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- 通过数 -->
-                <Border CornerRadius="8"
-                        Height="92"
-                        Margin="4,0,0,4"
-                        BorderBrush="#3322C55E"
-                        BorderThickness="1">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0"
-                                             EndPoint="1,1">
-                            <GradientStop Color="#0D22C55E"
-                                          Offset="0" />
-                            <GradientStop Color="#00000000"
-                                          Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
+                <Border Style="{StaticResource YieldStatCardPassStyle}">
                     <Grid>
-                        <Border Width="4"
-                                HorizontalAlignment="Left"
-                                CornerRadius="8,0,0,8"
-                                Background="#22C55E" />
-                        <StackPanel Margin="14,0,10,0"
-                                    VerticalAlignment="Center">
+                        <Border Style="{StaticResource YieldStatCardSuccessStripeStyle}" />
+                        <StackPanel Style="{StaticResource YieldStatCardContentPanelStyle}">
                             <TextBlock Text="通过数"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource SecondaryTextBrush}"
-                                       Margin="0,0,0,4" />
+                                       Style="{StaticResource YieldStatCardMetricLabelStyle}" />
                             <TextBlock Text="{Binding PassCount}"
-                                       FontSize="28"
-                                       FontWeight="Bold"
-                                       Foreground="#22C55E" />
+                                       Style="{StaticResource YieldStatCardMetricValueSuccessStyle}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- 失败数 -->
-                <Border CornerRadius="8"
-                        Height="92"
-                        Margin="0,0,4,0"
-                        BorderBrush="#33EF4444"
-                        BorderThickness="1">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0"
-                                             EndPoint="1,1">
-                            <GradientStop Color="#0DEF4444"
-                                          Offset="0" />
-                            <GradientStop Color="#00000000"
-                                          Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
+                <Border Style="{StaticResource YieldStatCardFailStyle}">
                     <Grid>
-                        <Border Width="4"
-                                HorizontalAlignment="Left"
-                                CornerRadius="8,0,0,8"
-                                Background="#EF4444" />
-                        <StackPanel Margin="14,0,10,0"
-                                    VerticalAlignment="Center">
+                        <Border Style="{StaticResource YieldStatCardDangerStripeStyle}" />
+                        <StackPanel Style="{StaticResource YieldStatCardContentPanelStyle}">
                             <TextBlock Text="失败数"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource SecondaryTextBrush}"
-                                       Margin="0,0,0,4" />
+                                       Style="{StaticResource YieldStatCardMetricLabelStyle}" />
                             <TextBlock Text="{Binding FailCount}"
-                                       FontSize="28"
-                                       FontWeight="Bold"
-                                       Foreground="#EF4444" />
+                                       Style="{StaticResource YieldStatCardMetricValueDangerStyle}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- 当前良率（最重要，渐变文字 + 进度条） -->
-                <Border CornerRadius="8"
-                        Height="92"
-                        Margin="4,0,0,0"
-                        BorderBrush="#33F97316"
-                        BorderThickness="1">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0"
-                                             EndPoint="1,1">
-                            <GradientStop Color="#0DF97316"
-                                          Offset="0" />
-                            <GradientStop Color="#00000000"
-                                          Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
+                <Border Style="{StaticResource YieldStatCardCurrentYieldStyle}">
                     <Grid>
-                        <Border Width="4"
-                                HorizontalAlignment="Left"
-                                CornerRadius="8,0,0,8">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0"
-                                                     EndPoint="0,1">
-                                    <GradientStop Color="#F97316"
-                                                  Offset="0" />
-                                    <GradientStop Color="#EAB308"
-                                                  Offset="1" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
-                        <StackPanel Margin="14,0,10,0"
-                                    VerticalAlignment="Center">
+                        <Border Style="{StaticResource YieldStatCardWarningStripeBorderStyle}" />
+                        <StackPanel Style="{StaticResource YieldStatCardContentPanelStyle}">
                             <TextBlock Text="当前良率"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource SecondaryTextBrush}"
-                                       Margin="0,0,0,2" />
+                                       Style="{StaticResource YieldStatCardMetricLabelStyle}" />
                             <TextBlock Text="{Binding YieldPercent,Mode=OneWay,UpdateSourceTrigger=PropertyChanged,StringFormat={}{0:F2}%}"
-                                       FontSize="30"
-                                       FontWeight="Bold"
-                                       Foreground="#F97316" />
-                            <!-- 进度条 -->
-                            <ProgressBar Style="{StaticResource YieldProgressBar}"
+                                       Style="{StaticResource YieldStatCardMetricValueWarningStyle}" />
+                            <ProgressBar Style="{StaticResource YieldModuleProgressBarStyle}"
                                          Minimum="0"
                                          Maximum="100"
                                          Value="{Binding YieldPercent,Mode=OneWay,UpdateSourceTrigger=PropertyChanged}"
-                                         Margin="0,4,0,0" />
+                                         Margin="0,2,0,0" />
                         </StackPanel>
                     </Grid>
                 </Border>

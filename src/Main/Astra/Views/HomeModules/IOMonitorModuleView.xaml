@@ -16,24 +16,20 @@
             CornerRadius="12"
             Margin="6"
             Padding="12">
-        <DockPanel>
+        <!-- 列表区：最多可见 4 个（2 列×2 行）；超过则纵向滚动；少于 4 个时整块高度随内容收缩（ScrollViewer 在内容低于 MaxHeight 时不会撑满）。 -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <!-- 标题栏 -->
-            <DockPanel DockPanel.Dock="Top"
+            <DockPanel Grid.Row="0"
                        Margin="0,0,0,10">
                 <Border Width="4"
                         CornerRadius="2"
-                        Margin="0,0,8,0">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0"
-                                             EndPoint="0,1">
-                            <GradientStop Color="#06B6D4"
-                                          Offset="0" />
-                            <GradientStop Color="#3B82F6"
-                                          Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                        Margin="0,0,8,0"
+                        Background="{StaticResource HomeModuleTitleInfoToPrimaryBrush}" />
 
                 <TextBlock Text="IO 监控模块"
                            FontSize="15"
@@ -44,189 +40,87 @@
                 <Border DockPanel.Dock="Right"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
-                        CornerRadius="10"
-                        Padding="8,3"
-                        BorderThickness="1"
-                        BorderBrush="#3306B6D4"
-                        Background="#1406B6D4">
+                        Style="{StaticResource IoMonitorHeaderCountPillStyle}">
                     <TextBlock FontSize="12"
                                FontWeight="SemiBold"
-                               Foreground="{DynamicResource SecondaryTextBrush}">
-                        <TextBlock.Text>
-                            <MultiBinding StringFormat="{}{0} 个点位">
-                                <Binding Path="Points.Count" />
-                            </MultiBinding>
-                        </TextBlock.Text>
-                    </TextBlock>
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Text="{Binding MonitorPointCount, StringFormat={}{0} 个点位}" />
                 </Border>
             </DockPanel>
-            <TextBlock DockPanel.Dock="Top"
-                       Text="显示关键 IO 点位实时状态与采样值。"
+            <TextBlock Grid.Row="1"
+                       Text="在「IO配置」中为点位勾选「首页监控」后，此处仅显示这些点位并轮询PLC实时值。"
                        Margin="0,0,0,10"
+                       TextWrapping="Wrap"
                        FontSize="12"
                        LineHeight="18"
                        Foreground="{DynamicResource SecondaryTextBrush}" />
 
-            <!-- 内容区 -->
-            <!-- 固定可视区域为两行（每行2个），一次显示4个IO -->
-            <ScrollViewer Height="196"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl ItemsSource="{Binding Points}">
+            <Border Grid.Row="2"
+                    ClipToBounds="True">
+                <!-- MaxHeight = 2 行卡片：IoMonitorPointCardStyle MinHeight 72 + Margin 3×2，每行 78px -->
+                <ScrollViewer MaxHeight="156"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              CanContentScroll="False"
+                              VerticalAlignment="Top"
+                              HorizontalAlignment="Stretch">
+                    <ItemsControl ItemsSource="{Binding Points}">
 
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <UniformGrid Columns="2" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
 
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Height="86"
-                                    Margin="4"
-                                    CornerRadius="6"
-                                    BorderThickness="1"
-                                    ClipToBounds="True">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="BorderBrush"
-                                                Value="#33EF4444" />
-                                        <Setter Property="Background">
-                                            <Setter.Value>
-                                                <LinearGradientBrush StartPoint="0,0"
-                                                                     EndPoint="1,0">
-                                                    <GradientStop Color="#1F6B7280"
-                                                                  Offset="0" />
-                                                    <GradientStop Color="#0A6B7280"
-                                                                  Offset="1" />
-                                                </LinearGradientBrush>
-                                            </Setter.Value>
-                                        </Setter>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsOn}"
-                                                         Value="True">
-                                                <Setter Property="BorderBrush"
-                                                        Value="#3322C55E" />
-                                                <Setter Property="Background">
-                                                    <Setter.Value>
-                                                        <LinearGradientBrush StartPoint="0,0"
-                                                                             EndPoint="1,0">
-                                                            <GradientStop Color="#1F22C55E"
-                                                                          Offset="0" />
-                                                            <GradientStop Color="#0A22C55E"
-                                                                          Offset="1" />
-                                                        </LinearGradientBrush>
-                                                    </Setter.Value>
-                                                </Setter>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <!-- 列宽约一半内容区（含 Margin 3 后两列≈满宽），WrapPanel 才能正确换行并累加总高度 -->
+                                <Border Width="166"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource IoMonitorPointCardStyle}">
+                                    <Grid>
+                                        <Border Style="{StaticResource IoMonitorLeftStripeStyle}" />
 
-                                <Grid>
-                                    <!-- 左侧竖线 -->
-                                    <Border Width="4"
-                                            HorizontalAlignment="Left"
-                                            CornerRadius="6,0,0,6">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background"
-                                                        Value="#F87171" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsOn}"
-                                                                 Value="True">
-                                                        <Setter Property="Background"
-                                                                Value="#22C55E" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                    </Border>
+                                        <StackPanel Margin="10,5,6,5"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="12"
+                                                       FontWeight="Medium"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            <TextBlock Text="{Binding Address}"
+                                                       FontSize="10"
+                                                       LineHeight="14"
+                                                       Margin="0,1,0,0"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource ThirdlyTextBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Address}"
+                                                                         Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Value, Converter={StaticResource IoValueDisplayConverter}}"
+                                                       Style="{StaticResource IoMonitorValueTextStyle}" />
+                                        </StackPanel>
 
-                                    <!-- 内容区 -->
-                                    <StackPanel Margin="12,8,8,8"
-                                                VerticalAlignment="Center">
+                                        <Ellipse Style="{StaticResource IoMonitorStatusDotStyle}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
 
-                                        <!-- 点位名称 -->
-                                        <TextBlock Text="{Binding Name}"
-                                                   FontSize="12"
-                                                   FontWeight="Medium"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource SecondaryTextBrush}" />
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
 
-                                        <!-- 数值：True→ON / False→OFF / 其他原样显示 -->
-                                        <TextBlock Text="{Binding Value, Converter={StaticResource IoValueDisplayConverter}}"
-                                                   FontSize="20"
-                                                   FontWeight="Bold"
-                                                   Margin="0,2,0,0"
-                                                   TextTrimming="CharacterEllipsis">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground"
-                                                            Value="#F87171" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsOn}"
-                                                                     Value="True">
-                                                        <Setter Property="Foreground"
-                                                                Value="#16A34A" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-
-                                    </StackPanel>
-
-                                    <!-- 右上角状态点 -->
-                                    <Ellipse Width="7"
-                                             Height="7"
-                                             HorizontalAlignment="Right"
-                                             VerticalAlignment="Top"
-                                             Margin="0,8,8,0">
-                                        <Ellipse.Style>
-                                            <Style TargetType="Ellipse">
-                                                <Setter Property="Fill"
-                                                        Value="#EF4444" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsOn}"
-                                                                 Value="True">
-                                                        <Setter Property="Fill"
-                                                                Value="#22C55E" />
-                                                        <DataTrigger.EnterActions>
-                                                            <BeginStoryboard>
-                                                                <Storyboard RepeatBehavior="Forever"
-                                                                            AutoReverse="True">
-                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                                     From="1"
-                                                                                     To="0.3"
-                                                                                     Duration="0:0:1" />
-                                                                </Storyboard>
-                                                            </BeginStoryboard>
-                                                        </DataTrigger.EnterActions>
-                                                        <DataTrigger.ExitActions>
-                                                            <BeginStoryboard>
-                                                                <Storyboard>
-                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                                     To="1"
-                                                                                     Duration="0:0:0.1" />
-                                                                </Storyboard>
-                                                            </BeginStoryboard>
-                                                        </DataTrigger.ExitActions>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Ellipse.Style>
-                                    </Ellipse>
-
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-
-                </ItemsControl>
-            </ScrollViewer>
-
-        </DockPanel>
+        </Grid>
     </Border>
 
 </UserControl>
