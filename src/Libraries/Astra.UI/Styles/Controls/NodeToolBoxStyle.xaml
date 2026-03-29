@@ -465,7 +465,7 @@
                                                                                       FontSize="22"
                                                                                       HorizontalAlignment="Center"
                                                                                       VerticalAlignment="Center"
-                                                                                      Foreground="White" />
+                                                                                      Foreground="{DynamicResource ReverseTextBrush}" />
                                                                     </Border>
 
                                                                     <!-- 文字（仅面板显示）-->

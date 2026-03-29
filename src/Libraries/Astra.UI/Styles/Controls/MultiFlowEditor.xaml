@@ -85,11 +85,11 @@
         <Style x:Key="IconButtonStyle"
                TargetType="Button">
             <Setter Property="Background"
-                    Value="Transparent" />
+                    Value="{DynamicResource TransparentBrush}" />
             <Setter Property="Foreground"
                     Value="{DynamicResource PrimaryTextBrush}" />
             <Setter Property="BorderBrush"
-                    Value="Transparent" />
+                    Value="{DynamicResource TransparentBrush}" />
             <Setter Property="BorderThickness"
                     Value="1" />
             <Setter Property="Width"
@@ -148,7 +148,7 @@
                                         Property="BorderBrush"
                                         Value="{DynamicResource DarkPrimaryBrush}" />
                                 <Setter Property="Foreground"
-                                        Value="White" />
+                                        Value="{DynamicResource ReverseTextBrush}" />
                                 <Setter TargetName="border"
                                         Property="RenderTransform">
                                     <Setter.Value>
@@ -186,7 +186,7 @@
                     <Setter Property="BorderBrush"
                             Value="{DynamicResource DarkWarningBrush}" />
                     <Setter Property="Foreground"
-                            Value="White" />
+                            Value="{DynamicResource ReverseTextBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -209,7 +209,7 @@
                     <Setter Property="BorderBrush"
                             Value="{DynamicResource DarkSuccessBrush}" />
                     <Setter Property="Foreground"
-                            Value="White" />
+                            Value="{DynamicResource ReverseTextBrush}" />
                 </Trigger>
                 <Trigger Property="IsEnabled"
                          Value="False">
@@ -231,11 +231,11 @@
                 <DataTrigger Binding="{Binding IsMasterWorkflowViewVisible}"
                              Value="True">
                     <Setter Property="Background"
-                            Value="{DynamicResource InfoBrush}" />
+                            Value="{DynamicResource PrimaryBrush}" />
                     <Setter Property="BorderBrush"
-                            Value="{DynamicResource DarkInfoBrush}" />
+                            Value="{DynamicResource DarkPrimaryBrush}" />
                     <Setter Property="Foreground"
-                            Value="White" />
+                            Value="{DynamicResource ReverseTextBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -482,7 +482,7 @@
             <controls:WorkflowTabControl x:Name="SubWorkflowTabControl"
                                          ItemsSource="{Binding SubWorkflowTabs}"
                                          SelectedItem="{Binding CurrentTab, Mode=TwoWay}"
-                                         Background="Transparent"
+                                         Background="{DynamicResource TransparentBrush}"
                                          BorderThickness="0"
                                          HorizontalAlignment="Stretch"
                                          VerticalAlignment="Stretch"
@@ -653,8 +653,8 @@
                                 <Button ToolTip="启动此子流程"
                                         Command="{Binding DataContext.ToggleRunSubWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
-                                        Background="Transparent"
-                                        BorderBrush="Transparent"
+                                        Background="{DynamicResource TransparentBrush}"
+                                        BorderBrush="{DynamicResource TransparentBrush}"
                                         BorderThickness="1"
                                         Padding="6,4"
                                         Margin="0,0,4,0"
@@ -693,9 +693,9 @@
                                     <Button.Style>
                                         <Style TargetType="Button">
                                             <Setter Property="Background"
-                                                    Value="Transparent" />
+                                                    Value="{DynamicResource TransparentBrush}" />
                                             <Setter Property="BorderBrush"
-                                                    Value="Transparent" />
+                                                    Value="{DynamicResource TransparentBrush}" />
                                             <Setter Property="BorderThickness"
                                                     Value="1" />
                                             <Setter Property="Template">
@@ -738,7 +738,7 @@
                                                     <Setter Property="BorderBrush"
                                                             Value="{DynamicResource DarkSuccessBrush}" />
                                                     <Setter Property="Foreground"
-                                                            Value="White" />
+                                                            Value="{DynamicResource ReverseTextBrush}" />
                                                 </Trigger>
                                                 <Trigger Property="IsPressed"
                                                          Value="True">
@@ -747,7 +747,7 @@
                                                     <Setter Property="BorderBrush"
                                                             Value="{DynamicResource SuccessBrush}" />
                                                     <Setter Property="Foreground"
-                                                            Value="White" />
+                                                            Value="{DynamicResource ReverseTextBrush}" />
                                                 </Trigger>
                                                 <Trigger Property="IsEnabled"
                                                          Value="False">
@@ -769,8 +769,8 @@
                                 <Button ToolTip="关闭此子流程"
                                         Command="{Binding DataContext.CloseWorkflowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
-                                        Background="Transparent"
-                                        BorderBrush="Transparent"
+                                        Background="{DynamicResource TransparentBrush}"
+                                        BorderBrush="{DynamicResource TransparentBrush}"
                                         BorderThickness="1"
                                         Padding="6,4"
                                         Width="24"
@@ -783,9 +783,9 @@
                                     <Button.Style>
                                         <Style TargetType="Button">
                                             <Setter Property="Background"
-                                                    Value="Transparent" />
+                                                    Value="{DynamicResource TransparentBrush}" />
                                             <Setter Property="BorderBrush"
-                                                    Value="Transparent" />
+                                                    Value="{DynamicResource TransparentBrush}" />
                                             <Setter Property="BorderThickness"
                                                     Value="1" />
                                             <Setter Property="Template">
@@ -828,7 +828,7 @@
                                                     <Setter Property="BorderBrush"
                                                             Value="{DynamicResource DarkDangerBrush}" />
                                                     <Setter Property="Foreground"
-                                                            Value="White" />
+                                                            Value="{DynamicResource ReverseTextBrush}" />
                                                 </Trigger>
                                                 <Trigger Property="IsPressed"
                                                          Value="True">
@@ -837,7 +837,7 @@
                                                     <Setter Property="BorderBrush"
                                                             Value="{DynamicResource DangerBrush}" />
                                                     <Setter Property="Foreground"
-                                                            Value="White" />
+                                                            Value="{DynamicResource ReverseTextBrush}" />
                                                 </Trigger>
                                                 <Trigger Property="IsEnabled"
                                                          Value="False">

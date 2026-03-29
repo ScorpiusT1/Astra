@@ -224,7 +224,7 @@
                                                 <TextBlock Text="A"
                                                            FontSize="11"
                                                            FontWeight="Bold"
-                                                           Foreground="White"
+                                                           Foreground="{DynamicResource ReverseTextBrush}"
                                                            HorizontalAlignment="Center"
                                                            VerticalAlignment="Center" />
                                             </Border>

@@ -177,7 +177,7 @@
                                     <fa:IconBlock Grid.Column="1"
                                                   Icon="ProjectDiagram"
                                                   FontSize="12"
-                                                  Foreground="White"
+                                                  Foreground="{DynamicResource ReverseTextBrush}"
                                                   VerticalAlignment="Center"
                                                   Margin="0,0,8,0" />
 
@@ -186,7 +186,7 @@
                                               Text="{TemplateBinding SubWorkflowName}"
                                               FontSize="14"
                                               FontWeight="SemiBold"
-                                              Foreground="White"
+                                              Foreground="{DynamicResource ReverseTextBrush}"
                                               TextTrimming="CharacterEllipsis"
                                               VerticalAlignment="Center" />
                                 </Grid>

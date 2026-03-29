@@ -231,7 +231,7 @@
                                                 <ToolTip Content="拖拽以移动视口" 
                                                          FontWeight="Bold"
                                                          Background="{DynamicResource InfoBrush}"
-                                                         Foreground="White"/>
+                                                         Foreground="{DynamicResource ReverseTextBrush}" />
                                             </Thumb.ToolTip>
                                         </Thumb>
                                     </Canvas>
