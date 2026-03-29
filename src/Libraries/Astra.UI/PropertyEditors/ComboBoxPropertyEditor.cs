@@ -41,6 +41,11 @@ namespace Astra.UI.PropertyEditors
                     {
                         comboBox.DisplayMemberPath = itemsSourceAttribute.DisplayMemberPath;
                     }
+
+                    if (!string.IsNullOrEmpty(itemsSourceAttribute.SelectedValuePath))
+                    {
+                        comboBox.SelectedValuePath = itemsSourceAttribute.SelectedValuePath;
+                    }
                 }
                 else if (propertyDescriptor.PropertyType != null && propertyDescriptor.PropertyType.IsEnum)
                 {
@@ -59,6 +64,7 @@ namespace Astra.UI.PropertyEditors
         {
             if (element is ComboBox comboBox)
             {
+                var itemsSourceAttribute = GetItemsSourceAttribute(propertyDescriptor);
                 var binding = new Binding("Value")
                 {
                     Source = propertyDescriptor,
@@ -66,7 +72,14 @@ namespace Astra.UI.PropertyEditors
                     UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
                 };
 
-                comboBox.SetBinding(ComboBox.SelectedItemProperty, binding);
+                if (!string.IsNullOrEmpty(itemsSourceAttribute?.SelectedValuePath))
+                {
+                    comboBox.SetBinding(ComboBox.SelectedValueProperty, binding);
+                }
+                else
+                {
+                    comboBox.SetBinding(ComboBox.SelectedItemProperty, binding);
+                }
             }
         }
 
@@ -78,6 +91,24 @@ namespace Astra.UI.PropertyEditors
         private void SetItemsSource(ComboBox comboBox, PropertyDescriptor propertyDescriptor, ItemsSourceAttribute attribute)
         {
             var targetObject = GetTargetObject(propertyDescriptor);
+
+            // [ItemsSource(nameof(SomeOptions))] 仅指定实例属性名时：用绑定，以便源对象上 PropertyChanged(SomeOptions) 后下拉项会刷新
+            if (targetObject != null
+                && !string.IsNullOrEmpty(attribute.PropertyName)
+                && attribute.StaticType == null
+                && attribute.ItemsSourceType == null
+                && string.IsNullOrEmpty(attribute.MethodName))
+            {
+                comboBox.SetBinding(
+                    ComboBox.ItemsSourceProperty,
+                    new Binding(attribute.PropertyName)
+                    {
+                        Source = targetObject,
+                        Mode = BindingMode.OneWay,
+                    });
+                return;
+            }
+
             if (ItemsSourceResolver.TryResolve(attribute, targetObject, out var itemsSource))
             {
                 comboBox.ItemsSource = itemsSource;

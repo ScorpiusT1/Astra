@@ -515,6 +515,7 @@
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
                                           Padding="8,4,8,8">
+                                <!-- 分组与组内顺序由 PropertyEditorViewModel（CategoryGroupOrder → Order，均为升序、值越小越靠前）与 ICollectionView.SortDescriptions 决定 -->
                                 <ItemsControl x:Name="PART_PropertiesContainer"
                                               ItemsSource="{Binding PropertiesView}">
                                     <!-- 分组样式 -->
