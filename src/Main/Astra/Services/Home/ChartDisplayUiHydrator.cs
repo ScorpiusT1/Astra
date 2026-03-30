@@ -46,8 +46,7 @@ namespace Astra.Services.Home
                 return;
             }
 
-            var store = context.GetRawDataStore();
-            if (store == null || !store.TryGet(artifactKey.Trim(), out var raw) || raw == null)
+            if (!context.TryGetArtifact(artifactKey.Trim(), out var raw) || raw == null)
             {
                 return;
             }

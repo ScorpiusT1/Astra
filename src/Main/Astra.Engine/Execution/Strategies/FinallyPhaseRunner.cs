@@ -138,9 +138,9 @@ namespace Astra.Engine.Execution.Strategies
             };
 
             var inputConnections = workflow.GetInputConnections(node.Id);
-            if (inputConnections.Count > 0)
+            foreach (var conn in inputConnections)
             {
-                var prevNode = workflow.GetNode(inputConnections[0].SourceNodeId);
+                var prevNode = workflow.GetNode(conn.SourceNodeId);
                 if (prevNode?.LastExecutionResult != null)
                 {
                     foreach (var kvp in prevNode.LastExecutionResult.OutputData)

@@ -1,6 +1,7 @@
 using Astra.Core.Configuration;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Configuration.Enums;
+using Astra.Core.Configuration.Helpers;
 using Astra.Core.Configuration.Providers;
 using Astra.Core.Triggers;
 using Astra.Core.Triggers.Interlock;
@@ -62,25 +63,25 @@ namespace Astra.Plugins.PLC
             {
                 var generalOptions = new ConfigProviderOptions<PlcDeviceConfig>
                 {
-                    DefaultCollectionFileName = $"{Id}.General.config"
+                    DefaultCollectionFileName = ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(PlcDeviceConfig))
                 };
                 _configurationManager.RegisterProvider<PlcDeviceConfig>(options: generalOptions);
 
                 var s7Options = new ConfigProviderOptions<S7SiemensPlcDeviceConfig>
                 {
-                    DefaultCollectionFileName = $"{Id}.S7.config"
+                    DefaultCollectionFileName = ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(S7SiemensPlcDeviceConfig))
                 };
                 _configurationManager.RegisterProvider<S7SiemensPlcDeviceConfig>(options: s7Options);
 
                 var ioOptions = new ConfigProviderOptions<IOConfig>
                 {
-                    DefaultCollectionFileName = $"{Id}.IO.config"
+                    DefaultCollectionFileName = ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(IOConfig))
                 };
                 _configurationManager.RegisterProvider<IOConfig>(options: ioOptions);
 
                 var plcTriggerOptions = new ConfigProviderOptions<PlcTriggerConfig>
                 {
-                    DefaultCollectionFileName = $"{Id}.PlcTrigger.config"
+                    DefaultCollectionFileName = ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(PlcTriggerConfig))
                 };
                 _configurationManager.RegisterProvider<PlcTriggerConfig>(options: plcTriggerOptions);
 

@@ -1,4 +1,5 @@
 using Astra.Core.Foundation.Common;
+using Astra.Core.Constants;
 using Astra.Core.Nodes.Models;
 using Newtonsoft.Json;
 using System;
@@ -534,12 +535,12 @@ namespace Astra.Core.Nodes.Serialization
     /// </summary>
     public static class ErrorCodes
     {
-        public const int InvalidData = 1001;
-        public const int FileNotFound = 1002;
-        public const int FileSaveFailed = 1003;
-        public const int FileLoadFailed = 1004;
-        public const int SerializationFailed = 1005;
-        public const int DeserializationFailed = 1006;
-        public const int InvalidJson = 1007;
+        public const int InvalidData = AstraSharedConstants.SerializationErrorCodes.InvalidData;
+        public const int FileNotFound = AstraSharedConstants.SerializationErrorCodes.FileNotFound;
+        public const int FileSaveFailed = AstraSharedConstants.SerializationErrorCodes.FileSaveFailed;
+        public const int FileLoadFailed = AstraSharedConstants.SerializationErrorCodes.FileLoadFailed;
+        public const int SerializationFailed = AstraSharedConstants.SerializationErrorCodes.SerializationFailed;
+        public const int DeserializationFailed = AstraSharedConstants.SerializationErrorCodes.DeserializationFailed;
+        public const int InvalidJson = AstraSharedConstants.SerializationErrorCodes.InvalidJson;
     }
 }

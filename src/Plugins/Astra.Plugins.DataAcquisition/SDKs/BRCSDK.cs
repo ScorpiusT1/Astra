@@ -1,8 +1,10 @@
 using Astra.Plugins.DataAcquisition.Configs;
+using Astra.Core.Constants;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Buffers;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Security;
@@ -33,9 +35,9 @@ namespace Astra.Plugins.DataAcquisition.SDKs
     /// </summary>
     public static class BRCSDK
     {
-        private const string DLLPATH = "Lib/x64/brc_daq_sdk.dll";
-        private const int BUFFER_SIZE = 1024;
-        private const int ARRAY_BUFFER_SIZE = 512;
+        private const string DLLPATH = AstraSharedConstants.DataAcquisitionDefaults.BrcSdkDllPath;
+        private const int BUFFER_SIZE = AstraSharedConstants.DataAcquisitionDefaults.BrcSdkBufferSize;
+        private const int ARRAY_BUFFER_SIZE = AstraSharedConstants.DataAcquisitionDefaults.BrcSdkArrayBufferSize;
         private static readonly object _scanLock = new object();
         private static readonly object _connectedModulesLock = new object();
         private static readonly ConcurrentDictionary<string, object> _moduleConnectLocks = new();
@@ -44,15 +46,24 @@ namespace Astra.Plugins.DataAcquisition.SDKs
 
         // 获取错误信息
         [DllImport(DLLPATH, EntryPoint = "get_last_error", CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int GetLastErrorNative(byte* pErr);
+        private static extern int GetLastErrorNative([Out] byte[] pErr);
 
         // 扫描设备
         [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
         private static extern int scan_modules();
 
         // 获取模块信息
-        [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int get_module_info(int index, ModuleInfoType moduleInfoType, void* ptr1, void* ptr2);
+        [DllImport(DLLPATH, EntryPoint = "get_module_info", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_module_info_string(int index, ModuleInfoType moduleInfoType, [Out] byte[] ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "get_module_info", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_module_info_int(int index, ModuleInfoType moduleInfoType, out int ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "get_module_info", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_module_info_double_array(int index, ModuleInfoType moduleInfoType, [Out] double[] ptr1, out int ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "get_module_info", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_module_info_int_array(int index, ModuleInfoType moduleInfoType, [Out] int[] ptr1, out int ptr2);
 
         // 连接/断开模块
         [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
@@ -62,18 +73,36 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         private static extern int disconnect_module(int mHandle);
 
         // 模块属性
-        [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int get_module_property(int mHandle, ModulePropertyType propertyType, void* ptr1, void* ptr2);
+        [DllImport(DLLPATH, EntryPoint = "get_module_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_module_property_int(int mHandle, ModulePropertyType propertyType, out int ptr1, IntPtr ptr2);
 
-        [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int set_module_property(int mHandle, ModulePropertyType propertyType, void* ptr1, void* ptr2);
+        [DllImport(DLLPATH, EntryPoint = "get_module_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_module_property_double(int mHandle, ModulePropertyType propertyType, out double ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "set_module_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int set_module_property_int(int mHandle, ModulePropertyType propertyType, ref int ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "set_module_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int set_module_property_double(int mHandle, ModulePropertyType propertyType, ref double ptr1, IntPtr ptr2);
 
         // 通道属性
-        [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int get_channel_property(int mHandle, int channelIndex, ChannelPropertyType propertyType, void* ptr1, void* ptr2);
+        [DllImport(DLLPATH, EntryPoint = "get_channel_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_channel_property_byte(int mHandle, int channelIndex, ChannelPropertyType propertyType, out byte ptr1, IntPtr ptr2);
 
-        [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int set_channel_property(int mHandle, int channelIndex, ChannelPropertyType propertyType, void* ptr1, void* ptr2);
+        [DllImport(DLLPATH, EntryPoint = "get_channel_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_channel_property_int(int mHandle, int channelIndex, ChannelPropertyType propertyType, out int ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "get_channel_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int get_channel_property_double(int mHandle, int channelIndex, ChannelPropertyType propertyType, out double ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "set_channel_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int set_channel_property_byte(int mHandle, int channelIndex, ChannelPropertyType propertyType, ref byte ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "set_channel_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int set_channel_property_int(int mHandle, int channelIndex, ChannelPropertyType propertyType, ref int ptr1, IntPtr ptr2);
+
+        [DllImport(DLLPATH, EntryPoint = "set_channel_property", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int set_channel_property_double(int mHandle, int channelIndex, ChannelPropertyType propertyType, ref double ptr1, IntPtr ptr2);
 
         // 数据采集
         [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
@@ -83,7 +112,7 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         private static extern int stop(int mHandle);
 
         [DllImport(DLLPATH, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int get_channels_data(int mHandle, double* data_array, int length, int data_array_length, int timeout);
+        private static extern int get_channels_data(int mHandle, [Out] double[] data_array, int length, int data_array_length, int timeout);
 
         #endregion
 
@@ -125,22 +154,19 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// <returns>错误信息字符串</returns>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe string GetLastError()
+        private static string GetLastError()
         {
             byte[] utf8Bytes = new byte[BUFFER_SIZE];
-            fixed (byte* ptr = utf8Bytes)
+            int result = GetLastErrorNative(utf8Bytes);
+            if (result != 0)
             {
-                int result = GetLastErrorNative(ptr);
-                if (result != 0)
-                {
-                    throw new Exception($"获取错误信息失败，错误码: {result}");
-                }
-
-                int length = Array.IndexOf(utf8Bytes, (byte)0);
-                if (length < 0) length = BUFFER_SIZE;
-
-                return Encoding.UTF8.GetString(utf8Bytes, 0, length);
+                throw new Exception($"获取错误信息失败，错误码: {result}");
             }
+
+            int length = Array.IndexOf(utf8Bytes, (byte)0);
+            if (length < 0) length = BUFFER_SIZE;
+
+            return Encoding.UTF8.GetString(utf8Bytes, 0, length);
         }
 
         /// <summary>
@@ -158,7 +184,7 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// <summary>
         /// 从UTF8字节数组读取字符串
         /// </summary>
-        private static unsafe string ReadUtf8String(byte[] buffer, int maxLength = BUFFER_SIZE)
+        private static string ReadUtf8String(byte[] buffer, int maxLength = BUFFER_SIZE)
         {
             int length = Array.IndexOf(buffer, (byte)0);
             if (length < 0) length = Math.Min(maxLength, buffer.Length);
@@ -239,14 +265,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// </summary>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe string GetModuleInfoProductName(int index)
+        private static string GetModuleInfoProductName(int index)
         {
             byte[] bytes = new byte[BUFFER_SIZE];
-            fixed (byte* ptr = bytes)
-            {
-                ThrowIfError(get_module_info(index, ModuleInfoType.ProductName, ptr, null), "获取设备产品名称");
-                return ReadUtf8String(bytes);
-            }
+            ThrowIfError(get_module_info_string(index, ModuleInfoType.ProductName, bytes, IntPtr.Zero), "获取设备产品名称");
+            return ReadUtf8String(bytes);
         }
 
         /// <summary>
@@ -254,14 +277,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// </summary>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe string GetModuleInfoDeviceId(int index)
+        private static string GetModuleInfoDeviceId(int index)
         {
             byte[] bytes = new byte[BUFFER_SIZE];
-            fixed (byte* ptr = bytes)
-            {
-                ThrowIfError(get_module_info(index, ModuleInfoType.DeviceId, ptr, null), "获取设备ID");
-                return ReadUtf8String(bytes);
-            }
+            ThrowIfError(get_module_info_string(index, ModuleInfoType.DeviceId, bytes, IntPtr.Zero), "获取设备ID");
+            return ReadUtf8String(bytes);
         }
 
         /// <summary>
@@ -269,10 +289,9 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// </summary>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe int GetModuleInfoChannelCount(int index)
+        private static int GetModuleInfoChannelCount(int index)
         {
-            int channelCount = 0;
-            ThrowIfError(get_module_info(index, ModuleInfoType.ChannelCount, &channelCount, null), "获取通道数");
+            ThrowIfError(get_module_info_int(index, ModuleInfoType.ChannelCount, out int channelCount, IntPtr.Zero), "获取通道数");
             return channelCount;
         }
 
@@ -281,15 +300,12 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// </summary>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe List<double> GetModuleInfoSampleRateOptions(int index)
+        private static List<double> GetModuleInfoSampleRateOptions(int index)
         {
             double[] buffer = new double[BUFFER_SIZE];
-            int length = 0;
-            fixed (double* ptr = buffer)
-            {
-                ThrowIfError(get_module_info(index, ModuleInfoType.SampleRateOptions, ptr, &length), "获取采样率选项");
-                return new List<double>(buffer.Take(length));
-            }
+            ThrowIfError(get_module_info_double_array(index, ModuleInfoType.SampleRateOptions, buffer, out int length), "获取采样率选项");
+            length = Math.Clamp(length, 0, buffer.Length);
+            return new List<double>(buffer.Take(length));
         }
 
         /// <summary>
@@ -297,15 +313,12 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// </summary>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe List<double> GetModuleInfoSampleCurrentOptions(int index)
+        private static List<double> GetModuleInfoSampleCurrentOptions(int index)
         {
             double[] buffer = new double[BUFFER_SIZE];
-            int length = 0;
-            fixed (double* ptr = buffer)
-            {
-                ThrowIfError(get_module_info(index, ModuleInfoType.CurrentOptions, ptr, &length), "获取电流选项");
-                return new List<double>(buffer.Take(length));
-            }
+            ThrowIfError(get_module_info_double_array(index, ModuleInfoType.CurrentOptions, buffer, out int length), "获取电流选项");
+            length = Math.Clamp(length, 0, buffer.Length);
+            return new List<double>(buffer.Take(length));
         }
 
         /// <summary>
@@ -313,15 +326,12 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         /// </summary>
         [HandleProcessCorruptedStateExceptions]
         [SecurityCritical]
-        private static unsafe List<CouplingMode> GetModuleInfoSampleCouplingOptions(int index)
+        private static List<CouplingMode> GetModuleInfoSampleCouplingOptions(int index)
         {
             int[] buffer = new int[ARRAY_BUFFER_SIZE];
-            int length = 0;
-            fixed (int* ptr = buffer)
-            {
-                ThrowIfError(get_module_info(index, ModuleInfoType.CouplingOptions, ptr, &length), "获取耦合模式选项");
-                return buffer.Take(length).Select(i => (CouplingMode)i).ToList();
-            }
+            ThrowIfError(get_module_info_int_array(index, ModuleInfoType.CouplingOptions, buffer, out int length), "获取耦合模式选项");
+            length = Math.Clamp(length, 0, buffer.Length);
+            return buffer.Take(length).Select(i => (CouplingMode)i).ToList();
         }
 
         #endregion
@@ -386,47 +396,6 @@ namespace Astra.Plugins.DataAcquisition.SDKs
         #region ============ 数据结构 ============
 
         /// <summary>
-        /// 模块信息
-        /// </summary>
-        public class ModuleInfo
-        {
-            /// <summary>
-            /// 设备ID
-            /// </summary>
-            public string DeviceId { get; set; }
-
-            /// <summary>
-            /// 产品名称
-            /// </summary>
-            public string ProductName { get; set; }
-
-            /// <summary>
-            /// 通道数
-            /// </summary>
-            public int ChannelCount { get; set; }
-
-            /// <summary>
-            /// 增益选项
-            /// </summary>
-            public List<double> GainOptions { get; set; } = new List<double>();
-
-            /// <summary>
-            /// 采样率选项
-            /// </summary>
-            public List<double> SampleRateOptions { get; set; } = new List<double>();
-
-            /// <summary>
-            /// 电流选项
-            /// </summary>
-            public List<double> CurrentOptions { get; set; } = new List<double>();
-
-            /// <summary>
-            /// 耦合模式选项
-            /// </summary>
-            public List<CouplingMode> CouplingOptions { get; set; } = new List<CouplingMode>();
-        }
-
-        /// <summary>
         /// 数据采集卡设备对象
         /// </summary>
         public class BrcDevice : IDisposable
@@ -453,12 +422,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取时钟源
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe SourceType GetModulePropertyClockSource()
+            public SourceType GetModulePropertyClockSource()
             {
                 ThrowIfDisposed();
 
-                int clockSource = 0;
-                ThrowIfError(get_module_property(_mHandle, ModulePropertyType.ClockSource, &clockSource, null), "获取时钟源");
+                ThrowIfError(get_module_property_int(_mHandle, ModulePropertyType.ClockSource, out int clockSource, IntPtr.Zero), "获取时钟源");
                 return (SourceType)clockSource;
             }
 
@@ -466,12 +434,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取触发源
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe SourceType GetModulePropertyTrigerSource()
+            public SourceType GetModulePropertyTrigerSource()
             {
                 ThrowIfDisposed();
 
-                int trigerSource = 0;
-                ThrowIfError(get_module_property(_mHandle, ModulePropertyType.TrigerSource, &trigerSource, null), "获取触发源");
+                ThrowIfError(get_module_property_int(_mHandle, ModulePropertyType.TrigerSource, out int trigerSource, IntPtr.Zero), "获取触发源");
                 return (SourceType)trigerSource;
             }
 
@@ -479,12 +446,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取采样率
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe double GetModulePropertySampleRate()
+            public double GetModulePropertySampleRate()
             {
                 ThrowIfDisposed();
 
-                double sampleRate = 0;
-                ThrowIfError(get_module_property(_mHandle, ModulePropertyType.SampleRate, &sampleRate, null), "获取采样率");
+                ThrowIfError(get_module_property_double(_mHandle, ModulePropertyType.SampleRate, out double sampleRate, IntPtr.Zero), "获取采样率");
                 return sampleRate;
             }
 
@@ -492,35 +458,35 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 设置时钟源
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetModulePropertyClockSource(SourceType sourceType)
+            public void SetModulePropertyClockSource(SourceType sourceType)
             {
                 ThrowIfDisposed();
 
                 int source = (int)sourceType;
-                ThrowIfError(set_module_property(_mHandle, ModulePropertyType.ClockSource, &source, null), "设置时钟源");
+                ThrowIfError(set_module_property_int(_mHandle, ModulePropertyType.ClockSource, ref source, IntPtr.Zero), "设置时钟源");
             }
 
             /// <summary>
             /// 设置触发源
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetModulePropertyTrigerSource(SourceType sourceType)
+            public void SetModulePropertyTrigerSource(SourceType sourceType)
             {
                 ThrowIfDisposed();
 
                 int source = (int)sourceType;
-                ThrowIfError(set_module_property(_mHandle, ModulePropertyType.TrigerSource, &source, null), "设置触发源");
+                ThrowIfError(set_module_property_int(_mHandle, ModulePropertyType.TrigerSource, ref source, IntPtr.Zero), "设置触发源");
             }
 
             /// <summary>
             /// 设置采样率
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetModulePropertySampleRate(double sampleRate)
+            public void SetModulePropertySampleRate(double sampleRate)
             {
                 ThrowIfDisposed();
 
-                ThrowIfError(set_module_property(_mHandle, ModulePropertyType.SampleRate, &sampleRate, null), "设置采样率");
+                ThrowIfError(set_module_property_double(_mHandle, ModulePropertyType.SampleRate, ref sampleRate, IntPtr.Zero), "设置采样率");
             }
 
             #endregion
@@ -531,12 +497,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取通道是否启用
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe bool GetChannelPropertyEnabled(int channelIndex)
+            public bool GetChannelPropertyEnabled(int channelIndex)
             {
                 ThrowIfDisposed();
 
-                byte enabled = 0;
-                ThrowIfError(get_channel_property(_mHandle, channelIndex, ChannelPropertyType.Enabled, &enabled, null), 
+                ThrowIfError(get_channel_property_byte(_mHandle, channelIndex, ChannelPropertyType.Enabled, out byte enabled, IntPtr.Zero), 
                     $"获取通道{channelIndex}状态");
                 return enabled != 0;
             }
@@ -545,12 +510,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取通道增益
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe double GetChannelPropertyGain(int channelIndex)
+            public double GetChannelPropertyGain(int channelIndex)
             {
                 ThrowIfDisposed();
 
-                double gain = 0;
-                ThrowIfError(get_channel_property(_mHandle, channelIndex, ChannelPropertyType.Gain, &gain, null), 
+                ThrowIfError(get_channel_property_double(_mHandle, channelIndex, ChannelPropertyType.Gain, out double gain, IntPtr.Zero), 
                     $"获取通道{channelIndex}增益");
                 return gain;
             }
@@ -559,12 +523,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取通道电流
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe double GetChannelPropertyCurrent(int channelIndex)
+            public double GetChannelPropertyCurrent(int channelIndex)
             {
                 ThrowIfDisposed();
 
-                double current = 0;
-                ThrowIfError(get_channel_property(_mHandle, channelIndex, ChannelPropertyType.Current, &current, null), 
+                ThrowIfError(get_channel_property_double(_mHandle, channelIndex, ChannelPropertyType.Current, out double current, IntPtr.Zero), 
                     $"获取通道{channelIndex}电流");
                 return current;
             }
@@ -573,12 +536,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 获取通道耦合模式
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe CouplingMode GetChannelPropertyCouplingMode(int channelIndex)
+            public CouplingMode GetChannelPropertyCouplingMode(int channelIndex)
             {
                 ThrowIfDisposed();
 
-                int couplingMode = 0;
-                ThrowIfError(get_channel_property(_mHandle, channelIndex, ChannelPropertyType.CouplingMode, &couplingMode, null), 
+                ThrowIfError(get_channel_property_int(_mHandle, channelIndex, ChannelPropertyType.CouplingMode, out int couplingMode, IntPtr.Zero), 
                     $"获取通道{channelIndex}耦合模式");
                 return (CouplingMode)couplingMode;
             }
@@ -587,12 +549,12 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 设置通道是否启用
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetChannelPropertyEnabled(int channelIndex, bool enabled)
+            public void SetChannelPropertyEnabled(int channelIndex, bool enabled)
             {
                 ThrowIfDisposed();
 
                 byte value = (byte)(enabled ? 1 : 0);
-                ThrowIfError(set_channel_property(_mHandle, channelIndex, ChannelPropertyType.Enabled, &value, null), 
+                ThrowIfError(set_channel_property_byte(_mHandle, channelIndex, ChannelPropertyType.Enabled, ref value, IntPtr.Zero), 
                     $"设置通道{channelIndex}状态");
             }
 
@@ -600,11 +562,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 设置通道增益
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetChannelPropertyGain(int channelIndex, double gain)
+            public void SetChannelPropertyGain(int channelIndex, double gain)
             {
                 ThrowIfDisposed();
 
-                ThrowIfError(set_channel_property(_mHandle, channelIndex, ChannelPropertyType.Gain, &gain, null), 
+                ThrowIfError(set_channel_property_double(_mHandle, channelIndex, ChannelPropertyType.Gain, ref gain, IntPtr.Zero), 
                     $"设置通道{channelIndex}增益");
             }
 
@@ -612,11 +574,11 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 设置通道电流
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetChannelPropertyCurrent(int channelIndex, double current)
+            public void SetChannelPropertyCurrent(int channelIndex, double current)
             {
                 ThrowIfDisposed();
 
-                ThrowIfError(set_channel_property(_mHandle, channelIndex, ChannelPropertyType.Current, &current, null), 
+                ThrowIfError(set_channel_property_double(_mHandle, channelIndex, ChannelPropertyType.Current, ref current, IntPtr.Zero), 
                     $"设置通道{channelIndex}电流");
             }
 
@@ -624,12 +586,12 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// 设置通道耦合模式
             /// </summary>
             [HandleProcessCorruptedStateExceptions]
-            public unsafe void SetChannelPropertyCouplingMode(int channelIndex, CouplingMode couplingMode)
+            public void SetChannelPropertyCouplingMode(int channelIndex, CouplingMode couplingMode)
             {
                 ThrowIfDisposed();
 
                 int value = (int)couplingMode;
-                ThrowIfError(set_channel_property(_mHandle, channelIndex, ChannelPropertyType.CouplingMode, &value, null), 
+                ThrowIfError(set_channel_property_int(_mHandle, channelIndex, ChannelPropertyType.CouplingMode, ref value, IntPtr.Zero), 
                     $"设置通道{channelIndex}耦合模式");
             }
 
@@ -683,7 +645,7 @@ namespace Astra.Plugins.DataAcquisition.SDKs
             /// <param name="timeout">超时时间</param>
             /// <exception cref="ArgumentException">数组长度不符合要求</exception>
             /// <exception cref="InvalidOperationException">数组长度不符合要求</exception>
-            public unsafe void GetChannelsData(Memory<double> array, TimeSpan timeout)
+            public void GetChannelsData(Memory<double> array, TimeSpan timeout)
             {
                 ThrowIfDisposed();
 
@@ -701,10 +663,26 @@ namespace Astra.Plugins.DataAcquisition.SDKs
 
                     int samplesPerChannel = array.Length / _moduleInfo.ChannelCount;
 
-                    using var handle = array.Pin();
-                    // 第4个参数应为总数据长度（数组大小）
-                    ThrowIfError(get_channels_data(_mHandle, (double*)handle.Pointer, samplesPerChannel, array.Length, timeoutMs), 
-                        "获取通道数据");
+                    if (MemoryMarshal.TryGetArray(array, out ArraySegment<double> segment) &&
+                        segment.Array is not null &&
+                        segment.Offset == 0 &&
+                        segment.Count == segment.Array.Length)
+                    {
+                        // 快速路径：底层是完整数组，避免额外分配和拷贝。
+                        ThrowIfError(get_channels_data(_mHandle, segment.Array, samplesPerChannel, array.Length, timeoutMs), "获取通道数据");
+                        return;
+                    }
+
+                    double[] rented = ArrayPool<double>.Shared.Rent(array.Length);
+                    try
+                    {
+                        ThrowIfError(get_channels_data(_mHandle, rented, samplesPerChannel, array.Length, timeoutMs), "获取通道数据");
+                        rented.AsSpan(0, array.Length).CopyTo(array.Span);
+                    }
+                    finally
+                    {
+                        ArrayPool<double>.Shared.Return(rented, clearArray: false);
+                    }
                 }
             }
 

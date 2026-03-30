@@ -1,4 +1,5 @@
 using Astra.Plugins.DataAcquisition.Providers;
+using Astra.Core.Constants;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -12,12 +13,12 @@ namespace Astra.Plugins.Limits
         /// <summary>
         /// 采集卡 / 通道未选择时的下拉显示文案（内部存储仍用空字符串表示未选）。
         /// </summary>
-        public const string UnselectedLabel = "未选择";
+        public const string UnselectedLabel = AstraSharedConstants.DesignTimeLabels.Unselected;
 
         /// <summary>
         /// 下拉首项文案（底层仍对应「未指定通道名 = 组内第一个通道」）。勿与真实通道名重复。
         /// </summary>
-        public const string UseFirstChannelInGroupLabel = "（默认：组内首通道）";
+        public const string UseFirstChannelInGroupLabel = AstraSharedConstants.DesignTimeLabels.UseFirstChannelInGroup;
 
         /// <summary>
         /// 当前已注册采集卡；首项为 <see cref="UnselectedLabel"/>。

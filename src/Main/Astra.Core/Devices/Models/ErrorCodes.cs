@@ -1,4 +1,6 @@
-﻿﻿namespace Astra.Core.Devices
+using Astra.Core.Constants;
+
+namespace Astra.Core.Devices
 {
     /// <summary>
     /// 统一错误码
@@ -6,56 +8,56 @@
     public static class ErrorCodes
     {
         // 连接相关 (1000-1999)
-        public const int ConnectFailed = 1001;
-        public const int DisconnectFailed = 1002;
-        public const int ResetFailed = 1003;
-        public const int DeviceNotFound = 1004;
-        public const int DeviceNoResponse = 1005;
-        public const int DeviceNotOnline = 1006;
-        public const int DeviceInUse = 1007;
+        public const int ConnectFailed = AstraSharedConstants.DeviceErrorCodes.ConnectFailed;
+        public const int DisconnectFailed = AstraSharedConstants.DeviceErrorCodes.DisconnectFailed;
+        public const int ResetFailed = AstraSharedConstants.DeviceErrorCodes.ResetFailed;
+        public const int DeviceNotFound = AstraSharedConstants.DeviceErrorCodes.DeviceNotFound;
+        public const int DeviceNoResponse = AstraSharedConstants.DeviceErrorCodes.DeviceNoResponse;
+        public const int DeviceNotOnline = AstraSharedConstants.DeviceErrorCodes.DeviceNotOnline;
+        public const int DeviceInUse = AstraSharedConstants.DeviceErrorCodes.DeviceInUse;
 
         // 心跳相关 (2000-2999)
-        public const int HeartbeatAlreadyRunning = 2001;
-        public const int HeartbeatNotRunning = 2002;
-        public const int HeartbeatTimeout = 2003;
-        public const int HeartbeatError = 2004;
+        public const int HeartbeatAlreadyRunning = AstraSharedConstants.DeviceErrorCodes.HeartbeatAlreadyRunning;
+        public const int HeartbeatNotRunning = AstraSharedConstants.DeviceErrorCodes.HeartbeatNotRunning;
+        public const int HeartbeatTimeout = AstraSharedConstants.DeviceErrorCodes.HeartbeatTimeout;
+        public const int HeartbeatError = AstraSharedConstants.DeviceErrorCodes.HeartbeatError;
 
         // 数据传输相关 (3000-3999)
-        public const int SendFailed = 3001;
-        public const int ReceiveFailed = 3002;
-        public const int ReceiveTimeout = 3003;
-        public const int ChannelMismatch = 3004;
-        public const int InvalidData = 3005;
+        public const int SendFailed = AstraSharedConstants.DeviceErrorCodes.SendFailed;
+        public const int ReceiveFailed = AstraSharedConstants.DeviceErrorCodes.ReceiveFailed;
+        public const int ReceiveTimeout = AstraSharedConstants.DeviceErrorCodes.ReceiveTimeout;
+        public const int ChannelMismatch = AstraSharedConstants.DeviceErrorCodes.ChannelMismatch;
+        public const int InvalidData = AstraSharedConstants.DeviceErrorCodes.InvalidData;
 
         // 采集相关 (4000-4999)
-        public const int AcquisitionAlreadyRunning = 4001;
-        public const int AcquisitionNotRunning = 4002;
-        public const int AcquisitionError = 4003;
+        public const int AcquisitionAlreadyRunning = AstraSharedConstants.DeviceErrorCodes.AcquisitionAlreadyRunning;
+        public const int AcquisitionNotRunning = AstraSharedConstants.DeviceErrorCodes.AcquisitionNotRunning;
+        public const int AcquisitionError = AstraSharedConstants.DeviceErrorCodes.AcquisitionError;
 
         // 缓冲区相关 (5000-5999)
-        public const int BufferEmpty = 5001;
-        public const int BufferFull = 5002;
-        public const int BufferReadError = 5003;
-        public const int BufferWriteError = 5004;
+        public const int BufferEmpty = AstraSharedConstants.DeviceErrorCodes.BufferEmpty;
+        public const int BufferFull = AstraSharedConstants.DeviceErrorCodes.BufferFull;
+        public const int BufferReadError = AstraSharedConstants.DeviceErrorCodes.BufferReadError;
+        public const int BufferWriteError = AstraSharedConstants.DeviceErrorCodes.BufferWriteError;
 
         // 通道相关 (6000-6999)
-        public const int ChannelNotFound = 6001;
-        public const int ChannelDisabled = 6002;
-        public const int ChannelError = 6003;
+        public const int ChannelNotFound = AstraSharedConstants.DeviceErrorCodes.ChannelNotFound;
+        public const int ChannelDisabled = AstraSharedConstants.DeviceErrorCodes.ChannelDisabled;
+        public const int ChannelError = AstraSharedConstants.DeviceErrorCodes.ChannelError;
 
         // 配置相关 (7000-7999)
-        public const int InvalidConfig = 7001;
-        public const int ConfigRequireRestart = 7002;
-        public const int ConfigApplyFailed = 7003;
-        public const int ConfigSaveFailed = 7004;
-        public const int ConfigLoadFailed = 7005;
-        public const int FileNotFound = 7006;
-        public const int NotSupported = 7007;
-        public const int InvalidConfigData = 7008;
-        public const int ConfigNotFound = 7009;
+        public const int InvalidConfig = AstraSharedConstants.DeviceErrorCodes.InvalidConfig;
+        public const int ConfigRequireRestart = AstraSharedConstants.DeviceErrorCodes.ConfigRequireRestart;
+        public const int ConfigApplyFailed = AstraSharedConstants.DeviceErrorCodes.ConfigApplyFailed;
+        public const int ConfigSaveFailed = AstraSharedConstants.DeviceErrorCodes.ConfigSaveFailed;
+        public const int ConfigLoadFailed = AstraSharedConstants.DeviceErrorCodes.ConfigLoadFailed;
+        public const int FileNotFound = AstraSharedConstants.DeviceErrorCodes.FileNotFound;
+        public const int NotSupported = AstraSharedConstants.DeviceErrorCodes.NotSupported;
+        public const int InvalidConfigData = AstraSharedConstants.DeviceErrorCodes.InvalidConfigData;
+        public const int ConfigNotFound = AstraSharedConstants.DeviceErrorCodes.ConfigNotFound;
 
         // 工作流相关 (8000-8999)
-        public const int ExecutionFailed = 8001;
-        public const int NotFound = 8002; // 通用"未找到"错误码，适用于工作流、节点等
+        public const int ExecutionFailed = AstraSharedConstants.DeviceErrorCodes.ExecutionFailed;
+        public const int NotFound = AstraSharedConstants.DeviceErrorCodes.NotFound; // 通用"未找到"错误码，适用于工作流、节点等
     }
 }

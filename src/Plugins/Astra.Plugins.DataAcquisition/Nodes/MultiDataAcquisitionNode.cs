@@ -1,4 +1,6 @@
 using Astra.Contract.Communication.Abstractions;
+using Astra.Core.Constants;
+using Astra.Core.Data;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
@@ -71,16 +73,16 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         public List<string> DataAcquisitionDeviceNames { get; set; } = new();
 
         /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴标签（节点代码侧默认）。</summary>
-        private const string CodeDefinedChartXAxisLabel = "时间";
+        private const string CodeDefinedChartXAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisLabel;
 
         /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴单位。</summary>
-        private const string CodeDefinedChartXAxisUnit = "s";
+        private const string CodeDefinedChartXAxisUnit = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisUnit;
 
         /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的纵轴标签（节点代码侧默认）。</summary>
-        private const string CodeDefinedChartYAxisLabel = "幅值";
+        private const string CodeDefinedChartYAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel;
 
         /// <summary>关闭「在属性面板配置坐标轴」且无法从传感器解析单位时，纵轴单位回退值。</summary>
-        private const string CodeDefinedChartYAxisUnitFallback = "";
+        private const string CodeDefinedChartYAxisUnitFallback = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisUnitFallback;
 
         public bool IsPropertyVisible(string propertyName)
         {
@@ -122,7 +124,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         {
             var log = context.CreateExecutionLogger($"数据采集节点:{Name}");
 
-            var executionController = context?.GetMetadata<IWorkflowExecutionController>("WorkflowExecutionController");
+            var executionController = context?.GetMetadata<IWorkflowExecutionController>(ExecutionContextMetadataKeys.WorkflowExecutionController);
 
             async Task WaitIfPausedAsync()
             {
@@ -294,7 +296,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 {
                     log.Info($"进入采集等待阶段，配置时长: {DurationSeconds:F2}s。");
                     var delayMs = (int)(DurationSeconds * 1000);
-                    const int delaySliceMs = 100;
+                    const int delaySliceMs = AstraSharedConstants.DataAcquisitionDefaults.DelaySliceMs;
                     var durationStopwatch = Stopwatch.StartNew();
                     while (durationStopwatch.ElapsedMilliseconds < delayMs)
                     {
@@ -378,8 +380,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 .WithOutput("StopAcquisitionAfterCompletion", StopAcquisitionAfterCompletion);
             log.Info($"执行完成，启动设备 {startedListForOutput.Count} 个，已运行设备 {runningListForOutput.Count} 个。");
 
-            var rawDataStore = context.GetRawDataStore();
-            if (rawDataStore != null)
+            var dataBus = context.GetDataBus();
+            if (dataBus != null)
             {
                 var rawDataKeys = new List<string>();
                 var activeSet = new HashSet<string>(activeDeviceListForOutput);
@@ -419,40 +421,18 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         }
                     }
 
-                    var artifactRef = context.StoreArtifact(
-                        nodeId: Id,
-                        category: DataArtifactCategory.Raw,
+                    var artifactRef = dataBus.PublishRawData(
+                        producerNodeId: Id,
                         artifactName: $"{device.DeviceId}:raw",
-                        data: dataForArtifact,
+                        rawData: dataForArtifact,
                         displayName: $"{(device as IDevice)?.DeviceName ?? device.DeviceId}-RawData",
-                        description: $"Device={device.DeviceId}, Node={Id}, Duration={DurationSeconds}s",
-                        preview: new Dictionary<string, object>
-                        {
-                            ["DeviceId"] = device.DeviceId,
-                            ["NodeId"] = Id,
-                            ["DurationSeconds"] = DurationSeconds
-                        });
-                    if (artifactRef == null)
-                    {
-                        continue;
-                    }
+                        deviceId: device.DeviceId);
 
                     rawDataKeys.Add(artifactRef.Key);
 
-                    var rawRef = new RawDataReference
-                    {
-                        Key = artifactRef.Key,
-                        Category = artifactRef.Category,
-                        DataType = dataFile.GetType().FullName,
-                        DisplayName = artifactRef.DisplayName,
-                        Description = artifactRef.Description,
-                        Preview = artifactRef.Preview,
-                        CreatedAt = artifactRef.CreatedAt
-                    };
-
                     result = result
-                        .WithOutput($"RawDataRef:{device.DeviceId}", rawRef)
-                        .WithOutput($"ArtifactRef:{device.DeviceId}", rawRef);
+                        .WithOutput($"RawDataRef:{device.DeviceId}", artifactRef)
+                        .WithOutput($"ArtifactRef:{device.DeviceId}", artifactRef);
                 }
 
                 if (rawDataKeys.Count > 0)

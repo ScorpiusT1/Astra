@@ -1,4 +1,5 @@
-﻿﻿using Astra.Core.Access.Exceptions;
+using Astra.Core.Access.Exceptions;
+using Astra.Core.Constants;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,7 +19,7 @@ namespace Astra.Core.Access.Security
         /// <summary>
         /// 最小密码长度要求
         /// </summary>
-        private const int MIN_PASSWORD_LENGTH = 6;
+        private const int MIN_PASSWORD_LENGTH = AstraSharedConstants.SecurityDefaults.MinPasswordLength;
 
         /// <summary>
         /// 对密码进行SHA256哈希加密，返回十六进制字符串

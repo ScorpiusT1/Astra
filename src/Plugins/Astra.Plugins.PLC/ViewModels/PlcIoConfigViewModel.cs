@@ -1,4 +1,5 @@
 using Astra.Core.Configuration.Abstractions;
+using Astra.Core.Constants;
 using Astra.Plugins.PLC.Configs;
 using Astra.Plugins.PLC.Views;
 using Astra.UI.Behaviors;
@@ -347,7 +348,7 @@ namespace Astra.Plugins.PLC.ViewModels
 
         private string GenerateNextIoName()
         {
-            const string prefix = "NewIO #";
+            const string prefix = AstraSharedConstants.PlcDefaults.NewIoNamePrefix;
             var used = _config.IOs
                 .Where(i => i != null && !string.IsNullOrWhiteSpace(i.Name))
                 .Select(i => i.Name.Trim())

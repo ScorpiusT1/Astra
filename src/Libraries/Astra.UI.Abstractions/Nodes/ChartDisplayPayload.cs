@@ -20,7 +20,28 @@ public enum ChartPayloadKind
     Heatmap,
 
     /// <summary>多段线段，每行 (x0,y0,x1,y1)。</summary>
-    LineSegments
+    LineSegments,
+
+    /// <summary>垂直柱状图。</summary>
+    Bar,
+
+    /// <summary>水平条形图。</summary>
+    HorizontalBar,
+
+    /// <summary>分组柱状图（多系列并排）。</summary>
+    GroupedBar,
+
+    /// <summary>堆叠柱状图。</summary>
+    StackedBar,
+
+    /// <summary>饼图。</summary>
+    Pie,
+
+    /// <summary>环形图（饼图变体，中心留空）。</summary>
+    Donut,
+
+    /// <summary>雷达图 / 蛛网图。</summary>
+    Radar
 }
 
 /// <summary>
@@ -69,6 +90,23 @@ public sealed class ChartDisplayPayload
 
     /// <summary>可选：在图上绘制水平参考线（卡控上限）。</summary>
     public double? HorizontalLimitUpper { get; init; }
+
+    // --- Bar / Pie / Radar ---
+
+    /// <summary>分类项（Bar 每根柱子 / Pie 每个扇区 / Radar 每个轴）。</summary>
+    public List<ChartCategoryItem>? Categories { get; init; }
+
+    /// <summary>分组 / 堆叠柱状图：多系列数据。</summary>
+    public List<ChartBarSeries>? BarGroups { get; init; }
+
+    /// <summary>环形图中空比例 (0~1)，0 = 实心饼图。</summary>
+    public double DonutFraction { get; init; }
+
+    /// <summary>饼图扇区外扩比例，0 = 不外扩。</summary>
+    public double ExplodeFraction { get; init; }
+
+    /// <summary>雷达图各轴最大刻度值（null 则自动计算）。</summary>
+    public double[]? RadarAxisMaxValues { get; init; }
 
     /// <summary>
     /// 将 <paramref name="outputData"/> 中的轴标题/单位（若存在键）覆盖到 <paramref name="payload"/>，用于执行结果与 Raw/内联快照合并。
@@ -121,7 +159,12 @@ public sealed class ChartDisplayPayload
             HeatmapYCoordinates = payload.HeatmapYCoordinates,
             SegmentLines = payload.SegmentLines,
             HorizontalLimitLower = payload.HorizontalLimitLower,
-            HorizontalLimitUpper = payload.HorizontalLimitUpper
+            HorizontalLimitUpper = payload.HorizontalLimitUpper,
+            Categories = payload.Categories,
+            BarGroups = payload.BarGroups,
+            DonutFraction = payload.DonutFraction,
+            ExplodeFraction = payload.ExplodeFraction,
+            RadarAxisMaxValues = payload.RadarAxisMaxValues
         };
     }
 
@@ -167,7 +210,12 @@ public sealed class ChartDisplayPayload
             HeatmapYCoordinates = Clone1D(HeatmapYCoordinates),
             SegmentLines = Clone2D(SegmentLines),
             HorizontalLimitLower = HorizontalLimitLower,
-            HorizontalLimitUpper = HorizontalLimitUpper
+            HorizontalLimitUpper = HorizontalLimitUpper,
+            Categories = Categories?.Select(c => new ChartCategoryItem { Label = c.Label, Value = c.Value, Color = c.Color }).ToList(),
+            BarGroups = BarGroups?.Select(g => new ChartBarSeries { SeriesName = g.SeriesName, Values = Clone1D(g.Values)!, Color = g.Color }).ToList(),
+            DonutFraction = DonutFraction,
+            ExplodeFraction = ExplodeFraction,
+            RadarAxisMaxValues = Clone1D(RadarAxisMaxValues)
         };
     }
 
@@ -196,4 +244,26 @@ public sealed class ChartDisplayPayload
         Array.Copy(m, c, m.Length);
         return c;
     }
+}
+
+/// <summary>
+/// 单个分类项：Bar 的每根柱子、Pie 的每个扇区、Radar 的每个轴。
+/// </summary>
+public sealed class ChartCategoryItem
+{
+    public string Label { get; init; } = string.Empty;
+    public double Value { get; init; }
+
+    /// <summary>十六进制颜色（如 "#FF6384"），为空时由渲染器自动分配。</summary>
+    public string? Color { get; init; }
+}
+
+/// <summary>
+/// 分组 / 堆叠柱状图中的一个系列。
+/// </summary>
+public sealed class ChartBarSeries
+{
+    public string SeriesName { get; init; } = string.Empty;
+    public double[] Values { get; init; } = Array.Empty<double>();
+    public string? Color { get; init; }
 }

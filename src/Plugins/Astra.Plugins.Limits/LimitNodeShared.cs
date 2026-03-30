@@ -91,9 +91,8 @@ namespace Astra.Plugins.Limits
                     .WithOutput(NodeUiOutputKeys.HasChartData, false);
             }
 
-            var store = context.GetRawDataStore();
             var key = chartArtifactKey.Trim();
-            if (store == null || !store.TryGet(key, out var obj) || obj is not NvhMemoryFile)
+            if (!context.TryGetArtifact<NvhMemoryFile>(key, out var _nvh) || _nvh == null)
             {
                 return result
                     .WithOutput(NodeUiOutputKeys.HasChartData, false);

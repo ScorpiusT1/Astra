@@ -1,4 +1,4 @@
-﻿namespace Astra.Core.Configuration.Providers
+namespace Astra.Core.Configuration.Providers
 {
     /// <summary>
     /// 配置提供者选项
@@ -15,7 +15,8 @@
         public string ContainerPropertyName { get; set; } = "Configs";
 
         /// <summary>多条配置共存时使用的默认集合文件名（不含扩展名）。</summary>
-        public string DefaultCollectionFileName { get; set; } = "Configs";
+        public string DefaultCollectionFileName { get; set; } =
+            Helpers.ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(T));
 
         /// <summary>是否自动搜索所有文件</summary>
         public bool AutoSearchAllFiles { get; set; } = false;

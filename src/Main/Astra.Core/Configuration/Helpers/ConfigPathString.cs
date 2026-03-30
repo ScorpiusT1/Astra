@@ -1,5 +1,6 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
+using Astra.Core.Constants;
 using Astra.Core.Devices.Configuration;
 
 namespace Astra.Core.Configuration.Helpers
@@ -15,7 +16,7 @@ namespace Astra.Core.Configuration.Helpers
     /// </summary>
     public static class ConfigPathString
     {
-        public const string DefaultConfigTypeSuffix = "Config";
+        public const string DefaultConfigTypeSuffix = AstraSharedConstants.ConfigDefaults.DefaultConfigTypeSuffix;
 
         public static string BaseConfigDirectory     => Path.Combine(AppContext.BaseDirectory, "Configs");
         public static string DeviceConfigDirectory   => Path.Combine(BaseConfigDirectory, "Devices");

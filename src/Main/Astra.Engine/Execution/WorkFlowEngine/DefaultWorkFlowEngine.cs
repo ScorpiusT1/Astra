@@ -94,6 +94,9 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                     workflow.Configuration = new WorkFlowConfiguration();
                 }
 
+                // 1.5 清除上一轮残留的运行时状态，避免跨次执行污染
+                ResetNodesRuntimeState(workflow);
+
                 // 2. 检测策略
                 var detectedStrategy = DetectStrategy(workflow);
                 OnStrategyDetected(new StrategyDetectedEventArgs { Strategy = detectedStrategy });
@@ -180,6 +183,24 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         }
 
         /// <summary>
+        /// 清除所有子节点上一轮残留的运行时状态（LastExecutionResult / ExecutionState），
+        /// 防止跨次执行时策略逻辑误判"本轮是否已执行"或 UI 显示过期结果。
+        /// </summary>
+        private static void ResetNodesRuntimeState(WorkFlowNode workflow)
+        {
+            if (workflow?.Nodes == null) return;
+
+            foreach (var node in workflow.Nodes)
+            {
+                node.LastExecutionResult = null;
+                node.ExecutionState = NodeExecutionState.Idle;
+            }
+
+            workflow.LastExecutionResult = null;
+            workflow.ExecutionState = NodeExecutionState.Idle;
+        }
+
+        /// <summary>
         /// 准备节点执行上下文
         /// </summary>
         private NodeContext PrepareContext(WorkFlowNode workflow, NodeContext baseContext)
@@ -220,7 +241,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         private static WorkFlowExecutionController ResolveExecutionController(NodeContext context)
         {
             if (context?.Metadata == null) return null;
-            if (context.Metadata.TryGetValue("WorkflowExecutionController", out var value) &&
+            if (context.Metadata.TryGetValue(EngineConstants.MetadataKeys.WorkflowExecutionController, out var value) &&
                 value is WorkFlowExecutionController controller)
             {
                 return controller;
@@ -232,7 +253,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         private static string ResolveExecutionId(NodeContext context)
         {
             if (context?.Metadata != null &&
-                context.Metadata.TryGetValue("ExecutionId", out var value) &&
+                context.Metadata.TryGetValue(EngineConstants.MetadataKeys.ExecutionId, out var value) &&
                 value is string executionId &&
                 !string.IsNullOrWhiteSpace(executionId))
             {
@@ -245,7 +266,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         private static string ResolveWorkFlowKey(NodeContext context)
         {
             if (context?.Metadata != null &&
-                context.Metadata.TryGetValue("WorkFlowKey", out var value) &&
+                context.Metadata.TryGetValue(EngineConstants.MetadataKeys.WorkFlowKey, out var value) &&
                 value is string workFlowKey)
             {
                 return workFlowKey;

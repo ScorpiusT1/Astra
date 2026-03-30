@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Threading;
 using Astra.Core.Foundation.Common;
 using Astra.Core.Triggers.Interlock;
 using Microsoft.Extensions.Logging;
@@ -92,12 +93,12 @@ namespace Astra.Engine.Triggers.Interlock
                         continue;
                     }
 
-                    if (rules.Count != _lastMergedRuleCount)
+                    if (rules.Count != Volatile.Read(ref _lastMergedRuleCount))
                     {
                         lock (_gate)
                         {
                             _lastByRuleIndex.Clear();
-                            _lastMergedRuleCount = rules.Count;
+                            Volatile.Write(ref _lastMergedRuleCount, rules.Count);
                         }
                     }
 

@@ -1,8 +1,9 @@
 using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Management;
-using Astra.Core.Nodes.Management;
+using Astra.Core.Constants;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Nodes.Management;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Nodes;
 using Astra.Plugins.DataAcquisition.Providers;
@@ -107,7 +108,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
         protected override async Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var log = context.CreateExecutionLogger($"采集后播放:{Name}");
-            var executionController = context.GetMetadata<IWorkflowExecutionController>("WorkflowExecutionController");
+            var executionController = context.GetMetadata<IWorkflowExecutionController>(ExecutionContextMetadataKeys.WorkflowExecutionController);
 
             async Task WaitIfPausedAsync()
             {
@@ -134,8 +135,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
                 return ExecutionResult.Skip(resolveError);
             }
 
-            var store = context.GetRawDataStore();
-            if (store == null || !store.TryGet(artifactKey, out var rawObj) || rawObj is not NvhMemoryFile nvhFile)
+            if (!context.TryGetArtifact<NvhMemoryFile>(artifactKey, out var nvhFile) || nvhFile == null)
             {
                 log.Warn($"无法从工件存储读取 Raw 数据，键={artifactKey}。请确认上游多采集已成功写入数据。");
                 return ExecutionResult.Skip("无法读取采集 Raw 数据（请确认上游多采集已完成并产出数据）");
@@ -186,7 +186,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
 
             log.Info($"播放通道「{storageChannelName}」，样本数={samples.Length}，采样率={sampleRate} Hz。");
 
-            const int chunkSamples = 8192;
+            const int chunkSamples = AstraSharedConstants.AudioDefaults.ChunkSamples;
             var maxBufferedSeconds = 2.0;
 
             using var player = new RealtimeAudioPlayer(sampleRate, channels: 1, bitsPerSample: 32, playbackMmDeviceId: playbackMmDeviceId);

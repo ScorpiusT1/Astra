@@ -206,10 +206,9 @@ namespace Astra.Plugins.Limits.Nodes
                     return Task.FromResult(ExecutionResult.Failed("无法解析曲线 Raw 键"));
                 }
 
-                var store = context.GetRawDataStore();
-                if (store == null || !store.TryGet(resolvedArtifact, out var obj) || obj is not NVHDataBridge.Models.NvhMemoryFile file)
+                if (!context.TryGetArtifact<NVHDataBridge.Models.NvhMemoryFile>(resolvedArtifact, out var file) || file == null)
                 {
-                    return Task.FromResult(ExecutionResult.Failed($"无法读取 Raw 曲线: {resolvedArtifact}"));
+                    return Task.FromResult(ExecutionResult.Failed($"无法从数据总线读取曲线数据: {resolvedArtifact}"));
                 }
 
                 var ch = LimitNodeShared.NormalizeCurveChannelKey(_curveChannelName);

@@ -1,4 +1,5 @@
 using Astra.Plugins.DataAcquisition.Providers;
+using Astra.Core.Constants;
 using NVHDataBridge.IO.WAV;
 using System;
 using System.Collections.Generic;
@@ -11,12 +12,12 @@ namespace Astra.Plugins.AudioPlayer
     /// </summary>
     public static class AudioPlayerDesignTimeOptions
     {
-        public const string UnselectedLabel = "未选择";
+        public const string UnselectedLabel = AstraSharedConstants.DesignTimeLabels.Unselected;
 
-        public const string UseFirstChannelInGroupLabel = "（默认：组内首通道）";
+        public const string UseFirstChannelInGroupLabel = AstraSharedConstants.DesignTimeLabels.UseFirstChannelInGroup;
 
         /// <summary>播放设备首项，表示使用系统默认 WASAPI 输出。</summary>
-        public const string DefaultPlaybackDeviceLabel = "默认";
+        public const string DefaultPlaybackDeviceLabel = AstraSharedConstants.DesignTimeLabels.DefaultPlaybackDevice;
 
         /// <summary>
         /// 播放设备下拉（静态方法，供属性编辑器 ItemsSource 绑定）。

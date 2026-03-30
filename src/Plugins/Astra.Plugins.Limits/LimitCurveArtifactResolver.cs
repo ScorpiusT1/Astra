@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.Core.Constants;
 using Astra.Plugins.DataAcquisition.Nodes;
 using Astra.Plugins.DataAcquisition.Providers;
 using System.Linq;
@@ -10,7 +11,7 @@ namespace Astra.Plugins.Limits
     /// </summary>
     internal static class LimitCurveArtifactResolver
     {
-        public const string NvhSignalGroupName = "Signal";
+        public const string NvhSignalGroupName = AstraSharedConstants.DataGroups.Signal;
 
         public static bool TryResolveRawArtifactKey(
             NodeContext context,

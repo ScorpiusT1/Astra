@@ -2,6 +2,7 @@ using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Base;
 using Astra.Core.Foundation.Common;
+using Astra.Core.Constants;
 using Astra.Core.Logs;
 using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Messaging;
@@ -31,11 +32,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
         private Channel<DeviceMessage> _publishQueue;
         private Task _publishTask;
         private CancellationTokenSource _publishCts;
-        private const int PublishQueueCapacity = 256;
+        private const int PublishQueueCapacity = AstraSharedConstants.DataAcquisitionDefaults.PublishQueueCapacity;
 
         // NVHDataBridge 数据结构
         protected NvhMemoryFile? _dataFile;
-        protected const string GROUP_NAME = "Signal";
+        protected const string GROUP_NAME = AstraSharedConstants.DataGroups.Signal;
         protected readonly Dictionary<int, NvhMemoryChannelBase> _channelMap = new();
         protected DateTime _acquisitionStartTime;
 

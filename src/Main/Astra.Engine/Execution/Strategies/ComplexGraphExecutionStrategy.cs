@@ -55,6 +55,7 @@ namespace Astra.Engine.Execution.Strategies
             var ready = new Queue<Node>(enabledNodes.Where(n => inDegree[n.Id] == 0));
             int processed = 0;
             var reportWorkflowFailed = false;
+            var executedNodeIds = new HashSet<string>(StringComparer.Ordinal);
 
             while (ready.Count > 0)
             {
@@ -97,6 +98,7 @@ namespace Astra.Engine.Execution.Strategies
                 foreach (var (node, result) in batchOrdered)
                 {
                     processed++;
+                    executedNodeIds.Add(node.Id);
                     foreach (var kvp in result.OutputData)
                     {
                         outputs[$"{node.Name}_{kvp.Key}"] = kvp.Value;
@@ -136,12 +138,11 @@ namespace Astra.Engine.Execution.Strategies
             {
                 foreach (var n in enabledNodes)
                 {
-                    if (n.LastExecutionResult != null)
+                    if (executedNodeIds.Contains(n.Id))
                     {
                         continue;
                     }
 
-                    // 因上游失败未调度：保持未执行（Idle），不记为 Skipped（跳过用于禁用/条件等主动跳过）
                     n.LastExecutionResult = null;
                     n.ExecutionState = NodeExecutionState.Idle;
                     processed++;
@@ -255,7 +256,7 @@ namespace Astra.Engine.Execution.Strategies
             foreach (var disabledNode in disabledNodes)
             {
                 var skippedResult = ExecutionResult.Skip($"节点 '{disabledNode.Name}' 未启用，已跳过")
-                    .WithOutput("SkipReason", "Disabled");
+                    .WithOutput(EngineConstants.OutputKeys.SkipReason, EngineConstants.OutputValues.Disabled);
                 disabledNode.LastExecutionResult = skippedResult;
                 disabledNode.ExecutionState = NodeExecutionState.Skipped;
                 workflowContext.OnNodeExecutionCompleted?.Invoke(disabledNode, workflowContext.NodeContext, skippedResult);

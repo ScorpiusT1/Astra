@@ -100,15 +100,9 @@ namespace Astra.Plugins.Limits.Nodes
                 return Task.FromResult(ExecutionResult.Failed(resolveErr));
             }
 
-            var store = context.GetRawDataStore();
-            if (store == null || !store.TryGet(artifact, out var obj))
+            if (!context.TryGetArtifact<NVHDataBridge.Models.NvhMemoryFile>(artifact, out var file) || file == null)
             {
-                return Task.FromResult(ExecutionResult.Failed($"无法在 Raw 存储中找到曲线数据: {artifact}"));
-            }
-
-            if (obj is not NVHDataBridge.Models.NvhMemoryFile file)
-            {
-                return Task.FromResult(ExecutionResult.Failed("产物不是 NVH 内存文件"));
+                return Task.FromResult(ExecutionResult.Failed($"无法从数据总线读取曲线数据: {artifact}"));
             }
 
             var ch = LimitNodeShared.NormalizeCurveChannelKey(_curveChannelName);

@@ -155,7 +155,7 @@ namespace Astra.Engine.Execution.Strategies
             foreach (var disabledNode in disabledNodes)
             {
                 var skippedResult = ExecutionResult.Skip($"节点 '{disabledNode.Name}' 未启用，已跳过")
-                    .WithOutput("SkipReason", "Disabled");
+                    .WithOutput(EngineConstants.OutputKeys.SkipReason, EngineConstants.OutputValues.Disabled);
                 disabledNode.LastExecutionResult = skippedResult;
                 disabledNode.ExecutionState = NodeExecutionState.Skipped;
                 workflowContext.OnNodeExecutionCompleted?.Invoke(disabledNode, workflowContext.NodeContext, skippedResult);

@@ -1,5 +1,6 @@
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
+using Astra.Core.Constants;
 using NVHDataBridge.Models;
 using System;
 using System.Linq;
@@ -12,7 +13,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// </summary>
     internal static class NvhMemoryFileSensitivityConversion
     {
-        private const string SignalGroupName = "Signal";
+        private const string SignalGroupName = AstraSharedConstants.DataGroups.Signal;
 
         /// <summary>
         /// 尝试按通道绑定的传感器灵敏度生成物理量副本；失败时调用方应继续使用原始文件。

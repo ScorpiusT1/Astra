@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.Engine.Execution.WorkFlowEngine;
 
 namespace Astra.Engine.Execution.Strategies
 {
@@ -50,7 +51,7 @@ namespace Astra.Engine.Execution.Strategies
         /// <summary>
         /// 因上游失败被标记为阻断而跳过的节点，不释放下游（与「条件跳过」区分）。
         /// </summary>
-        public const string SkipReasonBlockedByUpstream = "BlockedByUpstream";
+        public const string SkipReasonBlockedByUpstream = EngineConstants.OutputValues.BlockedByUpstream;
 
         /// <summary>
         /// 是否在拓扑上释放指向下游的依赖边（成功、跳过、或失败但勾选失败继续时释放）。
@@ -65,7 +66,7 @@ namespace Astra.Engine.Execution.Strategies
 
             if (result.IsSkipped &&
                 result.OutputData != null &&
-                result.OutputData.TryGetValue("SkipReason", out var sr) &&
+                result.OutputData.TryGetValue(EngineConstants.OutputKeys.SkipReason, out var sr) &&
                 SkipReasonBlockedByUpstream.Equals(sr as string, StringComparison.Ordinal))
             {
                 return false;

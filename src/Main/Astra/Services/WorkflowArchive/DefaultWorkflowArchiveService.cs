@@ -1,6 +1,9 @@
 using Astra.Core.Archiving;
+using Astra.Core.Data;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
+using Astra.Services.Reporting;
 using Microsoft.Extensions.Logging;
 using System.IO;
 using Newtonsoft.Json;
@@ -85,26 +88,22 @@ namespace Astra.Services.WorkflowArchive
             var wroteRaw = false;
             var wroteRecord = false;
 
-            var store = request.NodeContext.GetRawDataStore();
-            var rawPrefix = $"{id}:";
+            var dataBus = request.NodeContext?.GetDataBus();
             if (_rawExportDone.TryAdd(id, 0))
             {
-                IReadOnlyList<KeyValuePair<string, object>> snap = Array.Empty<KeyValuePair<string, object>>();
-                if (store != null && store.TrySnapshotByPrefix(rawPrefix, out var list) && list != null)
-                {
-                    snap = list;
-                }
+                var rawRefs = dataBus?.Query(Astra.Core.Nodes.Models.DataArtifactCategory.Raw)
+                              ?? Array.Empty<Astra.Core.Nodes.Models.DataArtifactReference>();
 
                 var index = 0;
-                foreach (var kv in snap)
+                foreach (var rawRef in rawRefs)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (kv.Value is not NvhMemoryFile nvh)
+                    if (dataBus == null || !dataBus.TryGet<NvhMemoryFile>(rawRef.Key, out var nvh) || nvh == null)
                     {
                         continue;
                     }
 
-                    var artifactTag = $"{filePrefix}_raw{index}_{SanitizeFileSegment(kv.Key)}";
+                    var artifactTag = $"{filePrefix}_raw{index}_{SanitizeFileSegment(rawRef.Key)}";
                     try
                     {
                         var tdmsPath = Path.Combine(outputDir, artifactTag + ".tdms");
@@ -114,7 +113,7 @@ namespace Astra.Services.WorkflowArchive
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "归档 TDMS/WAV 失败: {Key}", kv.Key);
+                        _logger.LogWarning(ex, "归档 TDMS/WAV 失败: {Key}", rawRef.Key);
                     }
 
                     index++;
@@ -135,7 +134,22 @@ namespace Astra.Services.WorkflowArchive
                 try
                 {
                     WriteRunRecordJson(request.RunRecord, Path.Combine(outputDir, $"{filePrefix}_run_record.json"));
-                    WriteSummaryHtml(request, Path.Combine(outputDir, $"{filePrefix}_report.html"));
+
+                    var reportGen = new DefaultTestReportGenerator();
+                    var reportResult = reportGen.GenerateAsync(new TestReportRequest
+                    {
+                        ArchiveRequest = request,
+                        DataBus = request.NodeContext?.GetDataBus(),
+                        OutputDirectory = outputDir,
+                        FilePrefix = filePrefix,
+                        ExportChartFiles = true
+                    }, cancellationToken).GetAwaiter().GetResult();
+
+                    if (!reportResult.Success)
+                    {
+                        WriteSummaryHtml(request, Path.Combine(outputDir, $"{filePrefix}_report.html"));
+                    }
+
                     wroteRecord = true;
                 }
                 catch (Exception ex)

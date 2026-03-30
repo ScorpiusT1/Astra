@@ -22,7 +22,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         private DataAcquisitionConfig _config;
         private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private BRCSDK.BrcDevice _brcDevice;
-        private BRCSDK.ModuleInfo _moduleInfo;
+        private ModuleInfo _moduleInfo;
 
         public BRCDataAcquisitionDeviceConnection(DataAcquisitionConfig config, Microsoft.Extensions.Logging.ILogger logger = null)
         {
@@ -311,7 +311,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         /// <summary>
         /// 获取模块信息
         /// </summary>
-        public BRCSDK.ModuleInfo GetModuleInfo()
+        public ModuleInfo GetModuleInfo()
         {
             lock (_syncRoot)
             {
@@ -319,7 +319,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
         }
 
-        private bool TryResolveModuleInfoFrom(IReadOnlyCollection<BRCSDK.ModuleInfo> modules)
+        private bool TryResolveModuleInfoFrom(IReadOnlyCollection<ModuleInfo> modules)
         {
             if (modules == null || modules.Count == 0)
             {

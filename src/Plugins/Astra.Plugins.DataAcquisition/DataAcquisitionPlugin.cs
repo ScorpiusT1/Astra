@@ -1,4 +1,5 @@
 using Astra.Contract.Communication.Abstractions;
+using Astra.Core.Configuration.Helpers;
 using Astra.Core.Devices.Abstractions;
 using Astra.Core.Devices.Base;
 using Astra.Core.Devices.Interfaces;
@@ -93,7 +94,7 @@ namespace Astra.Plugins.DataAcquisition
                     // 传感器配置：配置文件名使用“插件Id.Sensor.config”（若无 Id 则回退到类型名）
                     var sensorOptions = new Astra.Core.Configuration.Providers.ConfigProviderOptions<SensorConfig>
                     {
-                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(SensorConfig) : $"{Id}.Sensor.config"
+                        DefaultCollectionFileName = ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(SensorConfig))
                     };
                     _configuManager.RegisterProvider<SensorConfig>(options: sensorOptions);
                     _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 SensorConfig", LogCategory.System);
@@ -107,7 +108,7 @@ namespace Astra.Plugins.DataAcquisition
                     // 采集卡配置：配置文件名同样使用“插件Id.config”（不同配置类型在各自目录下，文件名可复用）
                     var daqOptions = new Astra.Core.Configuration.Providers.ConfigProviderOptions<DataAcquisitionConfig>
                     {
-                        DefaultCollectionFileName = string.IsNullOrWhiteSpace(Id) ? nameof(DataAcquisitionConfig) : $"{Id}.config"
+                        DefaultCollectionFileName = ConfigFileNameHelper.GetDefaultCollectionFileName(typeof(DataAcquisitionConfig))
                     };
                     _configuManager.RegisterProvider<DataAcquisitionConfig>(options: daqOptions);
                     _logger?.LogInfo($"[{Name}] 已向主机注册配置类型 DataAcquisitionConfig", LogCategory.System);
