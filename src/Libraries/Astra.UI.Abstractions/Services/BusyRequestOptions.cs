@@ -1,4 +1,4 @@
-namespace Astra.Core.Services.Ui;
+namespace Astra.UI.Abstractions.Services;
 
 /// <summary>
 /// 全局忙碌遮罩行为配置（每次 <see cref="IBusyService.BeginBusy"/> 可单独指定）。

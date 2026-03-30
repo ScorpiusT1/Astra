@@ -18,7 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Astra.Services.Monitoring;
 using Astra.Core.Access.Models;
-using Astra.Core.Services.Ui;
+using Astra.UI.Abstractions.Services;
 using Astra.Services.UI;
 
 namespace Astra.ViewModels

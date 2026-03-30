@@ -1,4 +1,4 @@
-using Astra.Core.Services.Ui;
+using Astra.UI.Abstractions.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;

@@ -2,7 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-using Astra.Core.Services.Ui;
+using Astra.UI.Abstractions.Services;
 
 namespace Astra.Services.UI;
 

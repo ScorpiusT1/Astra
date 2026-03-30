@@ -348,7 +348,7 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="用户名"
                                                     Binding="{Binding Username, UpdateSourceTrigger=LostFocus}"
-                                                    Width="2*"
+                                                    Width="2*"                                                    
                                                     IsReadOnly="False"
                                                     MinWidth="140">
                                     <DataGridTextColumn.ElementStyle>
@@ -367,6 +367,8 @@
                                         <Style TargetType="TextBox">
                                             <Setter Property="FontSize" Value="14" />
                                             <Setter Property="Padding" Value="8,4" />
+                                            <Setter Property="Height"
+                                                    Value="40" />
                                         </Style>
                                     </DataGridTextColumn.EditingElementStyle>
                                 </DataGridTextColumn>

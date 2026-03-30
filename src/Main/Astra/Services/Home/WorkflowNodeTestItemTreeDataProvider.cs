@@ -2,7 +2,7 @@ using Astra.Configuration;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Serialization;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using Astra.ViewModels.HomeModules;
 using System;
 using System.Collections.Generic;

@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Threading;
 
-namespace Astra.Core.Services.Ui;
+namespace Astra.UI.Abstractions.Services;
 
 /// <summary>
 /// 主窗口级忙碌遮罩与可取消操作协作（单例，宿主与各模块/插件共用）。

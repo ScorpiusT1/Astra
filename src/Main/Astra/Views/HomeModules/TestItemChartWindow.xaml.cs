@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using System.Windows;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using Astra.Services.Home;
 using Astra.ViewModels.HomeModules;
 using Astra.UI.Helpers;

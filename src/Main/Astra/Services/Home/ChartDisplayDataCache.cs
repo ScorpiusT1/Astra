@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 
 namespace Astra.Services.Home
 {

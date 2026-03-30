@@ -1,5 +1,5 @@
 using Astra.Core.Nodes.Models;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
 using Newtonsoft.Json;

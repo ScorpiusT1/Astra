@@ -5,7 +5,7 @@ using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Configuration;
 using Astra.Configuration;
 using Astra.Core.Nodes.Models;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
@@ -713,7 +713,7 @@ namespace Astra.ViewModels.HomeModules
         [ObservableProperty]
         private bool _hasChartData;
 
-        /// <summary>节点类型实现 <see cref="Astra.Core.Nodes.Ui.IHomeTestItemChartNode"/>，加载树时设置；新运行开始时不清除。</summary>
+        /// <summary>节点类型实现 <see cref="IHomeTestItemChartNode"/>，加载树时设置；新运行开始时不清除。</summary>
         [ObservableProperty]
         private bool _supportsHomeChartButton;
 

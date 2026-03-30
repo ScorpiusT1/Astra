@@ -43,7 +43,7 @@ using Astra.Core.Plugins.UI;
 using Astra.Core.Plugins;
 using Astra.Core.Archiving;
 using Astra.Core.Configuration;
-using Astra.Core.Services.Ui;
+using Astra.UI.Abstractions.Services;
 using Astra.Services.UI;
 using Astra.Core.Triggers;
 using Astra.Core.Triggers.Interlock;

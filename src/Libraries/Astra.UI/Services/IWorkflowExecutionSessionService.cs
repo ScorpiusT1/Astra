@@ -53,7 +53,7 @@ namespace Astra.UI.Services
         public string? DetailMessage { get; init; }
 
         /// <summary>
-        /// 结构化 UI 载荷（来自 <c>ExecutionResult.OutputData</c> 中 <see cref="Astra.Core.Nodes.Ui.NodeUiOutputKeys"/> 约定键）。
+        /// 结构化 UI 载荷（来自 <c>ExecutionResult.OutputData</c> 中 <see cref="Astra.UI.Abstractions.Nodes.NodeUiOutputKeys"/> 约定键）。
         /// </summary>
         public IReadOnlyDictionary<string, object>? UiPayload { get; init; }
     }

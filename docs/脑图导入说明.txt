@@ -1,0 +1,24 @@
+为什么 Mermaid 脑图在 XMind / MindMaster 里打不开？
+  Mermaid 是网页/文档里用的图表语法，不是脑图软件的原生格式。
+
+请用下面任一方式打开本目录中的架构脑图：
+
+1) FreeMind 格式（推荐）
+   文件：Astra-架构脑图.mm
+   - XMind：文件 → 导入 → 选择「FreeMind」→ 选 .mm 文件
+   - MindMaster：导入 → FreeMind（或「其他格式」中的 .mm）
+   - FreeMind：直接打开 .mm
+
+2) OPML 大纲（模块职责树）
+   文件：Astra-架构脑图.opml
+   - XMind：文件 → 导入 → OPML
+   - 幕布：部分版本支持 OPML 导入
+   - 若导入失败，可改用上面的 .mm
+
+3) OPML 逻辑图（分层 + 项目依赖 + 运行时）
+   文件：Astra-架构逻辑图.opml
+   - 与「脑图」并列：本文件侧重编译依赖、分层边界、插件加载逻辑
+   - 导入方式同 OPML
+
+4) 仍想用 Markdown
+   仅能在支持 Mermaid 的预览中看（如 VS Code Markdown Preview、GitHub），脑图软件请用 1 或 2。

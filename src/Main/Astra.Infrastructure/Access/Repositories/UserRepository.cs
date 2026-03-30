@@ -42,13 +42,25 @@ namespace Astra.Infrastructure.Access.Repositories
 
         public void Update(User user)
         {
-            _context.Users.Update(user);
+            // 登录后 CurrentUser 可能已被同一 DbContext 跟踪；GetByUsername 使用 AsNoTracking 会得到同键的另一实例。
+            // 此时对分离实体调用 Update() 会触发 “another instance with the same key is already being tracked”。
+            User? tracked = _context.Users.Find(user.Id);
+            if (tracked != null)
+            {
+                _context.Entry(tracked).CurrentValues.SetValues(user);
+            }
+            else
+            {
+                _context.Users.Update(user);
+            }
+
             _context.SaveChanges();
         }
 
         public void Delete(User user)
         {
-            _context.Users.Remove(user);
+            User? tracked = _context.Users.Find(user.Id);
+            _context.Users.Remove(tracked ?? user);
             _context.SaveChanges();
         }
 

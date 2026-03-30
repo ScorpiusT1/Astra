@@ -1,6 +1,6 @@
 using Astra.Core.Access;
 using Astra.Core.Access.Models;
-using Astra.Core.Services.Ui;
+using Astra.UI.Abstractions.Services;
 using Astra.Messages;
 using Astra.Services.Session;
 using Astra;

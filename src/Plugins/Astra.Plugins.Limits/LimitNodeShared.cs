@@ -1,5 +1,5 @@
 using Astra.Core.Nodes.Models;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using NVHDataBridge.Models;
 using System;
 using System.Globalization;

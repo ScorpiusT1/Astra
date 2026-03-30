@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Astra NVH 自动化测试平台 — 架构</title>
+  </head>
+  <body>
+    <outline text="Astra NVH 自动化测试平台 — 架构">
+      <outline text="宿主">
+        <outline text="Astra.exe"/>
+        <outline text="WPF 主程序壳、启动与全局 DI"/>
+        <outline text="日志、导航框架、插件宿主入口"/>
+      </outline>
+      <outline text="核心业务">
+        <outline text="Astra.Core">
+          <outline text="工作流与节点模型"/>
+          <outline text="设备抽象与配置"/>
+          <outline text="触发器与联锁"/>
+          <outline text="插件：发现、加载、宿主实现"/>
+        </outline>
+        <outline text="Astra.Contract">
+          <outline text="主程序与插件共用契约"/>
+          <outline text="稳定 API 边界、便于演进"/>
+        </outline>
+        <outline text="Astra.Engine">
+          <outline text="工作流引擎 UI：View / ViewModel"/>
+        </outline>
+        <outline text="Astra.Infrastructure">
+          <outline text="EF Core + SQLite 持久化"/>
+          <outline text="与 Core 解耦"/>
+        </outline>
+      </outline>
+      <outline text="共享库">
+        <outline text="Astra.UI + Abstractions + NavStack">
+          <outline text="共享控件与样式"/>
+          <outline text="页面导航栈"/>
+        </outline>
+        <outline text="NVHDataBridge">
+          <outline text="TDMS / 音频等数据读写"/>
+          <outline text="格式处理"/>
+        </outline>
+      </outline>
+      <outline text="插件 Plugins">
+        <outline text="按 .addin 加载，输出到 Bin\...\Plugins\"/>
+        <outline text="DataAcquisition / PLC / AudioPlayer"/>
+        <outline text="WorkflowArchive / Limits 等"/>
+      </outline>
+    </outline>
+  </body>
+</opml>

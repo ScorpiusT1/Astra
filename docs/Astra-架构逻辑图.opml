@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Astra 架构 — 逻辑图（分层与依赖）</title>
+  </head>
+  <body>
+    <outline text="Astra NVH 自动化测试平台 — 逻辑图">
+      <outline text="一、逻辑分层（自底向上，依赖方向 ↑）">
+        <outline text="L0 领域内核 — Astra.Core">
+          <outline text="职责：工作流/节点、设备抽象、配置、触发器/联锁、插件宿主与发现加载"/>
+          <outline text="边界：不引用本解决方案内其他项目（仅 NuGet）"/>
+        </outline>
+        <outline text="L1 契约与持久化（建立在 Core 之上）">
+          <outline text="Astra.Contract — 引用 → Astra.Core"/>
+          <outline text="Astra.Infrastructure — 引用 → Astra.Core（EF Core + SQLite）"/>
+        </outline>
+        <outline text="L2 表现与编排（依赖 Core + Contract + UI 栈）">
+          <outline text="Astra.Engine — 引用 → Core, Contract, Astra.UI, Astra.UI.Abstractions"/>
+          <outline text="Astra.UI — 引用 → Core, Astra.UI.Abstractions, NavStack"/>
+          <outline text="NavStack / Astra.UI.Abstractions — UI 导航与抽象（Abstractions 可不依赖 Core）"/>
+        </outline>
+        <outline text="L3 宿主集成（聚合引擎、基础设施、共享库）">
+          <outline text="Astra.exe — 引用 → Core, Contract, Engine, Infrastructure"/>
+          <outline text="另引用 → Astra.UI, UI.Abstractions, NavStack, NVHDataBridge"/>
+        </outline>
+        <outline text="L4 插件扩展（与宿主同进程，按目录加载）">
+          <outline text="各 Plugin DLL — 引用 → Core, Contract, Astra.UI（及 NVHDataBridge 等）"/>
+          <outline text="运行时：IPluginHost 从 BaseDirectory\Plugins\ 发现 .addin 并加载"/>
+        </outline>
+      </outline>
+      <outline text="二、项目引用关系（与 .csproj 一致）">
+        <outline text="Astra（主程序）">
+          <outline text="ProjectReference → Astra.Core"/>
+          <outline text="ProjectReference → Astra.Contract"/>
+          <outline text="ProjectReference → Astra.Engine"/>
+          <outline text="ProjectReference → Astra.Infrastructure"/>
+          <outline text="ProjectReference → Astra.UI"/>
+          <outline text="ProjectReference → Astra.UI.Abstractions"/>
+          <outline text="ProjectReference → NavStack"/>
+          <outline text="ProjectReference → NVHDataBridge"/>
+        </outline>
+        <outline text="Astra.Contract">
+          <outline text="ProjectReference → Astra.Core"/>
+        </outline>
+        <outline text="Astra.Infrastructure">
+          <outline text="ProjectReference → Astra.Core"/>
+        </outline>
+        <outline text="Astra.Engine">
+          <outline text="ProjectReference → Astra.Core"/>
+          <outline text="ProjectReference → Astra.Contract"/>
+          <outline text="ProjectReference → Astra.UI"/>
+          <outline text="ProjectReference → Astra.UI.Abstractions"/>
+        </outline>
+        <outline text="Astra.UI">
+          <outline text="ProjectReference → Astra.Core"/>
+          <outline text="ProjectReference → Astra.UI.Abstractions"/>
+          <outline text="ProjectReference → NavStack"/>
+        </outline>
+        <outline text="NVHDataBridge">
+          <outline text="无对 Main 项目的 ProjectReference（独立类库）"/>
+        </outline>
+        <outline text="插件（典型）">
+          <outline text="DataAcquisition — Core, Contract, Astra.UI, NVHDataBridge"/>
+          <outline text="AudioPlayer — 同上 + UI.Abstractions；另引用 DataAcquisition 项目"/>
+          <outline text="PLC — Core, Contract, Astra.UI, UI.Abstractions"/>
+          <outline text="WorkflowArchive — Core, Contract, Astra.UI"/>
+          <outline text="Limits — Core, Contract, Astra.UI, NVHDataBridge, DataAcquisition"/>
+        </outline>
+      </outline>
+      <outline text="三、运行时逻辑（启动与插件）">
+        <outline text="启动：Astra 构建 ServiceProvider，注册 IPluginDiscovery / IPluginLoader / IPluginHost"/>
+        <outline text="插件目录：AppDomain.BaseDirectory\Plugins\（子目录如 DataAcquisition、PLC）"/>
+        <outline text="插件构建：解决方案中单独生成；主程序 csproj 不自动复制全部插件 DLL"/>
+        <outline text="共享程序集：插件对 Core/Contract/UI 常设为 CopyLocal=false，避免与主输出重复"/>
+      </outline>
+      <outline text="四、数据与横切逻辑">
+        <outline text="NVHDataBridge：主程序与采集/限值等插件共用，与领域模型解耦"/>
+        <outline text="持久化：经 Infrastructure 访问 DB，不直接自 Core 绑定 EF"/>
+      </outline>
+    </outline>
+  </body>
+</opml>

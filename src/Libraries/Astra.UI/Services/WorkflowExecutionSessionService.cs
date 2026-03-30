@@ -3,6 +3,7 @@ using Astra.Core.Logs;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;

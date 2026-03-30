@@ -1,5 +1,5 @@
 using Astra.Core.Access;
-using Astra.Core.Services.Ui;
+using Astra.UI.Abstractions.Services;
 using Astra.Services.UI;
 using Astra.UI.Helpers;
 using Astra.Services.Dialogs;

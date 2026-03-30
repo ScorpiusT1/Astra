@@ -2,7 +2,7 @@ using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
-using Astra.Core.Nodes.Ui;
+using Astra.UI.Abstractions.Nodes;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Attributes;
