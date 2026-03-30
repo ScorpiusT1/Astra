@@ -30,7 +30,7 @@ namespace Astra.Engine.Triggers
                 return;
             }
 
-            var prepare = await _homeRunContext.TryPrepareAutoTriggerRunAsync(cancellationToken).ConfigureAwait(false);
+            var prepare = await _homeRunContext.TryPrepareAutoTriggerRunAsync(cancellationToken, sn).ConfigureAwait(false);
             if (!prepare.Started || prepare.LinkedCancellation == null)
             {
                 return;

@@ -12,8 +12,9 @@ namespace Astra.Core.Triggers
 
         /// <summary>
         /// 在 UI 线程上准备一次与手动「独立执行」一致的会话；若当前不可执行则返回 <see cref="AutoTriggerPrepareResult.Started"/> 为 false。
+        /// 传入的 <paramref name="sn"/> 用于 Home 展示当前触发批次 SN。
         /// </summary>
-        Task<AutoTriggerPrepareResult> TryPrepareAutoTriggerRunAsync(CancellationToken externalCancellation);
+        Task<AutoTriggerPrepareResult> TryPrepareAutoTriggerRunAsync(CancellationToken externalCancellation, string? sn);
 
         /// <summary>
         /// 在 UI 线程上结束会话并恢复按钮/计时器状态。

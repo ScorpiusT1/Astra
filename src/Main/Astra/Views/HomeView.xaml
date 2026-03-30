@@ -215,6 +215,17 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,8,0,0">
+                                <TextBlock Text="SN:"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                <TextBlock Text="{Binding CurrentSn}"
+                                           Margin="6,0,0,0"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextBrush}" />
+                            </StackPanel>
                         </StackPanel>
                         <Border Grid.Column="1"
                                 MinWidth="78"

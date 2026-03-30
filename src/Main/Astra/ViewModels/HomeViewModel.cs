@@ -56,6 +56,9 @@ namespace Astra.ViewModels
         private bool _isTestPaused;
 
         [ObservableProperty]
+        private string _currentSn = "-";
+
+        [ObservableProperty]
         private YieldModuleViewModel _yieldModule;
 
         [ObservableProperty]
@@ -183,6 +186,7 @@ namespace Astra.ViewModels
             else
                 _manualBarcodeContext.PendingBarcode = null;
 
+            UpdateCurrentSn(manualSn);
             RealTimeLogModule.ClearLogsCommand.Execute(null);
             TestItemTreeModule.ResetForNewRun();
             _hasPendingYieldRecord = true;
@@ -339,7 +343,7 @@ namespace Astra.ViewModels
         bool IAutoTriggerHomeRunContext.IsExecutionBusy =>
             Application.Current?.Dispatcher?.Invoke(() => IsTestRunning || _workflowExecutionSessionService.IsRunning) ?? false;
 
-        async Task<AutoTriggerPrepareResult> IAutoTriggerHomeRunContext.TryPrepareAutoTriggerRunAsync(CancellationToken externalCancellation)
+        async Task<AutoTriggerPrepareResult> IAutoTriggerHomeRunContext.TryPrepareAutoTriggerRunAsync(CancellationToken externalCancellation, string? sn)
         {
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher == null)
@@ -365,6 +369,7 @@ namespace Astra.ViewModels
                 _hasPendingYieldRecord = true;
                 _isCurrentRunCanceled = false;
                 _manualBarcodeContext.PendingBarcode = null;
+                UpdateCurrentSn(sn);
                 TestItemTreeModule.BeginStandaloneExecutionEventSession();
                 IsTestRunning = true;
                 IsTestPaused = false;
@@ -373,6 +378,11 @@ namespace Astra.ViewModels
                 _homeRunCts = CancellationTokenSource.CreateLinkedTokenSource(externalCancellation);
                 return new AutoTriggerPrepareResult { Started = true, LinkedCancellation = _homeRunCts };
             });
+        }
+
+        private void UpdateCurrentSn(string? sn)
+        {
+            CurrentSn = string.IsNullOrWhiteSpace(sn) ? "-" : sn.Trim();
         }
 
         async Task IAutoTriggerHomeRunContext.CompleteAutoTriggerRunAsync()
