@@ -4,7 +4,7 @@ using NVHDataBridge.Models;
 using System;
 using System.Globalization;
 
-namespace Astra.Plugins.Limits
+namespace Astra.Plugins.Limits.Helpers
 {
     internal static class LimitNodeShared
     {

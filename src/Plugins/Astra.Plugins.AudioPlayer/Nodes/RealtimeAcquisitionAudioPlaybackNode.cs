@@ -1,4 +1,6 @@
 using Astra.Contract.Communication.Abstractions;
+using Astra.Plugins.AudioPlayer.Helpers;
+using Astra.Plugins.AudioPlayer.Models;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Devices.Management;

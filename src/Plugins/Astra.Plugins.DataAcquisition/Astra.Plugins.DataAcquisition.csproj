@@ -32,6 +32,9 @@
 		<None Update="$(AssemblyName).config.json" Condition="Exists('$(MSBuildProjectDirectory)\$(AssemblyName).config.json')">
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
 		</None>
+		<None Update="Astra.Plugins.DataAcquisition.addin">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -48,7 +51,7 @@
 			<Private>True</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
-		<ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj" >
+		<ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj">
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>

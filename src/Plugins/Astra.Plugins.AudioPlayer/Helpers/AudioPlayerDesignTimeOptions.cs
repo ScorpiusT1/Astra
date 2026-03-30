@@ -1,3 +1,4 @@
+using Astra.Plugins.AudioPlayer.Models;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.Core.Constants;
 using NVHDataBridge.IO.WAV;
@@ -5,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Astra.Plugins.AudioPlayer
+namespace Astra.Plugins.AudioPlayer.Helpers
 {
     /// <summary>
     /// 属性编辑器下拉：与 Limits 插件中卡控节点相同规则，采集卡首项为未选择，选定后通道列表刷新。

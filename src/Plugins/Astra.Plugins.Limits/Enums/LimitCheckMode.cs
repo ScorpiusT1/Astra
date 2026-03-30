@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Astra.Plugins.Limits
+namespace Astra.Plugins.Limits.Enums
 {
     /// <summary>
     /// 组合卡控节点：要执行哪些检查。

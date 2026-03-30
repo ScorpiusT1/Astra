@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<Import Project="..\Astra.Plugins.Common.props" />
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWPF>true</UseWPF>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<OutputPath>$([System.IO.Path]::GetFullPath('$([System.IO.Path]::Combine($(BaseOutputPath), '$(Configuration)', 'Plugins', 'DataImport'))'))</OutputPath>
+		<OutDir>$(OutputPath)\</OutDir>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj">
+			<Private>true</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Main\Astra.Contract\Astra.Contract.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+	</ItemGroup>
+
+	<Target Name="CopyPluginMetadataIfMissing" AfterTargets="Build">
+		<PropertyGroup>
+			<PluginOutputDir>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</PluginOutputDir>
+			<PluginAddinSource>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(AssemblyName).addin'))</PluginAddinSource>
+			<PluginAddinTarget>$([System.IO.Path]::Combine('$(PluginOutputDir)', '$(AssemblyName).addin'))</PluginAddinTarget>
+		</PropertyGroup>
+		<MakeDir Directories="$(PluginOutputDir)" />
+		<Copy SourceFiles="$(PluginAddinSource)" DestinationFiles="$(PluginAddinTarget)" Condition="Exists('$(PluginAddinSource)') AND !Exists('$(PluginAddinTarget)')" />
+	</Target>
+</Project>

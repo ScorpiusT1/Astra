@@ -1,6 +1,6 @@
 using System;
 
-namespace Astra.Plugins.AudioPlayer
+namespace Astra.Plugins.AudioPlayer.Models
 {
     /// <summary>
     /// 播放设备下拉项：界面只绑定 <see cref="DisplayName"/>，选中后保存 <see cref="MmDeviceId"/>。

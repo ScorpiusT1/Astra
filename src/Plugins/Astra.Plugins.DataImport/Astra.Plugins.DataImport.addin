@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AddinManifest>
+	<Schema>http://pluginsystem.org/schema/v1</Schema>
+	<Addin>
+		<Id>Astra.Plugins.DataImport</Id>
+		<Name>数据导入与转换</Name>
+		<Version>1.0.0</Version>
+		<Description>导入 TDMS/WAV 为 NVH Raw，支持 TDMS 转 WAV；可扩展 INvhFormatImporter</Description>
+		<Author>Astra Team</Author>
+		<Copyright>Copyright © Astra Team</Copyright>
+		<Website />
+		<IconPath>FileImport</IconPath>
+		<Order>7</Order>
+		<Runtime>
+			<Assembly>Astra.Plugins.DataImport.dll</Assembly>
+			<TypeName>Astra.Plugins.DataImport.DataImportPlugin</TypeName>
+			<TargetFramework>net8.0-windows</TargetFramework>
+		</Runtime>
+		<Dependencies />
+		<Permissions>
+			<Required />
+		</Permissions>
+	</Addin>
+	<Nodes>
+		<NodeInfo Name="TDMS 导入" TypeName="Astra.Plugins.DataImport.Nodes.TdmsImportRawNode" IconCode="FileImport" Description="TDMS → Raw（采集卡选「文件导入」）" Category="数据导入" />
+		<NodeInfo Name="WAV 导入" TypeName="Astra.Plugins.DataImport.Nodes.WavImportRawNode" IconCode="FileImport" Description="WAV → Raw（多声道取首路）" Category="数据导入" />
+		<NodeInfo Name="TDMS 转 WAV" TypeName="Astra.Plugins.DataImport.Nodes.TdmsToWavExportNode" IconCode="FileExport" Description="TDMS Signal 通道导出为 WAV" Category="数据导入" />
+	</Nodes>
+</AddinManifest>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AddinManifest>
+	<Schema>http://pluginsystem.org/schema/v1</Schema>
+	<Addin>
+		<Id>Astra.Plugins.Algorithms</Id>
+		<Name>NVH 算法插件</Name>
+		<Version>1.0.0</Version>
+		<Description>基于 NVH 库的谱分析、阶次、小波与心理声学算法节点</Description>
+		<Author>Astra Team</Author>
+		<Copyright>Copyright © Astra Team</Copyright>
+		<Website />
+		<!-- IconPath 须为 FontAwesome.Sharp.IconChar 名称；与多数算法节点一致使用 ChartLine -->
+		<IconPath>WaveSquare</IconPath>
+		<Order>5</Order>
+		<Runtime>
+			<Assembly>Astra.Plugins.Algorithms.dll</Assembly>
+			<TypeName>Astra.Plugins.Algorithms.AlgorithmPlugin</TypeName>
+			<TargetFramework>net8.0-windows</TargetFramework>
+		</Runtime>
+		<Dependencies />
+		<Permissions>
+			<Required />
+		</Permissions>
+	</Addin>
+	<Nodes>
+		<NodeInfo Name="整体声级谱" TypeName="Astra.Plugins.Algorithms.Nodes.OverallLevelSpectralNode" IconCode="ChartLine" Description="整体声级频谱" Category="NVH 算法" />
+		<NodeInfo Name="倍频程分析" TypeName="Astra.Plugins.Algorithms.Nodes.OctaveAnalysisNode" IconCode="ChartLine" Description="平均谱倍频程" Category="NVH 算法" />
+		<NodeInfo Name="平均谱" TypeName="Astra.Plugins.Algorithms.Nodes.AveragedSpectrumNode" IconCode="ChartLine" Description="平均自功率谱" Category="NVH 算法" />
+		<NodeInfo Name="时间频率图" TypeName="Astra.Plugins.Algorithms.Nodes.TimeFrequencyMapNode" IconCode="Grid" Description="STFT 时间频率图" Category="NVH 算法" />
+		<NodeInfo Name="阶次截面" TypeName="Astra.Plugins.Algorithms.Nodes.OrderSectionNode" IconCode="ChartLine" Description="阶次截面曲线" Category="NVH 算法" />
+		<NodeInfo Name="转速频率图" TypeName="Astra.Plugins.Algorithms.Nodes.RpmFrequencyMapNode" IconCode="Grid" Description="转速-频率图" Category="NVH 算法" />
+		<NodeInfo Name="转速阶次图" TypeName="Astra.Plugins.Algorithms.Nodes.RpmOrderMapNode" IconCode="Grid" Description="转速-阶次图" Category="NVH 算法" />
+		<NodeInfo Name="希尔伯特包络" TypeName="Astra.Plugins.Algorithms.Nodes.HilbertEnvelopeNode" IconCode="ChartLine" Description="希尔伯特包络时域" Category="NVH 算法" />
+		<NodeInfo Name="包络(固定带)" TypeName="Astra.Plugins.Algorithms.Nodes.HilbertEnvelopeExFixedNode" IconCode="ChartLine" Description="固定频带包络" Category="NVH 算法" />
+		<NodeInfo Name="包络(跟踪带)" TypeName="Astra.Plugins.Algorithms.Nodes.HilbertEnvelopeExTrackedNode" IconCode="ChartLine" Description="跟踪阶次包络" Category="NVH 算法" />
+		<NodeInfo Name="包络谱" TypeName="Astra.Plugins.Algorithms.Nodes.HilbertEnvelopeSpectraNode" IconCode="ChartLine" Description="希尔伯特包络谱" Category="NVH 算法" />
+		<NodeInfo Name="包络平均谱" TypeName="Astra.Plugins.Algorithms.Nodes.HilbertEnvelopeAvgSpectraNode" IconCode="ChartLine" Description="包络平均谱" Category="NVH 算法" />
+		<NodeInfo Name="Morlet 小波" TypeName="Astra.Plugins.Algorithms.Nodes.MorletWaveletTransformNode" IconCode="Grid" Description="Morlet 小波变换" Category="NVH 算法" />
+		<NodeInfo Name="LMS Morlet 小波" TypeName="Astra.Plugins.Algorithms.Nodes.LmsMorletWaveletTransformNode" IconCode="Grid" Description="对数频率 Morlet 小波" Category="NVH 算法" />
+		<NodeInfo Name="调制谱(分辨率)" TypeName="Astra.Plugins.Algorithms.Nodes.ModulationSpectrumResolutionNode" IconCode="Grid" Description="调制谱（分辨率模式）" Category="NVH 算法" />
+		<NodeInfo Name="调制谱(STFT)" TypeName="Astra.Plugins.Algorithms.Nodes.ModulationSpectrumStftNode" IconCode="Grid" Description="调制谱（STFT）" Category="NVH 算法" />
+		<NodeInfo Name="稳态响度" TypeName="Astra.Plugins.Algorithms.Nodes.StationaryLoudnessNode" IconCode="ChartBar" Description="稳态响度与特定响度" Category="NVH 算法" />
+		<NodeInfo Name="时变响度" TypeName="Astra.Plugins.Algorithms.Nodes.TimeVaryingLoudnessNode" IconCode="Grid" Description="时变特定响度" Category="NVH 算法" />
+		<NodeInfo Name="稳态锐度" TypeName="Astra.Plugins.Algorithms.Nodes.StationarySharpnessNode" IconCode="ChartLine" Description="稳态锐度" Category="NVH 算法" />
+		<NodeInfo Name="时变锐度" TypeName="Astra.Plugins.Algorithms.Nodes.TimeVaryingSharpnessNode" IconCode="Grid" Description="时变锐度" Category="NVH 算法" />
+		<NodeInfo Name="粗糙度" TypeName="Astra.Plugins.Algorithms.Nodes.RoughnessNode" IconCode="Grid" Description="粗糙度分析" Category="NVH 算法" />
+		<NodeInfo Name="波动度" TypeName="Astra.Plugins.Algorithms.Nodes.FluctuationStrengthNode" IconCode="Grid" Description="波动强度" Category="NVH 算法" />
+	</Nodes>
+</AddinManifest>

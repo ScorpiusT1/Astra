@@ -1,3 +1,5 @@
+using Astra.Core.Constants;
+using Astra.Core.Data;
 using Astra.Core.Devices.Interfaces;
 using Astra.Plugins.DataAcquisition.Devices;
 
@@ -13,6 +15,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
     {       
         /// <summary>
         /// 按设备显示名解析 DeviceId（供其它插件解析 Raw 键等）。
+        /// 优先检查内置虚拟设备 → 再查 VirtualDeviceChannelRegistry 别名 → 最后查真实采集卡。
         /// </summary>
         public static bool TryGetDeviceIdByDisplayName(string? displayName, out string deviceId)
         {
@@ -20,6 +23,20 @@ namespace Astra.Plugins.DataAcquisition.Providers
             if (string.IsNullOrWhiteSpace(displayName))
             {
                 return false;
+            }
+
+            var trimmed = displayName.Trim();
+
+            if (string.Equals(trimmed, AstraSharedConstants.VirtualImportDevices.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                deviceId = AstraSharedConstants.VirtualImportDevices.DeviceId;
+                return true;
+            }
+
+            if (VirtualDeviceChannelRegistry.TryResolveDeviceId(trimmed, out var aliasDeviceId))
+            {
+                deviceId = aliasDeviceId;
+                return true;
             }
 
             try
@@ -32,7 +49,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
 
                 foreach (var dev in plugin.GetAllDataAcquisitions())
                 {
-                    if (dev is IDevice d && string.Equals(d.DeviceName?.Trim(), displayName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    if (dev is IDevice d && string.Equals(d.DeviceName?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase))
                     {
                         deviceId = d.DeviceId;
                         return true;
@@ -47,7 +64,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
         }
 
         /// <summary>
-        /// 返回当前插件中所有采集卡的设备名称列表（用于属性编辑器多选，绑定到字符串集合）。
+        /// 返回当前插件中所有采集卡的设备名称列表（含虚拟设备与别名），用于属性编辑器多选。
         /// </summary>
         public static List<string> GetDataAcquisitionNames()
         {
@@ -56,18 +73,25 @@ namespace Astra.Plugins.DataAcquisition.Providers
                 var plugin = DataAcquisitionPlugin.Current;
                 if (plugin == null)
                 {
-                    return new List<string>();
+                    var fallback = new List<string> { AstraSharedConstants.VirtualImportDevices.DisplayName };
+                    AppendVirtualAliases(fallback);
+                    return fallback;
                 }
 
                 var devices = plugin.GetAllDataAcquisitions();
 
-                return devices?
-                           .Select(d => d as IDevice)
-                           .Where(d => d != null && !string.IsNullOrWhiteSpace(d.DeviceName))
-                           .Select(d => d.DeviceName)
-                           .Distinct()
-                           .ToList()
-                       ?? new List<string>();
+                var list = devices?
+                               .Select(d => d as IDevice)
+                               .Where(d => d != null && !string.IsNullOrWhiteSpace(d.DeviceName))
+                               .Select(d => d!.DeviceName!)
+                               .Distinct()
+                               .ToList()
+                           ?? new List<string>();
+                if (!list.Contains(AstraSharedConstants.VirtualImportDevices.DisplayName, StringComparer.OrdinalIgnoreCase))
+                    list.Add(AstraSharedConstants.VirtualImportDevices.DisplayName);
+
+                AppendVirtualAliases(list);
+                return list;
             }
             catch
             {
@@ -116,6 +140,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
 
         /// <summary>
         /// 指定采集卡（设备显示名）下已启用通道名；首项为空表示组内首通道。
+        /// 虚拟设备（文件导入及其别名）从 <see cref="VirtualDeviceChannelRegistry"/> 动态获取。
         /// </summary>
         public static List<string> GetConfiguredChannelNamesForDeviceDisplayName(string? deviceDisplayName)
         {
@@ -123,6 +148,14 @@ namespace Astra.Plugins.DataAcquisition.Providers
             if (string.IsNullOrWhiteSpace(deviceDisplayName))
             {
                 return result;
+            }
+
+            var trimmed = deviceDisplayName.Trim();
+
+            if (string.Equals(trimmed, AstraSharedConstants.VirtualImportDevices.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                VirtualDeviceChannelRegistry.IsVirtualDevice(trimmed))
+            {
+                return VirtualDeviceChannelRegistry.GetChannels(trimmed);
             }
 
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { string.Empty };
@@ -142,7 +175,7 @@ namespace Astra.Plugins.DataAcquisition.Providers
                     }
 
                     if (dev is not IDevice idev ||
-                        !string.Equals(idev.DeviceName?.Trim(), deviceDisplayName.Trim(), StringComparison.OrdinalIgnoreCase))
+                        !string.Equals(idev.DeviceName?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
@@ -163,6 +196,15 @@ namespace Astra.Plugins.DataAcquisition.Providers
             }
 
             return result;
+        }
+
+        private static void AppendVirtualAliases(List<string> list)
+        {
+            foreach (var alias in VirtualDeviceChannelRegistry.GetAllAliases())
+            {
+                if (!list.Contains(alias, StringComparer.OrdinalIgnoreCase))
+                    list.Add(alias);
+            }
         }
     }
 }

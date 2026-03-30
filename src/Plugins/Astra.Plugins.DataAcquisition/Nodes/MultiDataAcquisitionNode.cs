@@ -20,7 +20,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// <summary>
     /// 多采集卡采集节点：在一个脚本节点中同时控制多个采集卡的启动。
     /// </summary>
-    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider
+    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider, IMultiRawDataPipelineNode
     {
         private bool _usePropertyPanelForChartAxis = true;
 
@@ -71,6 +71,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(typeof(DataAcquisitionCardProvider), "GetDataAcquisitionNames", DisplayMemberPath = ".")]
         public List<string> DataAcquisitionDeviceNames { get; set; } = new();
+
+        IEnumerable<string> IMultiRawDataPipelineNode.DataAcquisitionDeviceDisplayNames => DataAcquisitionDeviceNames;
 
         /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴标签（节点代码侧默认）。</summary>
         private const string CodeDefinedChartXAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisLabel;
