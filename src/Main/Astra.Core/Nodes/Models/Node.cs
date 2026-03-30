@@ -1,4 +1,4 @@
-﻿using Astra.Core.Logs;
+using Astra.Core.Logs;
 using Astra.Core.Nodes.Geometry;
 using Newtonsoft.Json;
 using System;
@@ -51,6 +51,14 @@ namespace Astra.Core.Nodes.Models
             IsEnabled = true;
             InputPorts = new List<Port>();
             OutputPorts = new List<Port>();
+        }
+
+        /// <summary>
+        /// 从工具箱拖拽到画布、由节点工厂创建实例后调用一次（例如生成默认属性）。
+        /// 从 JSON 反序列化或克隆得到的节点不会调用，避免覆盖已保存数据。
+        /// </summary>
+        public virtual void OnPlacedFromToolbox()
+        {
         }
 
         // ===== 基本属性 =====

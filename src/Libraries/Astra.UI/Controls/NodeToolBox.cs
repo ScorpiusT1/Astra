@@ -1,3 +1,4 @@
+using Astra.UI;
 using Astra.UI.Adapters;
 using Astra.UI.Services;
 using FontAwesome.Sharp;
@@ -2190,23 +2191,8 @@ namespace Astra.UI.Controls
         private IconChar GetIconFromTool(IToolItem tool)
         {
             if (tool == null || string.IsNullOrWhiteSpace(tool.IconCode))
-            {
                 return IconChar.Circle;
-            }
-
-            try
-            {
-                if (Enum.TryParse(tool.IconCode, true, out IconChar icon))
-                {
-                    return icon;
-                }
-            }
-            catch
-            {
-                // 忽略解析异常，走默认分支
-            }
-
-            return IconChar.Circle;
+            return FontAwesomeIconResolver.Resolve(tool.IconCode);
         }
 
         /// <summary>

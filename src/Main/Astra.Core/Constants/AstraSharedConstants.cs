@@ -90,6 +90,19 @@ namespace Astra.Core.Constants
             public const string NewIoNamePrefix = "NewIO #";
         }
 
+        /// <summary>
+        /// 文件导入类节点发布的 Raw 使用与多采集相同的「设备显示名 → DeviceId」规则；
+        /// 数据采集插件中的 <c>DataAcquisitionCardProvider</c> 将 <see cref="DisplayName"/> 解析为 <see cref="DeviceId"/>。
+        /// </summary>
+        public static class VirtualImportDevices
+        {
+            /// <summary>属性面板与算法节点中可选的虚拟采集卡名称。</summary>
+            public const string DisplayName = "文件导入";
+
+            /// <summary>对应 Raw 工件键中的设备段：<c>{DeviceId}:raw</c>。</summary>
+            public const string DeviceId = "astra-virtual-file-import";
+        }
+
         public static class DeviceErrorCodes
         {
             public const int ConnectFailed = 1001;

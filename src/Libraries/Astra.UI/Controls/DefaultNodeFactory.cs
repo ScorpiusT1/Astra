@@ -55,6 +55,8 @@ namespace Astra.UI.Controls
                 node.Icon = typedTool.IconCode;
             }
 
+            node.OnPlacedFromToolbox();
+
             return true;
         }
 

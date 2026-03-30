@@ -1,3 +1,4 @@
+using Astra.UI;
 using FontAwesome.Sharp;
 
 namespace Astra.UI.Controls
@@ -144,18 +145,8 @@ namespace Astra.UI.Controls
         /// </summary>
         /// <param name="iconName">图标名称（IconChar 枚举值名称）</param>
         /// <returns>IconChar 枚举值，如果未找到则返回 IconChar.Circle</returns>
-        public static IconChar GetIconChar(string iconName)
-        {
-            if (string.IsNullOrEmpty(iconName))
-                return IconChar.Circle;
-
-            if (System.Enum.TryParse<IconChar>(iconName, true, out var iconChar))
-            {
-                return iconChar;
-            }
-
-            return IconChar.Circle;
-        }
+        public static IconChar GetIconChar(string iconName) =>
+            FontAwesomeIconResolver.Resolve(iconName);
 
         /// <summary>
         /// 获取图标名称字符串

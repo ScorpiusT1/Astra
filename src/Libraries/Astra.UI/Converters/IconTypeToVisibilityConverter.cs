@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using Astra.UI;
 
 namespace Astra.UI.Converters
 {
@@ -18,17 +19,7 @@ namespace Astra.UI.Converters
             bool isFontAwesome = false;
 
             if (value is string iconCode && !string.IsNullOrWhiteSpace(iconCode))
-            {
-                try
-                {
-                    var iconType = typeof(FontAwesome.Sharp.IconChar);
-                    isFontAwesome = Enum.TryParse(iconType, iconCode, true, out _);
-                }
-                catch
-                {
-                    isFontAwesome = false;
-                }
-            }
+                isFontAwesome = FontAwesomeIconResolver.IsKnownIconName(iconCode);
 
             bool invert = parameter is string param &&
                           param.Equals("invert", StringComparison.OrdinalIgnoreCase);
