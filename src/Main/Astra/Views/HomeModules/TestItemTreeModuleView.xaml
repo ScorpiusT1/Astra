@@ -304,6 +304,69 @@
                                     </Storyboard>
                                 </BeginStoryboard>
                             </EventTrigger>
+                            <!-- Tag=Manual/Auto 由运行模式按钮设置；持续闪烁必须在模板内 Storyboard（Style 中不可对 Root 使用 TargetName） -->
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="Manual" />
+                                    <Condition Binding="{Binding DataContext.IsManualScanMode, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.EnterActions>
+                                    <BeginStoryboard Name="HomeModeManualBlinkStoryboard">
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetName="Root"
+                                                               Storyboard.TargetProperty="Opacity"
+                                                               From="1"
+                                                               To="0.52"
+                                                               Duration="0:0:0.55"
+                                                               AutoReverse="True" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.EnterActions>
+                                <MultiDataTrigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="HomeModeManualBlinkStoryboard" />
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Root"
+                                                               Storyboard.TargetProperty="Opacity"
+                                                               To="1"
+                                                               Duration="0:0:0" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="Auto" />
+                                    <Condition Binding="{Binding DataContext.IsManualScanMode, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.EnterActions>
+                                    <BeginStoryboard Name="HomeModeAutoBlinkStoryboard">
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetName="Root"
+                                                               Storyboard.TargetProperty="Opacity"
+                                                               From="1"
+                                                               To="0.52"
+                                                               Duration="0:0:0.55"
+                                                               AutoReverse="True" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.EnterActions>
+                                <MultiDataTrigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="HomeModeAutoBlinkStoryboard" />
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Root"
+                                                               Storyboard.TargetProperty="Opacity"
+                                                               To="1"
+                                                               Duration="0:0:0" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -546,10 +609,12 @@
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource SecondaryTextBrush}" />
                         <Button Content="手动"
+                                Tag="Manual"
                                 Style="{StaticResource HomeModeManualButtonStyle}"
                                 Margin="0,0,6,0"
                                 Command="{Binding SelectManualScanModeCommand}" />
                         <Button Content="自动"
+                                Tag="Auto"
                                 Style="{StaticResource HomeModeAutoButtonStyle}"
                                 Command="{Binding SelectAutoScanModeCommand}" />
                     </StackPanel>

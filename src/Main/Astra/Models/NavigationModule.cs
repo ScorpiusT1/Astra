@@ -94,14 +94,14 @@ namespace Astra.Models
                 },
                   new NavigationMenuItem
                 {
-                    Title = "序列",
+                    Title = "流程",
                     NavigationKey = NavigationKeys.Sequence,
                     Icon = "List", // FontAwesome
                     Order = 4,
-                    Description = "配置测试序列",
+                    Description = "配置测试流程",
                     Group = "Core",
                     RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
-                    PermissionDeniedMessage = "需要工程师或管理员权限才能配置测试序列"
+                    PermissionDeniedMessage = "需要工程师或管理员权限才能配置测试流程"
                 },
                 new NavigationMenuItem
                 {

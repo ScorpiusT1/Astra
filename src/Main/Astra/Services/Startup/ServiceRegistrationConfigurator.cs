@@ -43,6 +43,8 @@ using Astra.Core.Plugins.UI;
 using Astra.Core.Plugins;
 using Astra.Core.Archiving;
 using Astra.Core.Configuration;
+using Astra.Core.Services.Ui;
+using Astra.Services.UI;
 using Astra.Core.Triggers;
 using Astra.Core.Triggers.Interlock;
 using Astra.Core.Triggers.Manager;
@@ -212,6 +214,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<ISafetyInterlockGlobalOptionsSource, SafetyInterlockGlobalOptionsFromSoftwareConfig>();
             services.AddSingleton<ISafetyInterlockMonitor, SafetyInterlockMonitorService>();
             services.AddSingleton<IUiLogService, UiLogService>();
+            services.AddSingleton<IBusyService, BusyService>();
             services.AddSingleton<IExecutionLogSink, ExecutionLogSink>();
 
             Debug.WriteLine("✅ 应用程序服务注册完成");

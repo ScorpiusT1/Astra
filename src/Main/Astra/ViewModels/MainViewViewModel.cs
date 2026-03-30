@@ -1,5 +1,6 @@
 using Astra.Core.Access;
 using Astra.Core.Access.Models;
+using Astra.Core.Services.Ui;
 using Astra.Messages;
 using Astra.Services.Session;
 using Astra;
@@ -8,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using NavStack.Modularity;
 using System;
+using System.ComponentModel;
 
 namespace Astra.ViewModels
 {
@@ -56,6 +58,8 @@ namespace Astra.ViewModels
         /// 消息服务
         /// </summary>
         private readonly IMessenger _messenger;
+
+        private readonly IBusyService _busyService;
 
         /// <summary>
         /// 当前用户名（来自会话服务）
@@ -108,16 +112,23 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private SoftwareStatus _statusIndicatorStatus = SoftwareStatus.Running;
 
+        /// <summary>主窗口忙碌遮罩（与各模块/插件共享的单例）。</summary>
+        public IBusyService Busy => _busyService;
+
         public MainViewViewModel(
             MainViewModel navigationViewModel,
             UserMenuViewModel userMenuViewModel,
             IUserSessionService sessionService,
+            IBusyService busyService,
             IMessenger messenger = null)
         {
             Navigation = navigationViewModel ?? throw new ArgumentNullException(nameof(navigationViewModel));
             UserMenu = userMenuViewModel ?? throw new ArgumentNullException(nameof(userMenuViewModel));
             _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
+            _busyService = busyService ?? throw new ArgumentNullException(nameof(busyService));
             _messenger = messenger ?? WeakReferenceMessenger.Default;
+
+            _busyService.PropertyChanged += OnBusyServicePropertyChanged;
 
             // ⚠️ 关键修复：监听会话变化消息，而不是PropertyChanged事件
             // UserSessionService使用消息机制通知状态变化
@@ -126,6 +137,19 @@ namespace Astra.ViewModels
             _messenger.Register<StatusIndicatorMessage>(this, OnStatusIndicatorMessage);
 
             System.Diagnostics.Debug.WriteLine("[MainViewViewModel] 复合ViewModel初始化完成");
+        }
+
+        private void OnBusyServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is null
+                || e.PropertyName == nameof(IBusyService.IsBusy)
+                || e.PropertyName == nameof(IBusyService.BusyMessage)
+                || e.PropertyName == nameof(IBusyService.ShowCancelButton)
+                || e.PropertyName == nameof(IBusyService.CancelButtonText)
+                || e.PropertyName == nameof(IBusyService.CurrentCancellationToken))
+            {
+                OnPropertyChanged(nameof(Busy));
+            }
         }
 
         /// <summary>
@@ -207,6 +231,10 @@ namespace Astra.ViewModels
         /// </summary>
         public RelayCommand LogoutCommand => (RelayCommand)UserMenu.LogoutCommand;
 
+        /// <summary>关闭忙碌遮罩上的取消请求（转发到 <see cref="IBusyService"/>）。</summary>
+        [RelayCommand]
+        private void CancelBusy() => _busyService.RequestCancel();
+
         /// <summary>
         /// 释放资源
         /// </summary>
@@ -216,6 +244,8 @@ namespace Astra.ViewModels
             _messenger.Unregister<UserSessionChangedMessage>(this);
             _messenger.Unregister<AutoLogoutWarningMessage>(this);
             _messenger.Unregister<StatusIndicatorMessage>(this);
+
+            _busyService.PropertyChanged -= OnBusyServicePropertyChanged;
 
             Navigation?.Dispose();
             UserMenu?.Dispose();

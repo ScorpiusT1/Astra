@@ -1,4 +1,6 @@
-﻿using Astra.Core.Access;
+using Astra.Core.Access;
+using Astra.Core.Services.Ui;
+using Astra.Services.UI;
 using Astra.UI.Helpers;
 using Astra.Services.Dialogs;
 using Astra.Services.Session;
@@ -27,6 +29,7 @@ namespace Astra.ViewModels
         private readonly IDialogService _dialogService;
         private readonly IMessenger _messenger;
         private readonly INavigationManager _navigationManager;
+        private readonly IBusyService _busyService;
         private bool _isProcessingSessionChange = false; // ⭐ 防止递归调用标志
 
         [ObservableProperty]
@@ -41,11 +44,13 @@ namespace Astra.ViewModels
         public UserMenuViewModel(
             IUserSessionService sessionService,
             IDialogService dialogService,
+            IBusyService busyService,
             IMessenger messenger = null,
             INavigationManager navigationManager = null)
         {
             _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
+            _busyService = busyService ?? throw new ArgumentNullException(nameof(busyService));
             _messenger = messenger ?? WeakReferenceMessenger.Default;
             _navigationManager = navigationManager;
 
@@ -197,16 +202,26 @@ namespace Astra.ViewModels
                     // ⭐ 退出登录后，默认导航到首页，并在布局加载后设置选中态
                     try
                     {
-                        _ = _navigationManager?.NavigateAsync(NavigationKeys.Home);
-                        System.Windows.Application.Current?.Dispatcher.BeginInvoke(
-                            System.Windows.Threading.DispatcherPriority.Loaded,
-                            new Action(() =>
+                        _ = System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
+                        {
+                            if (_navigationManager != null)
                             {
-                                var mainWindow = System.Windows.Application.Current.MainWindow as Astra.Views.MainView;
-                                var vm = mainWindow?.DataContext as MainViewModel;
-                                vm?.SetSelectedByKey(NavigationKeys.Home);                                
-                            })
-                        );
+                                await BusyUiHelper.RunWithNavigationBusyAsync(
+                                    _busyService,
+                                    "正在返回首页…",
+                                    () => _navigationManager.NavigateAsync(NavigationKeys.Home));
+                            }
+
+                            System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+                                System.Windows.Threading.DispatcherPriority.Loaded,
+                                new Action(() =>
+                                {
+                                    var mainWindow = System.Windows.Application.Current.MainWindow as Astra.Views.MainView;
+                                    var vm = mainWindow?.DataContext as MainViewViewModel;
+                                    vm?.Navigation.SetSelectedByKey(NavigationKeys.Home);
+                                })
+                            );
+                        });
                     }
                     catch { }
                 }));

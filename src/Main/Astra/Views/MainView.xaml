@@ -8,6 +8,7 @@
            xmlns:utils="clr-namespace:Astra.Utilities"
            xmlns:converters="clr-namespace:Astra.Converters"
            xmlns:helpers="clr-namespace:Astra.UI.Helpers;assembly=Astra.UI"
+           xmlns:uiControls="clr-namespace:Astra.UI.Styles.Controls;assembly=Astra.UI"
            xmlns:baseWindow="clr-namespace:Astra.UI.Styles.Windows;assembly=Astra.UI"
            xmlns:viewmodels="clr-namespace:Astra.ViewModels"
            xmlns:fa="http://schemas.awesome.incremented/wpf/xaml/fontawesome.sharp"
@@ -807,6 +808,18 @@
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- 全局忙碌遮罩：跨导航栏与内容区，避免繁忙时仍可点击菜单切换 -->
+        <uiControls:BusyOverlayControl Grid.Row="0"
+                                       Grid.RowSpan="2"
+                                       Panel.ZIndex="10000"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Stretch"
+                                       IsBusy="{Binding Busy.IsBusy}"
+                                       BusyMessage="{Binding Busy.BusyMessage}"
+                                       ShowCancelButton="{Binding Busy.ShowCancelButton}"
+                                       CancelButtonText="{Binding Busy.CancelButtonText}"
+                                       CancelCommand="{Binding CancelBusyCommand}" />
 
     </Grid>
 

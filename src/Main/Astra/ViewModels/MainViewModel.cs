@@ -18,6 +18,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Astra.Services.Monitoring;
 using Astra.Core.Access.Models;
+using Astra.Core.Services.Ui;
+using Astra.Services.UI;
 
 namespace Astra.ViewModels
 {
@@ -42,6 +44,7 @@ namespace Astra.ViewModels
 		private readonly ILogger<MainViewModel> _logger;
 		private readonly string _defaultPageKey;
 		private readonly ITelemetryService _telemetry;
+        private readonly IBusyService _busyService;
 
         #region 可观察属性 - 导航相关
 
@@ -110,7 +113,8 @@ namespace Astra.ViewModels
 			ILogger<MainViewModel> logger = null,
 			INavigationGuard navigationGuard = null,
 			IOptions<AppNavOptions> navOptions = null,
-			ITelemetryService telemetry = null)
+			ITelemetryService telemetry = null,
+            IBusyService busyService = null)
         {
 			_navigationManager = navigationManager ?? throw new ArgumentNullException(nameof(navigationManager));
 			_regionManager = regionManager ?? throw new ArgumentNullException(nameof(regionManager));
@@ -123,6 +127,7 @@ namespace Astra.ViewModels
 			_navigationGuard = navigationGuard ?? new NavigationGuard(_permissionService);
 			_defaultPageKey = string.IsNullOrWhiteSpace(navOptions?.Value?.DefaultPage) ? NavigationKeys.Home : navOptions.Value.DefaultPage;
 			_telemetry = telemetry;
+            _busyService = busyService ?? throw new ArgumentNullException(nameof(busyService));
 
             MenuItems = new ObservableCollection<NavigationMenuItem>();
             ApplicationVersion = AssemblyInfo.Version;
@@ -424,9 +429,15 @@ namespace Astra.ViewModels
 
                 System.Diagnostics.Debug.WriteLine($"[MainViewModel] 调用 NavigationManager.NavigateAsync: {pageKey}");
                 _logger?.LogInformation("[MainViewModel] 调用 NavigationManager.NavigateAsync: {PageKey}", pageKey);
-                
-                var navResult = await _navigationManager.NavigateAsync(pageKey);
-                
+
+                var busyMessage = !string.IsNullOrWhiteSpace(menuItem?.Title)
+                    ? $"正在打开「{menuItem.Title}」…"
+                    : "正在切换页面…";
+                var navResult = await BusyUiHelper.RunWithNavigationBusyAsync(
+                    _busyService,
+                    busyMessage,
+                    () => _navigationManager.NavigateAsync(pageKey));
+
                 if (navResult.Success)
                 {
                     System.Diagnostics.Debug.WriteLine($"[MainViewModel] ✅ 导航成功: {pageKey}");
@@ -463,7 +474,10 @@ namespace Astra.ViewModels
         {
             try
             {
-				_navigationManager.GoBack();
+                await BusyUiHelper.RunWithNavigationBusyAsync(
+                    _busyService,
+                    "正在返回上一页…",
+                    () => _navigationManager.GoBack());
                 _logger.LogInformation("[MainViewModel] 后退成功");
             }
             catch (Exception ex)
@@ -480,7 +494,10 @@ namespace Astra.ViewModels
         {
             try
             {
-				_navigationManager.GoForward();
+                await BusyUiHelper.RunWithNavigationBusyAsync(
+                    _busyService,
+                    "正在前进…",
+                    () => _navigationManager.GoForward());
                 _logger.LogInformation("[MainViewModel] 前进成功");
             }
             catch (Exception ex)
