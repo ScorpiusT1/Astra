@@ -22,9 +22,11 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     {
         private bool _usePropertyPanelForChartAxis = true;
 
+        [Order(2)]
         [Display(Name = "显示图表按钮", GroupName = "基础配置", Order = 3, Description = "开启后在首页测试项操作栏显示「打开图表」；需同时开启「在主页测试项中显示」。关闭后若本次执行仍输出了曲线数据，按钮仍可出现。")]
         public bool ShowHomeChartButton { get; set; } = true;
 
+        [Order(1)]
         [Display(Name = "在属性面板配置坐标轴", GroupName = "图表", Order = 0, Description = "开启后使用下方 X/Y 轴标签与单位；关闭后隐藏下方四项，由节点代码在输出中指定轴信息（本节点使用内置默认：样本 / 数值）。")]
         public bool UsePropertyPanelForChartAxis
         {
@@ -53,6 +55,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         [Display(Name = "图表 Y 轴单位", GroupName = "图表", Order = 4, Description = "显示在 Y 轴标题后的单位，可留空。")]
         public string ChartYAxisUnit { get; set; } = string.Empty;
 
+        [Order(0)]
         [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 1, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
         public bool StopAcquisitionAfterCompletion { get; set; } = true;
 
@@ -61,7 +64,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
         /// <summary>
         /// 选中的采集卡设备名称列表（仅保存 DeviceName，避免在脚本中序列化具体设备实例）。
-        /// </summary>
+        /// </summary>     
         [Display(Name = "选择采集卡", GroupName = "采集卡配置", Order = 3)]
         [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(typeof(DataAcquisitionCardProvider), "GetDataAcquisitionNames", DisplayMemberPath = ".")]
