@@ -31,24 +31,28 @@ namespace Astra.ViewModels
         [ObservableProperty]
         private ObservableCollection<SelectionOption> _workflowOptions = new ObservableCollection<SelectionOption>();
 
-        [ObservableProperty]
-        private ObservableCollection<SelectionOption> _triggerOptions = new ObservableCollection<SelectionOption>();
+    [ObservableProperty]
+    private ObservableCollection<SelectionOption> _triggerOptions = new ObservableCollection<SelectionOption>();
 
-        public SoftwareConfigViewModel(SoftwareConfig config, IConfigurationManager configurationManager)
-        {
-            _config = config ?? new SoftwareConfig();
-            _configurationManager = configurationManager;
-            _onTriggerConfigChangedHandler = OnTriggerConfigChanged;
+    [ObservableProperty]
+    private ObservableCollection<DutViewModel> _dutViewModels = new ObservableCollection<DutViewModel>();
 
-            HookDutEvents();
-            LoadWorkflowOptionsFromSolutions();
-            InitializeWorkflowOptionsWatcher();
-            InitializeTriggerOptionsSubscription();
-            _ = LoadTriggerOptionsAsync();
-        }
+    public SoftwareConfigViewModel(SoftwareConfig config, IConfigurationManager configurationManager)
+    {
+        _config = config ?? new SoftwareConfig();
+        _configurationManager = configurationManager;
+        _onTriggerConfigChangedHandler = OnTriggerConfigChanged;
 
-        /// <summary>DUT 集合，便于 XAML 绑定</summary>
-        public ObservableCollection<DutConfig> Duts => Config?.Duts;
+        HookDutEvents();
+        SyncDutViewModels();
+        LoadWorkflowOptionsFromSolutions();
+        InitializeWorkflowOptionsWatcher();
+        InitializeTriggerOptionsSubscription();
+        _ = LoadTriggerOptionsAsync();
+    }
+
+    /// <summary>DUT 集合，便于 XAML 绑定</summary>
+    public ObservableCollection<DutConfig> Duts => Config?.Duts;
 
         private void HookDutEvents()
         {
@@ -66,24 +70,39 @@ namespace Astra.ViewModels
             }
         }
 
-        private void OnDutsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void OnDutsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
         {
-            if (e.OldItems != null)
+            foreach (var item in e.OldItems.OfType<DutConfig>())
             {
-                foreach (var item in e.OldItems.OfType<DutConfig>())
-                {
-                    item.PropertyChanged -= OnDutPropertyChanged;
-                }
-            }
-
-            if (e.NewItems != null)
-            {
-                foreach (var item in e.NewItems.OfType<DutConfig>())
-                {
-                    item.PropertyChanged += OnDutPropertyChanged;
-                }
+                item.PropertyChanged -= OnDutPropertyChanged;
             }
         }
+
+        if (e.NewItems != null)
+        {
+            foreach (var item in e.NewItems.OfType<DutConfig>())
+            {
+                item.PropertyChanged += OnDutPropertyChanged;
+            }
+        }
+
+        SyncDutViewModels();
+    }
+
+    private void SyncDutViewModels()
+    {
+        DutViewModels.Clear();
+        if (Config?.Duts == null) return;
+        foreach (var dut in Config.Duts)
+        {
+            if (dut != null)
+                DutViewModels.Add(new DutViewModel(dut));
+        }
+        foreach (var vm in DutViewModels)
+            vm.ApplyTriggerSelection(TriggerOptions);
+    }
 
         private void OnDutPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
@@ -110,11 +129,14 @@ namespace Astra.ViewModels
                     dut.WorkflowId = workflow.Id;
                 }
             }
-            else if (e.PropertyName == nameof(DutConfig.TriggerConfigId))
-            {
-                var trigger = TriggerOptions.FirstOrDefault(x => string.Equals(x.Id, dut.TriggerConfigId, StringComparison.OrdinalIgnoreCase));
+        else if (e.PropertyName == nameof(DutConfig.TriggerConfigId))
+        {
+            // TriggerName 由 DutViewModel.SelectedTriggerOption.set 已同步；
+            // 此处保留作为兜底（若 TriggerConfigId 被外部直接修改）。
+            var trigger = TriggerOptions.FirstOrDefault(x => string.Equals(x.Id, dut.TriggerConfigId, StringComparison.OrdinalIgnoreCase));
+            if (!string.Equals(dut.TriggerName, trigger?.Name ?? string.Empty, StringComparison.Ordinal))
                 dut.TriggerName = trigger?.Name ?? string.Empty;
-            }
+        }
         }
 
         private async Task PublishSoftwareConfigUpdatedAsync()
@@ -589,65 +611,35 @@ namespace Astra.ViewModels
                 if (dispatcher == null)
                     return;
 
-                // 必须在 UI 线程上快照 → Clear → 再填回，否则 TriggerOptions.Clear() 会令 ComboBox 失去选中项，
-                // SelectedValue 双向绑定可能把 DutConfig.TriggerConfigId 写成空，导致返回软件配置页后不显示已选触发器。
                 await dispatcher.InvokeAsync(() =>
                 {
-                    Dictionary<DutConfig, string>? triggerIdSnapshot = null;
-                    if (Config?.Duts != null)
+                    // 重建 ItemsSource 前先设置刷新守卫：阻止 WPF TwoWay 绑定
+                    // 在 TriggerOptions.Clear() 后把 SelectedItem=null 回写到 TriggerConfigId。
+                    foreach (var vm in DutViewModels) vm.BeginRefresh();
+                    try
                     {
-                        triggerIdSnapshot = new Dictionary<DutConfig, string>();
-                        foreach (var d in Config.Duts)
-                        {
-                            if (d == null)
-                                continue;
-                            triggerIdSnapshot[d] = d.TriggerConfigId ?? string.Empty;
-                        }
+                        TriggerOptions.Clear();
+                        TriggerOptions.Add(SelectionOption.Empty("未选择"));
+                        foreach (var t in triggerRows)
+                            TriggerOptions.Add(t);
+                    }
+                    finally
+                    {
+                        foreach (var vm in DutViewModels) vm.EndRefresh();
                     }
 
-                    TriggerOptions.Clear();
-                    TriggerOptions.Add(SelectionOption.Empty("未选择"));
-                    foreach (var t in triggerRows)
-                        TriggerOptions.Add(t);
-
-                    if (Config?.Duts == null)
-                        return;
-
-                    var clearedOrphanTriggerRef = false;
-
-                    foreach (var dut in Config.Duts)
+                    // ItemsSource 重建完毕，TriggerConfigId 已被守卫保护；
+                    // 通过直接写 backing field 再触发 PropertyChanged 强制回显。
+                    var orphanCleared = false;
+                    foreach (var vm in DutViewModels)
                     {
-                        if (dut == null)
-                            continue;
-
-                        if (triggerIdSnapshot != null
-                            && triggerIdSnapshot.TryGetValue(dut, out var savedId)
-                            && !string.IsNullOrWhiteSpace(savedId)
-                            && string.IsNullOrWhiteSpace(dut.TriggerConfigId))
-                        {
-                            dut.TriggerConfigId = savedId;
-                        }
-
-                        var id = dut.TriggerConfigId?.Trim() ?? string.Empty;
-                        if (string.IsNullOrEmpty(id))
-                        {
-                            dut.TriggerName = string.Empty;
-                            continue;
-                        }
-
-                        var trigger = TriggerOptions.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
-                        if (trigger == null)
-                        {
-                            dut.TriggerConfigId = string.Empty;
-                            dut.TriggerName = string.Empty;
-                            clearedOrphanTriggerRef = true;
-                            continue;
-                        }
-
-                        dut.TriggerName = trigger.Name;
+                        var prevId = vm.Dut.TriggerConfigId?.Trim() ?? string.Empty;
+                        vm.ApplyTriggerSelection(TriggerOptions);
+                        if (!string.IsNullOrWhiteSpace(prevId) && string.IsNullOrWhiteSpace(vm.Dut.TriggerConfigId))
+                            orphanCleared = true;
                     }
 
-                    if (clearedOrphanTriggerRef)
+                    if (orphanCleared)
                         _ = PublishSoftwareConfigUpdatedAsync();
                 });
             }
@@ -664,6 +656,90 @@ namespace Astra.ViewModels
         public string Name { get; set; } = string.Empty;
 
         public static SelectionOption Empty(string name) => new SelectionOption { Id = string.Empty, Name = name };
+    }
+
+    /// <summary>
+    /// DutConfig 的视图包装层。触发器下拉使用 SelectedItem 绑定，
+    /// 避免 SelectedValue+SelectedValuePath 在 ItemsSource 重建后无法回显的问题。
+    /// </summary>
+    public sealed class DutViewModel : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    {
+        private SelectionOption? _selectedTriggerOption;
+        private bool _isRefreshing;
+
+        public DutViewModel(DutConfig dut)
+        {
+            Dut = dut ?? throw new ArgumentNullException(nameof(dut));
+        }
+
+        /// <summary>
+        /// 在重建 ItemsSource 前调用，阻止 WPF TwoWay 绑定把 SelectedItem=null 回写到 TriggerConfigId。
+        /// </summary>
+        internal void BeginRefresh() => _isRefreshing = true;
+
+        /// <summary>在 ItemsSource 重建完毕后调用，解除守卫，随后可安全调用 ApplyTriggerSelection。</summary>
+        internal void EndRefresh() => _isRefreshing = false;
+
+        public DutConfig Dut { get; }
+
+        public int Index => Dut.Index;
+
+        public string WorkflowId
+        {
+            get => Dut.WorkflowId;
+            set { if (!string.Equals(Dut.WorkflowId, value, StringComparison.Ordinal)) Dut.WorkflowId = value; }
+        }
+
+        public string WorkflowName
+        {
+            get => Dut.WorkflowName;
+            set { if (!string.Equals(Dut.WorkflowName, value, StringComparison.Ordinal)) Dut.WorkflowName = value; }
+        }
+
+        /// <summary>
+        /// 绑定到触发器 ComboBox.SelectedItem。setter 同步写入 DutConfig.TriggerConfigId / TriggerName。
+        /// </summary>
+        public SelectionOption? SelectedTriggerOption
+        {
+            get => _selectedTriggerOption;
+            set
+            {
+                if (_isRefreshing) return;   // ItemsSource 重建中，忽略 WPF 的 null 回写
+                if (ReferenceEquals(_selectedTriggerOption, value)) return;
+                _selectedTriggerOption = value;
+                OnPropertyChanged();
+                Dut.TriggerConfigId = value?.Id ?? string.Empty;
+                Dut.TriggerName = value?.Name ?? string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 数据源刷新后强制回显：直接写 backing field 再触发 PropertyChanged，
+        /// 无论值是否变化都能让 WPF 重新匹配 SelectedItem。
+        /// 若原 TriggerConfigId 在新选项中找不到对应项，则视为孤立引用并清除。
+        /// </summary>
+        internal void ApplyTriggerSelection(IEnumerable<SelectionOption> options)
+        {
+            var id = Dut.TriggerConfigId?.Trim() ?? string.Empty;
+            var matched = string.IsNullOrWhiteSpace(id)
+                ? null
+                : options.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+
+            _selectedTriggerOption = matched;
+            OnPropertyChanged(nameof(SelectedTriggerOption));
+
+            if (!string.IsNullOrWhiteSpace(id) && matched == null)
+            {
+                Dut.TriggerConfigId = string.Empty;
+                Dut.TriggerName = string.Empty;
+            }
+            else
+            {
+                var finalName = matched?.Name ?? string.Empty;
+                if (!string.Equals(Dut.TriggerName, finalName, StringComparison.Ordinal))
+                    Dut.TriggerName = finalName;
+            }
+        }
     }
 }
 

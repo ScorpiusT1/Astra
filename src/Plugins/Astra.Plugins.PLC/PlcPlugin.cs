@@ -3,6 +3,8 @@ using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Configuration.Enums;
 using Astra.Core.Configuration.Helpers;
 using Astra.Core.Configuration.Providers;
+using Astra.Core.Logs;
+using Astra.Core.Logs.Extensions;
 using Astra.Core.Triggers;
 using Astra.Core.Triggers.Interlock;
 using Astra.Core.Triggers.Manager;
@@ -13,12 +15,15 @@ using Astra.Core.Devices.Management;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
 using Astra.UI.Abstractions.Home;
+using Astra.UI.Helpers;
 using Astra.Plugins.PLC.Configs;
 using Astra.Plugins.PLC.Devices;
 using Astra.Plugins.PLC.Interlock;
 using Astra.Plugins.PLC.Services;
 using Astra.Plugins.PLC.Triggers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -42,9 +47,15 @@ namespace Astra.Plugins.PLC
         private readonly HashSet<string> _registeredPlcTriggerIds = new(StringComparer.Ordinal);
         private Action<PlcTriggerConfig, ConfigChangeType>? _plcTriggerChangedHandler;
         private Action<IOConfig, ConfigChangeType>? _ioConfigChangedHandler;
+        private Action<PlcDeviceConfig, ConfigChangeType>? _plcDeviceConfigChangedHandler;
         private bool _triggerObserverRegistered;
         private bool _disposed;
         private PlcHomeIoMonitorRuntime? _homeIoMonitor;
+
+        // 用于序列化并发的设备同步任务，防止多次保存触发多个并发 Sync 导致 _devices 竞争损坏
+        private readonly System.Threading.SemaphoreSlim _syncLock = new(1, 1);
+
+        private Microsoft.Extensions.Logging.ILogger? _logger;
 
         public string Id => "Astra.Plugins.PLC";
 
@@ -58,6 +69,25 @@ namespace Astra.Plugins.PLC
             Current = this;
             _deviceManager = context.ServiceProvider.GetService<IDeviceManager>();
             _configurationManager = context.ServiceProvider.GetService<IConfigurationManager>();
+
+            // 初始化日志器
+            try
+            {
+                var loggerFactory = context.ServiceProvider?.GetService<ILoggerFactory>();
+                _logger = loggerFactory != null ? loggerFactory.CreateLogger(Id) : NullLogger.Instance;
+            }
+            catch
+            {
+                _logger = NullLogger.Instance;
+            }
+
+            _logger?.LogInfo($"[{Name}] 开始初始化插件", LogCategory.System);
+
+            // ──────────────────────────────────────────────────────────────
+            // 设备工厂注册：新增品牌时在此追加一行 Register 调用即可，其余代码无需修改。
+            // 例：PlcDeviceFactory.Register<OmronPlcDeviceConfig>(cfg => new OmronPlcDevice(cfg));
+            // ──────────────────────────────────────────────────────────────
+            PlcDeviceFactory.Register<S7SiemensPlcDeviceConfig>(cfg => new S7SiemensPlcDevice(cfg));
 
             if (_configurationManager != null)
             {
@@ -85,15 +115,17 @@ namespace Astra.Plugins.PLC
                 };
                 _configurationManager.RegisterProvider<PlcTriggerConfig>(options: plcTriggerOptions);
 
-                var loadResult = await _configurationManager.GetAllAsync<S7SiemensPlcDeviceConfig>();
-                if (loadResult.Success && loadResult.Data != null)
+                // 通用加载：通过工厂创建设备，无需关心具体品牌类型
+                var allConfigs = await GetAllPlcDeviceConfigsFromStorageAsync().ConfigureAwait(false);
+                _devices.Clear();
+                foreach (var cfg in allConfigs)
                 {
-                    _devices.Clear();
-                    foreach (var cfg in loadResult.Data)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        _devices.Add(new S7SiemensPlcDevice(cfg));
-                    }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var device = PlcDeviceFactory.Create(cfg);
+                    if (device != null)
+                        _devices.Add(device);
+                    else
+                        _logger?.LogWarn($"[{Name}] 无法为配置 {cfg.ConfigName ?? cfg.DeviceId} 创建设备，可能未注册对应工厂", LogCategory.Device);
                 }
 
                 var ioLoadResult = await _configurationManager.GetAllAsync<IOConfig>();
@@ -111,6 +143,11 @@ namespace Astra.Plugins.PLC
 
                 _ioConfigChangedHandler = OnIoConfigChanged;
                 _configurationManager.Subscribe<IOConfig>(_ioConfigChangedHandler);
+
+                _plcDeviceConfigChangedHandler = OnPlcDeviceConfigChanged;
+                _configurationManager.Subscribe<PlcDeviceConfig>(_plcDeviceConfigChangedHandler);
+
+                _logger?.LogInfo($"[{Name}] 插件初始化完成，已加载 {_devices.Count} 个 PLC 设备", LogCategory.System);
             }
 
             if (_context.ServiceProvider.GetService(typeof(SafetyInterlockIoReaderBridge)) is SafetyInterlockIoReaderBridge bridge)
@@ -128,14 +165,30 @@ namespace Astra.Plugins.PLC
         {
             if (_deviceManager == null)
             {
+                _logger?.LogError($"[{Name}] DeviceManager 为 null，无法注册设备", null, LogCategory.System);
                 return;
             }
 
+            _logger?.LogInfo($"[{Name}] 启用插件，共有 {_devices.Count} 个 PLC 设备需要注册", LogCategory.System);
+
+            int successCount = 0, failCount = 0;
             foreach (var device in _devices)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                _deviceManager.RegisterDevice(device);
+                var result = _deviceManager.RegisterDevice(device);
+                if (result.Success)
+                {
+                    successCount++;
+                    _logger?.LogInfo($"[{Name}] 设备 {device.DeviceName} 注册成功", LogCategory.Device);
+                }
+                else
+                {
+                    failCount++;
+                    _logger?.LogError($"[{Name}] 设备 {device.DeviceName} 注册失败: {result.Message}", null, LogCategory.Device);
+                }
             }
+
+            _logger?.LogInfo($"[{Name}] 插件已启用，成功注册 {successCount} 个设备，失败 {failCount} 个", LogCategory.System);
 
             var tm = _context?.ServiceProvider?.GetService<TriggerManager>();
             TryRegisterTriggerObserver(tm);
@@ -237,6 +290,12 @@ namespace Astra.Plugins.PLC
                     _configurationManager.Unsubscribe<IOConfig>(_ioConfigChangedHandler);
                     _ioConfigChangedHandler = null;
                 }
+
+                if (_plcDeviceConfigChangedHandler != null)
+                {
+                    _configurationManager.Unsubscribe<PlcDeviceConfig>(_plcDeviceConfigChangedHandler);
+                    _plcDeviceConfigChangedHandler = null;
+                }
             }
 
             _homeIoMonitor?.Detach();
@@ -258,6 +317,28 @@ namespace Astra.Plugins.PLC
         /// 供插件内 UI 获取与宿主共享的 <see cref="IConfigurationManager"/>，用于订阅 PLC 设备配置变更等。
         /// </summary>
         public static IConfigurationManager? GetConfigurationManager() => Current?._configurationManager;
+
+        /// <summary>
+        /// 从持久化存储读取所有 PLC 设备配置（含各品牌子类）。
+        /// 由 <see cref="PlcPlugin"/> 统一维护需要读取的类型列表，外部代码无需关心具体子类型。
+        /// 新增 PLC 品牌时，在此方法内追加对应的 <c>GetAllAsync&lt;T&gt;</c> 调用即可。
+        /// </summary>
+        internal async Task<List<PlcDeviceConfig>> GetAllPlcDeviceConfigsFromStorageAsync()
+        {
+            var result = new List<PlcDeviceConfig>();
+            if (_configurationManager == null) return result;
+
+            // S7 西门子设备（目前唯一实现的品牌；新增品牌时在此追加）
+            try
+            {
+                var s7 = await _configurationManager.GetAllAsync<S7SiemensPlcDeviceConfig>().ConfigureAwait(false);
+                if (s7.Success && s7.Data != null)
+                    result.AddRange(s7.Data);
+            }
+            catch { }
+
+            return result;
+        }
 
         internal IReadOnlyList<IPLC> GetAllPlcs()
         {
@@ -381,6 +462,92 @@ namespace Astra.Plugins.PLC
                 tm.RegisterTrigger(cfg.ConfigId, trigger);
                 tm.ConfigureAntiRepeat(cfg.ConfigId, cfg.AntiRepeat);
                 _registeredPlcTriggerIds.Add(cfg.ConfigId);
+            }
+        }
+
+        private void OnPlcDeviceConfigChanged(PlcDeviceConfig cfg, ConfigChangeType changeType)
+        {
+            _ = SyncAfterPlcDeviceConfigChangedAsync();
+        }
+
+        private async Task SyncAfterPlcDeviceConfigChangedAsync()
+        {
+            // 序列化并发同步：当保存多个兄弟 PLC 节点时会触发多个此方法，
+            // 通过信号量确保一次只运行一个，防止 _devices 列表并发损坏和 DeviceManager 重复注册冲突。
+            await _syncLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                _logger?.LogInfo($"[{Name}] 开始同步 PLC 设备配置", LogCategory.Device);
+
+                // ① 先注销所有当前 PLC 设备（触发 DeviceUnregistered 事件，通知调试树等订阅者）
+                if (_deviceManager != null)
+                {
+                    var oldIds = _devices.Select(d => d.DeviceId).ToList();
+                    foreach (var id in oldIds)
+                        _deviceManager.UnregisterDevice(id);
+                    _logger?.LogInfo($"[{Name}] 已注销 {oldIds.Count} 个旧 PLC 设备", LogCategory.Device);
+                }
+
+                // ② 从持久化存储重新加载配置，通过工厂创建设备（支持所有已注册品牌）
+                // 此时所有触发本轮同步的 SaveAsync 已完成写盘，读到的是最新状态
+                var configs = await GetAllPlcDeviceConfigsFromStorageAsync().ConfigureAwait(false);
+
+                // 保留 (配置, 设备) 对，方便后续在失败时给出带名称的提示
+                var devicePairs = new List<(PlcDeviceConfig Config, IDevice Device)>();
+                foreach (var cfg in configs)
+                {
+                    var device = PlcDeviceFactory.Create(cfg);
+                    if (device != null)
+                        devicePairs.Add((cfg, device));
+                    else
+                        _logger?.LogWarn($"[{Name}] 无法为配置 {cfg.ConfigName ?? cfg.DeviceId} 创建设备，可能未注册对应工厂", LogCategory.Device);
+                }
+
+                _devices.Clear();
+                _devices.AddRange(devicePairs.Select(p => p.Device));
+                _logger?.LogInfo($"[{Name}] 已从配置中加载 {devicePairs.Count} 个 PLC 设备", LogCategory.Device);
+
+                // ③ 重新注册所有新设备，收集失败信息（触发 DeviceRegistered 事件，通知调试树等订阅者）
+                if (_deviceManager != null)
+                {
+                    var registrationErrors = new List<string>();
+                    foreach (var (cfg, device) in devicePairs)
+                    {
+                        var result = _deviceManager.RegisterDevice(device);
+                        if (result.Success)
+                        {
+                            _logger?.LogInfo($"[{Name}] 设备 {device.DeviceName} 注册成功", LogCategory.Device);
+                        }
+                        else
+                        {
+                            _logger?.LogError($"[{Name}] 设备 {device.DeviceName} 注册失败: {result.Message}", null, LogCategory.Device);
+                            registrationErrors.Add($"• {cfg.ConfigName ?? device.DeviceId}: {result.Message}");
+                        }
+                    }
+
+                    if (registrationErrors.Count > 0)
+                    {
+                        var message = "部分 PLC 设备注册失败，请检查以下配置：\n"
+                            + string.Join("\n", registrationErrors);
+                        Application.Current?.Dispatcher.InvokeAsync(
+                            () => ToastHelper.ShowError(message, "PLC 设备注册错误", 8),
+                            DispatcherPriority.Normal);
+                    }
+                }
+
+                _logger?.LogInfo($"[{Name}] PLC 设备配置同步完成", LogCategory.Device);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"[{Name}] PLC 设备配置同步失败: {ex.Message}", ex, LogCategory.Device);
+                // 将意外异常也通知到界面，避免静默失败
+                Application.Current?.Dispatcher.InvokeAsync(
+                    () => ToastHelper.ShowError($"PLC 设备同步失败: {ex.Message}", "PLC 同步错误", 6),
+                    DispatcherPriority.Normal);
+            }
+            finally
+            {
+                _syncLock.Release();
             }
         }
 

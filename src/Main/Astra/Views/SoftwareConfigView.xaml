@@ -269,7 +269,7 @@
                         BorderThickness="1"
                         CornerRadius="{StaticResource SurfaceCornerRadius}"
                         Padding="8">
-                    <DataGrid ItemsSource="{Binding Config.Duts}"
+                    <DataGrid ItemsSource="{Binding DutViewModels}"
                               Style="{StaticResource ModernDataGridStyle}"
                               ColumnHeaderStyle="{StaticResource ModernDataGridColumnHeaderStyle}"
                               RowStyle="{StaticResource ModernDataGridRowStyle}"
@@ -314,12 +314,10 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ComboBox Style="{StaticResource ModernComboBoxStyle}"
-                                                  IsEditable="True"
+                                                  IsEditable="False"
                                                   ItemsSource="{Binding DataContext.TriggerOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                   DisplayMemberPath="Name"
-                                                  SelectedValuePath="Id"
-                                                  SelectedValue="{Binding TriggerConfigId, UpdateSourceTrigger=PropertyChanged}"
-                                                  Text="{Binding TriggerName, UpdateSourceTrigger=PropertyChanged}" />
+                                                  SelectedItem="{Binding SelectedTriggerOption, UpdateSourceTrigger=PropertyChanged}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

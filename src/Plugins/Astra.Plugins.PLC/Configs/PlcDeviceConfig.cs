@@ -111,6 +111,11 @@ namespace Astra.Plugins.PLC.Configs
             return DeviceIdGenerator.Generate("PLC", GroupId, SlotId, serialOrAddress, DeviceName);
         }
 
+        /// <summary>
+        /// PLC 设备始终要求填写厂家与型号。
+        /// </summary>
+        protected override bool RequiresManufacturerAndModel() => true;
+
         public override OperationResult<bool> Validate()
         {
             var errors = new List<string>();
@@ -123,12 +128,12 @@ namespace Astra.Plugins.PLC.Configs
 
             if (string.IsNullOrWhiteSpace(Ip))
             {
-                errors.Add("PLC IP 不能为空");
+                errors.Add("IP 地址不能为空");
             }
 
             if (Port == 0)
             {
-                errors.Add("PLC 端口必须大于 0");
+                errors.Add("端口号必须大于 0");
             }
 
             if (ConnectTimeoutMs <= 0)

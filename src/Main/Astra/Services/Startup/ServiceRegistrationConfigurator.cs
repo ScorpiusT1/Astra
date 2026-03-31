@@ -547,7 +547,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<ViewModels.MainViewViewModel>();
             // ⭐ ConfigViewModel 注册为单例，与 ConfigView 一致，切换界面时保留配置树、选中节点及右侧表单已输入字符
             services.AddSingleton<ViewModels.ConfigViewModel>();
-            services.AddTransient<ViewModels.DebugViewModel>();
+            services.AddSingleton<ViewModels.DebugViewModel>();
             // ⭐ SequenceViewModel 注册为单例，确保切换界面时画布数据不丢失
             services.AddSingleton<ViewModels.SequenceViewModel>();
             // ⭐ HomeViewModel 注册为单例，切换 Home/Sequence 时保留运行态数据，避免每次导航刷新

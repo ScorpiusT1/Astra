@@ -85,6 +85,30 @@ namespace Astra.ViewModels
 
             _deviceManager.DeviceStatusChanged -= OnDeviceStatusChanged;
             _deviceManager.DeviceStatusChanged += OnDeviceStatusChanged;
+
+            _deviceManager.DeviceRegistered -= OnDeviceRegistered;
+            _deviceManager.DeviceRegistered += OnDeviceRegistered;
+
+            _deviceManager.DeviceUnregistered -= OnDeviceUnregistered;
+            _deviceManager.DeviceUnregistered += OnDeviceUnregistered;
+        }
+
+        private void OnDeviceRegistered(object? sender, DeviceRegisteredEventArgs e)
+        {
+            RebuildTreeOnUiThread();
+        }
+
+        private void OnDeviceUnregistered(object? sender, DeviceUnregisteredEventArgs e)
+        {
+            RebuildTreeOnUiThread();
+        }
+
+        private void RebuildTreeOnUiThread()
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null) return;
+
+            dispatcher.InvokeAsync(BuildDebugTree);
         }
 
         private void OnDeviceStatusChanged(object? sender, Astra.Core.Devices.DeviceStatusChangedEventArgs e)

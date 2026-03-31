@@ -141,8 +141,9 @@
                         <TextBlock Text="PLC 设备"
                                    Style="{StaticResource FieldLabelStyle}" />
                         <ComboBox Style="{StaticResource ModernFormComboBoxStyle}"
-                                  ItemsSource="{Binding PlcDeviceNames}"
-                                  SelectedItem="{Binding Config.PlcDeviceName, UpdateSourceTrigger=PropertyChanged}" />
+                                  ItemsSource="{Binding PlcDeviceDropdown.Options}"
+                                  DisplayMemberPath="Label"
+                                  SelectedItem="{Binding PlcDeviceDropdown.SelectedItem}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1"
@@ -151,8 +152,9 @@
                         <TextBlock Text="监控 IO（IO 配置）"
                                    Style="{StaticResource FieldLabelStyle}" />
                         <ComboBox Style="{StaticResource ModernFormComboBoxStyle}"
-                                  ItemsSource="{Binding IoPointNames}"
-                                  SelectedItem="{Binding Config.IoPointName, UpdateSourceTrigger=PropertyChanged}" />
+                                  ItemsSource="{Binding IoPointDropdown.Options}"
+                                  DisplayMemberPath="Label"
+                                  SelectedItem="{Binding IoPointDropdown.SelectedItem}" />
                     </StackPanel>
                 </Grid>
             </Grid>

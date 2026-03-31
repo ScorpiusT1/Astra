@@ -1,5 +1,6 @@
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Constants;
+using Astra.Plugins.PLC;
 using Astra.Plugins.PLC.Configs;
 using Astra.Plugins.PLC.Views;
 using Astra.UI.Behaviors;
@@ -9,6 +10,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Threading;
@@ -18,9 +20,11 @@ namespace Astra.Plugins.PLC.ViewModels
     public class PlcIoConfigViewModel : ObservableObject
     {
         private readonly IOConfig _config;
+        private readonly IConfigurationManager? _configurationManager;
         private readonly RelayCommand _removeSelectedIoCommand;
         private readonly RelayCommand _copySelectedIoCommand;
         private readonly RelayCommand _pasteToSelectedIoCommand;
+        private readonly AsyncRelayCommand _saveIoCommand;
         private IoPointModel? _selectedIo;
         private IoPointModel? _copiedIoSnapshot;
         private string _searchText = string.Empty;
@@ -30,9 +34,11 @@ namespace Astra.Plugins.PLC.ViewModels
         public PlcIoConfigViewModel(IConfig config)
         {
             _config = config as IOConfig ?? throw new ArgumentException("配置类型必须为 IOConfig", nameof(config));
+            _configurationManager = PlcPlugin.GetConfigurationManager();
             _removeSelectedIoCommand = new RelayCommand(RemoveSelectedIo, () => HasSelection);
             _copySelectedIoCommand = new RelayCommand(CopySelectedIo, () => HasSelection);
             _pasteToSelectedIoCommand = new RelayCommand(PasteToSelectedIo, () => _copiedIoSnapshot != null);
+            _saveIoCommand = new AsyncRelayCommand(SaveIoAsync);
             IoListView = CollectionViewSource.GetDefaultView(_config.IOs);
             IoListView.Filter = FilterIo;
             _config.IOs.CollectionChanged += (_, _) =>
@@ -123,7 +129,7 @@ namespace Astra.Plugins.PLC.ViewModels
         public IRelayCommand PasteToSelectedIoCommand => _pasteToSelectedIoCommand;
         public IRelayCommand<DataGridRowReorderInfo> ReorderIoCommand => new RelayCommand<DataGridRowReorderInfo>(ReorderIo);
         public IRelayCommand CloseEditorCommand => new RelayCommand(() => { });
-        public IRelayCommand SaveIoCommand => new RelayCommand(() => { });
+        public IAsyncRelayCommand SaveIoCommand => _saveIoCommand;
         public IRelayCommand CancelEditCommand => new RelayCommand(() => { });
 
         private void AddIo()
@@ -314,6 +320,32 @@ namespace Astra.Plugins.PLC.ViewModels
             _config.IOs.Move(sourceIndex, targetIndex);
             SafeRefreshIoList();
             return true;
+        }
+
+        private async Task SaveIoAsync()
+        {
+            var validateResult = _config.Validate();
+            if (!validateResult.Success)
+            {
+                SaveStatus = $"校验失败: {validateResult.ErrorMessage}";
+                return;
+            }
+
+            if (_configurationManager == null)
+            {
+                SaveStatus = "保存失败: 配置管理器未初始化";
+                return;
+            }
+
+            var result = await _configurationManager.SaveAsync(_config);
+            if (result != null && result.Success)
+            {
+                PlcPlugin.Current?.SyncIoConfigsCache(new[] { _config });
+                SaveStatus = $"已保存 ✓ {DateTime.Now:HH:mm:ss}";
+                return;
+            }
+
+            SaveStatus = $"保存失败: {result?.Message ?? "未知错误"}";
         }
 
         private void ReorderIo(DataGridRowReorderInfo? info)

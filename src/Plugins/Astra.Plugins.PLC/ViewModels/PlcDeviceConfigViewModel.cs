@@ -12,6 +12,15 @@ namespace Astra.Plugins.PLC.ViewModels
         public PlcDeviceConfigViewModel(IConfig config)
         {
             _config = config as PlcDeviceConfig ?? throw new ArgumentException("配置类型必须为 PlcDeviceConfig", nameof(config));
+
+            // 转发底层配置的 ConfigName 变更到 UI 绑定。
+            // 当 ConfigViewModel 保存后直接写 Config.ConfigName（生成"厂家 型号 #N"格式）时，
+            // 通过此 lambda 通知 WPF 刷新设备名称文本框。
+            _config.PropertyChanged += (_, e) =>
+            {
+                if (e?.PropertyName == nameof(PlcDeviceConfig.ConfigName))
+                    OnPropertyChanged(nameof(ConfigName));
+            };
         }
 
         public string ConfigName
