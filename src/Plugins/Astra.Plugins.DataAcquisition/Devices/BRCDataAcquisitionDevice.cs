@@ -61,6 +61,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
             _brcConnection?.UpdateConfig(newConfig);
         }
 
+        /// <summary>
+        /// 获取当前已解析的硬件模块信息（未连接时返回 null）。
+        /// </summary>
+        public SDKs.ModuleInfo GetModuleInfo() => _brcConnection.GetModuleInfo();
+
         protected override async Task OnInitializeAsync()
         {
             EnsureRuntimeBuffers();
@@ -85,6 +90,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
             // 每次启动前按最新配置校准缓冲，避免仅首次初始化导致配置变更后缓冲未更新。
             EnsureRuntimeBuffers();
+
+            // 将调试界面可能修改过的通道参数（耦合方式、激励电流等）重新推送到硬件。
+            _brcConnection.ApplyChannelSettings();
+
             brcDevice.Start();
 
             return Task.CompletedTask;

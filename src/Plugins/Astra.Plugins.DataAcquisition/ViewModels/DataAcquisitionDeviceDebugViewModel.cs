@@ -1,6 +1,8 @@
 using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Devices;
 using Astra.Core.Devices.Interfaces;
+using Astra.Core.Devices.Specifications;
+using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.SDKs;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -15,7 +17,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 {
     public partial class DataAcquisitionDeviceDebugViewModel : ObservableObject
     {
-        private BRCDataAcquisitionDevice _device;
+        private DataAcquisitionDeviceBase _device;
         private AcquisitionState _currentState;
         private string _statusMessage = "就绪";
         private long _totalFramesReceived;
@@ -26,7 +28,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         private readonly object _waveformBufferLock = new();
         private readonly Dictionary<int, List<double>> _waveformSampleBuffers = new();
 
-        // 通道调试信息（是否启用、名称等）
+        // 通道调试信息（是否启用、耦合方式、激励电流等）
         public partial class ChannelDebugItem : ObservableObject
         {
             [ObservableProperty]
@@ -41,13 +43,29 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             [ObservableProperty]
             private ScottPlot.Color _color;
 
-            // 供外部（视图模型）监听通道启用状态变化，及时同步曲线可见性。
+            [ObservableProperty]
+            private string _couplingMode;
+
+            [ObservableProperty]
+            private double _excitationCurrent;
+
             public event Action<ChannelDebugItem, bool>? IsEnabledChanged;
+            public event Action<ChannelDebugItem>? CouplingModeChanged;
+            public event Action<ChannelDebugItem>? ExcitationCurrentChanged;
 
             partial void OnIsEnabledChanged(bool value)
+                => IsEnabledChanged?.Invoke(this, value);
+
+            partial void OnCouplingModeChanged(string value)
             {
-                IsEnabledChanged?.Invoke(this, value);
+                // 耦合方式联动激励电流：DC → 0 mA，其余 → 4 mA
+                ExcitationCurrent = string.Equals(value, "DC", StringComparison.OrdinalIgnoreCase)
+                    ? 0.0 : 4.0;
+                CouplingModeChanged?.Invoke(this);
             }
+
+            partial void OnExcitationCurrentChanged(double value)
+                => ExcitationCurrentChanged?.Invoke(this);
         }
 
         public ObservableCollection<ChannelDebugItem> Channels { get; } = new();
@@ -60,7 +78,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         // 通道可见性变化事件：用于无新数据时也能立即切换曲线显示/隐藏。
         public event Action<int, bool>? ChannelVisibilityChanged;
 
-        public BRCDataAcquisitionDevice Device
+        public DataAcquisitionDeviceBase Device
         {
             get => _device;
             set
@@ -127,21 +145,38 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
         public ObservableCollection<string> LogMessages { get; } = new();
 
-        [ObservableProperty]
-        private string _couplingMode = "AC";
+        // 默认回退值（硬件未连接且无规格时使用）
+        private static readonly IReadOnlyList<string> FallbackCouplingModes = new[] { "DC", "AC" };
+        private static readonly IReadOnlyList<double> FallbackExcitationCurrentOptions = new[] { 0d, 4d };
+        private static readonly IReadOnlyList<double> FallbackSampleRateOptions = new List<double>
+        {
+            1024.0, 1280.0, 1563.0, 1920.0, 2560.0, 3072.0,
+            3413.333, 3657.143, 3938.462, 4266.667, 4654.545,
+            5120.0, 5688.889, 6400.0, 7314.286, 8533.333,
+            10240.0, 12800.0, 17066.667, 25600.0, 48000.0, 51200.0
+        };
 
-        public IReadOnlyList<string> CouplingModes { get; } = new[] { "AC", "DC" };
+        private IReadOnlyList<string> _couplingModes = FallbackCouplingModes;
+        private IReadOnlyList<double> _excitationCurrentOptions = FallbackExcitationCurrentOptions;
+        private IReadOnlyList<double> _sampleRateOptions = FallbackSampleRateOptions;
 
         /// <summary>
-        /// 调试界面中的激励电流（mA），仅用于调试显示/控制，不写回配置。
+        /// 耦合方式选项，优先来自硬件 ModuleInfo，其次来自设备规格，最后回退到默认值。
         /// </summary>
-        [ObservableProperty]
-        private double _excitationCurrent;
+        public IReadOnlyList<string> CouplingModes
+        {
+            get => _couplingModes;
+            private set => SetProperty(ref _couplingModes, value);
+        }
 
         /// <summary>
-        /// 激励电流选项（mA）：0 和 4。
+        /// 激励电流选项，优先来自硬件 ModuleInfo，其次来自设备规格的 AllowedTriggerLevels，最后回退到默认值。
         /// </summary>
-        public IReadOnlyList<double> ExcitationCurrentOptions { get; } = new[] { 0d, 4d };
+        public IReadOnlyList<double> ExcitationCurrentOptions
+        {
+            get => _excitationCurrentOptions;
+            private set => SetProperty(ref _excitationCurrentOptions, value);
+        }
 
         /// <summary>
         /// 调试界面使用的采样率（默认取配置的采样率，但修改不会写回配置）
@@ -150,33 +185,13 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         private double _debugSampleRate;
 
         /// <summary>
-        /// 可选采样率列表，用于调试界面下拉选择（与配置界面保持一致）
+        /// 采样率选项，优先来自硬件 ModuleInfo，其次来自设备规格的 AllowedSampleRates，最后回退到默认值。
         /// </summary>
-        public IReadOnlyList<double> SampleRateOptions { get; } = new List<double>
+        public IReadOnlyList<double> SampleRateOptions
         {
-            1024.0,
-            1280.0,
-            1563.0,
-            1920.0,
-            2560.0,
-            3072.0,
-            3413.333,
-            3657.143,
-            3938.462,
-            4266.667,
-            4654.545,
-            5120.0,
-            5688.889,
-            6400.0,
-            7314.286,
-            8533.333,
-            10240.0,
-            12800.0,
-            17066.667,
-            25600.0,
-            48000.0,
-            51200.0
-        };
+            get => _sampleRateOptions;
+            private set => SetProperty(ref _sampleRateOptions, value);
+        }
 
         /// <summary>
         /// 调试界面中的采样点数（用于波形显示），默认等于采样率，可独立编辑。
@@ -214,17 +229,11 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
         public DataAcquisitionDeviceDebugViewModel(IDevice device)
         {
-            Device = device as BRCDataAcquisitionDevice;
+            Device = device as DataAcquisitionDeviceBase;
             DebugSampleRate = SampleRate;
 
             // 采样点默认与采样率相同（取整）
             DebugSampleCount = DebugSampleRate > 0 ? (int)DebugSampleRate : BufferSize;
-
-            // 根据当前耦合方式初始化激励电流
-            if (string.Equals(CouplingMode, "AC", StringComparison.OrdinalIgnoreCase))
-                ExcitationCurrent = 4.0;
-            else
-                ExcitationCurrent = 0.0;
 
             // 初始化采集控制命令（互斥：运行中只能停止，空闲时只能开始）
             StartAcquisitionAsyncCommand = new AsyncRelayCommand(
@@ -274,19 +283,6 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             }
         }
 
-        partial void OnCouplingModeChanged(string value)
-        {
-            // 选择 AC 时，激励电流默认 4mA；选择 DC 时默认 0mA
-            if (string.Equals(value, "AC", StringComparison.OrdinalIgnoreCase))
-            {
-                ExcitationCurrent = 4.0;
-            }
-            else if (string.Equals(value, "DC", StringComparison.OrdinalIgnoreCase))
-            {
-                ExcitationCurrent = 0.0;
-            }
-        }
-
         private void OnDeviceChanged()
         {
             if (_device != null)
@@ -298,7 +294,87 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                 // 更新状态
                 UpdateState();
 
+                // 从硬件 ModuleInfo / 规格刷新选项列表
+                RefreshOptionsFromDevice();
+
                 InitializeChannels();
+            }
+        }
+
+        /// <summary>
+        /// 按优先级刷新三个选项列表：
+        ///   1. 硬件 ModuleInfo（最准确，需设备已连接）
+        ///   2. DeviceSpecificationRegistry（型号规格，始终可用）
+        ///   3. 硬编码回退值
+        /// 刷新后同时校验当前已选值是否仍在新列表中，若不在则重置为第一项或最近值。
+        /// </summary>
+        private void RefreshOptionsFromDevice()
+        {
+            var config = _device?.CurrentConfig as DataAcquisitionConfig;
+            // GetModuleInfo() 是 BRC 专有能力，其他品牌设备返回 null，此处安全退化到规格回退
+            var moduleInfo = (_device as BRCDataAcquisitionDevice)?.GetModuleInfo();
+
+            IDeviceSpecification spec = null;
+            if (config != null && !string.IsNullOrWhiteSpace(config.Manufacturer))
+            {
+                spec = DeviceSpecificationRegistry.GetSpecification(
+                    DeviceType.DataAcquisition, config.Manufacturer, config.Model);
+            }
+
+            // ── SampleRateOptions ──────────────────────────────────────────
+            IReadOnlyList<double> newSampleRates = null;
+            if (moduleInfo?.SampleRateOptions?.Count > 0)
+            {
+                newSampleRates = moduleInfo.SampleRateOptions.OrderBy(r => r).Distinct().ToList();
+            }
+            else if (spec != null)
+            {
+                var list = spec.GetConstraint<List<double>>("AllowedSampleRates", null);
+                if (list?.Count > 0)
+                    newSampleRates = list.OrderBy(r => r).Distinct().ToList();
+            }
+            SampleRateOptions = newSampleRates ?? FallbackSampleRateOptions;
+
+            // ── CouplingModes ──────────────────────────────────────────────
+            IReadOnlyList<string> newCouplingModes = null;
+            if (moduleInfo?.CouplingOptions?.Count > 0)
+            {
+                newCouplingModes = moduleInfo.CouplingOptions.Select(c => c.ToString()).Distinct().ToList();
+            }
+            else if (spec != null)
+            {
+                var list = spec.GetConstraint<List<CouplingMode>>("AllowedCouplingModes", null);
+                if (list?.Count > 0)
+                    newCouplingModes = list.Select(c => c.ToString()).Distinct().ToList();
+            }
+            CouplingModes = newCouplingModes ?? FallbackCouplingModes;
+
+            // ── ExcitationCurrentOptions ───────────────────────────────────
+            IReadOnlyList<double> newExcitationOptions = null;
+            if (moduleInfo?.CurrentOptions?.Count > 0)
+            {
+                newExcitationOptions = moduleInfo.CurrentOptions.OrderBy(c => c).Distinct().ToList();
+            }
+            else if (spec != null)
+            {
+                var list = spec.GetConstraint<List<double>>("AllowedTriggerLevels", null);
+                if (list?.Count > 0)
+                    newExcitationOptions = list.OrderBy(l => l).Distinct().ToList();
+            }
+            ExcitationCurrentOptions = newExcitationOptions ?? FallbackExcitationCurrentOptions;
+
+            // ── 校验全局采样率 ─────────────────────────────────────────────
+            if (SampleRateOptions.Count > 0 && !SampleRateOptions.Contains(DebugSampleRate))
+                DebugSampleRate = SampleRateOptions.OrderBy(r => Math.Abs(r - DebugSampleRate)).First();
+
+            // ── 校验各通道耦合方式与激励电流（选项列表刷新后可能已变化）────
+            foreach (var channel in Channels)
+            {
+                if (CouplingModes.Count > 0 && !CouplingModes.Contains(channel.CouplingMode))
+                    channel.CouplingMode = CouplingModes[0];
+
+                if (ExcitationCurrentOptions.Count > 0 && !ExcitationCurrentOptions.Contains(channel.ExcitationCurrent))
+                    channel.ExcitationCurrent = ExcitationCurrentOptions[0];
             }
         }
 
@@ -312,29 +388,43 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             {
                 foreach (var ch in cfg.Channels)
                 {
-                    // 调试界面名称与配置保持一致，不再按 ID/序号二次重命名。
                     string name = ch.ChannelName;
                     if (string.IsNullOrWhiteSpace(name))
                         name = $"CH{ch.ChannelId}";
 
-                    int colorIndex =  (ch.ChannelId - 1) % colorCategory.Colors.Length; // 通道 ID 从 1 开始，调整为 0 基索引
+                    int colorIndex = (ch.ChannelId - 1) % colorCategory.Colors.Length;
 
-                    Channels.Add(new ChannelDebugItem
+                    // 初始化耦合方式，校验是否在可选列表内
+                    var couplingStr = ch.CouplingMode.ToString();
+                    if (CouplingModes.Count > 0 && !CouplingModes.Contains(couplingStr))
+                        couplingStr = CouplingModes[0];
+
+                    // 初始化激励电流，校验是否在可选列表内
+                    var excitation = ch.TriggerLevel;
+                    if (ExcitationCurrentOptions.Count > 0 && !ExcitationCurrentOptions.Contains(excitation))
+                        excitation = ExcitationCurrentOptions[0];
+
+                    var item = new ChannelDebugItem
                     {
                         ChannelId = ch.ChannelId,
                         Name = name,
                         IsEnabled = ch.Enabled,
-                        Color = colorCategory.GetColor(colorIndex) // 根据通道 ID 分配颜色
-                    });
+                        Color = colorCategory.GetColor(colorIndex),
+                        CouplingMode = couplingStr,
+                        ExcitationCurrent = excitation
+                    };
+                    Channels.Add(item);
                 }
             }
 
             foreach (var channel in Channels)
             {
                 channel.IsEnabledChanged += OnChannelDebugItemIsEnabledChanged;
+                channel.CouplingModeChanged += OnChannelCouplingModeChanged;
+                channel.ExcitationCurrentChanged += OnChannelExcitationCurrentChanged;
             }
 
-            SelectedChannel = Channels.FirstOrDefault();           
+            SelectedChannel = Channels.FirstOrDefault();
         }
 
         private void OnChannelDebugItemIsEnabledChanged(ChannelDebugItem channel, bool isEnabled)
@@ -343,12 +433,33 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             {
                 var configChannel = cfg.Channels.FirstOrDefault(c => c.ChannelId == channel.ChannelId);
                 if (configChannel != null)
-                {
                     configChannel.Enabled = isEnabled;
-                }
             }
 
             ChannelVisibilityChanged?.Invoke(channel.ChannelId, isEnabled);
+        }
+
+        private void OnChannelCouplingModeChanged(ChannelDebugItem channel)
+        {
+            if (_device?.CurrentConfig is DataAcquisitionConfig cfg && cfg.Channels != null)
+            {
+                var configChannel = cfg.Channels.FirstOrDefault(c => c.ChannelId == channel.ChannelId);
+                if (configChannel != null &&
+                    Enum.TryParse<CouplingMode>(channel.CouplingMode, ignoreCase: true, out var mode))
+                {
+                    configChannel.CouplingMode = mode;
+                }
+            }
+        }
+
+        private void OnChannelExcitationCurrentChanged(ChannelDebugItem channel)
+        {
+            if (_device?.CurrentConfig is DataAcquisitionConfig cfg && cfg.Channels != null)
+            {
+                var configChannel = cfg.Channels.FirstOrDefault(c => c.ChannelId == channel.ChannelId);
+                if (configChannel != null)
+                    configChannel.TriggerLevel = channel.ExcitationCurrent;
+            }
         }
 
 

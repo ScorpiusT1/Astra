@@ -260,10 +260,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
                             _brcDevice.SetChannelPropertyGain(channelIndex, channelConfig.Gain);
                         }
 
-                        // 设置电流（如果有）
-                        if (channelConfig.ICPCurrent > 0)
+                        // 设置激励电流（TriggerLevel 即用户配置/联动的激励电流，单位 mA）
+                        if (channelConfig.TriggerLevel > 0)
                         {
-                            _brcDevice.SetChannelPropertyCurrent(channelIndex, channelConfig.ICPCurrent);
+                            _brcDevice.SetChannelPropertyCurrent(channelIndex, channelConfig.TriggerLevel);
                         }
 
                         // 设置耦合模式（将配置中的CouplingMode转换为BRC SDK的CouplingMode）
@@ -296,6 +296,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 _logger?.LogWarning($"[{_config.DeviceName}] 配置通道属性失败: {ex.Message}", LogCategory.Device);
             }
         }
+
+        /// <summary>
+        /// 在不重新连接的情况下将当前配置的通道参数（耦合方式、激励电流等）重新推送到硬件。
+        /// 用于调试界面实时修改通道参数后、下次采集开始前生效。
+        /// </summary>
+        public void ApplyChannelSettings() => ConfigureChannelProperties();
 
         /// <summary>
         /// 获取BRC设备实例（供设备类使用）

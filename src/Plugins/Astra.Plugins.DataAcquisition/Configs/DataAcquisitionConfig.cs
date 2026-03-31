@@ -306,7 +306,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 ChannelId = channelId,
                 ChannelName = $"通道 {channelId}",
                 SampleRate = SampleRate,
-                Enabled = true
+                Enabled = true,
+                CouplingMode = CouplingMode.AC,
+                TriggerLevel = 4.0,
             };
         }
 

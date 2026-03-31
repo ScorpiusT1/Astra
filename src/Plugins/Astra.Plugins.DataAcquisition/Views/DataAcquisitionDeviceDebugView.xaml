@@ -6,7 +6,7 @@
              xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:scottplot="http://schemas.scottplot.net/2008/xaml/presentation"
              xmlns:converters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
-             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels" 
+             xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
              d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionDeviceDebugViewModel}"
              mc:Ignorable="d"
              d:DesignHeight="600"
@@ -49,26 +49,32 @@
                         Background="{DynamicResource SurfaceBrush}"
                         CornerRadius="6"
                         Padding="8">
-                    <StackPanel Orientation="Horizontal">
-                        <ComboBox Width="160"
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox Grid.Row="0"
                                   IsEditable="True"
                                   IsReadOnly="True"
                                   IsEnabled="{Binding IsDebugParameterEditable}"
                                   ItemsSource="{Binding AvailableSerialNumbers}"
                                   SelectedItem="{Binding SelectedSerialNumber, Mode=TwoWay}" />
-                        <Button Content="扫描"
-                                Width="60"
+                        <Button Grid.Column="1"
+                                Content="扫描"
+                              
                                 Margin="8,0,0,0"
-                                Background="{DynamicResource PrimaryBrush}"
-                                Foreground="{DynamicResource ReverseTextBrush}"
+                                Style="{DynamicResource PrimaryButtonStyle}"
                                 IsEnabled="{Binding IsDebugParameterEditable}"
                                 Command="{Binding ScanSerialNumbersCommand}" />
-                    </StackPanel>
+                    </Grid>
+
                 </Border>
             </StackPanel>
 
 
-            <!-- 通道卡片：两两并排 -->
+            <!-- 通道列表：每通道一行，横向排列全部属性 -->
             <StackPanel Margin="0,0,0,10">
                 <TextBlock Text="通道"
                            FontSize="13"
@@ -79,23 +85,65 @@
                         BorderThickness="1"
                         Background="{DynamicResource SurfaceBrush}"
                         CornerRadius="6"
-                        Padding="8">
-                    <ItemsControl ItemsSource="{Binding Channels}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <UniformGrid Columns="2" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <CheckBox Content="{Binding Name}"
-                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                          HorizontalAlignment="Left"
-                                          Foreground="{Binding Color,Converter={StaticResource PlotColorToHexColorConverter}}"
-                                          Margin="10,5,20,5" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        Padding="6,4">
+                    <ScrollViewer MaxHeight="260"
+                                  VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Channels}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- 左侧彩色竖条 + 横向排列的所有控件 -->
+                                    <Border Margin="0,2"
+                                            BorderBrush="{Binding Color, Converter={StaticResource PlotColorToHexColorConverter}}"
+                                            BorderThickness="0,0,0,0"
+                                            CornerRadius="0,3,3,0"
+                                            Padding="8,5,6,5">
+                                        <StackPanel Orientation="Horizontal"
+                                                    VerticalAlignment="Center">
+                                            <!-- 启用开关 + 通道名 -->
+                                            <CheckBox Content="{Binding Name}"
+                                                      IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                      Foreground="{Binding Color, Converter={StaticResource PlotColorToHexColorConverter}}"
+                                                      IsEnabled="{Binding DataContext.IsDebugParameterEditable, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      MinWidth="70"
+                                                      VerticalAlignment="Center" />
+                                            <!-- 耦合方式 -->
+                                            <TextBlock Text="耦合"
+                                                       VerticalAlignment="Center"
+                                                       Margin="16,0,6,0"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            <ComboBox Width="64"
+                                                      ItemsSource="{Binding DataContext.CouplingModes, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      SelectedItem="{Binding CouplingMode, Mode=TwoWay}"
+                                                      IsEnabled="{Binding DataContext.IsDebugParameterEditable, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      VerticalAlignment="Center" />
+                                            <!-- 激励电流 -->
+                                            <TextBlock Text="电流"
+                                                       VerticalAlignment="Center"
+                                                       Margin="12,0,6,0"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            <ComboBox Width="82"
+                                                      ItemsSource="{Binding DataContext.ExcitationCurrentOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      SelectedItem="{Binding ExcitationCurrent, Mode=TwoWay}"
+                                                      IsEnabled="{Binding DataContext.IsDebugParameterEditable, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      VerticalAlignment="Center">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding StringFormat='{}{0} mA'}"
+                                                                   VerticalAlignment="Center" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Border>
             </StackPanel>
 
@@ -140,54 +188,25 @@
                                      VerticalAlignment="Center" />
                         </DockPanel>
 
-                        <DockPanel LastChildFill="True"
-                                   Margin="0,10,0,0">
-                            <TextBlock Text="耦合方式"
-                                       VerticalAlignment="Center" />
-                            <ComboBox Margin="8,0,0,0"
-                                      ItemsSource="{Binding CouplingModes}"
-                                      SelectedItem="{Binding CouplingMode, Mode=TwoWay}"
-                                      IsEnabled="{Binding IsDebugParameterEditable}"
-                                      HorizontalAlignment="Stretch" />
-                        </DockPanel>
-
-                        <DockPanel LastChildFill="True"
-                                   Margin="0,10,0,0">
-                            <TextBlock Text="激励电流"
-                                       VerticalAlignment="Center" />
-                            <ComboBox Margin="8,0,0,0"
-                                      ItemsSource="{Binding ExcitationCurrentOptions}"
-                                      SelectedItem="{Binding ExcitationCurrent, Mode=TwoWay}"
-                                      IsEnabled="{Binding IsDebugParameterEditable}"
-                                      HorizontalAlignment="Stretch">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding StringFormat='{}{0} mA'}"
-                                                   VerticalAlignment="Center"
-                                                   TextAlignment="Left" />
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                        </DockPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
             <!-- 采集控制按钮 -->
-            <StackPanel Orientation="Horizontal"
-                        HorizontalAlignment="Center"
-                        Margin="0,10,0,0">
-                <Button Content="开始采集"
-                        Width="120"
-                        Margin="0,0,8,0"
-                        Background="{DynamicResource PrimaryBrush}"
-                        Foreground="{DynamicResource ReverseTextBrush}"
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0"
+                        Content="开始采集"
+                        Style="{DynamicResource PrimaryButtonStyle}"
                         Command="{Binding StartAcquisitionAsyncCommand}" />
-                <Button Content="停止采集"
-                        Width="120"
-                        Background="{DynamicResource DangerBrush}"
-                        Foreground="{DynamicResource ReverseTextBrush}"
+                <Button Grid.Column="2"
+                        Content="停止采集"
+                        Style="{DynamicResource DangerButtonStyle}"
                         Command="{Binding StopAcquisitionAsyncCommand}" />
-            </StackPanel>
+            </Grid>
         </StackPanel>
     </Grid>
 </UserControl>

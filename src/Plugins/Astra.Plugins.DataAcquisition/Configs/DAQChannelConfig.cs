@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace Astra.Plugins.DataAcquisition.Configs
 {
@@ -34,15 +35,9 @@ namespace Astra.Plugins.DataAcquisition.Configs
         private bool _enableAntiAliasingFilter;
         private double _antiAliasingCutoff;
         private string _measurementLocation;
-        private string _mountingDirection;
-        private double? _coordinateX;
-        private double? _coordinateY;
-        private double? _coordinateZ;
         private bool _alarmEnabled;
         private double? _alarmUpperLimit;
         private double? _alarmLowerLimit;
-        private string _displayColor;
-        private int _displayOrder;
 
         // 传感器引用（可以为null表示未绑定传感器）
         private SensorConfig _sensor;
@@ -88,10 +83,20 @@ namespace Astra.Plugins.DataAcquisition.Configs
             set => SetProperty(ref _sampleRate, value);
         }
 
+        [JsonConverter(typeof(StringEnumConverter))]
         public CouplingMode CouplingMode
         {
             get => _couplingMode;
-            set => SetProperty(ref _couplingMode, value);
+            set
+            {
+                if (!EqualityComparer<CouplingMode>.Default.Equals(_couplingMode, value))
+                {
+                    _couplingMode = value;
+                    OnPropertyChanged(nameof(CouplingMode));
+                    // 耦合方式联动激励电流：DC 不需要激励电流（0mA），AC/ICP 默认 4mA
+                    TriggerLevel = value == CouplingMode.DC ? 0.0 : 4.0;
+                }
+            }
         }
 
         public double Gain
@@ -113,7 +118,8 @@ namespace Astra.Plugins.DataAcquisition.Configs
         }
 
         /// <summary>
-        /// 触发电平（单位：mA）
+        /// 激励电流（单位：mA）。AC/ICP 耦合时通常为 4mA，DC 耦合为 0mA。
+        /// 耦合方式变更时自动联动，也可手动修改。
         /// </summary>
         public double TriggerLevel
         {
@@ -351,30 +357,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
             set => SetProperty(ref _measurementLocation, value);
         }
 
-        public string MountingDirection
-        {
-            get => _mountingDirection;
-            set => SetProperty(ref _mountingDirection, value);
-        }
-
-        public double? CoordinateX
-        {
-            get => _coordinateX;
-            set => SetProperty(ref _coordinateX, value);
-        }
-
-        public double? CoordinateY
-        {
-            get => _coordinateY;
-            set => SetProperty(ref _coordinateY, value);
-        }
-
-        public double? CoordinateZ
-        {
-            get => _coordinateZ;
-            set => SetProperty(ref _coordinateZ, value);
-        }
-
         #endregion
 
         #region 报警配置
@@ -399,22 +381,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         #endregion
 
-        #region 显示配置
-
-        public string DisplayColor
-        {
-            get => _displayColor;
-            set => SetProperty(ref _displayColor, value);
-        }
-
-        public int DisplayOrder
-        {
-            get => _displayOrder;
-            set => SetProperty(ref _displayOrder, value);
-        }
-
-        #endregion
-
         public DAQChannelConfig()
         {
             _channelName = "";
@@ -429,9 +395,6 @@ namespace Astra.Plugins.DataAcquisition.Configs
             _enableAntiAliasingFilter = true;
             _antiAliasingCutoff = 20000;
             _measurementLocation = "";
-            _mountingDirection = "";
-            _displayColor = "#FF0000";
-            _displayOrder = 0;
             _sensorConfigMode = SensorConfigMode.Reference;
             _savedSensorId = null;
         }

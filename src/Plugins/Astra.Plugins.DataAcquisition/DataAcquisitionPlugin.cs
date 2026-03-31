@@ -13,6 +13,7 @@ using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Factories;
 using Astra.Plugins.DataAcquisition.Specifications;
+using Astra.UI.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -164,6 +165,7 @@ namespace Astra.Plugins.DataAcquisition
             // 初始化并注册所有设备
             int successCount = 0;
             int failCount = 0;
+            var registrationErrors = new List<string>();
 
             foreach (var device in _devices)
             {
@@ -175,6 +177,7 @@ namespace Astra.Plugins.DataAcquisition
                     {
                         _logger?.LogError($"[{Name}] 设备 {device.DeviceId} 不是有效的 IDevice 类型", null, LogCategory.Device);
                         failCount++;
+                        registrationErrors.Add($"• {device.DeviceId}: 不是有效的 IDevice 类型");
                         continue;
                     }
 
@@ -200,17 +203,26 @@ namespace Astra.Plugins.DataAcquisition
                     else
                     {
                         failCount++;
-                        _logger?.LogError($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
+                        _logger?.LogError($"[{Name}] 设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.Message}", null, LogCategory.Device);
+                        registrationErrors.Add($"• {deviceAsIDevice.DeviceName}: {registerResult.Message}");
                     }
                 }
                 catch (Exception ex)
                 {
                     failCount++;
                     _logger?.LogError($"[{Name}] 启用设备 {device.DeviceId} 时发生异常: {ex.Message}", ex, LogCategory.Device);
+                    registrationErrors.Add($"• {device.DeviceId}: {ex.Message}");
                 }
             }
 
             _logger?.LogInfo($"[{Name}] 插件已启用，成功注册 {successCount} 个设备，失败 {failCount} 个", LogCategory.System);
+
+            if (registrationErrors.Count > 0)
+            {
+                var message = "部分采集设备注册失败，请检查以下配置：\n"
+                    + string.Join("\n", registrationErrors);
+                ToastHelper.ShowError(message, "采集设备注册错误", 8);
+            }
         }
 
         public async Task OnDisableAsync(CancellationToken cancellationToken = default)
@@ -639,7 +651,10 @@ namespace Astra.Plugins.DataAcquisition
                         }
                         else
                         {
-                            _logger?.LogError($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.ErrorMessage}", null, LogCategory.Device);
+                            _logger?.LogError($"[{Name}] 新设备 {deviceAsIDevice.DeviceName} 注册失败: {registerResult.Message}", null, LogCategory.Device);
+                            ToastHelper.ShowError(
+                                $"采集设备 \"{deviceAsIDevice.DeviceName}\" 注册失败：\n{registerResult.Message}",
+                                "采集设备注册错误", 8);
                         }
                     }
                 }
