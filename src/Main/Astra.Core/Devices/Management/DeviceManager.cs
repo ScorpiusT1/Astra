@@ -1,4 +1,4 @@
-﻿﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -63,7 +63,17 @@ namespace Astra.Core.Devices.Management
                 return OperationResult.Failure("设备ID不能为空", ErrorCodes.InvalidData);
 
             if (_devices.ContainsKey(device.DeviceId))
-                return OperationResult.Failure($"设备 {device.DeviceId} 已存在", ErrorCodes.InvalidData);
+            {
+                var existingName = _devices.TryGetValue(device.DeviceId, out var existing)
+                    ? existing.DeviceName
+                    : null;
+                var hint = string.IsNullOrWhiteSpace(existingName) || existingName == device.DeviceName
+                    ? $"ID \"{device.DeviceId}\" 已被占用"
+                    : $"ID \"{device.DeviceId}\" 已被设备 \"{existingName}\" 占用";
+                return OperationResult.Failure(
+                    $"设备 \"{device.DeviceName}\" 注册失败：{hint}。\n可能存在多个 IP/端口相同的重复配置，请检查。",
+                    ErrorCodes.InvalidData);
+            }
 
             if (_devices.TryAdd(device.DeviceId, device))
             {
