@@ -12,6 +12,8 @@ public static class NodeUiOutputKeys
     public const string CurveCheckPass = "Ui.CurveCheckPass";
     public const string HasChartData = "Ui.HasChartData";
     public const string ChartArtifactKey = "Ui.ChartArtifactKey";
+    public const string ChartArtifactKeys = "Ui.ChartArtifactKeys";
+    public const string ChartUseSubPlots = "Ui.ChartUseSubPlots";
 
     /// <summary>主页图表横轴标题（与 <see cref="ChartDisplayPayload.BottomAxisLabel"/> 一致）。</summary>
     public const string ChartXAxisLabel = "Ui.ChartXAxisLabel";
@@ -44,6 +46,8 @@ public static class NodeUiOutputKeys
         CurveCheckPass,
         HasChartData,
         ChartArtifactKey,
+        ChartArtifactKeys,
+        ChartUseSubPlots,
         ChartXAxisLabel,
         ChartXAxisUnit,
         ChartYAxisLabel,

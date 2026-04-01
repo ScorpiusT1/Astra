@@ -44,6 +44,15 @@ public enum ChartPayloadKind
     Radar
 }
 
+/// <summary>多系列图表显示布局。</summary>
+public enum ChartLayoutMode
+{
+    /// <summary>所有系列叠加到一个 Plot。</summary>
+    SinglePlot = 0,
+    /// <summary>每个系列独立显示在一个子图。</summary>
+    SubPlots = 1
+}
+
 /// <summary>
 /// 图表快照（执行结束时由节点写入 OutputData 或 Raw 存储，由 Hydrator 拷贝进 UI 缓存）。
 /// </summary>
@@ -108,6 +117,37 @@ public sealed class ChartDisplayPayload
     /// <summary>雷达图各轴最大刻度值（null 则自动计算）。</summary>
     public double[]? RadarAxisMaxValues { get; init; }
 
+    // --- 多系列（通用：每个 Entry 内嵌一个完整的 ChartDisplayPayload，支持任意图表类型混合） ---
+
+    /// <summary>
+    /// 多系列模式（可选）：每个 <see cref="ChartSeriesEntry"/> 内嵌一个完整的 <see cref="ChartDisplayPayload"/>，
+    /// 支持任意图表类型混合（多曲线、多柱状图、多 Heatmap 等），每个系列可独立控制可见性。
+    /// 为 null 或空表示单图模式，使用上方的 Kind + 数据字段渲染。
+    /// </summary>
+    public List<ChartSeriesEntry>? Series { get; init; }
+
+    /// <summary>多系列显示布局（仅 <see cref="Series"/> 非空时有效）。运行时可由用户在图表窗口切换。</summary>
+    public ChartLayoutMode LayoutMode { get; set; } = ChartLayoutMode.SinglePlot;
+
+    /// <summary>
+    /// 根据 <paramref name="series"/> 中各子系列的 Kind 自动推断默认布局模式：
+    /// 同类型 → SinglePlot，混合类型 → SubPlots。
+    /// </summary>
+    public static ChartLayoutMode InferDefaultLayout(IReadOnlyList<ChartSeriesEntry>? series)
+    {
+        if (series == null || series.Count <= 1)
+            return ChartLayoutMode.SinglePlot;
+
+        var firstKind = series[0].Data.Kind;
+        for (var i = 1; i < series.Count; i++)
+        {
+            if (series[i].Data.Kind != firstKind)
+                return ChartLayoutMode.SubPlots;
+        }
+
+        return ChartLayoutMode.SinglePlot;
+    }
+
     /// <summary>
     /// 将 <paramref name="outputData"/> 中的轴标题/单位（若存在键）覆盖到 <paramref name="payload"/>，用于执行结果与 Raw/内联快照合并。
     /// </summary>
@@ -164,7 +204,9 @@ public sealed class ChartDisplayPayload
             BarGroups = payload.BarGroups,
             DonutFraction = payload.DonutFraction,
             ExplodeFraction = payload.ExplodeFraction,
-            RadarAxisMaxValues = payload.RadarAxisMaxValues
+            RadarAxisMaxValues = payload.RadarAxisMaxValues,
+            Series = payload.Series,
+            LayoutMode = payload.LayoutMode
         };
     }
 
@@ -215,7 +257,15 @@ public sealed class ChartDisplayPayload
             BarGroups = BarGroups?.Select(g => new ChartBarSeries { SeriesName = g.SeriesName, Values = Clone1D(g.Values)!, Color = g.Color }).ToList(),
             DonutFraction = DonutFraction,
             ExplodeFraction = ExplodeFraction,
-            RadarAxisMaxValues = Clone1D(RadarAxisMaxValues)
+            RadarAxisMaxValues = Clone1D(RadarAxisMaxValues),
+            Series = Series?.Select(e => new ChartSeriesEntry
+            {
+                Name = e.Name,
+                Color = e.Color,
+                IsVisibleByDefault = e.IsVisibleByDefault,
+                Data = e.Data.Clone()
+            }).ToList(),
+            LayoutMode = LayoutMode
         };
     }
 
@@ -244,6 +294,18 @@ public sealed class ChartDisplayPayload
         Array.Copy(m, c, m.Length);
         return c;
     }
+}
+
+/// <summary>
+/// 多系列中的单个条目：包含显示元数据（名称、颜色、默认可见性）和一个完整的 <see cref="ChartDisplayPayload"/>，
+/// 支持任意图表类型。
+/// </summary>
+public sealed class ChartSeriesEntry
+{
+    public string Name { get; init; } = string.Empty;
+    public string? Color { get; init; }
+    public bool IsVisibleByDefault { get; init; } = true;
+    public ChartDisplayPayload Data { get; init; } = new();
 }
 
 /// <summary>

@@ -10,14 +10,62 @@
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BackgroundBrush}">
     <Grid Margin="16">
-        <!-- 坐标轴标题由代码后置根据 ChartDisplayPayload 设置：底部/左侧各为「轴标签 + 单位」（单位为空则仅显示标签）。 -->
-        <Border
-                CornerRadius="10"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                Background="{DynamicResource RegionBrush}">
-            <scottplot:WpfPlot x:Name="ItemPlot"
-                               Margin="14" />
-        </Border>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <DockPanel x:Name="ToolbarPanel" Grid.Row="0" Margin="0,0,0,10" LastChildFill="True" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                <TextBlock Text="显示模式" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SecondaryTextBrush}" />
+                <ComboBox x:Name="LayoutModeCombo"
+                          Width="140"
+                          SelectionChanged="OnLayoutModeChanged">
+                    <ComboBoxItem Content="单图叠加" />
+                    <ComboBoxItem Content="多子图" />
+                </ComboBox>
+            </StackPanel>
+        </DockPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="Auto" />
+                <ColumnDefinition x:Name="SplitterColumn" Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="LeftPanelBorder" Grid.Column="0"
+                    Width="220"
+                    CornerRadius="10"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    Background="{DynamicResource RegionBrush}"
+                    Padding="10"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="系列显隐"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               Margin="0,0,0,8" />
+                    <StackPanel x:Name="CurveVisibilityPanel" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="SplitterBorder" Grid.Column="1" Width="12" Visibility="Collapsed" />
+
+            <Border Grid.Column="2"
+                    CornerRadius="10"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    Background="{DynamicResource RegionBrush}">
+                <Grid>
+                    <scottplot:WpfPlot x:Name="ItemPlot" Margin="14" />
+                    <ScrollViewer x:Name="SubPlotScrollViewer" Margin="14" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel x:Name="SubPlotHost" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

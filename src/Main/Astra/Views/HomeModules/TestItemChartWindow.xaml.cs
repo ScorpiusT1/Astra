@@ -2,17 +2,27 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using Astra.UI.Abstractions.Nodes;
 using Astra.Services.Home;
 using Astra.ViewModels.HomeModules;
 using Astra.UI.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using ScottPlot;
+using ScottPlot.Plottables;
+using ScottPlot.WPF;
 
 namespace Astra.Views.HomeModules
 {
     public partial class TestItemChartWindow : Window
     {
+        private ChartDisplayPayload? _currentPayload;
+        private bool _isUpdatingLayoutCombo;
+        private bool _isMixedKind;
+
+        private readonly List<SeriesVisibilityOption> _seriesOptions = new();
+        private readonly Dictionary<int, IPlottable> _singlePlotPlottables = new();
+
         public TestItemChartWindow()
         {
             InitializeComponent();
@@ -35,41 +45,55 @@ namespace Astra.Views.HomeModules
             RenderChart();
         }
 
+        // ────────────────────────────── 入口 ──────────────────────────────
+
         private void RenderChart()
         {
             if (DataContext is not TestTreeNodeItem item)
-            {
                 return;
-            }
 
-            var plot = ItemPlot.Plot;
-            plot.Clear();
+            ItemPlot.Plot.Clear();
+            ClearSubPlots();
+            _currentPayload = null;
+            _singlePlotPlottables.Clear();
 
             var cache = App.ServiceProvider?.GetService<IChartDisplayDataCache>();
             if (cache == null || !cache.TryGetPayload(item.NodeId, out var payload) || payload == null)
             {
+                HideMultiSeriesUi();
                 ItemPlot.Refresh();
                 return;
             }
 
-            // 底部 = 横轴标签 + 横轴单位；左侧 = 纵轴标签 + 纵轴单位（与 ChartDisplayPayload 字段一一对应）。
+            _currentPayload = payload;
+
+            if (HasMultiSeries(payload))
+            {
+                BuildMultiSeriesUi(payload);
+                RenderMultiSeries(payload);
+            }
+            else
+            {
+                HideMultiSeriesUi();
+                RenderSinglePayload(ItemPlot.Plot, payload);
+                var isPieOrRadar = payload.Kind is ChartPayloadKind.Pie or ChartPayloadKind.Donut or ChartPayloadKind.Radar;
+                if (!isPieOrRadar)
+                    AddHorizontalLimits(ItemPlot.Plot, payload, item);
+                ItemPlot.Plot.Axes.AutoScale();
+                ItemPlot.Refresh();
+            }
+        }
+
+        // ────────────────────────────── 单图模式（无 Series） ──────────────────────────────
+
+        private static void RenderSinglePayload(Plot plot, ChartDisplayPayload payload)
+        {
             var bottomAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.BottomAxisLabel, payload.BottomAxisUnit);
             var leftAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.LeftAxisLabel, payload.LeftAxisUnit);
-            if (string.IsNullOrWhiteSpace(bottomAxisTitle))
-            {
-                bottomAxisTitle = "X";
-            }
-
-            if (string.IsNullOrWhiteSpace(leftAxisTitle))
-            {
-                leftAxisTitle = "Y";
-            }
-
+            if (string.IsNullOrWhiteSpace(bottomAxisTitle)) bottomAxisTitle = "X";
+            if (string.IsNullOrWhiteSpace(leftAxisTitle)) leftAxisTitle = "Y";
             plot.Axes.Bottom.Label.Text = bottomAxisTitle;
             plot.Axes.Left.Label.Text = leftAxisTitle;
-
-            var isPieOrRadar = payload.Kind is ChartPayloadKind.Pie
-                or ChartPayloadKind.Donut or ChartPayloadKind.Radar;
 
             switch (payload.Kind)
             {
@@ -109,26 +133,283 @@ namespace Astra.Views.HomeModules
                 case ChartPayloadKind.Radar:
                     RenderRadar(plot, payload);
                     break;
-                default:
-                    ItemPlot.Refresh();
-                    return;
+            }
+        }
+
+        // ────────────────────────────── 多系列 UI ──────────────────────────────
+
+        private static bool HasMultiSeries(ChartDisplayPayload payload)
+            => payload.Series != null && payload.Series.Count > 0;
+
+        private void BuildMultiSeriesUi(ChartDisplayPayload payload)
+        {
+            var series = payload.Series!;
+
+            _isMixedKind = series.Select(s => s.Data.Kind).Distinct().Count() > 1;
+
+            ToolbarPanel.Visibility = Visibility.Visible;
+            LeftPanelBorder.Visibility = Visibility.Visible;
+            SplitterBorder.Visibility = Visibility.Visible;
+
+            LayoutModeCombo.IsEnabled = !_isMixedKind;
+
+            CurveVisibilityPanel.Children.Clear();
+            foreach (var opt in _seriesOptions) opt.Changed -= OnSeriesVisibilityChanged;
+            _seriesOptions.Clear();
+
+            for (var i = 0; i < series.Count; i++)
+            {
+                var name = string.IsNullOrWhiteSpace(series[i].Name) ? $"系列 {i + 1}" : series[i].Name.Trim();
+                var option = new SeriesVisibilityOption { Name = name, IsVisible = series[i].IsVisibleByDefault };
+                option.Changed += OnSeriesVisibilityChanged;
+                _seriesOptions.Add(option);
+
+                var checkBox = new CheckBox
+                {
+                    Content = name,
+                    IsChecked = option.IsVisible,
+                    Margin = new Thickness(0, 0, 0, 6)
+                };
+                var captured = option;
+                checkBox.Checked += (_, _) => captured.IsVisible = true;
+                checkBox.Unchecked += (_, _) => captured.IsVisible = false;
+                CurveVisibilityPanel.Children.Add(checkBox);
+            }
+        }
+
+        private void HideMultiSeriesUi()
+        {
+            ToolbarPanel.Visibility = Visibility.Collapsed;
+            LeftPanelBorder.Visibility = Visibility.Collapsed;
+            SplitterBorder.Visibility = Visibility.Collapsed;
+            CurveVisibilityPanel.Children.Clear();
+            foreach (var opt in _seriesOptions) opt.Changed -= OnSeriesVisibilityChanged;
+            _seriesOptions.Clear();
+
+            ItemPlot.Visibility = Visibility.Visible;
+            SubPlotScrollViewer.Visibility = Visibility.Collapsed;
+        }
+
+        // ────────────────────────────── 多系列渲染 ──────────────────────────────
+
+        private void RenderMultiSeries(ChartDisplayPayload payload)
+        {
+            var series = payload.Series ?? new List<ChartSeriesEntry>();
+            var useSubPlots = payload.LayoutMode == ChartLayoutMode.SubPlots;
+
+            _isUpdatingLayoutCombo = true;
+            LayoutModeCombo.SelectedIndex = useSubPlots ? 1 : 0;
+            _isUpdatingLayoutCombo = false;
+
+            if (!useSubPlots)
+            {
+                RenderMultiSeriesSinglePlot(payload, series);
+            }
+            else
+            {
+                RenderMultiSeriesSubPlots(payload, series);
+            }
+        }
+
+        private void RenderMultiSeriesSinglePlot(ChartDisplayPayload payload, List<ChartSeriesEntry> series)
+        {
+            ItemPlot.Visibility = Visibility.Visible;
+            SubPlotScrollViewer.Visibility = Visibility.Collapsed;
+            ClearSubPlots();
+
+            var plt = ItemPlot.Plot;
+            plt.Clear();
+            _singlePlotPlottables.Clear();
+
+            var bottomAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.BottomAxisLabel, payload.BottomAxisUnit);
+            var leftAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.LeftAxisLabel, payload.LeftAxisUnit);
+            if (string.IsNullOrWhiteSpace(bottomAxisTitle)) bottomAxisTitle = "X";
+            if (string.IsNullOrWhiteSpace(leftAxisTitle)) leftAxisTitle = "Y";
+            plt.Axes.Bottom.Label.Text = bottomAxisTitle;
+            plt.Axes.Left.Label.Text = leftAxisTitle;
+
+            for (var i = 0; i < series.Count; i++)
+            {
+                var isVisible = i < _seriesOptions.Count && _seriesOptions[i].IsVisible;
+                var plottable = AddSeriesEntryToPlot(plt, series[i], i);
+                if (plottable != null)
+                {
+                    plottable.IsVisible = isVisible;
+                    _singlePlotPlottables[i] = plottable;
+                }
             }
 
-            if (!isPieOrRadar)
-                AddHorizontalLimits(plot, payload, item);
+            if (series.Count > 0)
+            {
+                plt.ShowLegend(Alignment.UpperRight);
+                var item = DataContext as TestTreeNodeItem ?? new TestTreeNodeItem();
+                AddHorizontalLimits(plt, payload, item);
+                plt.Axes.AutoScale();
+            }
 
-            plot.Axes.AutoScale();
+            ApplyItemPlotStyleToAllPlots();
             ItemPlot.Refresh();
         }
+
+        private void RenderMultiSeriesSubPlots(ChartDisplayPayload payload, List<ChartSeriesEntry> series)
+        {
+            ItemPlot.Visibility = Visibility.Collapsed;
+            SubPlotScrollViewer.Visibility = Visibility.Visible;
+            ClearSubPlots();
+            _singlePlotPlottables.Clear();
+
+            var bottomAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.BottomAxisLabel, payload.BottomAxisUnit);
+            var leftAxisTitle = ChartDisplayPayload.FormatAxisTitle(payload.LeftAxisLabel, payload.LeftAxisUnit);
+            if (string.IsNullOrWhiteSpace(bottomAxisTitle)) bottomAxisTitle = "X";
+            if (string.IsNullOrWhiteSpace(leftAxisTitle)) leftAxisTitle = "Y";
+
+            for (var i = 0; i < series.Count; i++)
+            {
+                var isVisible = i < _seriesOptions.Count && _seriesOptions[i].IsVisible;
+                if (!isVisible)
+                    continue;
+
+                var entry = series[i];
+                var host = new Border
+                {
+                    Margin = new Thickness(0, 0, 0, 10),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = TryFindResource("BorderBrush") as System.Windows.Media.Brush,
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(6)
+                };
+
+                var subPlotControl = new WpfPlot { Height = 260 };
+                var sp = subPlotControl.Plot;
+                sp.Axes.Bottom.Label.Text = bottomAxisTitle;
+                sp.Axes.Left.Label.Text = leftAxisTitle;
+                RenderSinglePayload(sp, entry.Data);
+
+                var item = DataContext as TestTreeNodeItem ?? new TestTreeNodeItem();
+                var isPieOrRadar = entry.Data.Kind is ChartPayloadKind.Pie or ChartPayloadKind.Donut or ChartPayloadKind.Radar;
+                if (!isPieOrRadar)
+                    AddHorizontalLimits(sp, payload, item);
+
+                sp.Axes.AutoScale();
+                sp.Title(entry.Name);
+
+                var styleOptions = ScottPlotStyleHelper.CreateThemeStyleOptions();
+                ScottPlotStyleHelper.ApplyToPlotAndSubplots(sp, subPlotControl.Multiplot, styleOptions);
+                subPlotControl.Refresh();
+
+                host.Child = subPlotControl;
+                SubPlotHost.Children.Add(host);
+            }
+        }
+
+        /// <summary>
+        /// 向 Plot 添加一个系列条目并返回其主 Plottable（用于后续 IsVisible 翻转）。
+        /// 复用已有的 Render* 方法——不同的 Kind 有不同的"主 Plottable"类型。
+        /// </summary>
+        private static IPlottable? AddSeriesEntryToPlot(Plot plot, ChartSeriesEntry entry, int index)
+        {
+            var data = entry.Data;
+            var color = PaletteColor(entry.Color, index);
+            var name = string.IsNullOrWhiteSpace(entry.Name) ? $"系列 {index + 1}" : entry.Name.Trim();
+
+            switch (data.Kind)
+            {
+                case ChartPayloadKind.Signal1D:
+                {
+                    var y = data.SignalY;
+                    if (y == null || y.Length == 0) return null;
+                    var period = data.SamplePeriod > 0 ? data.SamplePeriod : 1.0;
+                    var sig = plot.Add.Signal(y, period);
+                    sig.LegendText = name;
+                    sig.LineWidth = 1.5f;
+                    sig.Color = color;
+                    return sig;
+                }
+                case ChartPayloadKind.XYLine:
+                case ChartPayloadKind.XYScatter:
+                {
+                    var xs = data.X;
+                    var ys = data.Y;
+                    if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) return null;
+                    var scatter = plot.Add.Scatter(xs, ys);
+                    scatter.Color = color;
+                    scatter.LegendText = name;
+                    if (data.Kind == ChartPayloadKind.XYLine) { scatter.LineWidth = 1.5f; scatter.MarkerSize = 0; }
+                    else { scatter.LineWidth = 0; scatter.MarkerSize = 6; }
+                    return scatter;
+                }
+                case ChartPayloadKind.Bar:
+                case ChartPayloadKind.HorizontalBar:
+                {
+                    var items = data.Categories;
+                    if (items == null || items.Count == 0) return null;
+                    var bars = new List<ScottPlot.Bar>();
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        bars.Add(new ScottPlot.Bar
+                        {
+                            Position = i,
+                            Value = items[i].Value,
+                            FillColor = PaletteColor(items[i].Color, i),
+                            Label = items[i].Value.ToString("G4")
+                        });
+                    }
+                    var bp = plot.Add.Bars(bars.ToArray());
+                    bp.Horizontal = data.Kind == ChartPayloadKind.HorizontalBar;
+                    bp.LegendText = name;
+                    return bp;
+                }
+                default:
+                {
+                    RenderSinglePayload(plot, data);
+                    return null;
+                }
+            }
+        }
+
+        // ────────────────────────────── 显隐 + 布局切换 ──────────────────────────────
+
+        private void OnSeriesVisibilityChanged()
+        {
+            if (_currentPayload == null || !HasMultiSeries(_currentPayload))
+                return;
+
+            if (_currentPayload.LayoutMode == ChartLayoutMode.SinglePlot && _singlePlotPlottables.Count > 0)
+            {
+                for (var i = 0; i < _seriesOptions.Count; i++)
+                {
+                    if (_singlePlotPlottables.TryGetValue(i, out var p))
+                    {
+                        p.IsVisible = _seriesOptions[i].IsVisible;
+                    }
+                }
+                ItemPlot.Plot.Axes.AutoScale();
+                ItemPlot.Refresh();
+            }
+            else
+            {
+                RenderMultiSeries(_currentPayload);
+            }
+        }
+
+        private void OnLayoutModeChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isUpdatingLayoutCombo || _currentPayload == null || !HasMultiSeries(_currentPayload))
+                return;
+
+            _currentPayload.LayoutMode = LayoutModeCombo.SelectedIndex == 1
+                ? ChartLayoutMode.SubPlots
+                : ChartLayoutMode.SinglePlot;
+
+            RenderMultiSeries(_currentPayload);
+        }
+
+        // ────────────────────────────── 各类型渲染方法（单图回退） ──────────────────────────────
 
         private static void RenderSignal1D(Plot plot, ChartDisplayPayload payload)
         {
             var y = payload.SignalY;
-            if (y == null || y.Length == 0)
-            {
-                return;
-            }
-
+            if (y == null || y.Length == 0) return;
             var period = payload.SamplePeriod > 0 ? payload.SamplePeriod : 1.0;
             var sig = plot.Add.Signal(y, period);
             sig.Color = ScottPlot.Color.FromHex("#2196F3");
@@ -139,74 +420,40 @@ namespace Astra.Views.HomeModules
         {
             var xs = payload.X;
             var ys = payload.Y;
-            if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length)
-            {
-                return;
-            }
-
+            if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) return;
             var scatter = plot.Add.Scatter(xs, ys);
             scatter.Color = ScottPlot.Color.FromHex("#2196F3");
-            if (line)
-            {
-                scatter.LineWidth = 1.5f;
-                scatter.MarkerSize = 0;
-            }
-            else
-            {
-                scatter.LineWidth = 0;
-                scatter.MarkerSize = 6;
-            }
+            if (line) { scatter.LineWidth = 1.5f; scatter.MarkerSize = 0; }
+            else { scatter.LineWidth = 0; scatter.MarkerSize = 6; }
         }
 
         private static void RenderHeatmap(Plot plot, ChartDisplayPayload payload)
         {
             var z = payload.HeatmapZ;
-            if (z == null || z.Length == 0)
-            {
-                return;
-            }
-
+            if (z == null || z.Length == 0) return;
             var rows = z.GetLength(0);
             var cols = z.GetLength(1);
-            if (rows < 1 || cols < 1)
-            {
-                return;
-            }
+            if (rows < 1 || cols < 1) return;
 
             var hm = plot.Add.Heatmap(z);
             hm.Colormap = new ScottPlot.Colormaps.Viridis();
-
             var xCoords = payload.HeatmapXCoordinates;
             var yCoords = payload.HeatmapYCoordinates;
-            if (xCoords != null && yCoords != null &&
-                xCoords.Length == cols && yCoords.Length == rows)
+            if (xCoords != null && yCoords != null && xCoords.Length == cols && yCoords.Length == rows)
             {
-                var xMin = xCoords.Min();
-                var xMax = xCoords.Max();
-                var yMin = yCoords.Min();
-                var yMax = yCoords.Max();
-                hm.Rectangle = new CoordinateRect(xMin, xMax, yMin, yMax);
+                hm.Rectangle = new CoordinateRect(xCoords.Min(), xCoords.Max(), yCoords.Min(), yCoords.Max());
             }
-
             plot.Add.ColorBar(hm);
         }
 
         private static void RenderSegments(Plot plot, ChartDisplayPayload payload)
         {
             var seg = payload.SegmentLines;
-            if (seg == null || seg.GetLength(1) != 4)
-            {
-                return;
-            }
-
+            if (seg == null || seg.GetLength(1) != 4) return;
             var n = seg.GetLength(0);
             for (var i = 0; i < n; i++)
             {
-                var x0 = seg[i, 0];
-                var y0 = seg[i, 1];
-                var x1 = seg[i, 2];
-                var y1 = seg[i, 3];
-                var line = plot.Add.Line(x0, y0, x1, y1);
+                var line = plot.Add.Line(seg[i, 0], seg[i, 1], seg[i, 2], seg[i, 3]);
                 line.Color = ScottPlot.Color.FromHex("#2196F3");
                 line.LineWidth = 1.5f;
             }
@@ -230,7 +477,6 @@ namespace Astra.Views.HomeModules
         {
             var items = payload.Categories;
             if (items == null || items.Count == 0) return;
-
             var bars = new List<ScottPlot.Bar>();
             for (int i = 0; i < items.Count; i++)
             {
@@ -242,17 +488,12 @@ namespace Astra.Views.HomeModules
                     Label = items[i].Value.ToString("G4")
                 });
             }
-
             var bp = plot.Add.Bars(bars.ToArray());
             bp.Horizontal = horizontal;
-
             var positions = Enumerable.Range(0, items.Count).Select(i => (double)i).ToArray();
             var labels = items.Select(c => c.Label).ToArray();
-            if (horizontal)
-                plot.Axes.Left.SetTicks(positions, labels);
-            else
-                plot.Axes.Bottom.SetTicks(positions, labels);
-
+            if (horizontal) plot.Axes.Left.SetTicks(positions, labels);
+            else plot.Axes.Bottom.SetTicks(positions, labels);
             plot.Axes.Margins(bottom: 0);
         }
 
@@ -261,11 +502,9 @@ namespace Astra.Views.HomeModules
             var categories = payload.Categories;
             var groups = payload.BarGroups;
             if (categories == null || groups == null || groups.Count == 0) return;
-
             var catCount = categories.Count;
             double groupWidth = 0.8;
             double barWidth = groupWidth / groups.Count;
-
             for (int s = 0; s < groups.Count; s++)
             {
                 var series = groups[s];
@@ -291,7 +530,6 @@ namespace Astra.Views.HomeModules
                 var bp = plot.Add.Bars(bars.ToArray());
                 bp.LegendText = series.SeriesName;
             }
-
             var positions = Enumerable.Range(0, catCount).Select(i => (double)i).ToArray();
             var catLabels = categories.Select(c => c.Label).ToArray();
             plot.Axes.Bottom.SetTicks(positions, catLabels);
@@ -303,7 +541,6 @@ namespace Astra.Views.HomeModules
         {
             var items = payload.Categories;
             if (items == null || items.Count == 0) return;
-
             var slices = items.Select((c, i) => new PieSlice
             {
                 Value = c.Value,
@@ -311,12 +548,9 @@ namespace Astra.Views.HomeModules
                 Label = c.Label,
                 LegendText = $"{c.Label} ({c.Value:G4})"
             }).ToList();
-
             var pie = plot.Add.Pie(slices);
             pie.ExplodeFraction = payload.ExplodeFraction;
-            if (donut)
-                pie.DonutFraction = payload.DonutFraction > 0 ? payload.DonutFraction : 0.5;
-
+            if (donut) pie.DonutFraction = payload.DonutFraction > 0 ? payload.DonutFraction : 0.5;
             plot.Axes.Frameless();
             plot.HideGrid();
             plot.ShowLegend(Alignment.LowerRight);
@@ -326,11 +560,8 @@ namespace Astra.Views.HomeModules
         {
             var items = payload.Categories;
             if (items == null || items.Count < 3) return;
-
             var values = items.Select(c => c.Value).ToArray();
-            var maxValues = payload.RadarAxisMaxValues
-                           ?? values.Select(v => Math.Max(Math.Ceiling(v * 1.2), 1.0)).ToArray();
-
+            var maxValues = payload.RadarAxisMaxValues ?? values.Select(v => Math.Max(Math.Ceiling(v * 1.2), 1.0)).ToArray();
             var n = values.Length;
             var angleStep = 2 * Math.PI / n;
             var radius = 100.0;
@@ -378,34 +609,35 @@ namespace Astra.Views.HomeModules
             fill.MarkerSize = 5;
             fill.FillY = true;
             fill.FillYColor = ScottPlot.Color.FromHex("#3b82f6").WithAlpha(50);
-
             plot.Axes.Frameless();
             plot.HideGrid();
         }
+
+        // ────────────────────────────── 辅助 ──────────────────────────────
 
         private static void AddHorizontalLimits(Plot plot, ChartDisplayPayload payload, TestTreeNodeItem item)
         {
             var lo = payload.HorizontalLimitLower ?? item.LowerLimit;
             var hi = payload.HorizontalLimitUpper ?? item.UpperLimit;
-
-            if (double.IsFinite(lo) || double.IsFinite(hi))
+            if (double.IsFinite(lo))
             {
-                if (double.IsFinite(lo))
-                {
-                    var hlLo = plot.Add.HorizontalLine(lo);
-                    hlLo.Color = ScottPlot.Colors.OrangeRed;
-                    hlLo.LineWidth = 1;
-                    hlLo.LinePattern = LinePattern.Dashed;
-                }
-
-                if (double.IsFinite(hi))
-                {
-                    var hlHi = plot.Add.HorizontalLine(hi);
-                    hlHi.Color = ScottPlot.Colors.OrangeRed;
-                    hlHi.LineWidth = 1;
-                    hlHi.LinePattern = LinePattern.Dashed;
-                }
+                var hlLo = plot.Add.HorizontalLine(lo);
+                hlLo.Color = ScottPlot.Colors.OrangeRed;
+                hlLo.LineWidth = 1;
+                hlLo.LinePattern = LinePattern.Dashed;
             }
+            if (double.IsFinite(hi))
+            {
+                var hlHi = plot.Add.HorizontalLine(hi);
+                hlHi.Color = ScottPlot.Colors.OrangeRed;
+                hlHi.LineWidth = 1;
+                hlHi.LinePattern = LinePattern.Dashed;
+            }
+        }
+
+        private void ClearSubPlots()
+        {
+            SubPlotHost.Children.Clear();
         }
 
         private void ApplyItemPlotStyleToAllPlots()
@@ -413,5 +645,23 @@ namespace Astra.Views.HomeModules
             var styleOptions = ScottPlotStyleHelper.CreateThemeStyleOptions();
             ScottPlotStyleHelper.ApplyToPlotAndSubplots(ItemPlot.Plot, ItemPlot.Multiplot, styleOptions);
         }
+    }
+
+    internal sealed class SeriesVisibilityOption
+    {
+        private bool _isVisible;
+        public string Name { get; set; } = string.Empty;
+        public bool IsVisible
+        {
+            get => _isVisible;
+            set
+            {
+                if (_isVisible == value) return;
+                _isVisible = value;
+                Changed?.Invoke();
+            }
+        }
+
+        public event Action? Changed;
     }
 }
