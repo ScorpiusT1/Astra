@@ -24,7 +24,7 @@
         <!-- 属性编辑器主体 -->
         <ScrollViewer Grid.Row="0"
                       Margin="0,0,0,16"
-                      HorizontalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto"
                       CanContentScroll="False">
             <ui:PropertyEditorControl x:Name="PropertyEditor"

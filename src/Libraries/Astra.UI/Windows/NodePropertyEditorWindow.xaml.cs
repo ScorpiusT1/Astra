@@ -43,18 +43,19 @@ namespace Astra.UI.Windows
                 return source;
             }
 
+            // 保留原节点 ID，使克隆副本能通过静态注册表获取上游数据源信息
+            editable.Id = source.Id;
+
             var props = sourceType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (var prop in props)
             {
                 if (!prop.CanRead || !prop.CanWrite)
                     continue;
 
-                // 只复制带 Display 特性的属性
                 var displayAttr = prop.GetCustomAttribute<DisplayAttribute>();
                 if (displayAttr == null)
                     continue;
 
-                // 跳过一些关键字段
                 if (prop.Name is nameof(Node.Id) or nameof(Node.Position) or nameof(Node.Size))
                     continue;
 
@@ -65,7 +66,6 @@ namespace Astra.UI.Windows
                 }
                 catch
                 {
-                    // 单个属性失败忽略
                 }
             }
 

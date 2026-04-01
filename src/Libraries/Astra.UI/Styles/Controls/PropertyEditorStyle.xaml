@@ -20,6 +20,8 @@
     <Style x:Key="CompactTextBoxStyle"
            TargetType="TextBox"
            BasedOn="{StaticResource ModernTextBoxStyle}">
+        <Setter Property="MinWidth"
+                Value="0" />
         <Setter Property="MinHeight"
                 Value="36" />
         <Setter Property="FontSize"
@@ -34,6 +36,8 @@
     <Style x:Key="CompactComboBoxStyle"
            TargetType="ComboBox"
            BasedOn="{StaticResource ModernComboBoxStyle}">
+        <Setter Property="MinWidth"
+                Value="0" />
         <Setter Property="MinHeight"
                 Value="36" />
         <Setter Property="FontSize"
@@ -404,6 +408,8 @@
     ========================================= -->
     <!-- PropertyEditorHost 使用自定义模板确保内容能正确显示和拉伸 -->
     <Style TargetType="{x:Type local:PropertyEditorHost}">
+        <Setter Property="MinWidth"
+                Value="0" />
         <Setter Property="HorizontalAlignment"
                 Value="Stretch" />
         <Setter Property="VerticalAlignment"
@@ -417,7 +423,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type local:PropertyEditorHost}">
                     <!-- 使用 Border 作为容器，确保内容能够正确测量 -->
-                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                    <ContentPresenter MinWidth="0"
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                       Content="{TemplateBinding Content}"
                                       ContentTemplate="{TemplateBinding ContentTemplate}"
@@ -513,11 +520,14 @@
                             <!-- 属性列表 -->
                             <ScrollViewer Grid.Row="1"
                                           VerticalScrollBarVisibility="Auto"
+                                        
                                           HorizontalScrollBarVisibility="Disabled"
                                           Padding="8,4,8,8">
                                 <!-- 分组与组内顺序由 PropertyEditorViewModel（CategoryGroupOrder → Order，均为升序、值越小越靠前）与 ICollectionView.SortDescriptions 决定 -->
                                 <ItemsControl x:Name="PART_PropertiesContainer"
+                                              MinWidth="0"
                                               HorizontalAlignment="Stretch"
+                                              HorizontalContentAlignment="Stretch"
                                               ItemsSource="{Binding PropertiesView}">
                                     <!-- 分组样式 -->
                                     <ItemsControl.GroupStyle>
@@ -541,17 +551,26 @@
                                         </GroupStyle>
                                     </ItemsControl.GroupStyle>
 
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="HorizontalAlignment"
+                                                    Value="Stretch" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+
                                     <!-- 属性项模板 -->
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource PropertyRowStyle}">
-                                                <Grid HorizontalAlignment="Stretch">
+                                                <Grid MinWidth="0"
+                                                      HorizontalAlignment="Stretch">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="{Binding LabelWidthRatio, 
                                                             RelativeSource={RelativeSource AncestorType=local:PropertyEditorControl}, 
                                                             Converter={StaticResource RatioToGridLengthConverter}}"
                                                                           MinWidth="80" />
-                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*"
+                                                                          MinWidth="0" />
                                                     </Grid.ColumnDefinitions>
 
                                                     <!-- 属性名称 -->
@@ -560,17 +579,23 @@
                                                                ToolTip="{Binding Description}"
                                                                VerticalAlignment="Center"
                                                                Margin="0,0,12,0"
+                                                               TextWrapping="NoWrap"
                                                                TextTrimming="CharacterEllipsis"
                                                                FontWeight="Medium"
                                                                FontSize="13"
                                                                Foreground="{DynamicResource SecondaryTextBrush}" />
 
-                                                    <!-- 编辑器 -->
-                                                    <ContentPresenter Grid.Column="1"
-                                                                      Content="{Binding}"
-                                                                      ContentTemplateSelector="{StaticResource EditorTemplateSelector}"
-                                                                      HorizontalAlignment="Stretch"
-                                                                      VerticalAlignment="Center" />
+                                                    <!-- 编辑器：MinWidth=0 避免长文本撑开星号列，与标签列对齐 -->
+                                                    <Border Grid.Column="1"
+                                                            MinWidth="0"
+                                                            HorizontalAlignment="Stretch"
+                                                            ClipToBounds="True">
+                                                        <ContentPresenter MinWidth="0"
+                                                                          Content="{Binding}"
+                                                                          ContentTemplateSelector="{StaticResource EditorTemplateSelector}"
+                                                                          HorizontalAlignment="Stretch"
+                                                                          VerticalAlignment="Center" />
+                                                    </Border>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
