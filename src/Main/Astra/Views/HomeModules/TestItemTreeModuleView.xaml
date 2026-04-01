@@ -910,7 +910,7 @@
                                              Value="Running">
                                     <Setter TargetName="StatusDot"
                                             Property="Fill"
-                                            Value="{DynamicResource InfoBrush}" />
+                                            Value="{DynamicResource WarningBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}"
                                              Value="Skip">
@@ -1119,7 +1119,7 @@
                                                     <DataTrigger Binding="{Binding Status}"
                                                                  Value="Running">
                                                         <Setter Property="Foreground"
-                                                                Value="{DynamicResource InfoBrush}" />
+                                                                Value="{DynamicResource WarningBrush}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Status}"
                                                                  Value="Skip">
