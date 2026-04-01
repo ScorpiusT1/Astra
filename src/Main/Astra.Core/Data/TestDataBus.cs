@@ -125,6 +125,14 @@ namespace Astra.Core.Data
             };
         }
 
+        /// <inheritdoc />
+        public void Clear()
+        {
+            _registry.Clear();
+            _lineage.Clear();
+            _store.RemoveByPrefix($"{ExecutionId}:");
+        }
+
         private string BuildKey(DataEntry entry)
         {
             var safeNodeId = string.IsNullOrWhiteSpace(entry.ProducerNodeId) ? "unknown-node" : entry.ProducerNodeId;

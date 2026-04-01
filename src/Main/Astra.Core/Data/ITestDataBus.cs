@@ -32,5 +32,11 @@ namespace Astra.Core.Data
 
         /// <summary>创建当前总线的完整快照（用于归档 / 报告）。</summary>
         DataPipelineSnapshot CreateSnapshot();
+
+        /// <summary>
+        /// 清空本执行总线的产物注册表、血缘，并移除底层 <see cref="IRawDataStore"/> 中本 <see cref="ExecutionId"/> 前缀的条目。
+        /// 应在一次执行结束且归档完成后调用，避免与下一轮执行或残留 Query 结果不一致。
+        /// </summary>
+        void Clear();
     }
 }

@@ -358,6 +358,9 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 _executionControllers[executionId] = controller;
                 var rawDataStore = new InMemoryRawDataStore(DefaultRawDataTtl, DefaultRawDataMaxItems, DefaultRawDataMaxBytes);
                 context ??= new NodeContext();
+                // 主流程（engine.ExecuteAsync）开始前：若复用 NodeContext，先收尾上一轮 TestDataBus/Store
+                FinalizePreviousExecutionArtifacts(context);
+                ResetContextForNewManagedExecution(context);
                 context.ExecutionId = executionId;
                 context.SetMetadata(EngineConstants.MetadataKeys.WorkflowExecutionController, controller);
                 context.SetMetadata(EngineConstants.MetadataKeys.ExecutionId, executionId);
@@ -434,18 +437,20 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     completionResult = OperationResult<ExecutionResult>.Failure($"工作流执行失败: {ex.Message}", ErrorCodes.ExecutionFailed);
                 }
 
-                await TryArchiveBeforeRawCleanupAsync(
-                        context,
-                        executionId,
-                        key,
-                        workflow.Name,
-                        executionInfo.Status)
-                    .ConfigureAwait(false);
-
-                if (context.GetRawDataStore() is IRawDataStore store)
+                // 归档须先于本轮 Store/总线清理；finally 中收尾保证异常路径也会释放本轮资源
+                try
                 {
-                    // 建议业务节点使用 executionId:xxx 作为 key 前缀，便于执行结束后快速回收
-                    store.RemoveByPrefix($"{executionId}:");
+                    await TryArchiveBeforeRawCleanupAsync(
+                            context,
+                            executionId,
+                            key,
+                            workflow.Name,
+                            executionInfo.Status)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    FinalizeCurrentExecutionDataArtifacts(context, executionId);
                 }
 
                 _runningExecutions.TryRemove(executionId, out _);
@@ -684,6 +689,81 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         #endregion
 
         #region 私有方法
+
+        // 数据清理两阶段（经本 Manager 的每次 ExecuteWorkFlowAsync）：
+        // 1) FinalizePreviousExecutionArtifacts：下一次执行、Reset Metadata 之前，收尾「仍挂在 context 上的上一轮」总线/Store（复用 NodeContext 时必做）。
+        // 2) FinalizeCurrentExecutionDataArtifacts：本轮归档尝试之后（try/finally），释放本轮 TestDataBus/IRawDataStore（不可仅依赖「下次执行前」，否则用户不再跑第二次会长期占内存）。
+
+        /// <summary>
+        /// 本轮执行在归档之后调用：清空本轮 <see cref="ITestDataBus"/> 及底层 <see cref="IRawDataStore"/> 中本 <paramref name="executionId"/> 前缀的条目。
+        /// </summary>
+        private static void FinalizeCurrentExecutionDataArtifacts(NodeContext context, string executionId)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(executionId))
+            {
+                return;
+            }
+
+            if (context.GetDataBus() is ITestDataBus bus)
+            {
+                bus.Clear();
+                return;
+            }
+
+            if (context.GetRawDataStore() is IRawDataStore store)
+            {
+                store.RemoveByPrefix($"{executionId}:");
+            }
+        }
+
+        /// <summary>
+        /// 在重置 Metadata 之前调用：释放复用 <see cref="NodeContext"/> 时上一轮的 <see cref="ITestDataBus"/> / <see cref="IRawDataStore"/>，
+        /// 与「主流程执行开始前」对齐，避免仅 Clear Metadata 导致旧总线内大对象仍驻留。
+        /// </summary>
+        private static void FinalizePreviousExecutionArtifacts(NodeContext context)
+        {
+            if (context == null)
+            {
+                return;
+            }
+
+            if (context.GetDataBus() is ITestDataBus previousBus)
+            {
+                previousBus.Clear();
+                return;
+            }
+
+            if (context.GetRawDataStore() is IRawDataStore previousStore &&
+                !string.IsNullOrWhiteSpace(context.ExecutionId))
+            {
+                previousStore.RemoveByPrefix($"{context.ExecutionId}:");
+            }
+        }
+
+        /// <summary>
+        /// 经本管理器启动的每次执行前：清空 <see cref="NodeContext.Metadata"/>（保留调用方预先注入的 UI 日志委托）、
+        /// 清空 <see cref="NodeContext.InputData"/>，避免复用 <see cref="NodeContext"/> 时跨次污染。
+        /// </summary>
+        private static void ResetContextForNewManagedExecution(NodeContext context)
+        {
+            if (context == null)
+            {
+                return;
+            }
+
+            context.Metadata ??= new Dictionary<string, object>();
+            context.Metadata.TryGetValue(AstraSharedConstants.MetadataKeys.UiLogWriter, out var uiLogWriter);
+
+            context.Metadata.Clear();
+
+            if (uiLogWriter != null)
+            {
+                context.Metadata[AstraSharedConstants.MetadataKeys.UiLogWriter] = uiLogWriter;
+            }
+
+            context.InputData ??= new Dictionary<string, object>();
+            context.InputData.Clear();
+        }
 
         /// <summary>
         /// 更新统计信息
