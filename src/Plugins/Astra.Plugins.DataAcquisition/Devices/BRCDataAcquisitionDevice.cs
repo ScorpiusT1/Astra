@@ -32,6 +32,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             : base(new BRCDataAcquisitionDeviceConnection(config, logger), config, messageBus, logger)
         {
             _brcConnection = (BRCDataAcquisitionDeviceConnection)_connection;
+            _brcConnection.SetDebugParameterOwner(this);
         }
 
         /// <summary>
@@ -65,6 +66,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
         /// 获取当前已解析的硬件模块信息（未连接时返回 null）。
         /// </summary>
         public SDKs.ModuleInfo GetModuleInfo() => _brcConnection.GetModuleInfo();
+
+        protected override void OnDebugChannelSettingsChanged()
+        {
+            _brcConnection.ApplyChannelSettings();
+        }
 
         protected override async Task OnInitializeAsync()
         {
@@ -123,7 +129,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 return Task.CompletedTask;
             }
 
-            var enabledChannels = _config.Channels?.Where(c => c.Enabled).ToList()
+            var enabledChannels = _config.Channels?
+                    .Where(c => GetEffectiveChannelEnabled(c))
+                    .ToList()
                 ?? Enumerable.Range(1, _config.ChannelCount).Select(i => new Configs.DAQChannelConfig { ChannelId = i, Enabled = true }).ToList();
             var bufferSize = _config.BufferSize;
             var timeout = TimeSpan.FromMilliseconds(3000);

@@ -2,6 +2,7 @@ using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
 using Astra.Plugins.Algorithms.APIs;
 using NVHDataBridge.Models;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Astra.Plugins.Algorithms.Helpers
@@ -11,6 +12,15 @@ namespace Astra.Plugins.Algorithms.Helpers
     /// </summary>
     internal static class AlgorithmInputLoader
     {
+        /// <summary>已加载的振动信号条目。</summary>
+        internal sealed class VibrationEntry
+        {
+            public required string Label { get; init; }
+            public required NvhMemoryFile File { get; init; }
+            public required Signal Signal { get; init; }
+            public required Action Dispose { get; init; }
+        }
+
         public static bool TryLoadVibration(
             NodeContext context,
             string nodeId,
@@ -62,6 +72,62 @@ namespace Astra.Plugins.Algorithms.Helpers
                     Marshal.FreeHGlobal(ptr);
             };
             return true;
+        }
+
+        /// <summary>
+        /// 批量加载多设备多通道的振动信号。
+        /// 内部逐个调用 <see cref="TryLoadVibration"/>，任一失败即中止并释放已加载的资源。
+        /// </summary>
+        public static bool TryLoadMultipleVibrations(
+            NodeContext context,
+            string nodeId,
+            IReadOnlyList<(string DeviceName, string? ChannelName)> specs,
+            out List<VibrationEntry> entries,
+            out string? error)
+        {
+            entries = new List<VibrationEntry>();
+            error = null;
+
+            if (specs == null || specs.Count == 0)
+            {
+                error = "未指定输入源，请至少选择一个采集卡。";
+                return false;
+            }
+
+            foreach (var (deviceName, channelName) in specs)
+            {
+                if (!TryLoadVibration(context, nodeId, deviceName, channelName,
+                        out var file, out var signal, out var dispose, out var err))
+                {
+                    foreach (var prev in entries)
+                        prev.Dispose();
+                    entries.Clear();
+                    error = $"加载 {deviceName}/{channelName ?? "首通道"} 失败: {err}";
+                    return false;
+                }
+
+                var label = string.IsNullOrWhiteSpace(channelName)
+                    ? deviceName
+                    : $"{deviceName}/{channelName}";
+
+                entries.Add(new VibrationEntry
+                {
+                    Label = label,
+                    File = file,
+                    Signal = signal,
+                    Dispose = dispose
+                });
+            }
+
+            return true;
+        }
+
+        /// <summary>释放一组 <see cref="VibrationEntry"/> 的非托管资源。</summary>
+        public static void DisposeAll(IEnumerable<VibrationEntry>? entries)
+        {
+            if (entries == null) return;
+            foreach (var e in entries)
+                e.Dispose();
         }
 
         public static bool TryLoadRpm(

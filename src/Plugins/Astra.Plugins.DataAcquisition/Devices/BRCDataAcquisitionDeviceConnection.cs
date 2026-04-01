@@ -23,6 +23,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
         private readonly Microsoft.Extensions.Logging.ILogger _logger;
         private BRCSDK.BrcDevice _brcDevice;
         private ModuleInfo _moduleInfo;
+        private DataAcquisitionDeviceBase _debugParameterOwner;
 
         public BRCDataAcquisitionDeviceConnection(DataAcquisitionConfig config, Microsoft.Extensions.Logging.ILogger logger = null)
         {
@@ -42,6 +43,14 @@ namespace Astra.Plugins.DataAcquisition.Devices
         public void UpdateConfig(DataAcquisitionConfig config)
         {
             _config = config ?? new DataAcquisitionConfig();
+        }
+
+        /// <summary>
+        /// 由具体采集卡设备在构造时注册，用于按调试会话计算有效通道参数并下发硬件。
+        /// </summary>
+        public void SetDebugParameterOwner(DataAcquisitionDeviceBase owner)
+        {
+            _debugParameterOwner = owner;
         }
 
         protected override bool DoCheckAlive()
@@ -119,23 +128,23 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     if (_moduleInfo == null && !DoCheckDeviceExists())
                     {
                         return OperationResult.Failure(
-                            $"BRC采集卡 {_config.DeviceName} 未找到", 
+                            $"BRC采集卡 {_config.DeviceName} 未找到",
                             ErrorCodes.DeviceNotFound);
                     }
 
                     if (_moduleInfo == null)
                     {
                         return OperationResult.Failure(
-                            "未找到匹配的设备模块", 
+                            "未找到匹配的设备模块",
                             ErrorCodes.DeviceNotFound);
                     }
 
                     // 连接设备
                     _brcDevice = BRCSDK.Connect(_moduleInfo);
-                    
+
                     // 配置模块属性
                     ConfigureModuleProperties();
-                    
+
                     // 配置通道属性
                     ConfigureChannelProperties();
 
@@ -206,6 +215,13 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
             try
             {
+
+                // 设置时钟源（默认使用板载时钟）
+                _brcDevice.SetModulePropertyClockSource(SourceType.ONBOARD);
+
+                // 设置触发源（默认使用板载触发）
+                _brcDevice.SetModulePropertyTrigerSource(SourceType.ONBOARD);
+
                 // 设置采样率
                 if (_config.SampleRate > 0)
                 {
@@ -217,17 +233,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
                         var targetRate = supportedRates
                             .OrderBy(r => Math.Abs(r - _config.SampleRate))
                             .First();
-                        
+
                         _brcDevice.SetModulePropertySampleRate(targetRate);
                         _logger?.LogInformation($"[{_config.DeviceName}] 采样率设置为: {targetRate} Hz", LogCategory.Device);
                     }
                 }
 
-                // 设置时钟源（默认使用板载时钟）
-                _brcDevice.SetModulePropertyClockSource(SourceType.ONBOARD);
-                
-                // 设置触发源（默认使用板载触发）
-                _brcDevice.SetModulePropertyTrigerSource(SourceType.ONBOARD);
             }
             catch (Exception ex)
             {
@@ -248,27 +259,40 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 foreach (var channelConfig in _config.Channels)
                 {
                     var channelIndex = channelConfig.ChannelId - 1; // SDK使用0基索引
+                    bool effectiveEnabled;
+                    double effectiveTriggerLevel;
+                    Configs.CouplingMode effectiveCouplingMode;
+                    if (_debugParameterOwner != null)
+                    {
+                        _debugParameterOwner.GetEffectiveChannelRuntimeParameters(
+                            channelConfig.ChannelId,
+                            channelConfig,
+                            out effectiveEnabled,
+                            out effectiveCouplingMode,
+                            out effectiveTriggerLevel);
+                    }
+                    else
+                    {
+                        effectiveEnabled = channelConfig.Enabled;
+                        effectiveCouplingMode = channelConfig.CouplingMode;
+                        effectiveTriggerLevel = channelConfig.TriggerLevel;
+                    }
 
                     // 设置通道启用状态
-                    _brcDevice.SetChannelPropertyEnabled(channelIndex, channelConfig.Enabled);
+                    //_brcDevice.SetChannelPropertyEnabled(channelIndex, effectiveEnabled);
 
-                    if (channelConfig.Enabled)
+                    if (effectiveEnabled)
                     {
                         // 设置增益
-                        if (channelConfig.Gain > 0)
-                        {
-                            _brcDevice.SetChannelPropertyGain(channelIndex, channelConfig.Gain);
-                        }
+                        //if (channelConfig.Gain > 0)
+                        //{
+                        //    _brcDevice.SetChannelPropertyGain(channelIndex, channelConfig.Gain);
+                        //}
 
-                        // 设置激励电流（TriggerLevel 即用户配置/联动的激励电流，单位 mA）
-                        if (channelConfig.TriggerLevel > 0)
-                        {
-                            _brcDevice.SetChannelPropertyCurrent(channelIndex, channelConfig.TriggerLevel);
-                        }
 
                         // 设置耦合模式（将配置中的CouplingMode转换为BRC SDK的CouplingMode）
-                       Configs.CouplingMode couplingMode;
-                        switch (channelConfig.CouplingMode)
+                        Configs.CouplingMode couplingMode;
+                        switch (effectiveCouplingMode)
                         {
                             case Configs.CouplingMode.AC:
                                 couplingMode = Configs.CouplingMode.AC;
@@ -285,11 +309,40 @@ namespace Astra.Plugins.DataAcquisition.Devices
                                 couplingMode = Configs.CouplingMode.AC;
                                 break;
                         }
-                        _brcDevice.SetChannelPropertyCouplingMode(channelIndex, couplingMode);
+
+
+                        if (couplingMode == CouplingMode.AC)
+                        {
+                            //先设置耦合方式
+                            _brcDevice.SetChannelPropertyCouplingMode(channelIndex, couplingMode);
+
+                            // 再设置激励电流（TriggerLevel 即用户配置/联动的激励电流，单位 mA）
+                            if (effectiveTriggerLevel >= 0)
+                            {
+                                _brcDevice.SetChannelPropertyCurrent(channelIndex, effectiveTriggerLevel);
+                            }
+                        }
+                        else
+                        {
+                           
+                            if (effectiveTriggerLevel >= 0)
+                            {
+                                // 先设置激励电流（TriggerLevel 即用户配置/联动的激励电流，单位 mA）
+                                _brcDevice.SetChannelPropertyCurrent(channelIndex, effectiveTriggerLevel);
+
+                                //再设置设置耦合方式
+                                _brcDevice.SetChannelPropertyCouplingMode(channelIndex, couplingMode);
+                            }
+                        }
+
                     }
                 }
 
-                _logger?.LogInformation($"[{_config.DeviceName}] 已配置 {_config.Channels.Count(c => c.Enabled)} 个通道", LogCategory.Device);
+
+                int effectiveEnabledCount = _debugParameterOwner != null
+                    ? _config.Channels.Count(c => _debugParameterOwner.GetEffectiveChannelEnabled(c))
+                    : _config.Channels.Count(c => c.Enabled);
+                _logger?.LogInformation($"[{_config.DeviceName}] 已配置 {effectiveEnabledCount} 个通道", LogCategory.Device);
             }
             catch (Exception ex)
             {

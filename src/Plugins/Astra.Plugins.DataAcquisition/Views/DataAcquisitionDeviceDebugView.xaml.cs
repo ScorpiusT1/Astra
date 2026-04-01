@@ -27,6 +27,8 @@ namespace Astra.Plugins.DataAcquisition.Views
             ApplyScottPlotStyle();
             DataContextChanged -= OnDataContextChanged;
             DataContextChanged += OnDataContextChanged;
+            Unloaded -= OnUnloaded;
+            Unloaded += OnUnloaded;
         }
 
         private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
@@ -35,12 +37,22 @@ namespace Astra.Plugins.DataAcquisition.Views
             {
                 oldVm.WaveformUpdated -= OnWaveformUpdated;
                 oldVm.ChannelVisibilityChanged -= OnChannelVisibilityChanged;
+                oldVm.DisableDebugOverrideMode();
             }
 
             if (e.NewValue is DataAcquisitionDeviceDebugViewModel newVm)
             {
                 newVm.WaveformUpdated += OnWaveformUpdated;
                 newVm.ChannelVisibilityChanged += OnChannelVisibilityChanged;
+                newVm.EnableDebugOverrideMode();
+            }
+        }
+
+        private void OnUnloaded(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (viewModel != null)
+            {
+                viewModel.DisableDebugOverrideMode();
             }
         }
 

@@ -80,8 +80,8 @@ namespace Astra.Engine.Execution.Strategies
                 {
                     foreach (var kvp in result.OutputData)
                     {
-                        outputs[$"{node.Name}_{kvp.Key}"] = kvp.Value;
-                        workflow.Variables[$"{node.Name}_{kvp.Key}"] = kvp.Value;
+                        outputs[$"{node.Id}_{kvp.Key}"] = kvp.Value;
+                        workflow.Variables[$"{node.Id}_{kvp.Key}"] = kvp.Value;
                     }
 
                     if (!result.Success && !result.IsSkipped &&
@@ -135,6 +135,7 @@ namespace Astra.Engine.Execution.Strategies
                     foreach (var kvp in prev.LastExecutionResult.OutputData)
                     {
                         ctx.InputData[kvp.Key] = kvp.Value;
+                        ctx.InputData[$"{conn.SourceNodeId}:{kvp.Key}"] = kvp.Value;
                     }
                 }
             }

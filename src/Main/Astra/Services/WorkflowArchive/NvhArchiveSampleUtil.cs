@@ -81,6 +81,11 @@ namespace Astra.Services.WorkflowArchive
             sampleRateHz = 0;
             if (!file.TryGetGroup(groupName, out var group) || group == null)
             {
+                group = file.Groups.Values.FirstOrDefault();
+            }
+
+            if (group == null)
+            {
                 return false;
             }
 

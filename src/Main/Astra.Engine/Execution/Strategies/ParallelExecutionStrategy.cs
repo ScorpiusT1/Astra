@@ -64,7 +64,7 @@ namespace Astra.Engine.Execution.Strategies
             {
                 foreach (var kvp in result.OutputData)
                 {
-                    outputs[$"{node.Name}_{kvp.Key}"] = kvp.Value;
+                    outputs[$"{node.Id}_{kvp.Key}"] = kvp.Value;
                 }
 
                 if (!result.Success && !result.IsSkipped)

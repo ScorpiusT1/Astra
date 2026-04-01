@@ -2,6 +2,7 @@ using Astra.Core.Constants;
 using Astra.Core.Data;
 using Astra.Core.Devices.Interfaces;
 using Astra.Plugins.DataAcquisition.Devices;
+using System.Linq;
 
 namespace Astra.Plugins.DataAcquisition.Providers
 {
@@ -73,8 +74,8 @@ namespace Astra.Plugins.DataAcquisition.Providers
                 var plugin = DataAcquisitionPlugin.Current;
                 if (plugin == null)
                 {
-                    var fallback = new List<string> { AstraSharedConstants.VirtualImportDevices.DisplayName };
-                    AppendVirtualAliases(fallback);
+                    var fallback = new List<string>();
+                    AppendVirtualAliasesOrGeneric(fallback);
                     return fallback;
                 }
 
@@ -87,10 +88,8 @@ namespace Astra.Plugins.DataAcquisition.Providers
                                .Distinct()
                                .ToList()
                            ?? new List<string>();
-                if (!list.Contains(AstraSharedConstants.VirtualImportDevices.DisplayName, StringComparer.OrdinalIgnoreCase))
-                    list.Add(AstraSharedConstants.VirtualImportDevices.DisplayName);
 
-                AppendVirtualAliases(list);
+                AppendVirtualAliasesOrGeneric(list);
                 return list;
             }
             catch
@@ -198,9 +197,21 @@ namespace Astra.Plugins.DataAcquisition.Providers
             return result;
         }
 
-        private static void AppendVirtualAliases(List<string> list)
+        /// <summary>
+        /// 将虚拟别名追加到列表。若已有任何以 "文件导入" 为前缀的别名，则不再添加通用名 "文件导入"，
+        /// 避免下拉中出现重复条目导致 BFS 解析失败。
+        /// </summary>
+        private static void AppendVirtualAliasesOrGeneric(List<string> list)
         {
-            foreach (var alias in VirtualDeviceChannelRegistry.GetAllAliases())
+            var aliases = VirtualDeviceChannelRegistry.GetAllAliases().ToList();
+            var genericName = AstraSharedConstants.VirtualImportDevices.DisplayName;
+            var hasSpecificAlias = aliases.Any(a =>
+                a.StartsWith(genericName, StringComparison.OrdinalIgnoreCase) && a.Length > genericName.Length);
+
+            if (!hasSpecificAlias && !list.Contains(genericName, StringComparer.OrdinalIgnoreCase))
+                list.Add(genericName);
+
+            foreach (var alias in aliases)
             {
                 if (!list.Contains(alias, StringComparer.OrdinalIgnoreCase))
                     list.Add(alias);

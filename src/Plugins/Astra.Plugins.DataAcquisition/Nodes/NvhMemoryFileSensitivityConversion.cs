@@ -13,14 +13,12 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// </summary>
     internal static class NvhMemoryFileSensitivityConversion
     {
-        private const string SignalGroupName = AstraSharedConstants.DataGroups.Signal;
-
         /// <summary>
         /// 尝试按通道绑定的传感器灵敏度生成物理量副本；失败时调用方应继续使用原始文件。
         /// </summary>
         /// <param name="source">采集产生的内存文件</param>
         /// <param name="device">同一采集设备（用于解析通道配置）</param>
-        /// <param name="converted">新文件，仅含 Signal 组下单通道（float）</param>
+        /// <param name="converted">新文件，保留源文件的组名和通道结构</param>
         /// <param name="yAxisPhysicalUnit">用于图表纵轴单位的字符串（<see cref="SensorConfig.PhysicalUnit"/> 或根据灵敏度推断）</param>
         public static bool TryCreatePhysicalChannelCopy(
             NvhMemoryFile? source,
@@ -35,53 +33,82 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 return false;
             }
 
-            if (!source.TryGetGroup(SignalGroupName, out var group) || group == null)
+            var group = source.Groups.Values.FirstOrDefault();
+            if (group == null)
             {
                 return false;
             }
 
-            var firstChannel = group.Channels.Values.FirstOrDefault();
-            if (firstChannel == null)
-            {
-                return false;
-            }
-
-            var channelName = firstChannel.Name;
-            if (string.IsNullOrWhiteSpace(channelName))
-            {
-                return false;
-            }
-
-            var channelConfig = FindChannelConfig(device, channelName.Trim());
-            if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
-            {
-                return false;
-            }
-
-            if (!TryExtractSamplesAsDoubles(firstChannel, out var rawSamples) || rawSamples.Length == 0)
-            {
-                return false;
-            }
-
-            var physical = new double[rawSamples.Length];
-            for (var i = 0; i < rawSamples.Length; i++)
-            {
-                physical[i] = channelConfig.ConvertToPhysical(rawSamples[i]);
-            }
-
-            yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
-
+            var sourceGroupName = group.Name;
             var outFile = new NvhMemoryFile();
-            var outGroup = outFile.GetOrCreateGroup(SignalGroupName);
-            var outChannel = outGroup.CreateChannel<float>(channelName.Trim(), ringBufferSize: 0, initialCapacity: Math.Max(physical.Length, 4096), estimatedTotalSamples: physical.Length);
-            var buffer = new float[physical.Length];
-            for (var i = 0; i < physical.Length; i++)
+            var outGroup = outFile.GetOrCreateGroup(sourceGroupName);
+            var anyConverted = false;
+
+            foreach (var channelEntry in group.Channels)
             {
-                buffer[i] = (float)physical[i];
+                var channel = channelEntry.Value;
+                var channelName = channel.Name;
+                if (string.IsNullOrWhiteSpace(channelName))
+                {
+                    continue;
+                }
+
+                if (!TryExtractSamplesAsDoubles(channel, out var rawSamples) || rawSamples.Length == 0)
+                {
+                    continue;
+                }
+
+                var channelConfig = FindChannelConfig(device, channelName.Trim());
+                if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
+                {
+                    var outChannelRaw = outGroup.CreateChannel<float>(channelName.Trim(), ringBufferSize: 0, initialCapacity: Math.Max(rawSamples.Length, 4096), estimatedTotalSamples: rawSamples.Length);
+                    var rawBuf = new float[rawSamples.Length];
+                    for (var i = 0; i < rawSamples.Length; i++)
+                        rawBuf[i] = (float)rawSamples[i];
+                    outChannelRaw.WriteSamples(rawBuf);
+                    if (channel.WfIncrement is { } inc && inc > 0)
+                        outChannelRaw.WfIncrement = inc;
+                    outChannelRaw.FlushTotalSamplesToProperties();
+                    anyConverted = true;
+                    continue;
+                }
+
+                var physical = new double[rawSamples.Length];
+                for (var i = 0; i < rawSamples.Length; i++)
+                {
+                    physical[i] = channelConfig.ConvertToPhysical(rawSamples[i]);
+                }
+
+                if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
+                {
+                    yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
+                }
+
+                var outChannel = outGroup.CreateChannel<float>(channelName.Trim(), ringBufferSize: 0, initialCapacity: Math.Max(physical.Length, 4096), estimatedTotalSamples: physical.Length);
+                var buffer = new float[physical.Length];
+                for (var i = 0; i < physical.Length; i++)
+                {
+                    buffer[i] = (float)physical[i];
+                }
+
+                outChannel.WriteSamples(buffer);
+                if (channel.WfIncrement is { } wfInc && wfInc > 0)
+                    outChannel.WfIncrement = wfInc;
+                outChannel.FlushTotalSamplesToProperties();
+                anyConverted = true;
             }
 
-            outChannel.WriteSamples(buffer);
-            outChannel.FlushTotalSamplesToProperties();
+            foreach (var prop in group.Properties.Entries)
+            {
+                outGroup.Properties.Set(prop.Key, prop.Value);
+            }
+
+            if (!anyConverted)
+            {
+                converted = null;
+                return false;
+            }
+
             converted = outFile;
             return true;
         }

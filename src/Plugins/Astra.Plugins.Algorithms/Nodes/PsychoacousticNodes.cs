@@ -1,7 +1,8 @@
 using Astra.Core.Nodes.Models;
-using Astra.Plugins.Algorithms.Helpers;
 using Astra.Plugins.Algorithms.APIs;
 using Astra.Plugins.Algorithms.Enums;
+using Astra.Plugins.Algorithms.Helpers;
+using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
 using System.ComponentModel.DataAnnotations;
 
@@ -14,7 +15,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "声场", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "声场", GroupName = "参数")]
         public SoundField SoundField { get; set; } = SoundField.Free;
 
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 1)]
@@ -22,20 +24,32 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var (loudness, spec) = Nvh.StationaryLoudnessAnalyze(signal, SoundField, SkipSeconds, out var barkAxis, out _);
-                var labels = barkAxis.Select(b => b.ToString("G4")).ToArray();
-                var chart = ChartDisplayPayloadFactory.Bar(labels, spec, "Bark", "特定响度");
-                var scalars = new List<(string Name, double Value, string Unit)>
+                var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
                 {
-                    ("整体响度", loudness, "sone")
-                };
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChartAndScalars(context, Id, "StationaryLoudness", chart, scalars, tag: "psycho"));
+                    var e = entries[i];
+                    var (loudness, spec) = Nvh.StationaryLoudnessAnalyze(e.Signal, SoundField, SkipSeconds, out var barkAxis, out _);
+                    var labels = barkAxis.Select(b => b.ToString("G4")).ToArray();
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Bar(labels, spec, "Bark", "特定响度"),
+                        $"整体响度({e.Label})", loudness, "sone");
+                });
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "StationaryLoudness", charts, scalars, tag: "psycho"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -43,7 +57,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -55,7 +69,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "声场", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "声场", GroupName = "参数")]
         public SoundField SoundField { get; set; } = SoundField.Free;
 
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 1)]
@@ -63,15 +78,28 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var (_, spec) = Nvh.TimeVaryingLoudnessAnalyze(signal, SoundField, SkipSeconds, out var barkAxis, out _, out var timeAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(spec, timeAxis, barkAxis, "时间 (s)", "Bark");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "TimeVaryingLoudness", chart, tag: "psycho"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var (_, spec) = Nvh.TimeVaryingLoudnessAnalyze(e.Signal, SoundField, SkipSeconds, out var barkAxis, out _, out var timeAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec, timeAxis, barkAxis, "时间 (s)", "Bark"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "TimeVaryingLoudness", results.ToList(), tag: "psycho"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -79,7 +107,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -91,7 +119,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "锐度加权", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "锐度加权", GroupName = "参数")]
         public SharpnessWeighting SharpnessWeighting { get; set; } = SharpnessWeighting.Din;
 
         [Display(Name = "声场", GroupName = "参数", Order = 1)]
@@ -102,16 +131,31 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var sharp = Nvh.StationarySharpnessAnalyze(signal, SharpnessWeighting, SoundField, SkipSeconds, out var spec, out var barkAxis, out _);
-                var chart = ChartDisplayPayloadFactory.XYLine(barkAxis, spec, "Bark", "特定锐度");
-                var scalars = new List<(string Name, double Value, string Unit)> { ("锐度", sharp, "acum") };
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChartAndScalars(context, Id, "StationarySharpness", chart, scalars, tag: "psycho"));
+                var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var sharp = Nvh.StationarySharpnessAnalyze(e.Signal, SharpnessWeighting, SoundField, SkipSeconds, out var spec, out var barkAxis, out _);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(barkAxis, spec, "Bark", "特定锐度"),
+                        $"锐度({e.Label})", sharp, "acum");
+                });
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "StationarySharpness", charts, scalars, tag: "psycho"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -119,7 +163,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -131,7 +175,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "锐度加权", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "锐度加权", GroupName = "参数")]
         public SharpnessWeighting SharpnessWeighting { get; set; } = SharpnessWeighting.Din;
 
         [Display(Name = "声场", GroupName = "参数", Order = 1)]
@@ -142,17 +187,32 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var sharpSeries = Nvh.TimeVaryingSharpnessAnalyze(signal, SharpnessWeighting, SoundField, SkipSeconds, out var spec2d, out var barkAxis, out _, out var timeAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, barkAxis, "时间 (s)", "Bark");
-                var meanSharp = sharpSeries.Length > 0 ? sharpSeries.Average() : double.NaN;
-                var scalars = new List<(string Name, double Value, string Unit)> { ("平均锐度", meanSharp, "acum") };
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChartAndScalars(context, Id, "TimeVaryingSharpness", chart, scalars, tag: "psycho"));
+                var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var sharpSeries = Nvh.TimeVaryingSharpnessAnalyze(e.Signal, SharpnessWeighting, SoundField, SkipSeconds, out var spec2d, out var barkAxis, out _, out var timeAxis);
+                    var meanSharp = sharpSeries.Length > 0 ? sharpSeries.Average() : double.NaN;
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, barkAxis, "时间 (s)", "Bark"),
+                        $"平均锐度({e.Label})", meanSharp, "acum");
+                });
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "TimeVaryingSharpness", charts, scalars, tag: "psycho"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -160,7 +220,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -172,7 +232,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "声场", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "声场", GroupName = "参数")]
         public SoundField SoundField { get; set; } = SoundField.Free;
 
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 1)]
@@ -180,16 +241,31 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var overall = Nvh.RoughnessAnalyze(signal, SoundField, SkipSeconds, out _, out var spec2d, out _, out var bandAxis, out _, out _, out var timeAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, bandAxis, "时间 (s)", "频带");
-                var scalars = new List<(string Name, double Value, string Unit)> { ("粗糙度", overall, "asper") };
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChartAndScalars(context, Id, "Roughness", chart, scalars, tag: "psycho"));
+                var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var overall = Nvh.RoughnessAnalyze(e.Signal, SoundField, SkipSeconds, out _, out var spec2d, out _, out var bandAxis, out _, out _, out var timeAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, bandAxis, "时间 (s)", "频带"),
+                        $"粗糙度({e.Label})", overall, "asper");
+                });
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "Roughness", charts, scalars, tag: "psycho"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -197,7 +273,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -209,21 +285,37 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "方法", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "方法", GroupName = "参数")]
         public FluctuationMethod Method { get; set; } = FluctuationMethod.Stationary;
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var total = Nvh.FluctuationStrengthAnalyze(signal, Method, out _, out var spec2d, out _, out var bandAxis, out _, out var timeAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, bandAxis, "时间 (s)", "频带");
-                var scalars = new List<(string Name, double Value, string Unit)> { ("波动度", total, "vacil") };
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChartAndScalars(context, Id, "FluctuationStrength", chart, scalars, tag: "psycho"));
+                var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var total = Nvh.FluctuationStrengthAnalyze(e.Signal, Method, out _, out var spec2d, out _, out var bandAxis, out _, out var timeAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, bandAxis, "时间 (s)", "频带"),
+                        $"波动度({e.Label})", total, "vacil");
+                });
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "FluctuationStrength", charts, scalars, tag: "psycho"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -231,7 +323,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }

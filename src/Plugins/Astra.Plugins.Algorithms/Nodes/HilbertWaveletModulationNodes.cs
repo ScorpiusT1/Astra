@@ -1,6 +1,7 @@
 using Astra.Core.Nodes.Models;
-using Astra.Plugins.Algorithms.Helpers;
 using Astra.Plugins.Algorithms.APIs;
+using Astra.Plugins.Algorithms.Helpers;
+using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
 using System.ComponentModel.DataAnnotations;
 using EnumsScaleOptions = Astra.Plugins.Algorithms.Enums.ScaleOptions;
@@ -16,20 +17,33 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var env = Nvh.HilbertEnvelope(signal);
-                var n = env.Length;
-                var t = new double[n];
-                var dt = signal.DeltaTime;
-                for (var i = 0; i < n; i++)
-                    t[i] = i * dt;
-                var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "HilbertEnvelope", chart, tag: "hilbert"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var env = Nvh.HilbertEnvelope(e.Signal);
+                    var n = env.Length;
+                    var t = new double[n];
+                    var dt = e.Signal.DeltaTime;
+                    for (var k = 0; k < n; k++)
+                        t[k] = k * dt;
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelope", results.ToList(), tag: "hilbert"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -37,7 +51,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -49,7 +63,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "中心频率 (Hz)", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "中心频率 (Hz)", GroupName = "参数")]
         public double CenterFrequency { get; set; } = 1000;
 
         [Display(Name = "带宽 (Hz)", GroupName = "参数", Order = 1)]
@@ -57,21 +72,34 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var opt = new EnvelopeExOptions(BandwidthHz, CenterFrequency);
-                var env = Nvh.HilbertEnvelopeEx(signal, opt);
-                var n = env.Length;
-                var t = new double[n];
-                var dt = signal.DeltaTime;
-                for (var i = 0; i < n; i++)
-                    t[i] = i * dt;
-                var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "HilbertEnvelopeExFixed", chart, tag: "hilbert"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var opt = new EnvelopeExOptions(BandwidthHz, CenterFrequency);
+                    var env = Nvh.HilbertEnvelopeEx(e.Signal, opt);
+                    var n = env.Length;
+                    var t = new double[n];
+                    var dt = e.Signal.DeltaTime;
+                    for (var k = 0; k < n; k++)
+                        t[k] = k * dt;
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeExFixed", results.ToList(), tag: "hilbert"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -79,7 +107,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -91,7 +119,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "中心阶次", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "中心阶次", GroupName = "参数")]
         public double CenterOrder { get; set; } = 1;
 
         [Display(Name = "阶次带宽", GroupName = "参数", Order = 1)]
@@ -108,32 +137,54 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out var file, out var signal, out var disposeSig, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
-            var rpmKey = ResolveRpmChannelKey();
-            if (string.IsNullOrEmpty(rpmKey))
-                return Task.FromResult(ExecutionResult.Failed("请指定转速通道。"));
-
-            if (!AlgorithmNvhSampleUtil.TryExtractAsDoubleArray(file, AlgorithmRawArtifactHelper.NvhSignalGroupName, rpmKey, out var rpmSamples) ||
-                rpmSamples.Length == 0)
+            var (rpmDevice, rpmChannel) = ResolveRpmSpec();
+            if (string.IsNullOrEmpty(rpmChannel))
             {
-                disposeSig();
-                return Task.FromResult(ExecutionResult.Failed("无法读取转速通道样本。"));
+                AlgorithmInputLoader.DisposeAll(entries);
+                return Task.FromResult(ExecutionResult.Failed("请指定转速通道。"));
             }
 
             try
             {
-                var opt = new EnvelopeExOptions(CenterOrder, OrderBandwidth, WindowLength, MinFrequency, MaxFrequency, rpmSamples);
-                var env = Nvh.HilbertEnvelopeEx(signal, opt);
-                var n = env.Length;
-                var t = new double[n];
-                var dt = signal.DeltaTime;
-                for (var i = 0; i < n; i++)
-                    t[i] = i * dt;
-                var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "HilbertEnvelopeExTracked", chart, tag: "hilbert"));
+                var rpmData = new double[entries.Count][];
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    var e = entries[i];
+                    var rpmFile = (!string.IsNullOrEmpty(rpmDevice) && rpmDevice != e.Label.Split('/')[0])
+                        ? entries.FirstOrDefault(x => x.Label.StartsWith(rpmDevice!))?.File ?? e.File
+                        : e.File;
+                    if (!AlgorithmNvhSampleUtil.TryExtractAsDoubleArray(rpmFile, AlgorithmRawArtifactHelper.NvhSignalGroupName, rpmChannel, out var rpmSamples) ||
+                        rpmSamples.Length == 0)
+                        return Task.FromResult(ExecutionResult.Failed($"无法从 {rpmDevice ?? e.Label} 读取转速通道样本。"));
+                    rpmData[i] = rpmSamples;
+                }
+
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var opt = new EnvelopeExOptions(CenterOrder, OrderBandwidth, WindowLength, MinFrequency, MaxFrequency, rpmData[i]);
+                    var env = Nvh.HilbertEnvelopeEx(e.Signal, opt);
+                    var n = env.Length;
+                    var t = new double[n];
+                    var dt = e.Signal.DeltaTime;
+                    for (var k = 0; k < n; k++)
+                        t[k] = k * dt;
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeExTracked", results.ToList(), tag: "hilbert"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -141,7 +192,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                disposeSig();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -153,7 +204,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "窗函数", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "窗函数", GroupName = "参数")]
         public Window WindowType { get; set; } = Window.Hanning;
 
         [Display(Name = "幅值格式", GroupName = "参数", Order = 1)]
@@ -161,15 +213,28 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var data = Nvh.HilbertEnvelopeSpectra(signal, WindowType, SpectrumFormat, out var freqAxis);
-                var chart = ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "HilbertEnvelopeSpectra", chart, tag: "hilbert"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var data = Nvh.HilbertEnvelopeSpectra(e.Signal, WindowType, SpectrumFormat, out var freqAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeSpectra", results.ToList(), tag: "hilbert"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -177,7 +242,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -189,7 +254,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "谱计算类型", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "谱计算类型", GroupName = "参数")]
         public SpectraCalcType CalcType { get; set; } = SpectraCalcType.SpectrumLines;
 
         [Display(Name = "谱计算值", GroupName = "参数", Order = 1)]
@@ -215,17 +281,30 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var calcOpt = new SpectraCalcOptions(CalcType, CalcValue);
-                var stepOpt = new SpectraStepOptions(StepType, StepValue);
-                var data = Nvh.HilbertEnvelopeAvgSpectra(signal, calcOpt, stepOpt, SpectrumFormat, AverageType, WindowType, WeightType, out var freqAxis);
-                var chart = ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "HilbertEnvelopeAvgSpectra", chart, tag: "hilbert"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var calcOpt = new SpectraCalcOptions(CalcType, CalcValue);
+                    var stepOpt = new SpectraStepOptions(StepType, StepValue);
+                    var data = Nvh.HilbertEnvelopeAvgSpectra(e.Signal, calcOpt, stepOpt, SpectrumFormat, AverageType, WindowType, WeightType, out var freqAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeAvgSpectra", results.ToList(), tag: "hilbert"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -233,7 +312,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -248,7 +327,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "起始时间 (s)", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "起始时间 (s)", GroupName = "参数")]
         public double StartTimeSeconds { get; set; }
 
         [Display(Name = "最低频率 (Hz)", GroupName = "参数", Order = 1)]
@@ -285,21 +365,34 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
-            var n = Math.Max(2, FrequencyPointCount);
-            var freqAxis = new double[n];
-            for (var i = 0; i < n; i++)
-                freqAxis[i] = MinFrequency + (MaxFrequency - MinFrequency) * i / (n - 1);
+            var fCount = Math.Max(2, FrequencyPointCount);
+            var freqAxis = new double[fCount];
+            for (var i = 0; i < fCount; i++)
+                freqAxis[i] = MinFrequency + (MaxFrequency - MinFrequency) * i / (fCount - 1);
 
             try
             {
-                var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
-                var z = Nvh.MorletWaveletTransform(signal, scaleOpt, StartTimeSeconds, freqAxis, NCycles, out var timeAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "MorletWavelet", chart, tag: "wavelet"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
+                    var z = Nvh.MorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, freqAxis, NCycles, out var timeAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "MorletWavelet", results.ToList(), tag: "wavelet"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -307,7 +400,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -322,7 +415,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "起始时间 (s)", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "起始时间 (s)", GroupName = "参数")]
         public double StartTimeSeconds { get; set; }
 
         [Display(Name = "最低频率 (Hz)", GroupName = "参数", Order = 1)]
@@ -356,16 +450,29 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
-                var z = Nvh.LmsMorletWaveletTransform(signal, scaleOpt, StartTimeSeconds, MinFrequency, MaxFrequency, BandsPerOctave, out var timeAxis, out var freqAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "LmsMorletWavelet", chart, tag: "wavelet"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
+                    var z = Nvh.LmsMorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, MinFrequency, MaxFrequency, BandsPerOctave, out var timeAxis, out var freqAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "LmsMorletWavelet", results.ToList(), tag: "wavelet"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -373,7 +480,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -388,7 +495,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "频率分辨率 (Hz)", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "频率分辨率 (Hz)", GroupName = "参数")]
         public double FrequencyResolution { get; set; } = 1;
 
         [Display(Name = "调制截止频率 (Hz)", GroupName = "参数", Order = 1)]
@@ -416,17 +524,30 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
-                var z = Nvh.ModulationSpectrumAnalysis(signal, FrequencyResolution, CutoffFrequency, scaleOpt,
-                    out var freqAxis, out var timeAxis, out _, out _);
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "ModulationSpectrumRes", chart, tag: "modulation"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
+                    var z = Nvh.ModulationSpectrumAnalysis(e.Signal, FrequencyResolution, CutoffFrequency, scaleOpt,
+                        out var freqAxis, out var timeAxis, out _, out _);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "ModulationSpectrumRes", results.ToList(), tag: "modulation"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -434,7 +555,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -449,7 +570,8 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
-        [Display(Name = "窗长(点)", GroupName = "参数", Order = 0)]
+        [Order(2, 0)]
+        [Display(Name = "窗长(点)", GroupName = "参数")]
         public int WindowSize { get; set; } = 2048;
 
         [Display(Name = "跳跃(点)", GroupName = "参数", Order = 1)]
@@ -480,17 +602,30 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
-                var z = Nvh.ModulationSpectrumAnalysis(signal, WindowSize, HopSize, CutoffFrequency, scaleOpt,
-                    out var freqAxis, out var timeAxis, out _, out _);
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "ModulationSpectrumStft", chart, tag: "modulation"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
+                    var z = Nvh.ModulationSpectrumAnalysis(e.Signal, WindowSize, HopSize, CutoffFrequency, scaleOpt,
+                        out var freqAxis, out var timeAxis, out _, out _);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "ModulationSpectrumStft", results.ToList(), tag: "modulation"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -498,7 +633,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }

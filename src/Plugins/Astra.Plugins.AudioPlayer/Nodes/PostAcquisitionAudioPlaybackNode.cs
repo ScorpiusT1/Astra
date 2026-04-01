@@ -145,8 +145,13 @@ namespace Astra.Plugins.AudioPlayer.Nodes
 
             if (!nvhFile.TryGetGroup(AcquisitionRawArtifactHelper.NvhSignalGroupName, out var group) || group == null)
             {
-                log.Warn("NVH 数据中缺少 Signal 组。");
-                return ExecutionResult.Skip("数据中缺少 Signal 组");
+                group = nvhFile.Groups.Values.FirstOrDefault();
+            }
+
+            if (group == null)
+            {
+                log.Warn("NVH 数据中无可用的数据组。");
+                return ExecutionResult.Skip("数据中无可用的数据组");
             }
 
             var deviceManager = context.ServiceProvider?.GetService<IDeviceManager>();

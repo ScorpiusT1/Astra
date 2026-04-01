@@ -9,6 +9,7 @@ using Astra.Core.Plugins.Messaging;
 using Astra.Plugins.DataAcquisition.Configs;
 using Microsoft.Extensions.Logging;
 using NVHDataBridge.Models;
+using System.Collections.Generic;
 using System.Threading.Channels;
 
 namespace Astra.Plugins.DataAcquisition.Devices
@@ -36,9 +37,23 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
         // NVHDataBridge 数据结构
         protected NvhMemoryFile? _dataFile;
-        protected const string GROUP_NAME = AstraSharedConstants.DataGroups.Signal;
+        protected string _dataGroupName = AstraSharedConstants.DataGroups.Signal;
         protected readonly Dictionary<int, NvhMemoryChannelBase> _channelMap = new();
         protected DateTime _acquisitionStartTime;
+
+        /// <summary>
+        /// 调试界面临时覆盖的通道参数（不写入持久化配置）。仅当开启调试覆盖模式时参与运算。
+        /// </summary>
+        private sealed class DebugChannelOverride
+        {
+            public bool? Enabled { get; set; }
+            public CouplingMode? CouplingMode { get; set; }
+            public double? TriggerLevel { get; set; }
+        }
+
+        private readonly object _debugOverrideLock = new();
+        private readonly Dictionary<int, DebugChannelOverride> _debugChannelOverrides = new();
+        private bool _useDebugOverrides;
 
         protected DataAcquisitionDeviceBase(
             DeviceConnectionBase connection,
@@ -66,7 +81,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
             if (_dataFile == null)
                 return null;
 
-            _dataFile.TryGetGroup(GROUP_NAME, out var group);
+            _dataFile.TryGetGroup(_dataGroupName, out var group);
             return group;
         }
 
@@ -74,6 +89,135 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             _channelMap.TryGetValue(channelId, out var channel);
             return channel;
+        }
+
+        /// <summary>
+        /// 是否正在使用调试会话中的通道参数覆盖（关闭后与配置一致）。
+        /// </summary>
+        public bool UseDebugOverrides
+        {
+            get
+            {
+                lock (_debugOverrideLock)
+                {
+                    return _useDebugOverrides;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 获取某通道在调试会话下的有效参数；未开启调试覆盖时与 <paramref name="channelConfig"/> 一致。
+        /// </summary>
+        public void GetEffectiveChannelRuntimeParameters(
+            int channelId,
+            DAQChannelConfig channelConfig,
+            out bool enabled,
+            out CouplingMode couplingMode,
+            out double triggerLevel)
+        {
+            enabled = channelConfig.Enabled;
+            couplingMode = channelConfig.CouplingMode;
+            triggerLevel = channelConfig.TriggerLevel;
+
+            lock (_debugOverrideLock)
+            {
+                if (!_useDebugOverrides || !_debugChannelOverrides.TryGetValue(channelId, out var o))
+                    return;
+
+                if (o.Enabled.HasValue)
+                    enabled = o.Enabled.Value;
+                if (o.CouplingMode.HasValue)
+                    couplingMode = o.CouplingMode.Value;
+                if (o.TriggerLevel.HasValue)
+                    triggerLevel = o.TriggerLevel.Value;
+            }
+        }
+
+        /// <summary>
+        /// 获取某通道在调试会话下是否视为启用（用于波形解析、模拟设备等）。
+        /// </summary>
+        public bool GetEffectiveChannelEnabled(DAQChannelConfig channelConfig)
+        {
+            GetEffectiveChannelRuntimeParameters(
+                channelConfig.ChannelId,
+                channelConfig,
+                out var enabled,
+                out _,
+                out _);
+            return enabled;
+        }
+
+        public void UpdateDebugChannelEnabled(int channelId, bool isEnabled)
+        {
+            lock (_debugOverrideLock)
+            {
+                if (!_debugChannelOverrides.TryGetValue(channelId, out var o))
+                {
+                    o = new DebugChannelOverride();
+                    _debugChannelOverrides[channelId] = o;
+                }
+
+                o.Enabled = isEnabled;
+            }
+
+            OnDebugChannelSettingsChanged();
+        }
+
+        public void UpdateDebugChannelCouplingMode(int channelId, CouplingMode couplingMode)
+        {
+            lock (_debugOverrideLock)
+            {
+                if (!_debugChannelOverrides.TryGetValue(channelId, out var o))
+                {
+                    o = new DebugChannelOverride();
+                    _debugChannelOverrides[channelId] = o;
+                }
+
+                o.CouplingMode = couplingMode;
+            }
+
+            OnDebugChannelSettingsChanged();
+        }
+
+        public void UpdateDebugChannelTriggerLevel(int channelId, double triggerLevel)
+        {
+            lock (_debugOverrideLock)
+            {
+                if (!_debugChannelOverrides.TryGetValue(channelId, out var o))
+                {
+                    o = new DebugChannelOverride();
+                    _debugChannelOverrides[channelId] = o;
+                }
+
+                o.TriggerLevel = triggerLevel;
+            }
+
+            OnDebugChannelSettingsChanged();
+        }
+
+        public void SetUseDebugOverrides(bool enabled)
+        {
+            lock (_debugOverrideLock)
+            {
+                _useDebugOverrides = enabled;
+            }
+
+            OnDebugChannelSettingsChanged();
+        }
+
+        public void ClearDebugChannelOverrides()
+        {
+            lock (_debugOverrideLock)
+            {
+                _debugChannelOverrides.Clear();
+            }
+        }
+
+        /// <summary>
+        /// 调试界面修改通道临时参数后调用；具体采集卡可在此将有效参数下发硬件。
+        /// </summary>
+        protected virtual void OnDebugChannelSettingsChanged()
+        {
         }
 
         /// <summary>
@@ -465,7 +609,11 @@ namespace Astra.Plugins.DataAcquisition.Devices
         {
             _dataFile = new NvhMemoryFile(estimatedGroupCount: 1);
 
-            var dataGroup = _dataFile.GetOrCreateGroup(GROUP_NAME);
+            _dataGroupName = !string.IsNullOrWhiteSpace(DeviceName)
+                ? DeviceName
+                : AstraSharedConstants.DataGroups.Signal;
+
+            var dataGroup = _dataFile.GetOrCreateGroup(_dataGroupName);
 
             dataGroup.Properties.Set("DeviceId", DeviceId);
             dataGroup.Properties.Set("DeviceName", DeviceName);

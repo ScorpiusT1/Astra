@@ -1,15 +1,16 @@
 <UserControl x:Class="Astra.Plugins.DataAcquisition.Views.DataAcquisitionBaseConfigView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:hc="https://handyorg.github.io/handycontrol"
              xmlns:local="clr-namespace:Astra.Plugins.DataAcquisition.Views"
              xmlns:converters="clr-namespace:Astra.Plugins.DataAcquisition.Converters"
              xmlns:viewmodels="clr-namespace:Astra.Plugins.DataAcquisition.ViewModels"
              d:DataContext="{d:DesignInstance Type=viewmodels:DataAcquisitionBaseConfigViewModel}"
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800">
+             mc:Ignorable="d"
+             d:DesignHeight="450"
+             d:DesignWidth="800">
     <UserControl.Resources>
         <Style TargetType="CheckBox"
                BasedOn="{StaticResource ModernCheckBoxStyle}" />
@@ -90,7 +91,6 @@
                            VerticalAlignment="Center" />
                 <ComboBox Grid.Column="1"
                           ItemsSource="{Binding AvailableModels}"
-                        
                           SelectedItem="{Binding Model, UpdateSourceTrigger=PropertyChanged}"
                           IsEnabled="{Binding Manufacturer, Converter={StaticResource IsNotNullConverter}}"
                           FontSize="13"
@@ -190,7 +190,7 @@
                            VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            Text="{Binding ChannelCount, StringFormat='{}{0} 通道'}"
-                          FontSize="13"
+                           FontSize="13"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource PrimaryTextBrush}"
                            FontWeight="Medium">
@@ -220,22 +220,23 @@
                          hc:InfoElement.Placeholder="请输入缓冲区大小" />
             </Grid>
 
-            <!-- 自动启动 -->
-            <CheckBox Grid.Row="9"
-                      Content="插件启动时自动开始采集"
-                      Visibility="Collapsed"
-                      FontSize="13"
-                      FontWeight="Medium"
-                      IsChecked="{Binding AutoStart}"
-                      Margin="0,0,0,15" />
 
             <!-- 启用状态 -->
-            <CheckBox Grid.Row="10"
+            <CheckBox Grid.Row="9"
                       Content="启用设备"
                       IsChecked="{Binding IsEnabled}"
                       FontSize="13"
                       FontWeight="Medium"
                       Margin="0,0,0,15" />
+
+            <!-- 自动启动 -->
+            <CheckBox Grid.Row="10"
+                      Content="插件启动时自动开始采集"
+                      FontSize="13"
+                      FontWeight="Medium"
+                      IsChecked="{Binding KeepConnectionAlive}"
+                      Margin="0,0,0,15" />
+
 
             <!-- 分组和槽位 -->
             <Grid Grid.Row="11"

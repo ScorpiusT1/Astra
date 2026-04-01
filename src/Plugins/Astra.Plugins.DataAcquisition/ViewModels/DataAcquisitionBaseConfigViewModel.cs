@@ -248,14 +248,14 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             }
         }
 
-        public bool AutoStart
+        public bool KeepConnectionAlive
         {
-            get => _config?.AutoStart ?? true;
+            get => _config?.KeepConnectionAlive ?? true;
             set
             {
-                if (_config != null && _config.AutoStart != value)
+                if (_config != null && _config.KeepConnectionAlive != value)
                 {
-                    _config.AutoStart = value;
+                    _config.KeepConnectionAlive = value;
                     OnPropertyChanged();
                 }
             }
@@ -703,7 +703,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
             OnPropertyChanged(nameof(SampleRate));
             OnPropertyChanged(nameof(ChannelCount));
             OnPropertyChanged(nameof(BufferSize));
-            OnPropertyChanged(nameof(AutoStart));
+            OnPropertyChanged(nameof(KeepConnectionAlive));
             OnPropertyChanged(nameof(IsEnabled));
             OnPropertyChanged(nameof(GroupId));
             OnPropertyChanged(nameof(SlotId));

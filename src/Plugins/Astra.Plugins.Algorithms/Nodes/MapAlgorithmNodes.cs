@@ -53,17 +53,29 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out _, out var signal, out var dispose, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var z = Nvh.TimeFrequencyMap(signal, SpectrumLines, TimeIncrementSeconds, ReferenceValue,
-                    SpectrumFormat, WindowType, WeightType, ScaleType, out var timeAxis, out var freqAxis);
-                // z[time, freq]：列=频率（横轴），行=时间（纵轴）
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, freqAxis, timeAxis, "频率 (Hz)", "时间 (s)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "TimeFrequencyMap", chart, tag: "map"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var z = Nvh.TimeFrequencyMap(e.Signal, SpectrumLines, TimeIncrementSeconds, ReferenceValue,
+                        SpectrumFormat, WindowType, WeightType, ScaleType, out var timeAxis, out var freqAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, freqAxis, timeAxis, "频率 (Hz)", "时间 (s)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "TimeFrequencyMap", results.ToList(), tag: "map"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -71,7 +83,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -138,20 +150,44 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out var file, out var signal, out var disposeSig, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
-            if (!AlgorithmInputLoader.TryLoadRpm(file, ResolveRpmChannelKey(), out var rpm, out var disposeRpm, out var errRpm))
-                return Task.FromResult(ExecutionResult.Failed(errRpm ?? "转速"));
+            var (_, rpmChannel) = ResolveRpmSpec();
+
+            var rpms = new (Rpm rpm, Action dispose)[entries.Count];
+            for (int j = 0; j < entries.Count; j++)
+            {
+                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm))
+                {
+                    for (int k = 0; k < j; k++) rpms[k].dispose();
+                    AlgorithmInputLoader.DisposeAll(entries);
+                    return Task.FromResult(ExecutionResult.Failed(errRpm ?? "转速"));
+                }
+                rpms[j] = (rpm, disposeRpm);
+            }
 
             try
             {
-                var data = Nvh.OrderSection(signal, rpm, SpectrumLines, TargetOrder, OrderBandwidth,
-                    MinRpm, MaxRpm, RpmStep, ReferenceValue, SpectrumFormat, WindowType, WeightType, ScaleType,
-                    RpmTriggerType, out var rpmAxis);
-                var chart = ChartDisplayPayloadFactory.XYLine(rpmAxis, data, "转速 (RPM)", "幅值");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "OrderSection", chart, tag: "order"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var data = Nvh.OrderSection(e.Signal, rpms[i].rpm, SpectrumLines, TargetOrder, OrderBandwidth,
+                        MinRpm, MaxRpm, RpmStep, ReferenceValue, SpectrumFormat, WindowType, WeightType, ScaleType,
+                        RpmTriggerType, out var rpmAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(rpmAxis, data, "转速 (RPM)", "幅值"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "OrderSection", results.ToList(), tag: "order"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -159,8 +195,8 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                disposeSig();
-                disposeRpm();
+                foreach (var (_, dispose) in rpms) dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -221,19 +257,43 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out var file, out var signal, out var disposeSig, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
-            if (!AlgorithmInputLoader.TryLoadRpm(file, ResolveRpmChannelKey(), out var rpm, out var disposeRpm, out var errRpm))
-                return Task.FromResult(ExecutionResult.Failed(errRpm ?? "转速"));
+            var (_, rpmChannel) = ResolveRpmSpec();
+
+            var rpms = new (Rpm rpm, Action dispose)[entries.Count];
+            for (int j = 0; j < entries.Count; j++)
+            {
+                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm))
+                {
+                    for (int k = 0; k < j; k++) rpms[k].dispose();
+                    AlgorithmInputLoader.DisposeAll(entries);
+                    return Task.FromResult(ExecutionResult.Failed(errRpm ?? "转速"));
+                }
+                rpms[j] = (rpm, disposeRpm);
+            }
 
             try
             {
-                var z = Nvh.RpmFrequencyMap(signal, rpm, SpectrumLines, MinRpm, MaxRpm, RpmStep, ReferenceValue,
-                    SpectrumFormat, WindowType, WeightType, ScaleType, RpmTriggerType, out var rpmAxis, out var freqAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, freqAxis, rpmAxis, "频率 (Hz)", "转速 (RPM)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "RpmFrequencyMap", chart, tag: "map"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var z = Nvh.RpmFrequencyMap(e.Signal, rpms[i].rpm, SpectrumLines, MinRpm, MaxRpm, RpmStep, ReferenceValue,
+                        SpectrumFormat, WindowType, WeightType, ScaleType, RpmTriggerType, out var rpmAxis, out var freqAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, freqAxis, rpmAxis, "频率 (Hz)", "转速 (RPM)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "RpmFrequencyMap", results.ToList(), tag: "map"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -241,8 +301,8 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                disposeSig();
-                disposeRpm();
+                foreach (var (_, dispose) in rpms) dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }
@@ -303,19 +363,43 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
-            if (!AlgorithmInputLoader.TryLoadVibration(context, Id, DataAcquisitionDeviceName, ResolveChannelKey(),
-                    out var file, out var signal, out var disposeSig, out var err))
+            var specs = ResolveInputSpecs();
+            if (specs.Count == 0)
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
-            if (!AlgorithmInputLoader.TryLoadRpm(file, ResolveRpmChannelKey(), out var rpm, out var disposeRpm, out var errRpm))
-                return Task.FromResult(ExecutionResult.Failed(errRpm ?? "转速"));
+            var (_, rpmChannel) = ResolveRpmSpec();
+
+            var rpms = new (Rpm rpm, Action dispose)[entries.Count];
+            for (int j = 0; j < entries.Count; j++)
+            {
+                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm))
+                {
+                    for (int k = 0; k < j; k++) rpms[k].dispose();
+                    AlgorithmInputLoader.DisposeAll(entries);
+                    return Task.FromResult(ExecutionResult.Failed(errRpm ?? "转速"));
+                }
+                rpms[j] = (rpm, disposeRpm);
+            }
 
             try
             {
-                var z = Nvh.RpmOrderMap(signal, rpm, MaxOrder, OrderResolution, MinRpm, MaxRpm, RpmStep, ReferenceValue,
-                    SpectrumFormat, WindowType, WeightType, ScaleType, out var rpmAxis, out var orderAxis);
-                var chart = ChartDisplayPayloadFactory.Heatmap(z, orderAxis, rpmAxis, "阶次", "转速 (RPM)");
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithChart(context, Id, "RpmOrderMap", chart, tag: "map"));
+                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                Parallel.For(0, entries.Count, i =>
+                {
+                    var e = entries[i];
+                    var z = Nvh.RpmOrderMap(e.Signal, rpms[i].rpm, MaxOrder, OrderResolution, MinRpm, MaxRpm, RpmStep, ReferenceValue,
+                        SpectrumFormat, WindowType, WeightType, ScaleType, out var rpmAxis, out var orderAxis);
+                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, orderAxis, rpmAxis, "阶次", "转速 (RPM)"));
+                });
+                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "RpmOrderMap", results.ToList(), tag: "map"));
+            }
+            catch (AggregateException aex)
+            {
+                var inner = aex.Flatten().InnerException ?? aex;
+                return Task.FromResult(ExecutionResult.Failed(inner.Message, inner));
             }
             catch (Exception ex)
             {
@@ -323,8 +407,8 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
             finally
             {
-                disposeSig();
-                disposeRpm();
+                foreach (var (_, dispose) in rpms) dispose();
+                AlgorithmInputLoader.DisposeAll(entries);
             }
         }
     }

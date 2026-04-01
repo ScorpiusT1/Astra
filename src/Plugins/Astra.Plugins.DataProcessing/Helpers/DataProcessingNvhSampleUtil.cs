@@ -15,8 +15,7 @@ namespace Astra.Plugins.DataProcessing.Helpers
             if (file == null)
                 return false;
 
-            var g = string.IsNullOrWhiteSpace(groupName) ? "Signal" : groupName.Trim();
-            if (!file.TryGetGroup(g, out var group) || group == null)
+            if (!TryResolveGroup(file, groupName, out var group))
                 return false;
 
             NvhMemoryChannelBase? channel = null;
@@ -65,8 +64,7 @@ namespace Astra.Plugins.DataProcessing.Helpers
             deltaTime = 0;
             if (file == null)
                 return false;
-            var g = string.IsNullOrWhiteSpace(groupName) ? "Signal" : groupName.Trim();
-            if (!file.TryGetGroup(g, out var group) || group == null)
+            if (!TryResolveGroup(file, groupName, out var group))
                 return false;
 
             NvhMemoryChannelBase? channel = null;
@@ -84,6 +82,21 @@ namespace Astra.Plugins.DataProcessing.Helpers
             }
 
             return false;
+        }
+
+        private static bool TryResolveGroup(NvhMemoryFile file, string? groupName, out NvhMemoryGroup group)
+        {
+            group = null!;
+            var g = string.IsNullOrWhiteSpace(groupName) ? "Signal" : groupName.Trim();
+            if (file.TryGetGroup(g, out var found) && found != null)
+            {
+                group = found;
+                return true;
+            }
+            var first = file.Groups.Values.FirstOrDefault();
+            if (first == null) return false;
+            group = first;
+            return true;
         }
     }
 }

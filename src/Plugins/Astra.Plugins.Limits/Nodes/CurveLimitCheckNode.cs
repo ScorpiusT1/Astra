@@ -3,8 +3,11 @@ using Astra.Core.Nodes.Models;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,12 +18,67 @@ namespace Astra.Plugins.Limits.Nodes
     /// </summary>
     public class CurveLimitCheckNode : Node
     {
+        [JsonIgnore]
+        private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();
+
+        [JsonIgnore]
+        private bool _registrySubscribed;
+
+        [OnDeserialized]
+        private void OnDeserializedCallback(StreamingContext ctx)
+        {
+            if (CachedChannelOptions?.Count > 0 && !string.IsNullOrEmpty(Id))
+                DesignTimeUpstreamRegistry.CacheChannelOptions(Id, CachedChannelOptions);
+        }
+
+        private void EnsureRegistrySubscription()
+        {
+            if (_registrySubscribed) return;
+            _registrySubscribed = true;
+            DesignTimeUpstreamRegistry.SourcesChanged += id =>
+            {
+                if (id == Id)
+                {
+                    RefreshAndCacheChannelOptions();
+                    OnPropertyChanged(nameof(DeviceNameOptions));
+                    OnPropertyChanged(nameof(CurveChannelOptions));
+                }
+            };
+        }
+
+        private void RefreshAndCacheChannelOptions()
+        {
+            if (string.IsNullOrEmpty(_dataAcquisitionDeviceName)) return;
+            var channels = DesignTimeUpstreamRegistry.GetChannelNamesForDevice(Id, _dataAcquisitionDeviceName).ToList();
+            if (channels.Count > 0)
+            {
+                CachedChannelOptions = channels;
+                DesignTimeUpstreamRegistry.CacheChannelOptions(Id, channels);
+            }
+        }
+
         private string _dataAcquisitionDeviceName = string.Empty;
         private string _curveChannelName = string.Empty;
 
-        [Display(Name = "采集卡", GroupName = "曲线数据", Order = 1, Description = "首项为未选择；选定后须与多采集节点中的采集卡设备名一致")]
+        [JsonIgnore]
+        public IEnumerable<string> DeviceNameOptions
+        {
+            get
+            {
+                EnsureRegistrySubscription();
+                var list = new List<string> { LimitsDesignTimeOptions.UnselectedLabel };
+                var fromRegistry = DesignTimeUpstreamRegistry.GetDeviceNames(Id).ToList();
+                if (fromRegistry.Count > 0)
+                    list.AddRange(fromRegistry);
+                else if (!string.IsNullOrEmpty(_dataAcquisitionDeviceName))
+                    list.Add(_dataAcquisitionDeviceName);
+                return list;
+            }
+        }
+
+        [Display(Name = "采集卡", GroupName = "曲线数据", Order = 1, Description = "连线后自动显示上游设备")]
         [Editor(typeof(ComboBoxPropertyEditor))]
-        [ItemsSource(typeof(LimitsDesignTimeOptions), nameof(LimitsDesignTimeOptions.GetAcquisitionDeviceNames), DisplayMemberPath = ".")]
+        [ItemsSource(nameof(DeviceNameOptions), DisplayMemberPath = ".")]
         public string DataAcquisitionDeviceName
         {
             get => string.IsNullOrEmpty(_dataAcquisitionDeviceName)
@@ -30,15 +88,9 @@ namespace Astra.Plugins.Limits.Nodes
             {
                 var v = value ?? string.Empty;
                 if (string.Equals(v, LimitsDesignTimeOptions.UnselectedLabel, StringComparison.Ordinal))
-                {
                     v = string.Empty;
-                }
-
                 if (string.Equals(_dataAcquisitionDeviceName, v, StringComparison.Ordinal))
-                {
                     return;
-                }
-
                 _dataAcquisitionDeviceName = v;
                 OnPropertyChanged();
                 _curveChannelName = string.Empty;
@@ -47,12 +99,44 @@ namespace Astra.Plugins.Limits.Nodes
             }
         }
 
-        /// <summary>供通道下拉绑定：随所选采集卡变化。</summary>
-        public IEnumerable<string> CurveChannelOptions =>
-            LimitsDesignTimeOptions.GetChannelNamesForDevice(
-                string.IsNullOrEmpty(_dataAcquisitionDeviceName) ? null : _dataAcquisitionDeviceName);
+        public List<string> CachedChannelOptions { get; set; } = new();
 
-        [Display(Name = "通道", GroupName = "曲线数据", Order = 2, Description = "未选采集卡时仅显示未选择；选定采集卡后首项为组内默认首通道，其余为配置中的通道名")]
+        [JsonIgnore]
+        public IEnumerable<string> CurveChannelOptions
+        {
+            get
+            {
+                EnsureRegistrySubscription();
+                if (string.IsNullOrEmpty(_dataAcquisitionDeviceName))
+                    return new[] { LimitsDesignTimeOptions.UnselectedLabel };
+
+                var channels = DesignTimeUpstreamRegistry.GetChannelNamesForDevice(Id, _dataAcquisitionDeviceName).ToList();
+                if (channels.Count > 0)
+                {
+                    CachedChannelOptions = channels.ToList();
+                    DesignTimeUpstreamRegistry.CacheChannelOptions(Id, CachedChannelOptions);
+                    channels.Insert(0, LimitsDesignTimeOptions.UseFirstChannelInGroupLabel);
+                    return channels;
+                }
+
+                var cached = DesignTimeUpstreamRegistry.GetCachedChannelOptions(Id);
+                if (cached.Count > 0)
+                {
+                    var opts = new List<string> { LimitsDesignTimeOptions.UseFirstChannelInGroupLabel };
+                    opts.AddRange(cached);
+                    return opts;
+                }
+
+                var fallback = LimitsDesignTimeOptions.GetChannelNamesForDevice(_dataAcquisitionDeviceName).ToList();
+                if (fallback.Count > 0) return fallback;
+
+                if (!string.IsNullOrEmpty(_curveChannelName))
+                    return new[] { LimitsDesignTimeOptions.UseFirstChannelInGroupLabel, _curveChannelName };
+                return new[] { LimitsDesignTimeOptions.UnselectedLabel };
+            }
+        }
+
+        [Display(Name = "通道", GroupName = "曲线数据", Order = 2, Description = "连线后自动显示上游通道")]
         [Editor(typeof(ComboBoxPropertyEditor))]
         [ItemsSource(nameof(CurveChannelOptions), DisplayMemberPath = ".")]
         public string CurveChannelName
@@ -60,10 +144,7 @@ namespace Astra.Plugins.Limits.Nodes
             get
             {
                 if (string.IsNullOrEmpty(_dataAcquisitionDeviceName))
-                {
                     return LimitsDesignTimeOptions.UnselectedLabel;
-                }
-
                 return string.IsNullOrEmpty(_curveChannelName)
                     ? LimitsDesignTimeOptions.UseFirstChannelInGroupLabel
                     : _curveChannelName;
@@ -73,18 +154,48 @@ namespace Astra.Plugins.Limits.Nodes
                 var v = value ?? string.Empty;
                 if (string.Equals(v, LimitsDesignTimeOptions.UnselectedLabel, StringComparison.Ordinal) ||
                     string.Equals(v, LimitsDesignTimeOptions.UseFirstChannelInGroupLabel, StringComparison.Ordinal))
-                {
                     v = string.Empty;
-                }
-
                 if (string.Equals(_curveChannelName, v, StringComparison.Ordinal))
-                {
                     return;
-                }
-
                 _curveChannelName = v;
                 OnPropertyChanged();
             }
+        }
+
+        public override void OnConnectionAttached(Edge edge, Node? sourceNode, Node? targetNode)
+        {
+            base.OnConnectionAttached(edge, sourceNode, targetNode);
+            if (targetNode?.Id == Id && sourceNode is IDesignTimeDataSourceInfo src && !_upstreamSources.Contains(src))
+            {
+                _upstreamSources.Add(src);
+                DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
+                RefreshAndCacheChannelOptions();
+            }
+        }
+
+        public override void OnConnectionDetached(Edge? edge, Node? sourceNode, Node? targetNode)
+        {
+            base.OnConnectionDetached(edge, sourceNode, targetNode);
+            if (edge == null)
+            {
+                _upstreamSources.Clear();
+                DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
+                return;
+            }
+
+            if (targetNode?.Id == Id && sourceNode is IDesignTimeDataSourceInfo src)
+                _upstreamSources.Remove(src);
+
+            if (_upstreamSources.Count == 0)
+            {
+                _dataAcquisitionDeviceName = string.Empty;
+                _curveChannelName = string.Empty;
+                CachedChannelOptions?.Clear();
+                DesignTimeUpstreamRegistry.ClearChannelOptionsCache(Id);
+                OnPropertyChanged(nameof(DataAcquisitionDeviceName));
+                OnPropertyChanged(nameof(CurveChannelName));
+            }
+            DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
         }
 
         [Display(Name = "合格下限（逐点）", GroupName = "曲线合格带", Order = 1, Description = "每个采样点不得低于此值")]

@@ -1,5 +1,6 @@
 using Astra.Core.Constants;
 using Astra.Plugins.DataAcquisition.Providers;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -18,6 +19,12 @@ namespace Astra.Plugins.Algorithms.Helpers
             return list;
         }
 
+        /// <summary>多选 CheckComboBox 使用：不含「未选择」占位。</summary>
+        public static IEnumerable<string> GetAcquisitionDeviceNamesForMultiSelect()
+        {
+            return DataAcquisitionCardProvider.GetDataAcquisitionNames();
+        }
+
         public static IEnumerable<string> GetChannelNamesForDevice(string? deviceDisplayName)
         {
             var d = deviceDisplayName?.Trim() ?? string.Empty;
@@ -28,6 +35,32 @@ namespace Astra.Plugins.Algorithms.Helpers
             if (list.Count > 0 && list[0] == string.Empty)
                 list[0] = UseFirstChannelInGroupLabel;
             return list;
+        }
+
+        /// <summary>
+        /// 聚合多个设备的通道列表，格式为「设备名/通道名」。
+        /// 用于多选设备后的通道 CheckComboBox。
+        /// </summary>
+        public static IEnumerable<string> GetChannelNamesForDevices(IEnumerable<string>? deviceNames)
+        {
+            if (deviceNames == null)
+                yield break;
+
+            foreach (var d in deviceNames)
+            {
+                if (string.IsNullOrWhiteSpace(d))
+                    continue;
+
+                var channels = DataAcquisitionCardProvider.GetConfiguredChannelNamesForDeviceDisplayName(d);
+                foreach (var ch in channels)
+                {
+                    if (string.IsNullOrEmpty(ch) ||
+                        string.Equals(ch, UseFirstChannelInGroupLabel, StringComparison.Ordinal))
+                        continue;
+
+                    yield return $"{d}/{ch}";
+                }
+            }
         }
     }
 }

@@ -20,6 +20,7 @@ namespace Astra.UI.PropertyEditors
         {
             var comboBox = new ComboBox
             {
+                MinWidth = 0,
                 MinHeight = 44,
                 Padding = new Thickness(10, 6, 10, 6),
                 FontSize = 13,

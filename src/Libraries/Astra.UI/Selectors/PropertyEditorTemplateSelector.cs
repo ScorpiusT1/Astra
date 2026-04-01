@@ -101,6 +101,7 @@ namespace Astra.UI.Selectors
             comboFactory.SetResourceReference(ComboBox.StyleProperty, "CompactComboBoxStyle");
 
             // 设置固定高度和垂直对齐
+            comboFactory.SetValue(FrameworkElement.MinWidthProperty, 0.0);
             comboFactory.SetValue(ComboBox.HeightProperty, 44.0);
             comboFactory.SetValue(ComboBox.VerticalAlignmentProperty, VerticalAlignment.Center);
             comboFactory.SetValue(ComboBox.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);

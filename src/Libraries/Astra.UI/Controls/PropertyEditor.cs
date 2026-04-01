@@ -155,6 +155,10 @@ namespace Astra.UI.Controls
                 typeof(PropertyEditorControl),
                 new PropertyMetadata(0.4, null, CoerceLabelWidthRatio));
 
+        /// <summary>
+        /// 标签列占整行宽度的比例（0.2–0.8，默认 0.4），与模板中 Grid 星号列一致。
+        /// 编辑列通过样式与宿主 <see cref="PropertyEditorHost"/> 的 MinWidth 约束，避免长文本撑开布局。
+        /// </summary>
         public double LabelWidthRatio
         {
             get => (double)GetValue(LabelWidthRatioProperty);

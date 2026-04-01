@@ -113,8 +113,8 @@ namespace Astra.Plugins.DataProcessing.Nodes
                 return configuredChannelKey.Trim();
 
             if (!file.TryGetGroup(DataProcessingRawArtifactHelper.NvhSignalGroupName, out var g) || g == null)
-                return string.Empty;
-            return g.Channels.Keys.FirstOrDefault() ?? string.Empty;
+                g = file.Groups.Values.FirstOrDefault();
+            return g?.Channels.Keys.FirstOrDefault() ?? string.Empty;
         }
     }
 }

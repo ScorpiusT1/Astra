@@ -20,7 +20,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// <summary>
     /// 多采集卡采集节点：在一个脚本节点中同时控制多个采集卡的启动。
     /// </summary>
-    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider, IMultiRawDataPipelineNode
+    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider, IMultiRawDataPipelineNode, IDesignTimeDataSourceInfo
     {
         private bool _usePropertyPanelForChartAxis = true;
 
@@ -57,6 +57,9 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         [Display(Name = "图表 Y 轴单位", GroupName = "图表", Order = 4, Description = "显示在 Y 轴标题后的单位，可留空。")]
         public string ChartYAxisUnit { get; set; } = string.Empty;
 
+        [Display(Name = "多曲线显示模式", GroupName = "图表", Order = 5, Description = "单图叠加：所有系列绘制在一个 Plot；分子图：每个系列独立显示在一个子图。留空时按类型自动推断（同类型叠加，混合类型分子图）。")]
+        public ChartLayoutMode ChartLayoutMode { get; set; } = ChartLayoutMode.SinglePlot;
+
         [Order(0)]
         [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 1, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
         public bool StopAcquisitionAfterCompletion { get; set; } = true;
@@ -73,6 +76,13 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         public List<string> DataAcquisitionDeviceNames { get; set; } = new();
 
         IEnumerable<string> IMultiRawDataPipelineNode.DataAcquisitionDeviceDisplayNames => DataAcquisitionDeviceNames;
+
+        public IEnumerable<string> GetAvailableDeviceDisplayNames() =>
+            DataAcquisitionDeviceNames?.Where(d => !string.IsNullOrWhiteSpace(d)) ?? Enumerable.Empty<string>();
+
+        public IEnumerable<string> GetAvailableChannelNames(string deviceDisplayName) =>
+            DataAcquisitionCardProvider.GetConfiguredChannelNamesForDeviceDisplayName(deviceDisplayName)
+                .Where(ch => !string.IsNullOrEmpty(ch));
 
         /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴标签（节点代码侧默认）。</summary>
         private const string CodeDefinedChartXAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisLabel;
@@ -444,6 +454,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         .WithOutput("RawDataKeys", rawDataKeys)
                         .WithOutput(NodeUiOutputKeys.HasChartData, true)
                         .WithOutput(NodeUiOutputKeys.ChartArtifactKey, rawDataKeys[0])
+                        .WithOutput(NodeUiOutputKeys.ChartArtifactKeys, rawDataKeys.ToArray())
+                        .WithOutput(NodeUiOutputKeys.ChartUseSubPlots, ChartLayoutMode == ChartLayoutMode.SubPlots)
                         .WithOutput(NodeUiOutputKeys.ChartXAxisLabel, axis.XLabel)
                         .WithOutput(NodeUiOutputKeys.ChartXAxisUnit, axis.XUnit)
                         .WithOutput(NodeUiOutputKeys.ChartYAxisLabel, axis.YLabel)

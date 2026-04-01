@@ -2,6 +2,9 @@ using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Ui;
 using Astra.UI.Abstractions.Nodes;
 using NVHDataBridge.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Astra.Services.Home
 {
@@ -46,6 +49,12 @@ namespace Astra.Services.Home
                 return;
             }
 
+            if (TryBuildMultiSeriesPayload(context, result.OutputData, out var multiPayload))
+            {
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(multiPayload!, result.OutputData));
+                return;
+            }
+
             if (!context.TryGetArtifact(artifactKey.Trim(), out var raw) || raw == null)
             {
                 return;
@@ -62,21 +71,158 @@ namespace Astra.Services.Home
                 return;
             }
 
-            if (!NvhMemoryFileSampleExtractor.TryExtractAsDoubleArray(file, "Signal", null, out var samples) ||
-                samples.Length == 0)
+            var allChannels = NvhMemoryFileSampleExtractor.ExtractAllChannels(file);
+            if (allChannels.Count == 0)
             {
                 return;
             }
 
-            var nvhPayload = new ChartDisplayPayload
+            if (allChannels.Count == 1)
+            {
+                var ch = allChannels[0];
+                var nvhPayload = new ChartDisplayPayload
+                {
+                    Kind = ChartPayloadKind.Signal1D,
+                    SignalY = ch.Samples,
+                    SamplePeriod = ch.WfIncrement > 0 ? ch.WfIncrement : 1.0,
+                    BottomAxisLabel = "样本",
+                    LeftAxisLabel = "数值"
+                };
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(nvhPayload, result.OutputData));
+                return;
+            }
+
+            var singleFileSeries = new List<ChartSeriesEntry>();
+            foreach (var ch in allChannels)
+            {
+                singleFileSeries.Add(new ChartSeriesEntry
+                {
+                    Name = $"{ch.GroupName}/{ch.ChannelName}",
+                    IsVisibleByDefault = true,
+                    Data = new ChartDisplayPayload
+                    {
+                        Kind = ChartPayloadKind.Signal1D,
+                        SignalY = ch.Samples,
+                        SamplePeriod = ch.WfIncrement > 0 ? ch.WfIncrement : 1.0
+                    }
+                });
+            }
+
+            var singleFilePayload = new ChartDisplayPayload
             {
                 Kind = ChartPayloadKind.Signal1D,
-                SignalY = samples,
-                SamplePeriod = 1.0,
+                Series = singleFileSeries,
+                LayoutMode = ChartDisplayPayload.InferDefaultLayout(singleFileSeries),
                 BottomAxisLabel = "样本",
                 LeftAxisLabel = "数值"
             };
-            _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(nvhPayload, result.OutputData));
+            _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(singleFilePayload, result.OutputData));
+        }
+
+        private static bool TryBuildMultiSeriesPayload(
+            NodeContext context,
+            IReadOnlyDictionary<string, object> outputData,
+            out ChartDisplayPayload? payload)
+        {
+            payload = null;
+            if (!TryGetArtifactKeys(outputData, out var artifactKeys) || artifactKeys.Count <= 0)
+            {
+                return false;
+            }
+
+            var series = new List<ChartSeriesEntry>();
+            for (var i = 0; i < artifactKeys.Count; i++)
+            {
+                var key = artifactKeys[i];
+                if (!context.TryGetArtifact(key, out var artifactObj) || artifactObj == null)
+                {
+                    continue;
+                }
+
+                if (artifactObj is ChartDisplayPayload embeddedPayload)
+                {
+                    series.Add(new ChartSeriesEntry
+                    {
+                        Name = $"系列 {i + 1}",
+                        IsVisibleByDefault = true,
+                        Data = embeddedPayload
+                    });
+                    continue;
+                }
+
+                if (artifactObj is NvhMemoryFile nvh)
+                {
+                    var channels = NvhMemoryFileSampleExtractor.ExtractAllChannels(nvh);
+                    foreach (var ch in channels)
+                    {
+                        var seriesName = channels.Count == 1
+                            ? $"曲线 {series.Count + 1}"
+                            : $"{ch.GroupName}/{ch.ChannelName}";
+
+                        series.Add(new ChartSeriesEntry
+                        {
+                            Name = seriesName,
+                            IsVisibleByDefault = true,
+                            Data = new ChartDisplayPayload
+                            {
+                                Kind = ChartPayloadKind.Signal1D,
+                                SignalY = ch.Samples,
+                                SamplePeriod = ch.WfIncrement > 0 ? ch.WfIncrement : 1.0
+                            }
+                        });
+                    }
+                }
+            }
+
+            if (series.Count == 0)
+            {
+                return false;
+            }
+
+            var userSubPlots = outputData.TryGetValue(NodeUiOutputKeys.ChartUseSubPlots, out var subPlotObj) &&
+                               subPlotObj is bool b && b;
+            var layoutMode = userSubPlots
+                ? ChartLayoutMode.SubPlots
+                : ChartDisplayPayload.InferDefaultLayout(series);
+
+            payload = new ChartDisplayPayload
+            {
+                Kind = series[0].Data.Kind,
+                Series = series,
+                LayoutMode = layoutMode,
+                BottomAxisLabel = "样本",
+                LeftAxisLabel = "数值"
+            };
+            return true;
+        }
+
+        private static bool TryGetArtifactKeys(IReadOnlyDictionary<string, object> outputData, out List<string> keys)
+        {
+            keys = new List<string>();
+            if (!outputData.TryGetValue(NodeUiOutputKeys.ChartArtifactKeys, out var raw) || raw == null)
+            {
+                return false;
+            }
+
+            if (raw is IEnumerable<string> seq)
+            {
+                foreach (var s in seq)
+                {
+                    if (!string.IsNullOrWhiteSpace(s))
+                    {
+                        keys.Add(s.Trim());
+                    }
+                }
+                return keys.Count > 0;
+            }
+
+            if (raw is string one && !string.IsNullOrWhiteSpace(one))
+            {
+                keys.Add(one.Trim());
+                return true;
+            }
+
+            return false;
         }
     }
 }

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,8 +21,10 @@ namespace Astra.UI.Models
         public WorkflowTab()
         {
             Id = Guid.NewGuid().ToString();
-            Nodes = new ObservableCollection<Node>();
-            Edges = new ObservableCollection<Edge>();
+            _nodes = new ObservableCollection<Node>();
+            _nodes.CollectionChanged += OnNodesCollectionChanged;
+            _edges = new ObservableCollection<Edge>();
+            _edges.CollectionChanged += OnEdgesCollectionChanged;
             CreatedAt = DateTime.Now;
             ModifiedAt = DateTime.Now;
         }
@@ -137,12 +140,40 @@ namespace Astra.UI.Models
         /// <summary>
         /// 节点集合（用于画布显示）
         /// </summary>
-        public ObservableCollection<Node> Nodes { get; set; }
+        public ObservableCollection<Node> Nodes
+        {
+            get => _nodes;
+            set
+            {
+                if (ReferenceEquals(_nodes, value)) return;
+                if (_nodes != null) _nodes.CollectionChanged -= OnNodesCollectionChanged;
+                _nodes = value;
+                if (_nodes != null) _nodes.CollectionChanged += OnNodesCollectionChanged;
+                OnPropertyChanged(nameof(Nodes));
+                ReplayExistingEdges();
+            }
+        }
+
+        private ObservableCollection<Node> _nodes;
 
         /// <summary>
         /// 连线集合（用于画布显示）
         /// </summary>
-        public ObservableCollection<Edge> Edges { get; set; }
+        public ObservableCollection<Edge> Edges
+        {
+            get => _edges;
+            set
+            {
+                if (ReferenceEquals(_edges, value)) return;
+                if (_edges != null) _edges.CollectionChanged -= OnEdgesCollectionChanged;
+                _edges = value;
+                if (_edges != null) _edges.CollectionChanged += OnEdgesCollectionChanged;
+                OnPropertyChanged(nameof(Edges));
+                ReplayExistingEdges();
+            }
+        }
+
+        private ObservableCollection<Edge> _edges;
 
         /// <summary>
         /// 流程数据（MasterWorkflow 或 WorkFlowNode）
@@ -197,6 +228,91 @@ namespace Astra.UI.Models
             IsModified = false;
             if (!string.IsNullOrEmpty(filePath))
                 FilePath = filePath;
+        }
+
+        private void OnEdgesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (Nodes == null || Nodes.Count == 0) return;
+
+            if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
+            {
+                foreach (Edge edge in e.NewItems)
+                    NotifyNodes(edge, attached: true);
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems != null)
+            {
+                foreach (Edge edge in e.OldItems)
+                    NotifyNodes(edge, attached: false);
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Replace)
+            {
+                if (e.OldItems != null)
+                    foreach (Edge edge in e.OldItems) NotifyNodes(edge, attached: false);
+                if (e.NewItems != null)
+                    foreach (Edge edge in e.NewItems) NotifyNodes(edge, attached: true);
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                foreach (var node in Nodes)
+                    node.OnConnectionDetached(null, null, null);
+            }
+        }
+
+        private void OnNodesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems != null)
+            {
+                foreach (Node node in e.OldItems)
+                    node.OnRemovedFromWorkflow();
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Replace && e.OldItems != null)
+            {
+                foreach (Node node in e.OldItems)
+                    node.OnRemovedFromWorkflow();
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                // Reset 无法遍历旧元素；如需处理可在调用方 Clear 前遍历
+            }
+        }
+
+        /// <summary>
+        /// 反序列化后重放所有已有连线的 Attached 事件。
+        /// Nodes/Edges 整体赋值时不触发 CollectionChanged.Add，
+        /// 需要手动遍历已有的 Edge 并通知相关节点，以重建 _upstreamSources 等运行时状态。
+        /// 在 Nodes 和 Edges 两个 setter 末尾均调用，保证无论哪个先赋值，
+        /// 当两者都就绪时事件会被正确重放。
+        /// </summary>
+        private void ReplayExistingEdges()
+        {
+            if (_nodes == null || _nodes.Count == 0 || _edges == null || _edges.Count == 0)
+                return;
+
+            foreach (var edge in _edges)
+                NotifyNodes(edge, attached: true);
+        }
+
+        private void NotifyNodes(Edge edge, bool attached)
+        {
+            if (edge == null) return;
+
+            var sourceNode = string.IsNullOrEmpty(edge.SourceNodeId)
+                ? null
+                : Nodes.FirstOrDefault(n => n.Id == edge.SourceNodeId);
+            var targetNode = string.IsNullOrEmpty(edge.TargetNodeId)
+                ? null
+                : Nodes.FirstOrDefault(n => n.Id == edge.TargetNodeId);
+
+            if (attached)
+            {
+                sourceNode?.OnConnectionAttached(edge, sourceNode, targetNode);
+                targetNode?.OnConnectionAttached(edge, sourceNode, targetNode);
+            }
+            else
+            {
+                sourceNode?.OnConnectionDetached(edge, sourceNode, targetNode);
+                targetNode?.OnConnectionDetached(edge, sourceNode, targetNode);
+            }
         }
 
         /// <summary>

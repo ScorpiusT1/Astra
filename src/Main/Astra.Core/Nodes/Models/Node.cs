@@ -262,6 +262,26 @@ namespace Astra.Core.Nodes.Models
             return InputPorts.Concat(OutputPorts);
         }
 
+        // ===== 连线事件回调 =====
+
+        /// <summary>
+        /// 当有新连线连接到本节点时调用（无论本节点是源端还是目标端）。
+        /// 子类可覆盖以响应连线变化，例如刷新可选数据源。
+        /// </summary>
+        public virtual void OnConnectionAttached(Edge edge, Node? sourceNode, Node? targetNode) { }
+
+        /// <summary>
+        /// 当与本节点相关的连线被移除时调用（无论本节点是源端还是目标端）。
+        /// <paramref name="edge"/> 为 <c>null</c> 时表示 Reset（全部连线被清除）。
+        /// </summary>
+        public virtual void OnConnectionDetached(Edge? edge, Node? sourceNode, Node? targetNode) { }
+
+        /// <summary>
+        /// 当节点被从工作流画布中移除时调用。
+        /// 子类可覆盖以清理静态注册表、释放资源等。
+        /// </summary>
+        public virtual void OnRemovedFromWorkflow() { }
+
         // ===== 核心方法：定义节点的业务逻辑（不包含执行基础设施） =====
 
         /// <summary>

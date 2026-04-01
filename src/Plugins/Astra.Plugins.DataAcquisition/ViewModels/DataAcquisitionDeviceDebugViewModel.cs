@@ -230,6 +230,7 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
         public DataAcquisitionDeviceDebugViewModel(IDevice device)
         {
             Device = device as DataAcquisitionDeviceBase;
+            EnableDebugOverrideMode();
             DebugSampleRate = SampleRate;
 
             // 采样点默认与采样率相同（取整）
@@ -257,6 +258,17 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
                     SelectedSerialNumber = cfg.SerialNumber;
                 }
             }
+        }
+
+        public void EnableDebugOverrideMode()
+        {
+            _device?.SetUseDebugOverrides(true);
+        }
+
+        public void DisableDebugOverrideMode()
+        {
+            _device?.SetUseDebugOverrides(false);
+            _device?.ClearDebugChannelOverrides();
         }
 
         /// <summary>
@@ -429,37 +441,23 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
         private void OnChannelDebugItemIsEnabledChanged(ChannelDebugItem channel, bool isEnabled)
         {
-            if (_device?.CurrentConfig is DataAcquisitionConfig cfg && cfg.Channels != null)
-            {
-                var configChannel = cfg.Channels.FirstOrDefault(c => c.ChannelId == channel.ChannelId);
-                if (configChannel != null)
-                    configChannel.Enabled = isEnabled;
-            }
+            _device?.UpdateDebugChannelEnabled(channel.ChannelId, isEnabled);
 
             ChannelVisibilityChanged?.Invoke(channel.ChannelId, isEnabled);
         }
 
         private void OnChannelCouplingModeChanged(ChannelDebugItem channel)
         {
-            if (_device?.CurrentConfig is DataAcquisitionConfig cfg && cfg.Channels != null)
+            if (_device != null
+                && Enum.TryParse<CouplingMode>(channel.CouplingMode, ignoreCase: true, out var mode))
             {
-                var configChannel = cfg.Channels.FirstOrDefault(c => c.ChannelId == channel.ChannelId);
-                if (configChannel != null &&
-                    Enum.TryParse<CouplingMode>(channel.CouplingMode, ignoreCase: true, out var mode))
-                {
-                    configChannel.CouplingMode = mode;
-                }
+                _device.UpdateDebugChannelCouplingMode(channel.ChannelId, mode);
             }
         }
 
         private void OnChannelExcitationCurrentChanged(ChannelDebugItem channel)
         {
-            if (_device?.CurrentConfig is DataAcquisitionConfig cfg && cfg.Channels != null)
-            {
-                var configChannel = cfg.Channels.FirstOrDefault(c => c.ChannelId == channel.ChannelId);
-                if (configChannel != null)
-                    configChannel.TriggerLevel = channel.ExcitationCurrent;
-            }
+            _device?.UpdateDebugChannelTriggerLevel(channel.ChannelId, channel.ExcitationCurrent);
         }
 
 
@@ -502,7 +500,9 @@ namespace Astra.Plugins.DataAcquisition.ViewModels
 
                 // 设备上报数据按“启用通道顺序分段”组织：
                 // [ch1(0..N-1), ch2(0..N-1), ...]
-                var configuredEnabledChannels = cfg.Channels?.Where(c => c.Enabled).ToList()
+                var configuredEnabledChannels = cfg.Channels?
+                        .Where(c => _device == null ? c.Enabled : _device.GetEffectiveChannelEnabled(c))
+                        .ToList()
                     ?? Enumerable.Range(1, Math.Max(1, cfg.ChannelCount))
                         .Select(i => new Configs.DAQChannelConfig { ChannelId = i, Enabled = true })
                         .ToList();

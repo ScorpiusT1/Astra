@@ -213,7 +213,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine
 
                 // 继承执行标识与元数据，保证 UI 事件过滤时的 ExecutionId 一致
                 ExecutionId = baseContext?.ExecutionId,
-                ParentWorkFlow = baseContext?.ParentWorkFlow,
+                ParentWorkFlow = workflow,
                 Metadata = new Dictionary<string, object>(baseContext?.Metadata ?? new Dictionary<string, object>())
             };
 

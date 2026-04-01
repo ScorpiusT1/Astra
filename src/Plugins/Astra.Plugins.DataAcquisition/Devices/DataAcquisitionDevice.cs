@@ -102,7 +102,7 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 for (int channelIdx = 0; channelIdx < channelCount; channelIdx++)
                 {
                     var channelConfig = _config.Channels?.FirstOrDefault(c => c.ChannelId == channelIdx);
-                    if (channelConfig == null || !channelConfig.Enabled)
+                    if (channelConfig == null || !GetEffectiveChannelEnabled(channelConfig))
                         continue;
 
                     if (!_channelMap.TryGetValue(channelIdx, out var dataChannel))

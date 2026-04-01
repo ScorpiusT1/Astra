@@ -16,8 +16,7 @@ namespace Astra.Plugins.DataImport.Helpers
             if (file == null)
                 return false;
 
-            var g = string.IsNullOrWhiteSpace(groupName) ? AstraSharedConstants.DataGroups.Signal : groupName.Trim();
-            if (!file.TryGetGroup(g, out var group) || group == null)
+            if (!TryResolveGroup(file, groupName, out var group))
                 return false;
 
             NvhMemoryChannelBase? channel;
@@ -66,8 +65,7 @@ namespace Astra.Plugins.DataImport.Helpers
             deltaTime = 0;
             if (file == null)
                 return false;
-            var g = string.IsNullOrWhiteSpace(groupName) ? AstraSharedConstants.DataGroups.Signal : groupName.Trim();
-            if (!file.TryGetGroup(g, out var group) || group == null)
+            if (!TryResolveGroup(file, groupName, out var group))
                 return false;
 
             NvhMemoryChannelBase? channel;
@@ -85,6 +83,21 @@ namespace Astra.Plugins.DataImport.Helpers
             }
 
             return false;
+        }
+
+        private static bool TryResolveGroup(NvhMemoryFile file, string? groupName, out NvhMemoryGroup group)
+        {
+            group = null!;
+            var g = string.IsNullOrWhiteSpace(groupName) ? AstraSharedConstants.DataGroups.Signal : groupName.Trim();
+            if (file.TryGetGroup(g, out var found) && found != null)
+            {
+                group = found;
+                return true;
+            }
+            var first = file.Groups.Values.FirstOrDefault();
+            if (first == null) return false;
+            group = first;
+            return true;
         }
     }
 }

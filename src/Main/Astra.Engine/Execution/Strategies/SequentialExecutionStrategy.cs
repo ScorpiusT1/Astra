@@ -97,6 +97,7 @@ namespace Astra.Engine.Execution.Strategies
                     foreach (var kvp in prevNode.LastExecutionResult.OutputData)
                     {
                         context.InputData[kvp.Key] = kvp.Value;
+                        context.InputData[$"{conn.SourceNodeId}:{kvp.Key}"] = kvp.Value;
                     }
                 }
             }

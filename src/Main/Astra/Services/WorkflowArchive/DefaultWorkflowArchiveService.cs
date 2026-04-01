@@ -287,6 +287,11 @@ namespace Astra.Services.WorkflowArchive
         {
             if (!file.TryGetGroup(NvhArchiveSampleUtil.DefaultSignalGroupName, out var group) || group == null)
             {
+                group = file.Groups.Values.FirstOrDefault();
+            }
+
+            if (group == null)
+            {
                 return;
             }
 
