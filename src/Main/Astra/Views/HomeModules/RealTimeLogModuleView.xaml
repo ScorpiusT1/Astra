@@ -274,7 +274,7 @@
                       Padding="16,0,16,12">
             <!-- 无日志时抬高 MinHeight，配合 * / Auto / * 才能在 ScrollViewer 可视区内真正垂直居中（否则内容高度测量为无限，Center 无效） -->
             <Grid>
-                <Grid.Style>
+                <!--<Grid.Style>
                     <Style TargetType="Grid">
                         <Setter Property="MinHeight"
                                 Value="120" />
@@ -286,7 +286,7 @@
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
-                </Grid.Style>
+                </Grid.Style>-->
 
                 <ItemsControl ItemsSource="{Binding Logs}"
                               ItemTemplate="{StaticResource LogItemTemplate}">
