@@ -713,7 +713,7 @@ namespace Astra.ViewModels.HomeModules
         [ObservableProperty]
         private bool _hasChartData;
 
-        /// <summary>节点类型实现 <see cref="IHomeTestItemChartNode"/>，加载树时设置；新运行开始时不清除。</summary>
+        /// <summary>加载树时设置：节点实现 <see cref="IHomeTestItemChartNode"/> 且开启显示按钮，或实现 <see cref="IHomeTestItemChartEligibleNode"/>；新运行开始时不清除。</summary>
         [ObservableProperty]
         private bool _supportsHomeChartButton;
 

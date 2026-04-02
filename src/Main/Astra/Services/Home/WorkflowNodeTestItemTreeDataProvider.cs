@@ -110,7 +110,7 @@ namespace Astra.Services.Home
                         LowerLimit = 0,
                         UpperLimit = 0,
                         IsRoot = false,
-                        SupportsHomeChartButton = node is IHomeTestItemChartNode cap && cap.ShowHomeChartButton
+                        SupportsHomeChartButton = ComputeSupportsHomeChartButton(node)
                     });
                 }
 
@@ -118,6 +118,17 @@ namespace Astra.Services.Home
             }
 
             return roots;
+        }
+
+        /// <summary>
+        /// 主页「打开图表」：优先尊重 <see cref="IHomeTestItemChartNode.ShowHomeChartButton"/>；否则凡标记为 <see cref="IHomeTestItemChartEligibleNode"/> 的节点类型在树加载后即可显示按钮。
+        /// </summary>
+        private static bool ComputeSupportsHomeChartButton(Node node)
+        {
+            if (node is IHomeTestItemChartNode cap)
+                return cap.ShowHomeChartButton;
+
+            return node is IHomeTestItemChartEligibleNode;
         }
 
         private static string? ResolveScriptPath(SoftwareConfig? config)
