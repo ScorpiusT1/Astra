@@ -18,7 +18,7 @@ namespace Astra.Plugins.DataImport.Nodes
     /// 从文件加载 <see cref="NvhMemoryFile"/> 并发布与多采集相同键规则的 Raw（虚拟设备「文件导入」）。
     /// 支持多文件导入：每个文件作为独立虚拟设备发布 Raw，下游节点可分别选择。
     /// </summary>
-    public abstract class FileImportRawNodeBase : Node, IRawDataPipelineNode, IMultiRawDataPipelineNode, IDesignTimeDataSourceInfo
+    public abstract class FileImportRawNodeBase : Node, IRawDataPipelineNode, IMultiRawDataPipelineNode, IDesignTimeDataSourceInfo, IHomeTestItemChartEligibleNode
     {
         private string _virtualDeviceAlias = string.Empty;
         [JsonIgnore]

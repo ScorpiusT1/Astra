@@ -9,6 +9,50 @@ namespace Astra.Plugins.Limits.Helpers
     internal static class LimitNodeShared
     {
         /// <summary>
+        /// 从曲线通道配置解析采集卡显示名与 NVH 通道键：<c>设备/通道</c> 用具体通道；仅 <c>设备</c> 表示该卡首通道。
+        /// </summary>
+        public static bool TryResolveCurveSelection(
+            string? configured,
+            out string deviceDisplayName,
+            out string? nvhChannelKey,
+            out string? error)
+        {
+            deviceDisplayName = string.Empty;
+            nvhChannelKey = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(configured))
+            {
+                error = "请选择通道";
+                return false;
+            }
+
+            var t = configured.Trim();
+            if (string.Equals(t, LimitsDesignTimeOptions.UnselectedLabel, StringComparison.Ordinal))
+            {
+                error = "请选择通道";
+                return false;
+            }
+
+            if (string.Equals(t, LimitsDesignTimeOptions.UseFirstChannelInGroupLabel, StringComparison.Ordinal))
+            {
+                error = "请从下拉选择具体设备或「设备/通道」";
+                return false;
+            }
+
+            if (QualifiedChannelHelper.TrySplit(t, out var dev, out var ch))
+            {
+                deviceDisplayName = dev;
+                nvhChannelKey = string.IsNullOrEmpty(ch) ? null : ch;
+                return true;
+            }
+
+            deviceDisplayName = t;
+            nvhChannelKey = null;
+            return true;
+        }
+
+        /// <summary>
         /// 将节点上配置的通道名转为 NVH 解析用的通道键：空、空白或「默认首通道」文案均视为未指定（组内首通道）。
         /// </summary>
         public static string? NormalizeCurveChannelKey(string? configured)
@@ -24,6 +68,9 @@ namespace Astra.Plugins.Limits.Helpers
             {
                 return null;
             }
+
+            if (QualifiedChannelHelper.TrySplit(t, out _, out var ch))
+                return string.IsNullOrEmpty(ch) ? null : ch;
 
             return t;
         }
@@ -77,6 +124,30 @@ namespace Astra.Plugins.Limits.Helpers
             {
                 (lower, upper) = (upper, lower);
             }
+        }
+
+        /// <summary>
+        /// 解析实测标量：优先 <see cref="NodeContext.InputData"/>（含 <c>节点Id:Scalar.xxx</c>），否则 <see cref="NodeContext.GlobalVariables"/>。
+        /// </summary>
+        public static bool TryResolveMeasuredScalar(NodeContext context, string? key, out object? raw, out string? error)
+        {
+            raw = null;
+            error = null;
+            var k = key?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(k))
+            {
+                error = "请填写实测值变量名或选择上游标量键";
+                return false;
+            }
+
+            if (context.InputData != null && context.InputData.TryGetValue(k, out raw))
+                return true;
+
+            if (context.GlobalVariables != null && context.GlobalVariables.TryGetValue(k, out raw))
+                return true;
+
+            error = $"找不到上游输出或全局变量: {k}";
+            return false;
         }
 
         public static ExecutionResult WithOptionalChartDisplay(

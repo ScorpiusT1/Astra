@@ -1,6 +1,15 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Astra.UI.Abstractions.Nodes;
+
+/// <summary>图表角标：标量名称、数值与单位（由节点写入 <see cref="ChartDisplayPayload.ScalarAnnotations"/>）。</summary>
+public sealed class ChartScalarAnnotation
+{
+    public string Name { get; init; } = string.Empty;
+    public double Value { get; init; }
+    public string Unit { get; init; } = string.Empty;
+}
 
 /// <summary>
 /// 主页测试项图表可展示的载荷类型（与 <see cref="NodeUiOutputKeys.ChartPayloadSnapshot"/> / Raw 产物中的同类型对象对应）。
@@ -91,6 +100,11 @@ public sealed class ChartDisplayPayload
     /// <summary>行方向坐标，长度 = HeatmapZ 行数。</summary>
     public double[]? HeatmapYCoordinates { get; init; }
 
+    /// <summary>
+    /// 为 true 时：<see cref="HeatmapYCoordinates"/> 表示 log10(物理量)，纵轴刻度应按 10^y 格式化（如 LMS Morlet 对数频率轴，物理单位为 Hz）。
+    /// </summary>
+    public bool HeatmapYAxisIsLog10OfQuantity { get; init; }
+
     // --- Segments [segmentIndex, 0..3] = x0,y0,x1,y1 ---
     public double[,]? SegmentLines { get; init; }
 
@@ -128,6 +142,107 @@ public sealed class ChartDisplayPayload
 
     /// <summary>多系列显示布局（仅 <see cref="Series"/> 非空时有效）。运行时可由用户在图表窗口切换。</summary>
     public ChartLayoutMode LayoutMode { get; set; } = ChartLayoutMode.SinglePlot;
+
+    /// <summary>可选：在图表上展示的标量文本（单图模式写在根载荷；多系列可与各 <see cref="ChartSeriesEntry.Data"/> 对齐）。</summary>
+    public List<ChartScalarAnnotation>? ScalarAnnotations { get; init; }
+
+    /// <summary>
+    /// 将运行时标量注入载荷副本：多系列且条数与系列数一致时写入各子 <see cref="ChartSeriesEntry.Data"/>，否则写入根载荷。
+    /// </summary>
+    public static ChartDisplayPayload EmbedScalarsForDisplay(
+        ChartDisplayPayload payload,
+        IReadOnlyList<(string Name, double Value, string Unit)> scalars)
+    {
+        if (scalars == null || scalars.Count == 0)
+            return payload;
+
+        static ChartScalarAnnotation M((string Name, double Value, string Unit) s) =>
+            new()
+            {
+                Name = s.Name ?? string.Empty,
+                Value = s.Value,
+                Unit = s.Unit ?? string.Empty
+            };
+
+        var copy = payload.Clone();
+        if (copy.Series is { Count: > 0 } ser && ser.Count == scalars.Count)
+        {
+            var newSeries = new List<ChartSeriesEntry>(ser.Count);
+            for (var i = 0; i < ser.Count; i++)
+            {
+                var ann = new List<ChartScalarAnnotation> { M(scalars[i]) };
+                newSeries.Add(new ChartSeriesEntry
+                {
+                    Name = ser[i].Name,
+                    Color = ser[i].Color,
+                    IsVisibleByDefault = ser[i].IsVisibleByDefault,
+                    Data = ser[i].Data.WithScalarAnnotations(ann)
+                });
+            }
+
+            return new ChartDisplayPayload
+            {
+                Kind = copy.Kind,
+                BottomAxisLabel = copy.BottomAxisLabel,
+                BottomAxisUnit = copy.BottomAxisUnit,
+                LeftAxisLabel = copy.LeftAxisLabel,
+                LeftAxisUnit = copy.LeftAxisUnit,
+                SignalY = copy.SignalY,
+                SamplePeriod = copy.SamplePeriod,
+                X = copy.X,
+                Y = copy.Y,
+                HeatmapZ = copy.HeatmapZ,
+                HeatmapXCoordinates = copy.HeatmapXCoordinates,
+                HeatmapYCoordinates = copy.HeatmapYCoordinates,
+                HeatmapYAxisIsLog10OfQuantity = copy.HeatmapYAxisIsLog10OfQuantity,
+                SegmentLines = copy.SegmentLines,
+                HorizontalLimitLower = copy.HorizontalLimitLower,
+                HorizontalLimitUpper = copy.HorizontalLimitUpper,
+                Categories = copy.Categories,
+                BarGroups = copy.BarGroups,
+                DonutFraction = copy.DonutFraction,
+                ExplodeFraction = copy.ExplodeFraction,
+                RadarAxisMaxValues = copy.RadarAxisMaxValues,
+                Series = newSeries,
+                LayoutMode = copy.LayoutMode,
+                ScalarAnnotations = copy.ScalarAnnotations
+            };
+        }
+
+        return copy.WithScalarAnnotations(scalars.Select(M).ToList());
+    }
+
+    /// <summary>复制除 <see cref="ScalarAnnotations"/> 外的字段，并设置标量列表。</summary>
+    public ChartDisplayPayload WithScalarAnnotations(IReadOnlyList<ChartScalarAnnotation>? annotations)
+    {
+        return new ChartDisplayPayload
+        {
+            Kind = Kind,
+            BottomAxisLabel = BottomAxisLabel,
+            BottomAxisUnit = BottomAxisUnit,
+            LeftAxisLabel = LeftAxisLabel,
+            LeftAxisUnit = LeftAxisUnit,
+            SignalY = SignalY,
+            SamplePeriod = SamplePeriod,
+            X = X,
+            Y = Y,
+            HeatmapZ = HeatmapZ,
+            HeatmapXCoordinates = HeatmapXCoordinates,
+            HeatmapYCoordinates = HeatmapYCoordinates,
+            HeatmapYAxisIsLog10OfQuantity = HeatmapYAxisIsLog10OfQuantity,
+            SegmentLines = SegmentLines,
+            HorizontalLimitLower = HorizontalLimitLower,
+            HorizontalLimitUpper = HorizontalLimitUpper,
+            Categories = Categories,
+            BarGroups = BarGroups,
+            DonutFraction = DonutFraction,
+            ExplodeFraction = ExplodeFraction,
+            RadarAxisMaxValues = RadarAxisMaxValues,
+            Series = Series,
+            LayoutMode = LayoutMode,
+            ScalarAnnotations = annotations?.ToList()
+        };
+    }
 
     /// <summary>
     /// 根据 <paramref name="series"/> 中各子系列的 Kind 自动推断默认布局模式：
@@ -197,6 +312,7 @@ public sealed class ChartDisplayPayload
             HeatmapZ = payload.HeatmapZ,
             HeatmapXCoordinates = payload.HeatmapXCoordinates,
             HeatmapYCoordinates = payload.HeatmapYCoordinates,
+            HeatmapYAxisIsLog10OfQuantity = payload.HeatmapYAxisIsLog10OfQuantity,
             SegmentLines = payload.SegmentLines,
             HorizontalLimitLower = payload.HorizontalLimitLower,
             HorizontalLimitUpper = payload.HorizontalLimitUpper,
@@ -206,7 +322,13 @@ public sealed class ChartDisplayPayload
             ExplodeFraction = payload.ExplodeFraction,
             RadarAxisMaxValues = payload.RadarAxisMaxValues,
             Series = payload.Series,
-            LayoutMode = payload.LayoutMode
+            LayoutMode = payload.LayoutMode,
+            ScalarAnnotations = payload.ScalarAnnotations?.Select(a => new ChartScalarAnnotation
+            {
+                Name = a.Name,
+                Value = a.Value,
+                Unit = a.Unit
+            }).ToList()
         };
     }
 
@@ -250,6 +372,7 @@ public sealed class ChartDisplayPayload
             HeatmapZ = Clone2D(HeatmapZ),
             HeatmapXCoordinates = Clone1D(HeatmapXCoordinates),
             HeatmapYCoordinates = Clone1D(HeatmapYCoordinates),
+            HeatmapYAxisIsLog10OfQuantity = HeatmapYAxisIsLog10OfQuantity,
             SegmentLines = Clone2D(SegmentLines),
             HorizontalLimitLower = HorizontalLimitLower,
             HorizontalLimitUpper = HorizontalLimitUpper,
@@ -265,7 +388,13 @@ public sealed class ChartDisplayPayload
                 IsVisibleByDefault = e.IsVisibleByDefault,
                 Data = e.Data.Clone()
             }).ToList(),
-            LayoutMode = LayoutMode
+            LayoutMode = LayoutMode,
+            ScalarAnnotations = ScalarAnnotations?.Select(a => new ChartScalarAnnotation
+            {
+                Name = a.Name,
+                Value = a.Value,
+                Unit = a.Unit
+            }).ToList()
         };
     }
 

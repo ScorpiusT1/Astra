@@ -4,6 +4,7 @@ using Astra.Plugins.Algorithms.Enums;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.Algorithms.Nodes
@@ -22,11 +23,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 1)]
         public double SkipSeconds { get; set; }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"整体响度({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -44,7 +50,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                 });
                 var charts = results.Select(r => (r.Label, r.Chart)).ToList();
                 var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "StationaryLoudness", charts, scalars, tag: "psycho"));
+                return Task.FromResult(PublishMultiChartAndScalars(context, "StationaryLoudness", charts, scalars, tag: "psycho"));
             }
             catch (AggregateException aex)
             {
@@ -80,7 +86,7 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -94,7 +100,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                     var (_, spec) = Nvh.TimeVaryingLoudnessAnalyze(e.Signal, SoundField, SkipSeconds, out var barkAxis, out _, out var timeAxis);
                     results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec, timeAxis, barkAxis, "时间 (s)", "Bark"));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "TimeVaryingLoudness", results.ToList(), tag: "psycho"));
+                return Task.FromResult(PublishMultiChart(context, "TimeVaryingLoudness", results.ToList(), tag: "psycho"));
             }
             catch (AggregateException aex)
             {
@@ -129,11 +135,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 2)]
         public double SkipSeconds { get; set; }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"锐度({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -150,7 +161,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                 });
                 var charts = results.Select(r => (r.Label, r.Chart)).ToList();
                 var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "StationarySharpness", charts, scalars, tag: "psycho"));
+                return Task.FromResult(PublishMultiChartAndScalars(context, "StationarySharpness", charts, scalars, tag: "psycho"));
             }
             catch (AggregateException aex)
             {
@@ -185,11 +196,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 2)]
         public double SkipSeconds { get; set; }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"平均锐度({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -207,7 +223,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                 });
                 var charts = results.Select(r => (r.Label, r.Chart)).ToList();
                 var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "TimeVaryingSharpness", charts, scalars, tag: "psycho"));
+                return Task.FromResult(PublishMultiChartAndScalars(context, "TimeVaryingSharpness", charts, scalars, tag: "psycho"));
             }
             catch (AggregateException aex)
             {
@@ -239,11 +255,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "跳过时长 (s)", GroupName = "参数", Order = 1)]
         public double SkipSeconds { get; set; }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"粗糙度({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -260,7 +281,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                 });
                 var charts = results.Select(r => (r.Label, r.Chart)).ToList();
                 var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "Roughness", charts, scalars, tag: "psycho"));
+                return Task.FromResult(PublishMultiChartAndScalars(context, "Roughness", charts, scalars, tag: "psycho"));
             }
             catch (AggregateException aex)
             {
@@ -289,11 +310,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "方法", GroupName = "参数")]
         public FluctuationMethod Method { get; set; } = FluctuationMethod.Stationary;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"波动度({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -310,7 +336,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                 });
                 var charts = results.Select(r => (r.Label, r.Chart)).ToList();
                 var scalars = results.Select(r => (r.ScalarName, r.ScalarValue, r.ScalarUnit)).ToList();
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, "FluctuationStrength", charts, scalars, tag: "psycho"));
+                return Task.FromResult(PublishMultiChartAndScalars(context, "FluctuationStrength", charts, scalars, tag: "psycho"));
             }
             catch (AggregateException aex)
             {

@@ -83,7 +83,10 @@ namespace Astra.Plugins.Algorithms.Helpers
             string? tag = null,
             string message = "完成")
         {
-            var result = SuccessWithChart(context, producerNodeId, artifactName, chart, tag, message);
+            var chartForBus = scalars is { Count: > 0 }
+                ? ChartDisplayPayload.EmbedScalarsForDisplay(chart, scalars)
+                : chart;
+            var result = SuccessWithChart(context, producerNodeId, artifactName, chartForBus, tag, message);
             var bus = context.GetDataBus();
             if (bus == null)
                 return result;
@@ -93,7 +96,7 @@ namespace Astra.Plugins.Algorithms.Helpers
                 bus.PublishScalar(producerNodeId, name, value, unit: unit, tag: tag ?? artifactName);
             }
 
-            return result;
+            return AppendScalarOutputs(result, scalars);
         }
 
         /// <summary>
@@ -109,7 +112,8 @@ namespace Astra.Plugins.Algorithms.Helpers
             string? tag = null,
             string message = "完成")
         {
-            var result = SuccessWithMultiChart(context, producerNodeId, artifactName, charts, layoutOverride, tag, message);
+            var chartsForBus = EnrichChartsWithScalarsForDisplay(charts, scalars, layoutOverride);
+            var result = SuccessWithMultiChart(context, producerNodeId, artifactName, chartsForBus, layoutOverride, tag, message);
             var bus = context.GetDataBus();
             if (bus == null)
                 return result;
@@ -117,7 +121,7 @@ namespace Astra.Plugins.Algorithms.Helpers
             foreach (var (name, value, unit) in scalars)
                 bus.PublishScalar(producerNodeId, name, value, unit: unit, tag: tag ?? artifactName);
 
-            return result;
+            return AppendScalarOutputs(result, scalars);
         }
 
         public static ExecutionResult SuccessScalarsOnly(
@@ -134,8 +138,68 @@ namespace Astra.Plugins.Algorithms.Helpers
             foreach (var (name, value, unit) in scalars)
                 bus.PublishScalar(producerNodeId, name, value, unit: unit, tag: tag);
 
-            return ExecutionResult.Successful(message)
+            var ok = ExecutionResult.Successful(message)
                 .WithOutput(NodeUiOutputKeys.HasChartData, false);
+            return AppendScalarOutputs(ok, scalars);
+        }
+
+        /// <summary>
+        /// 在发布前把标量写入各 <see cref="ChartDisplayPayload"/>（单图 / 多系列与标量条数对齐时写入子 Data）。
+        /// </summary>
+        private static IReadOnlyList<(string SeriesName, ChartDisplayPayload Chart)> EnrichChartsWithScalarsForDisplay(
+            IReadOnlyList<(string SeriesName, ChartDisplayPayload Chart)> charts,
+            IReadOnlyList<(string Name, double Value, string Unit)>? scalars,
+            ChartLayoutMode? layoutOverride)
+        {
+            if (charts == null || charts.Count == 0 || scalars == null || scalars.Count == 0)
+                return charts!;
+
+            if (charts.Count == 1)
+            {
+                return new List<(string SeriesName, ChartDisplayPayload Chart)>
+                {
+                    (charts[0].SeriesName, ChartDisplayPayload.EmbedScalarsForDisplay(charts[0].Chart, scalars))
+                };
+            }
+
+            if (charts.Count == scalars.Count)
+            {
+                return charts.Select((c, i) =>
+                    (c.SeriesName, ChartDisplayPayload.EmbedScalarsForDisplay(c.Chart, new[] { scalars[i] }))).ToList();
+            }
+
+            var series = charts.Select(c => new ChartSeriesEntry
+            {
+                Name = c.SeriesName,
+                IsVisibleByDefault = true,
+                Data = c.Chart
+            }).ToList();
+
+            var merged = new ChartDisplayPayload
+            {
+                Kind = series[0].Data.Kind,
+                Series = series,
+                LayoutMode = layoutOverride ?? ChartDisplayPayload.InferDefaultLayout(series),
+                BottomAxisLabel = series[0].Data.BottomAxisLabel,
+                BottomAxisUnit = series[0].Data.BottomAxisUnit,
+                LeftAxisLabel = series[0].Data.LeftAxisLabel,
+                LeftAxisUnit = series[0].Data.LeftAxisUnit
+            };
+            merged = ChartDisplayPayload.EmbedScalarsForDisplay(merged, scalars);
+            return new List<(string SeriesName, ChartDisplayPayload Chart)> { (charts[0].SeriesName, merged) };
+
+        }
+
+        /// <summary>向已有结果追加 <c>Scalar.*</c> 键（总线发布由调用方完成时仍可使用）。</summary>
+        public static ExecutionResult AppendScalarOutputs(
+            ExecutionResult result,
+            IReadOnlyList<(string Name, double Value, string Unit)> scalars)
+        {
+            if (scalars == null || scalars.Count == 0)
+                return result;
+            foreach (var (name, value, _) in scalars)
+                result = result.WithOutput(NodeUiOutputKeys.FormatScalarOutputKey(name), value);
+            return result;
         }
     }
 }

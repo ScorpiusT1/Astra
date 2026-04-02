@@ -3,7 +3,10 @@ using Astra.Plugins.Algorithms.APIs;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Threading.Tasks;
 using EnumsScaleOptions = Astra.Plugins.Algorithms.Enums.ScaleOptions;
 
 namespace Astra.Plugins.Algorithms.Nodes
@@ -15,18 +18,23 @@ namespace Astra.Plugins.Algorithms.Nodes
         {
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"包络峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
@@ -36,9 +44,13 @@ namespace Astra.Plugins.Algorithms.Nodes
                     var dt = e.Signal.DeltaTime;
                     for (var k = 0; k < n; k++)
                         t[k] = k * dt;
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络"));
+                    var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(env));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelope", results.ToList(), tag: "hilbert"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "HilbertEnvelope", charts, tag: "hilbert");
+                var scalars = results.Select(r => ($"包络峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "hilbert", "HilbertEnvelope"));
             }
             catch (AggregateException aex)
             {
@@ -70,18 +82,23 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "带宽 (Hz)", GroupName = "参数", Order = 1)]
         public double BandwidthHz { get; set; } = 100;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"包络峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
@@ -92,9 +109,13 @@ namespace Astra.Plugins.Algorithms.Nodes
                     var dt = e.Signal.DeltaTime;
                     for (var k = 0; k < n; k++)
                         t[k] = k * dt;
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络"));
+                    var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(env));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeExFixed", results.ToList(), tag: "hilbert"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "HilbertEnvelopeExFixed", charts, tag: "hilbert");
+                var scalars = results.Select(r => ($"包络峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "hilbert", "HilbertEnvelopeExFixed"));
             }
             catch (AggregateException aex)
             {
@@ -135,11 +156,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "最大频率 (Hz)", GroupName = "参数", Order = 4)]
         public double MaxFrequency { get; set; } = 8000;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"包络峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -166,7 +192,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                     rpmData[i] = rpmSamples;
                 }
 
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
@@ -177,9 +203,13 @@ namespace Astra.Plugins.Algorithms.Nodes
                     var dt = e.Signal.DeltaTime;
                     for (var k = 0; k < n; k++)
                         t[k] = k * dt;
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络"));
+                    var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(env));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeExTracked", results.ToList(), tag: "hilbert"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "HilbertEnvelopeExTracked", charts, tag: "hilbert");
+                var scalars = results.Select(r => ($"包络峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "hilbert", "HilbertEnvelopeExTracked"));
             }
             catch (AggregateException aex)
             {
@@ -211,25 +241,34 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "幅值格式", GroupName = "参数", Order = 1)]
         public Format SpectrumFormat { get; set; } = Format.Rms;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"包络谱峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var data = Nvh.HilbertEnvelopeSpectra(e.Signal, WindowType, SpectrumFormat, out var freqAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值"));
+                    var chart = ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(data));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeSpectra", results.ToList(), tag: "hilbert"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "HilbertEnvelopeSpectra", charts, tag: "hilbert");
+                var scalars = results.Select(r => ($"包络谱峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "hilbert", "HilbertEnvelopeSpectra"));
             }
             catch (AggregateException aex)
             {
@@ -279,27 +318,36 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "计权", GroupName = "参数", Order = 7)]
         public Weight WeightType { get; set; } = Weight.A;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"包络平均谱峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var calcOpt = new SpectraCalcOptions(CalcType, CalcValue);
                     var stepOpt = new SpectraStepOptions(StepType, StepValue);
                     var data = Nvh.HilbertEnvelopeAvgSpectra(e.Signal, calcOpt, stepOpt, SpectrumFormat, AverageType, WindowType, WeightType, out var freqAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值"));
+                    var chart = ChartDisplayPayloadFactory.XYLine(freqAxis, data, "频率 (Hz)", "幅值");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(data));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "HilbertEnvelopeAvgSpectra", results.ToList(), tag: "hilbert"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "HilbertEnvelopeAvgSpectra", charts, tag: "hilbert");
+                var scalars = results.Select(r => ($"包络平均谱峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "hilbert", "HilbertEnvelopeAvgSpectra"));
             }
             catch (AggregateException aex)
             {
@@ -363,11 +411,16 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"Morlet小波峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -379,15 +432,19 @@ namespace Astra.Plugins.Algorithms.Nodes
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.MorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, freqAxis, NCycles, out var timeAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "MorletWavelet", results.ToList(), tag: "wavelet"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "MorletWavelet", charts, tag: "wavelet");
+                var scalars = results.Select(r => ($"Morlet小波峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "wavelet", "MorletWavelet"));
             }
             catch (AggregateException aex)
             {
@@ -448,26 +505,36 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"LMS_Morlet小波峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.LmsMorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, MinFrequency, MaxFrequency, BandsPerOctave, out var timeAxis, out var freqAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                    var freqAxisLog10 = ToLog10Coordinates(freqAxis);
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxisLog10, "时间 (s)", "频率 (Hz)", heatmapYAxisIsLog10OfQuantity: true);
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "LmsMorletWavelet", results.ToList(), tag: "wavelet"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "LmsMorletWavelet", charts, tag: "wavelet");
+                var scalars = results.Select(r => ($"LMS_Morlet小波峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "wavelet", "LmsMorletWavelet"));
             }
             catch (AggregateException aex)
             {
@@ -482,6 +549,15 @@ namespace Astra.Plugins.Algorithms.Nodes
             {
                 AlgorithmInputLoader.DisposeAll(entries);
             }
+        }
+
+        /// <summary>Heatmap 行在数据空间为线性划分；对数频率轴需用 log10(Hz) 作为纵坐标，再由 UI 格式化为 Hz。</summary>
+        private static double[] ToLog10Coordinates(double[] values)
+        {
+            var a = new double[values.Length];
+            for (var i = 0; i < values.Length; i++)
+                a[i] = Math.Log10(Math.Max(values[i], 1e-300));
+            return a;
         }
     }
 
@@ -522,27 +598,36 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"调制谱峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.ModulationSpectrumAnalysis(e.Signal, FrequencyResolution, CutoffFrequency, scaleOpt,
                         out var freqAxis, out var timeAxis, out _, out _);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "ModulationSpectrumRes", results.ToList(), tag: "modulation"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "ModulationSpectrumRes", charts, tag: "modulation");
+                var scalars = results.Select(r => ($"调制谱峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "modulation", "ModulationSpectrumRes"));
             }
             catch (AggregateException aex)
             {
@@ -600,27 +685,36 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"调制谱STFT峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.ModulationSpectrumAnalysis(e.Signal, WindowSize, HopSize, CutoffFrequency, scaleOpt,
                         out var freqAxis, out var timeAxis, out _, out _);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)"));
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "ModulationSpectrumStft", results.ToList(), tag: "modulation"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "ModulationSpectrumStft", charts, tag: "modulation");
+                var scalars = results.Select(r => ($"调制谱STFT峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "modulation", "ModulationSpectrumStft"));
             }
             catch (AggregateException aex)
             {

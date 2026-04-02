@@ -3,7 +3,8 @@ namespace Astra.UI.Abstractions.Nodes;
 /// <summary>
 /// 标记节点可在主页测试项树中提供「打开图表」能力。
 /// 实现类型须公开 <see cref="ShowHomeChartButton"/>，并在属性面板上用 <see cref="System.ComponentModel.DataAnnotations.DisplayAttribute"/> 暴露，供用户配置。
-/// 实际是否显示按钮还取决于 <see cref="ShowHomeChartButton"/> 以及单次执行是否输出 <see cref="NodeUiOutputKeys.HasChartData"/>（未实现本接口的节点仅后者有效）。
+/// 未实现本接口但可展示图表的节点类型可实现 <see cref="IHomeTestItemChartEligibleNode"/>，使「打开图表」在树加载后即可见。
+/// 单次执行输出 <see cref="NodeUiOutputKeys.HasChartData"/> 时，即使未实现上述接口，按钮仍可出现。
 /// </summary>
 public interface IHomeTestItemChartNode
 {

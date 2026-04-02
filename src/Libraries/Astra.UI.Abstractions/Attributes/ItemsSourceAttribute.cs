@@ -48,6 +48,11 @@ namespace Astra.UI.Abstractions.Attributes
         /// </summary>
         public string? SelectedValuePath { get; set; }
 
+        /// <summary>
+        /// 为 true 时 ComboBox 可编辑，字符串属性绑定到 <see cref="System.Windows.Controls.ComboBox.Text"/>，便于在选项列表之外手动输入（如全局变量名）。
+        /// </summary>
+        public bool IsEditable { get; set; }
+
         public ItemsSourceAttribute(string propertyName)
         {
             PropertyName = propertyName;

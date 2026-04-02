@@ -429,7 +429,34 @@ namespace Astra.UI.Abstractions.Models
             Value = _defaultValue;
         }
 
+        /// <summary>
+        /// 从目标对象重新读取属性值并刷新缓存（用于目标在其它属性变更时连带更新了本字段，但未经过本描述符 <see cref="Value"/> 的 setter 的情况）。
+        /// </summary>
+        public void RefreshValueFromTarget()
+        {
+            if (_propertyInfo == null || !_propertyInfo.CanRead)
+            {
+                return;
+            }
 
+            object live;
+            try
+            {
+                live = _propertyInfo.GetValue(_targetObject);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (Equals(_value, live))
+            {
+                return;
+            }
+
+            _value = live;
+            OnPropertyChanged(nameof(Value));
+        }
 
         // INotifyDataErrorInfo 实现
         public event EventHandler<DataErrorsChangedEventArgs> ErrorsChanged;

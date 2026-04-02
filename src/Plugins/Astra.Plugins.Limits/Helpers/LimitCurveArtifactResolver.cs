@@ -33,7 +33,7 @@ namespace Astra.Plugins.Limits.Helpers
             if (string.IsNullOrEmpty(deviceName) ||
                 string.Equals(deviceName, LimitsDesignTimeOptions.UnselectedLabel, StringComparison.Ordinal))
             {
-                error = "请选择采集卡";
+                error = "无法确定采集卡，请从下拉选择「设备」或「设备/通道」";
                 return false;
             }
 

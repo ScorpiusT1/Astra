@@ -90,7 +90,7 @@ namespace Astra.Plugins.Algorithms.Helpers
 
             if (specs == null || specs.Count == 0)
             {
-                error = "未指定输入源，请至少选择一个采集卡。";
+                error = "未指定输入源，请在节点上选择通道（格式：设备名/通道名），或依赖各采集卡首通道。";
                 return false;
             }
 

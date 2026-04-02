@@ -407,9 +407,26 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 var count = Math.Min(_channels.Count, clone._channels.Count);
                 for (int i = 0; i < count; i++)
                 {
+                    var srcChannel = _channels[i];
+                    var dstChannel = clone._channels[i];
+
                     // 强制让克隆后的通道 Id / 名称 与 原配置完全一致
-                    clone._channels[i].ChannelId = _channels[i].ChannelId;
-                    clone._channels[i].ChannelName = _channels[i].ChannelName;
+                    dstChannel.ChannelId = srcChannel.ChannelId;
+                    dstChannel.ChannelName = srcChannel.ChannelName;
+
+                    // Sensor 为 [JsonIgnore]，序列化克隆后不会带运行时引用，需从源通道恢复。
+                    // 引用模式：共用传感器库中的同一实例；独立模式：深拷贝传感器，避免与源设备共享可变状态。
+                    if (srcChannel.Sensor != null)
+                    {
+                        if (srcChannel.SensorConfigMode == SensorConfigMode.Independent)
+                        {
+                            dstChannel.Sensor = (SensorConfig)srcChannel.Sensor.Clone();
+                        }
+                        else
+                        {
+                            dstChannel.Sensor = srcChannel.Sensor;
+                        }
+                    }
                 }
             }
 

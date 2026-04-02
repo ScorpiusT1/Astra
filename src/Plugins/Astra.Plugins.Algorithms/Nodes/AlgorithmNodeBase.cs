@@ -1,25 +1,33 @@
+using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.Plugins.Algorithms.APIs;
 using Astra.UI.Abstractions.Attributes;
+using Astra.UI.Abstractions.Nodes;
 using Astra.UI.PropertyEditors;
 using Newtonsoft.Json;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Runtime.Serialization;
 
 namespace Astra.Plugins.Algorithms.Nodes
 {
     /// <summary>
     /// 算法节点基类：从上游多采集写入的 Raw（经 TestDataBus）读取 NVH 数据。
-    /// 设备与通道下拉由上游连线动态驱动，通过静态注册表共享数据（解决属性编辑器使用克隆实例问题）。
-    /// 通道选项额外缓存到 <see cref="CachedChannelOptions"/> 并序列化，确保重启后通道下拉框仍有数据。
+    /// 通道为「设备显示名/通道名」，由上游连线驱动注册表；选项缓存到 <see cref="CachedChannelOptions"/> 并序列化。
+    /// 断开上游后保留已选通道，重连后按当前上游选项自动剔除无效项。
     /// </summary>
-    public abstract class AlgorithmNodeBase : Node
+    public abstract class AlgorithmNodeBase : Node, IHomeTestItemChartEligibleNode, IDesignTimeScalarOutputProvider
     {
         [JsonIgnore]
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();
         [JsonIgnore]
         private bool _registrySubscribed;
+
+        /// <summary>旧版工程中的采集卡多选，仅用于未选通道时回退为「各卡首通道」。</summary>
+        [JsonProperty("DataAcquisitionDeviceNames", NullValueHandling = NullValueHandling.Ignore)]
+        private List<string>? _legacyDataAcquisitionDeviceNames;
 
         protected AlgorithmNodeBase(string nodeTypeKey, string defaultName)
         {
@@ -46,16 +54,14 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (nodeId == Id)
             {
                 RefreshAndCacheChannelOptions();
-                OnPropertyChanged(nameof(DeviceNameOptions));
+                IntersectChannelNamesWithUpstreamOptions();
                 OnPropertyChanged(nameof(ChannelNameOptions));
             }
         }
 
         private void RefreshAndCacheChannelOptions()
         {
-            var devices = DataAcquisitionDeviceNames?.Where(d => !string.IsNullOrWhiteSpace(d)).ToList();
-            if (devices == null || devices.Count == 0) return;
-            var fromRegistry = DesignTimeUpstreamRegistry.GetChannelNames(Id, devices).ToList();
+            var fromRegistry = DesignTimeUpstreamRegistry.GetAllQualifiedChannelNames(Id).ToList();
             if (fromRegistry.Count > 0)
             {
                 CachedChannelOptions = fromRegistry;
@@ -63,42 +69,9 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
-        [JsonIgnore]
-        public IEnumerable<string> DeviceNameOptions
-        {
-            get
-            {
-                EnsureRegistrySubscription();
-                var fromRegistry = DesignTimeUpstreamRegistry.GetDeviceNames(Id).ToList();
-                if (fromRegistry.Count > 0)
-                    return fromRegistry;
-
-                var saved = DataAcquisitionDeviceNames?.Where(d => !string.IsNullOrWhiteSpace(d)).Distinct().ToList();
-                return saved?.Count > 0 ? saved : Enumerable.Empty<string>();
-            }
-        }
-
-        private List<string> _dataAcquisitionDeviceNames = new();
-
-        [Order(1,0)]
-        [Display(Name = "采集卡", GroupName = "输入", Description = "可多选；连线后自动显示上游设备")]
-        [Editor(typeof(CheckComboBoxPropertyEditor))]
-        [ItemsSource(nameof(DeviceNameOptions), DisplayMemberPath = ".")]
-        public List<string> DataAcquisitionDeviceNames
-        {
-            get => _dataAcquisitionDeviceNames;
-            set
-            {
-                _dataAcquisitionDeviceNames = value ?? new();
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(ChannelNameOptions));
-            }
-        }
-
         /// <summary>
         /// 通道选项持久化缓存。连线后由 <see cref="RefreshAndCacheChannelOptions"/> 填充，
         /// 序列化到 JSON，重启后经 [OnDeserialized] 推入静态注册表。
-        /// 不标 [Display] 以避免在属性编辑器中显示。
         /// </summary>
         public List<string> CachedChannelOptions { get; set; } = new();
 
@@ -108,11 +81,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             get
             {
                 EnsureRegistrySubscription();
-                var devices = DataAcquisitionDeviceNames?.Where(d => !string.IsNullOrWhiteSpace(d)).ToList();
-                if (devices == null || devices.Count == 0)
-                    return Enumerable.Empty<string>();
-
-                var fromRegistry = DesignTimeUpstreamRegistry.GetChannelNames(Id, devices).ToList();
+                var fromRegistry = DesignTimeUpstreamRegistry.GetAllQualifiedChannelNames(Id).ToList();
                 if (fromRegistry.Count > 0)
                 {
                     CachedChannelOptions = fromRegistry;
@@ -131,8 +100,9 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         private List<string> _channelNames = new();
 
-        [Order(1, 1)]
-        [Display(Name = "选择通道", GroupName = "输入",  Description = "可多选；格式为「设备名/通道名」，未选则使用各设备首通道")]
+        [Order(1, 0)]
+        [Display(Name = "选择通道", GroupName = "输入",
+            Description = "可多选，格式为「设备名/通道名」。未选时按各采集卡首通道；建议显式选择。断开上游后仍保留已选，重连后自动剔除无效项。")]
         [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(nameof(ChannelNameOptions), DisplayMemberPath = ".")]
         public List<string> ChannelNames
@@ -145,40 +115,140 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
+        [Order(3, 0)]
+        [Display(Name = "多曲线显示模式", GroupName = "图表", Order = 0,
+            Description = "单图叠加：所有系列绘在同一坐标系；分子图：每个系列独立子图（多路柱状图、混合类型图表等建议使用分子图）。")]
+        public ChartLayoutMode ChartDisplayLayout { get; set; } = ChartLayoutMode.SinglePlot;
+
+        /// <summary>
+        /// 发布多系列图表，布局由 <see cref="ChartDisplayLayout"/> 决定。
+        /// </summary>
+        protected ExecutionResult PublishMultiChart(
+            NodeContext context,
+            string artifactName,
+            IReadOnlyList<(string SeriesName, ChartDisplayPayload Chart)> charts,
+            string? tag = null,
+            string message = "完成")
+        {
+            return AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, artifactName, charts, ChartDisplayLayout, tag, message);
+        }
+
+        /// <summary>
+        /// 发布多系列图表及标量，布局由 <see cref="ChartDisplayLayout"/> 决定。
+        /// </summary>
+        protected ExecutionResult PublishMultiChartAndScalars(
+            NodeContext context,
+            string artifactName,
+            IReadOnlyList<(string SeriesName, ChartDisplayPayload Chart)> charts,
+            IReadOnlyList<(string Name, double Value, string Unit)> scalars,
+            string? tag = null,
+            string message = "完成")
+        {
+            return AlgorithmResultPublisher.SuccessWithMultiChartAndScalars(context, Id, artifactName, charts, scalars, ChartDisplayLayout, tag, message);
+        }
+
+        /// <summary>
+        /// 在仅含图表的执行结果上追加标量：发布到测试总线、更新图表产物中的标量角标，并写入 <c>Scalar.*</c> 输出键。
+        /// </summary>
+        protected ExecutionResult AppendScalarsToChartResult(
+            NodeContext context,
+            ExecutionResult chartResult,
+            IReadOnlyList<(string Name, double Value, string Unit)> scalars,
+            string? tag,
+            string chartArtifactName)
+        {
+            if (scalars == null || scalars.Count == 0)
+                return chartResult;
+            var bus = context.GetDataBus();
+            if (bus != null)
+            {
+                foreach (var (name, value, unit) in scalars)
+                    bus.PublishScalar(Id, name, value, unit: unit, tag: tag);
+
+                if (chartResult.OutputData != null &&
+                    chartResult.OutputData.TryGetValue(NodeUiOutputKeys.ChartArtifactKey, out var keyObj) &&
+                    keyObj is string artifactKey &&
+                    !string.IsNullOrWhiteSpace(artifactKey) &&
+                    bus.TryGet<ChartDisplayPayload>(artifactKey.Trim(), out var payload) &&
+                    payload != null)
+                {
+                    var embedded = ChartDisplayPayload.EmbedScalarsForDisplay(payload, scalars);
+                    bus.PublishAlgorithmResult(Id, chartArtifactName, embedded, tag: tag);
+                }
+            }
+
+            return AlgorithmResultPublisher.AppendScalarOutputs(chartResult, scalars);
+        }
+
         protected List<(string DeviceName, string? ChannelName)> ResolveInputSpecs()
         {
-            var devices = DataAcquisitionDeviceNames?
-                .Where(d => !string.IsNullOrWhiteSpace(d))
-                .Distinct()
-                .ToList() ?? new List<string>();
-
-            if (devices.Count == 0)
-                return new List<(string, string?)>();
-
             var channels = ChannelNames?
                 .Where(c => !string.IsNullOrWhiteSpace(c))
                 .ToList() ?? new List<string>();
 
-            if (channels.Count == 0)
-                return devices.Select(d => (d, (string?)null)).ToList();
-
             var specs = new List<(string, string?)>();
             foreach (var ch in channels)
             {
-                var slashIdx = ch.IndexOf('/');
-                if (slashIdx > 0 && slashIdx < ch.Length - 1)
-                {
-                    var dev = ch.Substring(0, slashIdx);
-                    var chName = ch.Substring(slashIdx + 1);
-                    if (devices.Contains(dev, StringComparer.Ordinal))
-                        specs.Add((dev, chName));
-                }
+                if (QualifiedChannelHelper.TrySplit(ch, out var dev, out var chName))
+                    specs.Add((dev, chName));
             }
 
-            if (specs.Count == 0)
+            if (specs.Count > 0)
+                return specs;
+
+            var devices = DesignTimeUpstreamRegistry.GetDeviceNames(Id)
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .Distinct()
+                .ToList();
+
+            if (devices.Count == 0 && _legacyDataAcquisitionDeviceNames != null)
+            {
+                devices = _legacyDataAcquisitionDeviceNames
+                    .Where(d => !string.IsNullOrWhiteSpace(d))
+                    .Distinct()
+                    .ToList();
+            }
+
+            if (devices.Count > 0)
                 return devices.Select(d => (d, (string?)null)).ToList();
 
-            return specs;
+            return new List<(string, string?)>();
+        }
+
+        string IDesignTimeScalarOutputProvider.ProviderNodeId => Id;
+
+        /// <inheritdoc />
+        public IEnumerable<string> EnumerateDesignTimeScalarInputKeys()
+        {
+            foreach (var (d, ch) in ResolveInputSpecs())
+            {
+                var label = string.IsNullOrWhiteSpace(ch) ? d : $"{d}/{ch}";
+                foreach (var logical in EnumerateDesignTimeScalarLogicalNames(label))
+                {
+                    var dataKey = NodeUiOutputKeys.FormatScalarOutputKey(logical);
+                    yield return $"{Id}:{dataKey}";
+                }
+            }
+        }
+
+        /// <summary>
+        /// 按与运行时一致的通道标签，枚举该节点将写入 <see cref="NodeUiOutputKeys.FormatScalarOutputKey"/> 的逻辑名（无标量输出则保持空序列）。
+        /// </summary>
+        protected virtual IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel) =>
+            Enumerable.Empty<string>();
+
+        private void IntersectChannelNamesWithUpstreamOptions()
+        {
+            var available = DesignTimeUpstreamRegistry.GetAllQualifiedChannelNames(Id).ToHashSet(StringComparer.Ordinal);
+            if (available.Count == 0)
+                return;
+
+            var list = _channelNames.Where(c => available.Contains(c)).ToList();
+            if (list.Count == _channelNames.Count)
+                return;
+
+            _channelNames = list;
+            OnPropertyChanged(nameof(ChannelNames));
         }
 
         public override void OnConnectionAttached(Edge edge, Node? sourceNode, Node? targetNode)
@@ -189,6 +259,7 @@ namespace Astra.Plugins.Algorithms.Nodes
                 _upstreamSources.Add(src);
                 DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
                 RefreshAndCacheChannelOptions();
+                IntersectChannelNamesWithUpstreamOptions();
             }
         }
 
@@ -207,15 +278,6 @@ namespace Astra.Plugins.Algorithms.Nodes
                 _upstreamSources.Remove(src);
             }
 
-            if (_upstreamSources.Count == 0)
-            {
-                DataAcquisitionDeviceNames?.Clear();
-                ChannelNames?.Clear();
-                CachedChannelOptions?.Clear();
-                DesignTimeUpstreamRegistry.ClearChannelOptionsCache(Id);
-                OnPropertyChanged(nameof(DataAcquisitionDeviceNames));
-                OnPropertyChanged(nameof(ChannelNames));
-            }
             DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
         }
 

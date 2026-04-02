@@ -4,7 +4,10 @@ using Astra.Plugins.Algorithms.APIs;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Threading.Tasks;
 using EnumsScaleOptions = Astra.Plugins.Algorithms.Enums.ScaleOptions;
 
 namespace Astra.Plugins.Algorithms.Nodes
@@ -21,10 +24,7 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         [Order(2, 0)]
         [Display(Name = "谱线数", GroupName = "参数")]
-        public int SpectrumLines { get; set; } = 1024;
-
-        [Display(Name = "时间增量(s)", GroupName = "参数", Order = 1)]
-        public double TimeIncrementSeconds { get; set; } = 0.1;
+        public int SpectrumLines { get; set; } = 2048;
 
         [Display(Name = "参考值", GroupName = "参数", Order = 2)]
         public double ReferenceValue
@@ -52,26 +52,41 @@ namespace Astra.Plugins.Algorithms.Nodes
             set => SetScaleWithReferenceSync(ref _scaleType, value, ref _referenceValue, nameof(ScaleType), nameof(ReferenceValue));
         }
 
+        [Display(Name = "重叠率", GroupName = "参数", Order = 6)]
+        public double Overlap { get; set; } = 0.5;
+
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"整体声级峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
-                    var data = Nvh.OverallLevelSpectral(e.Signal, SpectrumLines, TimeIncrementSeconds, ReferenceValue,
+
+                    double increment = SpectrumLines * 2 * Overlap / (1.0 / e.Signal.DeltaTime);
+
+                    var data = Nvh.OverallLevelSpectral(e.Signal, SpectrumLines, increment, ReferenceValue,
                         WindowType, WeightType, ScaleType, out var timeAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(timeAxis, data, "时间 (s)", "幅值"));
+                    var chart = SpectralChartPayloadHelper.CreateAdaptive(timeAxis, data, "时间 (s)", "幅值");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(data));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "OverallLevelSpectral", results.ToList(), tag: "spectral"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "OverallLevelSpectral", charts, tag: "spectral");
+                var scalars = results.Select(r => ($"整体声级峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "spectral", "OverallLevelSpectral"));
             }
             catch (AggregateException aex)
             {
@@ -97,20 +112,22 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         public OctaveAnalysisNode() : base(nameof(OctaveAnalysisNode), "倍频程分析")
         {
+            // 多路柱状图默认分子图，便于对比各采集卡倍频程
+            ChartDisplayLayout = ChartLayoutMode.SubPlots;
         }
 
         [Order(2, 0)]
         [Display(Name = "谱计算", GroupName = "谱选项")]
-        public SpectraCalcType CalcType { get; set; } = SpectraCalcType.SpectrumLines;
+        public SpectraCalcType CalcType { get; set; } = SpectraCalcType.Resolution;
 
         [Display(Name = "谱计算值", GroupName = "谱选项", Order = 1)]
-        public double CalcValue { get; set; } = 1024;
+        public double CalcValue { get; set; } = 1;
 
         [Display(Name = "步进类型", GroupName = "谱选项", Order = 2)]
-        public SpectraStepType StepType { get; set; } = SpectraStepType.Overlap;
+        public SpectraStepType StepType { get; set; } = SpectraStepType.Increment;
 
         [Display(Name = "步进值", GroupName = "谱选项", Order = 3)]
-        public double StepValue { get; set; } = 0.5;
+        public double StepValue { get; set; } = 0.2;
 
         [Display(Name = "幅值格式", GroupName = "谱选项", Order = 4)]
         public Format SpectrumFormat { get; set; } = Format.Rms;
@@ -147,18 +164,23 @@ namespace Astra.Plugins.Algorithms.Nodes
             }
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"倍频程峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
@@ -176,9 +198,13 @@ namespace Astra.Plugins.Algorithms.Nodes
                         out var bandCenters, out _, out _);
 
                     var labels = bandCenters.Select(x => x.ToString("G4")).ToArray();
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Bar(labels, bandLevels, "中心频率 (Hz)", "幅值"));
+                    var chart = ChartDisplayPayloadFactory.Bar(labels, bandLevels, "中心频率 (Hz)", "幅值");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(bandLevels));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "Octave", results.ToList(), tag: "spectral"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "Octave", charts, tag: "spectral");
+                var scalars = results.Select(r => ($"倍频程峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "spectral", "Octave"));
             }
             catch (AggregateException aex)
             {
@@ -208,16 +234,16 @@ namespace Astra.Plugins.Algorithms.Nodes
 
         [Order(2, 0)]
         [Display(Name = "谱计算类型", GroupName = "参数")]
-        public SpectraCalcType CalcType { get; set; } = SpectraCalcType.SpectrumLines;
+        public SpectraCalcType CalcType { get; set; } = SpectraCalcType.Resolution;
 
         [Display(Name = "谱计算值", GroupName = "参数", Order = 1)]
-        public double CalcValue { get; set; } = 1024;
+        public double CalcValue { get; set; } = 1;
 
         [Display(Name = "步进类型", GroupName = "参数", Order = 2)]
-        public SpectraStepType StepType { get; set; } = SpectraStepType.Overlap;
+        public SpectraStepType StepType { get; set; } = SpectraStepType.Increment;
 
         [Display(Name = "步进值", GroupName = "参数", Order = 3)]
-        public double StepValue { get; set; } = 0.5;
+        public double StepValue { get; set; } = 0.2;
 
         [Display(Name = "输出刻度", GroupName = "参数", Order = 4)]
         public Scale OutputScale
@@ -251,18 +277,23 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "计权", GroupName = "参数", Order = 9)]
         public Weight WeightType { get; set; } = Weight.A;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"谱线峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
@@ -277,10 +308,14 @@ namespace Astra.Plugins.Algorithms.Nodes
                     for (var k = 0; k < n; k++)
                         freq[k] = k * df;
 
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(freq, data, "频率 (Hz)",
-                        OutputScale == Scale.dB ? "幅值 (dB)" : "幅值"));
+                    var chart = SpectralChartPayloadHelper.CreateAdaptive(freq, data, "频率 (Hz)",
+                        OutputScale == Scale.dB ? "幅值 (dB)" : "幅值");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(data));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "AveragedSpectrum", results.ToList(), tag: "spectral"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "AveragedSpectrum", charts, tag: "spectral");
+                var scalars = results.Select(r => ($"谱线峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "spectral", "AveragedSpectrum"));
             }
             catch (AggregateException aex)
             {

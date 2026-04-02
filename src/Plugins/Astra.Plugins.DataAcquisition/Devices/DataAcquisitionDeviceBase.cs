@@ -360,6 +360,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     return OperationResult.Failure(message);
                 }
 
+                // 每次开始采集前先清理历史采集数据，避免新旧数据混合。
+                ClearAcquisitionDataCore();
+
                 await OnStartHardwareAsync(cancellationToken).ConfigureAwait(false);
 
                 _acquisitionStartTime = DateTime.UtcNow;
@@ -383,6 +386,29 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 _state = AcquisitionState.Running;
                 _logger?.LogInfo($"[{DeviceName}] 数据采集已启动", LogCategory.Device);
                 return OperationResult.Succeed("采集卡启动成功");
+            }
+            finally
+            {
+                _stateLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// 清理 <see cref="_channelMap"/> 中各通道已采集的样本数据。
+        /// 仅允许在非运行状态调用。
+        /// </summary>
+        public async Task<OperationResult> ClearAcquisitionDataAsync()
+        {
+            await _stateLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (_state == AcquisitionState.Running || _state == AcquisitionState.Paused)
+                {
+                    return OperationResult.Failure("采集进行中，无法清理采集数据");
+                }
+
+                ClearAcquisitionDataCore();
+                return OperationResult.Succeed("采集数据已清理");
             }
             finally
             {
@@ -657,6 +683,17 @@ namespace Astra.Plugins.DataAcquisition.Devices
             }
 
             _logger?.LogInfo($"[{DeviceName}] 已初始化 {_channelMap.Count} 个数据通道", LogCategory.Device);
+        }
+
+        /// <summary>
+        /// 清理各 <see cref="NvhMemoryChannelBase"/> 通道缓冲区数据（调用方需保证线程安全）。
+        /// </summary>
+        protected virtual void ClearAcquisitionDataCore()
+        {
+            foreach (var channel in _channelMap.Values)
+            {
+                channel.Clear();
+            }
         }
 
         protected int CalculateRingBufferSize(double sampleRate)

@@ -73,7 +73,8 @@ public static class ChartDisplayPayloadFactory
         double[] xCoordinates,
         double[] yCoordinates,
         string bottomAxisLabel,
-        string leftAxisLabel)
+        string leftAxisLabel,
+        bool heatmapYAxisIsLog10OfQuantity = false)
     {
         return new ChartDisplayPayload
         {
@@ -81,6 +82,7 @@ public static class ChartDisplayPayloadFactory
             HeatmapZ = z,
             HeatmapXCoordinates = xCoordinates,
             HeatmapYCoordinates = yCoordinates,
+            HeatmapYAxisIsLog10OfQuantity = heatmapYAxisIsLog10OfQuantity,
             BottomAxisLabel = bottomAxisLabel ?? string.Empty,
             LeftAxisLabel = leftAxisLabel ?? string.Empty
         };
@@ -105,6 +107,53 @@ public static class ChartDisplayPayloadFactory
             HorizontalLimitLower = horizontalLower,
             HorizontalLimitUpper = horizontalUpper
         };
+    }
+
+    /// <summary>
+    /// 折线图：按横轴顺序用线段依次连接各点 (x[i], y[i])，与 <see cref="XYLine"/> 等价，
+    /// 适用于倍频程等「中心频率—幅值」折线展示。
+    /// </summary>
+    public static ChartDisplayPayload Polyline(
+        double[] x,
+        double[] y,
+        string bottomAxisLabel,
+        string leftAxisLabel,
+        double? horizontalLower = null,
+        double? horizontalUpper = null)
+    {
+        return XYLine(x, y, bottomAxisLabel, leftAxisLabel, horizontalLower, horizontalUpper);
+    }
+
+    /// <summary>
+    /// 在每个横坐标 <paramref name="x"/> 处绘制从 <paramref name="yBase"/> 到 <paramref name="y"/> 的竖线段（茎状图），
+    /// 底层为 <see cref="ChartPayloadKind.LineSegments"/>；适合倍频程用线段代替柱状图时的竖线效果。
+    /// </summary>
+    /// <param name="yBase">竖线起点纵坐标，一般为 0。</param>
+    public static ChartDisplayPayload VerticalLineSegments(
+        double[] x,
+        double[] y,
+        double yBase = 0,
+        string bottomAxisLabel = "",
+        string leftAxisLabel = "",
+        double? horizontalLower = null,
+        double? horizontalUpper = null)
+    {
+        if (x == null || y == null || x.Length != y.Length || x.Length == 0)
+        {
+            return Segments(new double[0, 4], bottomAxisLabel, leftAxisLabel, horizontalLower, horizontalUpper);
+        }
+
+        var n = x.Length;
+        var seg = new double[n, 4];
+        for (var i = 0; i < n; i++)
+        {
+            seg[i, 0] = x[i];
+            seg[i, 1] = yBase;
+            seg[i, 2] = x[i];
+            seg[i, 3] = y[i];
+        }
+
+        return Segments(seg, bottomAxisLabel, leftAxisLabel, horizontalLower, horizontalUpper);
     }
 
     /// <summary>垂直柱状图。</summary>

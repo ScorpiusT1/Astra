@@ -1,3 +1,4 @@
+using Astra.Core.Nodes.Models;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
@@ -37,8 +38,7 @@ namespace Astra.Plugins.Algorithms.Nodes
         }
 
         /// <summary>
-        /// 解析转速通道选择，返回 (DeviceName, ChannelName)。
-        /// 格式为「设备名/通道名」时拆分；否则尝试从首个选中设备解析。
+        /// 解析转速通道选择，返回 (DeviceName, ChannelName)。须为「设备名/通道名」。
         /// </summary>
         protected (string? DeviceName, string? ChannelName) ResolveRpmSpec()
         {
@@ -46,12 +46,9 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (string.IsNullOrEmpty(c))
                 return (null, null);
 
-            var slashIdx = c.IndexOf('/');
-            if (slashIdx > 0 && slashIdx < c.Length - 1)
-                return (c.Substring(0, slashIdx), c.Substring(slashIdx + 1));
-
-            var firstDevice = DataAcquisitionDeviceNames?.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
-            return (firstDevice, c);
+            return QualifiedChannelHelper.TrySplit(c, out var dev, out var ch)
+                ? (dev, ch)
+                : (null, null);
         }
     }
 }

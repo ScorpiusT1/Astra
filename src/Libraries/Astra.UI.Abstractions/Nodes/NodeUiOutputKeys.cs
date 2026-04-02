@@ -1,3 +1,5 @@
+using Astra.Core.Nodes.Models;
+
 namespace Astra.UI.Abstractions.Nodes;
 
 /// <summary>
@@ -35,6 +37,12 @@ public static class NodeUiOutputKeys
     public const string Summary = "Ui.Summary";
     public const string FailReason = "Ui.FailReason";
     public const string CurveFailDetail = "Ui.CurveFailDetail";
+
+    /// <summary>任意节点发布的标量在 <c>OutputData</c> / 下游 <c>InputData</c> 中的键前缀（与 <see cref="NodeScalarOutputContracts.KeyPrefix"/> 一致）。</summary>
+    public const string ScalarOutputPrefix = NodeScalarOutputContracts.KeyPrefix;
+
+    /// <summary>由标量逻辑名生成输出键（推荐任意节点发布单值时统一使用）。</summary>
+    public static string FormatScalarOutputKey(string scalarLogicalName) => NodeScalarOutputContracts.FormatKey(scalarLogicalName);
 
     /// <summary>所有供事件/UI 同步的键（用于从 OutputData 过滤）。</summary>
     public static readonly string[] All =

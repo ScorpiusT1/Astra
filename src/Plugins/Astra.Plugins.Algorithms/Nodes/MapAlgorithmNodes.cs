@@ -2,7 +2,10 @@ using Astra.Core.Nodes.Models;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.Plugins.Algorithms.APIs;
 using Astra.UI.Abstractions.Nodes;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Astra.Plugins.Algorithms.Nodes
 {
@@ -51,26 +54,35 @@ namespace Astra.Plugins.Algorithms.Nodes
             set => SetScaleWithReferenceSync(ref _scaleType, value, ref _referenceValue, nameof(ScaleType), nameof(ReferenceValue));
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"时频图峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var z = Nvh.TimeFrequencyMap(e.Signal, SpectrumLines, TimeIncrementSeconds, ReferenceValue,
                         SpectrumFormat, WindowType, WeightType, ScaleType, out var timeAxis, out var freqAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, freqAxis, timeAxis, "频率 (Hz)", "时间 (s)"));
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, freqAxis, timeAxis, "频率 (Hz)", "时间 (s)");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "TimeFrequencyMap", results.ToList(), tag: "map"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "TimeFrequencyMap", charts, tag: "map");
+                var scalars = results.Select(r => ($"时频图峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "map", "TimeFrequencyMap"));
             }
             catch (AggregateException aex)
             {
@@ -148,11 +160,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "转速触发", GroupName = "参数", Order = 11)]
         public RpmTrigger RpmTriggerType { get; set; } = RpmTrigger.Up;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"阶次截面峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -173,16 +190,20 @@ namespace Astra.Plugins.Algorithms.Nodes
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var data = Nvh.OrderSection(e.Signal, rpms[i].rpm, SpectrumLines, TargetOrder, OrderBandwidth,
                         MinRpm, MaxRpm, RpmStep, ReferenceValue, SpectrumFormat, WindowType, WeightType, ScaleType,
                         RpmTriggerType, out var rpmAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.XYLine(rpmAxis, data, "转速 (RPM)", "幅值"));
+                    var chart = ChartDisplayPayloadFactory.XYLine(rpmAxis, data, "转速 (RPM)", "幅值");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(data));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "OrderSection", results.ToList(), tag: "order"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "OrderSection", charts, tag: "order");
+                var scalars = results.Select(r => ($"阶次截面峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "order", "OrderSection"));
             }
             catch (AggregateException aex)
             {
@@ -255,11 +276,16 @@ namespace Astra.Plugins.Algorithms.Nodes
         [Display(Name = "转速触发", GroupName = "参数", Order = 9)]
         public RpmTrigger RpmTriggerType { get; set; } = RpmTrigger.Up;
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"转速频率图峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -280,15 +306,19 @@ namespace Astra.Plugins.Algorithms.Nodes
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var z = Nvh.RpmFrequencyMap(e.Signal, rpms[i].rpm, SpectrumLines, MinRpm, MaxRpm, RpmStep, ReferenceValue,
                         SpectrumFormat, WindowType, WeightType, ScaleType, RpmTriggerType, out var rpmAxis, out var freqAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, freqAxis, rpmAxis, "频率 (Hz)", "转速 (RPM)"));
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, freqAxis, rpmAxis, "频率 (Hz)", "转速 (RPM)");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "RpmFrequencyMap", results.ToList(), tag: "map"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "RpmFrequencyMap", charts, tag: "map");
+                var scalars = results.Select(r => ($"转速频率图峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "map", "RpmFrequencyMap"));
             }
             catch (AggregateException aex)
             {
@@ -361,11 +391,16 @@ namespace Astra.Plugins.Algorithms.Nodes
             set => SetScaleWithReferenceSync(ref _scaleType, value, ref _referenceValue, nameof(ScaleType), nameof(ReferenceValue));
         }
 
+        protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
+        {
+            yield return $"转速阶次图峰值({channelLabel})";
+        }
+
         protected override Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
         {
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return Task.FromResult(ExecutionResult.Failed("请至少选择一个采集卡。"));
+                return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
@@ -386,15 +421,19 @@ namespace Astra.Plugins.Algorithms.Nodes
 
             try
             {
-                var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
+                var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
                 Parallel.For(0, entries.Count, i =>
                 {
                     var e = entries[i];
                     var z = Nvh.RpmOrderMap(e.Signal, rpms[i].rpm, MaxOrder, OrderResolution, MinRpm, MaxRpm, RpmStep, ReferenceValue,
                         SpectrumFormat, WindowType, WeightType, ScaleType, out var rpmAxis, out var orderAxis);
-                    results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(z, orderAxis, rpmAxis, "阶次", "转速 (RPM)"));
+                    var chart = ChartDisplayPayloadFactory.Heatmap(z, orderAxis, rpmAxis, "阶次", "转速 (RPM)");
+                    results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
-                return Task.FromResult(AlgorithmResultPublisher.SuccessWithMultiChart(context, Id, "RpmOrderMap", results.ToList(), tag: "map"));
+                var charts = results.Select(r => (r.Label, r.Chart)).ToList();
+                var chartResult = PublishMultiChart(context, "RpmOrderMap", charts, tag: "map");
+                var scalars = results.Select(r => ($"转速阶次图峰值({r.Label})", r.Peak, string.Empty)).ToList();
+                return Task.FromResult(AppendScalarsToChartResult(context, chartResult, scalars, "map", "RpmOrderMap"));
             }
             catch (AggregateException aex)
             {

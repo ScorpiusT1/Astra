@@ -29,7 +29,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         public bool ShowHomeChartButton { get; set; } = true;
 
         [Order(1)]
-        [Display(Name = "在属性面板配置坐标轴", GroupName = "图表", Order = 0, Description = "开启后使用下方 X/Y 轴标签与单位；关闭后隐藏下方四项，由节点代码在输出中指定轴信息（本节点使用内置默认：样本 / 数值）。")]
+        [Display(Name = "在属性面板配置坐标轴", GroupName = "图表", Order = 0, Description = "开启后使用下方 X/Y 轴标签与单位（留空时横轴默认为「时间」、单位为秒）；关闭后隐藏下方四项，纵轴单位由灵敏度换算得到，横轴为时间(秒)。")]
         public bool UsePropertyPanelForChartAxis
         {
             get => _usePropertyPanelForChartAxis;
@@ -45,10 +45,10 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             }
         }
 
-        [Display(Name = "图表 X 轴标签", GroupName = "图表", Order = 1, Description = "主页测试项图表窗口底部轴标题。")]
+        [Display(Name = "图表 X 轴标签", GroupName = "图表", Order = 1, Description = "主页测试项图表窗口底部轴标题。留空时默认为「时间」。")]
         public string ChartXAxisLabel { get; set; } = "";
 
-        [Display(Name = "图表 X 轴单位", GroupName = "图表", Order = 2, Description = "显示在 X 轴标题后的单位，可留空。")]
+        [Display(Name = "图表 X 轴单位", GroupName = "图表", Order = 2, Description = "显示在 X 轴标题后的单位。留空时默认为秒(s)。")]
         public string ChartXAxisUnit { get; set; } = string.Empty;
 
         [Display(Name = "图表 Y 轴标签", GroupName = "图表", Order = 3, Description = "主页测试项图表窗口左侧轴标题。")]
@@ -84,11 +84,11 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             DataAcquisitionCardProvider.GetConfiguredChannelNamesForDeviceDisplayName(deviceDisplayName)
                 .Where(ch => !string.IsNullOrEmpty(ch));
 
-        /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴标签（节点代码侧默认）。</summary>
-        private const string CodeDefinedChartXAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisLabel;
+        /// <summary>未在属性面板填写横轴标签时，默认时间轴标题。</summary>
+        private const string DefaultChartXAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisLabel;
 
-        /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的横轴单位。</summary>
-        private const string CodeDefinedChartXAxisUnit = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisUnit;
+        /// <summary>未在属性面板填写横轴单位时，默认秒。</summary>
+        private const string DefaultChartXAxisUnit = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisUnit;
 
         /// <summary>关闭「在属性面板配置坐标轴」时，输出到主页图表的纵轴标签（节点代码侧默认）。</summary>
         private const string CodeDefinedChartYAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel;
@@ -111,14 +111,16 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             return true;
         }
 
-        /// <param name="physicalYAxisUnitFromSensor">关闭「在属性面板配置坐标轴」时，由灵敏度转换写入的纵轴物理单位字符串。</param>
+        /// <param name="physicalYAxisUnitFromSensor">由灵敏度换算得到的纵轴物理单位（关闭属性面板坐标轴时使用）。</param>
         private (string XLabel, string XUnit, string YLabel, string YUnit) ResolveChartAxisOutputs(string? physicalYAxisUnitFromSensor = null)
         {
             if (UsePropertyPanelForChartAxis)
             {
+                var xLabel = string.IsNullOrWhiteSpace(ChartXAxisLabel) ? DefaultChartXAxisLabel : ChartXAxisLabel.Trim();
+                var xUnit = string.IsNullOrWhiteSpace(ChartXAxisUnit) ? DefaultChartXAxisUnit : ChartXAxisUnit.Trim();
                 return (
-                    ChartXAxisLabel ?? string.Empty,
-                    ChartXAxisUnit ?? string.Empty,
+                    xLabel,
+                    xUnit,
                     ChartYAxisLabel ?? string.Empty,
                     ChartYAxisUnit ?? string.Empty);
             }
@@ -127,7 +129,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 ? CodeDefinedChartYAxisUnitFallback
                 : physicalYAxisUnitFromSensor.Trim();
 
-            return (CodeDefinedChartXAxisLabel, CodeDefinedChartXAxisUnit, CodeDefinedChartYAxisLabel, yUnit);
+            return (DefaultChartXAxisLabel, DefaultChartXAxisUnit, CodeDefinedChartYAxisLabel, yUnit);
         }
 
         protected override async Task<ExecutionResult> ExecuteCoreAsync(
@@ -418,8 +420,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     }
 
                     var dataForArtifact = dataFile;
-                    if (!UsePropertyPanelForChartAxis &&
-                        NvhMemoryFileSensitivityConversion.TryCreatePhysicalChannelCopy(
+                    if (NvhMemoryFileSensitivityConversion.TryCreatePhysicalChannelCopy(
                             dataFile,
                             daqDevice,
                             out var physicalFile,

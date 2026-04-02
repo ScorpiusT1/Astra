@@ -521,6 +521,37 @@ namespace Astra.UI.Controls
         private void OnSelectedObjectPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             UpdatePropertyVisibility();
+            SyncPropertyDescriptorsFromTarget(e.PropertyName);
+        }
+
+        /// <summary>
+        /// 选中对象某属性变更时，将对应 <see cref="PropertyDescriptor"/> 的缓存值与对象上的实际值对齐（内部字段直接更新时 UI 需同步）。
+        /// </summary>
+        private void SyncPropertyDescriptorsFromTarget(string? changedPropertyName)
+        {
+            if (_selectedObject == null || Properties == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(changedPropertyName))
+            {
+                foreach (var property in Properties)
+                {
+                    property.RefreshValueFromTarget();
+                }
+
+                return;
+            }
+
+            foreach (var property in Properties)
+            {
+                if (property.Name == changedPropertyName)
+                {
+                    property.RefreshValueFromTarget();
+                    return;
+                }
+            }
         }
 
         private void UpdatePropertyVisibility()

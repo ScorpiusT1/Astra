@@ -13,6 +13,7 @@ namespace Astra.Core.Nodes.Models
     public static class DesignTimeUpstreamRegistry
     {
         private static readonly ConcurrentDictionary<string, List<IDesignTimeDataSourceInfo>> _sources = new();
+        private static readonly ConcurrentDictionary<string, List<IDesignTimeScalarOutputProvider>> _scalarUpstreamProviders = new();
         private static readonly ConcurrentDictionary<string, List<string>> _channelOptionsCache = new();
 
         /// <summary>当某个节点的上游数据源变更时触发，参数为节点 ID。</summary>
@@ -32,6 +33,22 @@ namespace Astra.Core.Nodes.Models
             SourcesChanged?.Invoke(nodeId);
         }
 
+        /// <summary>缓存下游节点连入的、可产出标量输出键的上游节点（用于设计期下拉）。</summary>
+        public static void SetScalarUpstreamProviders(string nodeId, IEnumerable<IDesignTimeScalarOutputProvider>? providers)
+        {
+            if (string.IsNullOrEmpty(nodeId)) return;
+            _scalarUpstreamProviders[nodeId] = providers?.ToList() ?? new List<IDesignTimeScalarOutputProvider>();
+            SourcesChanged?.Invoke(nodeId);
+        }
+
+        /// <summary>合并所有上游提供者给出的可选标量输入键（已去重、排序）。</summary>
+        public static IEnumerable<string> GetScalarInputKeyOptions(string nodeId)
+        {
+            if (string.IsNullOrEmpty(nodeId) || !_scalarUpstreamProviders.TryGetValue(nodeId, out var list))
+                return Enumerable.Empty<string>();
+            return list.SelectMany(p => p.EnumerateDesignTimeScalarInputKeys()).Distinct().OrderBy(s => s, StringComparer.Ordinal);
+        }
+
         public static IEnumerable<string> GetDeviceNames(string nodeId)
         {
             if (string.IsNullOrEmpty(nodeId) || !_sources.TryGetValue(nodeId, out var list))
@@ -47,6 +64,17 @@ namespace Astra.Core.Nodes.Models
                 .SelectMany(d => list.SelectMany(s => s.GetAvailableChannelNames(d)).Select(ch => $"{d}/{ch}"))
                 .Distinct()
                 .ToList();
+        }
+
+        /// <summary>
+        /// 合并上游所有采集卡的通道为「设备显示名/通道名」，供仅选择通道、不再单独选采集卡的节点使用。
+        /// </summary>
+        public static IEnumerable<string> GetAllQualifiedChannelNames(string nodeId)
+        {
+            var devices = GetDeviceNames(nodeId).ToList();
+            if (devices.Count == 0)
+                return Enumerable.Empty<string>();
+            return GetChannelNames(nodeId, devices);
         }
 
         public static IEnumerable<string> GetChannelNamesForDevice(string nodeId, string deviceName)

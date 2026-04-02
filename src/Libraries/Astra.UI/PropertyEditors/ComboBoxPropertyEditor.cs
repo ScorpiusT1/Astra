@@ -47,6 +47,12 @@ namespace Astra.UI.PropertyEditors
                     {
                         comboBox.SelectedValuePath = itemsSourceAttribute.SelectedValuePath;
                     }
+
+                    if (itemsSourceAttribute.IsEditable)
+                    {
+                        comboBox.IsEditable = true;
+                        comboBox.StaysOpenOnEdit = true;
+                    }
                 }
                 else if (propertyDescriptor.PropertyType != null && propertyDescriptor.PropertyType.IsEnum)
                 {
@@ -72,6 +78,12 @@ namespace Astra.UI.PropertyEditors
                     Mode = BindingMode.TwoWay,
                     UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
                 };
+
+                if (itemsSourceAttribute?.IsEditable == true)
+                {
+                    comboBox.SetBinding(ComboBox.TextProperty, binding);
+                    return;
+                }
 
                 if (!string.IsNullOrEmpty(itemsSourceAttribute?.SelectedValuePath))
                 {

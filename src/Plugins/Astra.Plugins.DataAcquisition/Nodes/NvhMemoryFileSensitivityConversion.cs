@@ -1,9 +1,9 @@
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
-using Astra.Core.Constants;
 using NVHDataBridge.Models;
 using System;
-using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Astra.Plugins.DataAcquisition.Nodes
 {
@@ -33,8 +33,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 return false;
             }
 
-            var group = source.Groups.Values.FirstOrDefault();
-            if (group == null)
+            if (!TryGetFirstGroup(source, out var group))
             {
                 return false;
             }
@@ -53,49 +52,89 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     continue;
                 }
 
-                if (!TryExtractSamplesAsDoubles(channel, out var rawSamples) || rawSamples.Length == 0)
-                {
-                    continue;
-                }
+                var trimmedName = channelName.Trim();
+                var channelConfig = FindChannelConfig(device, trimmedName);
 
-                var channelConfig = FindChannelConfig(device, channelName.Trim());
-                if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
+                if (channel.DataType == typeof(float))
                 {
-                    var outChannelRaw = outGroup.CreateChannel<float>(channelName.Trim(), ringBufferSize: 0, initialCapacity: Math.Max(rawSamples.Length, 4096), estimatedTotalSamples: rawSamples.Length);
-                    var rawBuf = new float[rawSamples.Length];
-                    for (var i = 0; i < rawSamples.Length; i++)
-                        rawBuf[i] = (float)rawSamples[i];
-                    outChannelRaw.WriteSamples(rawBuf);
-                    if (channel.WfIncrement is { } inc && inc > 0)
-                        outChannelRaw.WfIncrement = inc;
-                    outChannelRaw.FlushTotalSamplesToProperties();
+                    var typed = (NvhMemoryChannel<float>)channel;
+                    var span = typed.PeekAll();
+                    if (span.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var outChannel = outGroup.CreateChannel<float>(
+                        trimmedName,
+                        ringBufferSize: 0,
+                        initialCapacity: Math.Max(span.Length, 4096),
+                        estimatedTotalSamples: span.Length);
+
+                    if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
+                    {
+                        outChannel.WriteSamples(span);
+                    }
+                    else if (channelConfig.TryGetAffinePhysicalTransform(out var linearScale, out var linearOffset))
+                    {
+                        if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
+                        {
+                            yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
+                        }
+
+                        var buffer = GC.AllocateUninitializedArray<float>(span.Length);
+                        ConvertFloatAffine(span, buffer, (float)linearScale, (float)linearOffset);
+                        outChannel.WriteSamples(buffer);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    CopyWfIncrementAndFlush(channel, outChannel);
                     anyConverted = true;
                     continue;
                 }
 
-                var physical = new double[rawSamples.Length];
-                for (var i = 0; i < rawSamples.Length; i++)
+                if (channel.DataType == typeof(double))
                 {
-                    physical[i] = channelConfig.ConvertToPhysical(rawSamples[i]);
-                }
+                    var typed = (NvhMemoryChannel<double>)channel;
+                    var span = typed.PeekAll();
+                    if (span.Length == 0)
+                    {
+                        continue;
+                    }
 
-                if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
-                {
-                    yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
-                }
+                    var outChannel = outGroup.CreateChannel<float>(
+                        trimmedName,
+                        ringBufferSize: 0,
+                        initialCapacity: Math.Max(span.Length, 4096),
+                        estimatedTotalSamples: span.Length);
 
-                var outChannel = outGroup.CreateChannel<float>(channelName.Trim(), ringBufferSize: 0, initialCapacity: Math.Max(physical.Length, 4096), estimatedTotalSamples: physical.Length);
-                var buffer = new float[physical.Length];
-                for (var i = 0; i < physical.Length; i++)
-                {
-                    buffer[i] = (float)physical[i];
-                }
+                    if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
+                    {
+                        var buffer = GC.AllocateUninitializedArray<float>(span.Length);
+                        ConvertDoubleToFloat(span, buffer);
+                        outChannel.WriteSamples(buffer);
+                    }
+                    else if (channelConfig.TryGetAffinePhysicalTransform(out var linearScale, out var linearOffset))
+                    {
+                        if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
+                        {
+                            yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
+                        }
 
-                outChannel.WriteSamples(buffer);
-                if (channel.WfIncrement is { } wfInc && wfInc > 0)
-                    outChannel.WfIncrement = wfInc;
-                outChannel.FlushTotalSamplesToProperties();
-                anyConverted = true;
+                        var buffer = GC.AllocateUninitializedArray<float>(span.Length);
+                        ConvertDoubleAffineToFloat(span, buffer, linearScale, linearOffset);
+                        outChannel.WriteSamples(buffer);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    CopyWfIncrementAndFlush(channel, outChannel);
+                    anyConverted = true;
+                }
             }
 
             foreach (var prop in group.Properties.Entries)
@@ -111,6 +150,93 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
             converted = outFile;
             return true;
+        }
+
+        private static bool TryGetFirstGroup(NvhMemoryFile source, out NvhMemoryGroup? group)
+        {
+            foreach (var g in source.Groups.Values)
+            {
+                group = g;
+                return true;
+            }
+
+            group = null;
+            return false;
+        }
+
+        private static void CopyWfIncrementAndFlush(NvhMemoryChannelBase source, NvhMemoryChannel<float> dest)
+        {
+            if (source.WfIncrement is { } inc && inc > 0)
+            {
+                dest.WfIncrement = inc;
+            }
+
+            dest.FlushTotalSamplesToProperties();
+        }
+
+        /// <summary>
+        /// output[i] = input[i] * scale + offset，SIMD 主路径。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ConvertFloatAffine(ReadOnlySpan<float> input, Span<float> output, float scale, float offset)
+        {
+            var n = input.Length;
+            var i = 0;
+            if (Vector.IsHardwareAccelerated && n >= Vector<float>.Count)
+            {
+                var vScale = new Vector<float>(scale);
+                var vOffset = new Vector<float>(offset);
+                var vs = Vector<float>.Count;
+                for (; i <= n - vs; i += vs)
+                {
+                    var v = new Vector<float>(input.Slice(i, vs));
+                    var r = v * vScale + vOffset;
+                    r.CopyTo(output.Slice(i));
+                }
+            }
+
+            for (; i < n; i++)
+            {
+                output[i] = input[i] * scale + offset;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ConvertDoubleToFloat(ReadOnlySpan<double> input, Span<float> output)
+        {
+            for (var i = 0; i < input.Length; i++)
+            {
+                output[i] = (float)input[i];
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ConvertDoubleAffineToFloat(ReadOnlySpan<double> input, Span<float> output, double scale, double offset)
+        {
+            var n = input.Length;
+            var i = 0;
+            if (Vector.IsHardwareAccelerated && n >= Vector<double>.Count)
+            {
+                var vScale = new Vector<double>(scale);
+                var vOffset = new Vector<double>(offset);
+                var vs = Vector<double>.Count;
+                Span<double> tmp = stackalloc double[Vector<double>.Count];
+                for (; i <= n - vs; i += vs)
+                {
+                    var v = new Vector<double>(input.Slice(i, vs));
+                    var r = v * vScale + vOffset;
+                    r.CopyTo(tmp);
+                    for (var j = 0; j < vs; j++)
+                    {
+                        output[i + j] = (float)tmp[j];
+                    }
+                }
+            }
+
+            for (; i < n; i++)
+            {
+                output[i] = (float)(input[i] * scale + offset);
+            }
         }
 
         private static DAQChannelConfig? FindChannelConfig(DataAcquisitionDeviceBase device, string channelName)
@@ -145,44 +271,6 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             }
 
             return SensorConfig.GetPhysicalUnitFromSensitivityUnit(sensor.SensitivityUnit, sensor.SensorType) ?? string.Empty;
-        }
-
-        private static bool TryExtractSamplesAsDoubles(NvhMemoryChannelBase channel, out double[] samples)
-        {
-            samples = Array.Empty<double>();
-            if (channel.DataType == typeof(float))
-            {
-                var typed = (NvhMemoryChannel<float>)channel;
-                var span = typed.PeekAll();
-                if (span.Length == 0)
-                {
-                    return false;
-                }
-
-                samples = new double[span.Length];
-                for (var i = 0; i < span.Length; i++)
-                {
-                    samples[i] = span[i];
-                }
-
-                return true;
-            }
-
-            if (channel.DataType == typeof(double))
-            {
-                var typed = (NvhMemoryChannel<double>)channel;
-                var span = typed.PeekAll();
-                if (span.Length == 0)
-                {
-                    return false;
-                }
-
-                samples = new double[span.Length];
-                span.CopyTo(samples);
-                return true;
-            }
-
-            return false;
         }
     }
 }

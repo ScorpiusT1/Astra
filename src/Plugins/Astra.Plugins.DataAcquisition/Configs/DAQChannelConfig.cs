@@ -522,6 +522,40 @@ namespace Astra.Plugins.DataAcquisition.Configs
             return physicalValue;
         }
 
+        /// <summary>
+        /// 与 <see cref="ConvertToPhysical(double)"/> 等价的仿射形式：
+        /// physical = raw * <paramref name="linearScale"/> + <paramref name="linearOffset"/>（仅当已绑定传感器时成立）。
+        /// 用于批量转换，避免逐点调用 <see cref="ConvertToPhysical(double)"/>。
+        /// </summary>
+        /// <returns>未绑定传感器时为 false；灵敏度为 0 时返回 true 且系数为 0（输出全零）。</returns>
+        public bool TryGetAffinePhysicalTransform(out double linearScale, out double linearOffset)
+        {
+            linearScale = 0;
+            linearOffset = 0;
+            if (!HasSensor || Sensor == null)
+            {
+                return false;
+            }
+
+            var mult = Sensor.CalibrationFactor * Sensor.UnitConversionFactor;
+
+            if (Sensor.Sensitivity == 0)
+            {
+                linearScale = 0;
+                linearOffset = 0;
+                return true;
+            }
+
+            var k = Sensor.ConversionMode == SensorConversionMode.DivideBySensitivity
+                ? mult / Sensor.Sensitivity
+                : Sensor.Sensitivity * mult;
+
+            var invGain = 1.0 / Gain;
+            linearScale = k * invGain;
+            linearOffset = -Offset * k * invGain;
+            return true;
+        }
+
         #endregion
 
         #region 验证
