@@ -479,10 +479,13 @@ namespace Astra.UI.Selectors
 
         private bool IsNumericType(Type type)
         {
-            return type == typeof(int) || type == typeof(long) ||
-                   type == typeof(float) || type == typeof(double) ||
-                   type == typeof(decimal) || type == typeof(short) ||
-                   type == typeof(byte);
+            var t = Nullable.GetUnderlyingType(type) ?? type;
+            return t == typeof(int) || t == typeof(long) ||
+                   t == typeof(float) || t == typeof(double) ||
+                   t == typeof(decimal) || t == typeof(short) ||
+                   t == typeof(byte) ||
+                   t == typeof(uint) || t == typeof(ulong) ||
+                   t == typeof(ushort) || t == typeof(sbyte);
         }
     }
 }

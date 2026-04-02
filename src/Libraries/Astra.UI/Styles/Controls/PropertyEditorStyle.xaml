@@ -264,8 +264,9 @@
                 <!--<RowDefinition Height="Auto" />-->
             </Grid.RowDefinitions>
 
+            <!-- LostFocus：避免 PropertyChanged 时每键将字符串解析为 double 再写回 Text（如 "1." -> 1 -> "1" 吃掉小数点） -->
             <TextBox Grid.Row="0"
-                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                      ToolTip="{Binding Description}"
                      IsReadOnly="{Binding IsReadOnly}"
                      IsEnabled="{Binding IsReadOnly, Converter={StaticResource InverseBoolConverter}}"

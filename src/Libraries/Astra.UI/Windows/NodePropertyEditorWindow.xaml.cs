@@ -45,6 +45,7 @@ namespace Astra.UI.Windows
 
             // 保留原节点 ID，使克隆副本能通过静态注册表获取上游数据源信息
             editable.Id = source.Id;
+            editable.ContainingWorkflow = source.ContainingWorkflow;
 
             var props = sourceType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (var prop in props)
