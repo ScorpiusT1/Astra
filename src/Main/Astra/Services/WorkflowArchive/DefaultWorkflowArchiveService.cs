@@ -3,7 +3,6 @@ using Astra.Core.Data;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
-using Astra.Services.Reporting;
 using Microsoft.Extensions.Logging;
 using System.IO;
 using Newtonsoft.Json;
@@ -19,12 +18,13 @@ using System.Linq;
 namespace Astra.Services.WorkflowArchive
 {
     /// <summary>
-    /// 默认归档：目录为 根目录/SN/序号(1,2,3…)/；Raw 快照写 TDMS/WAV，全局变量写 CSV，结果链写 JSON 与 HTML（便于浏览器打开或再转 PDF）。
+    /// 默认归档：目录为 根目录/SN/序号(1,2,3…)/；Raw 快照写 TDMS/WAV，全局变量写 CSV，结果链写 JSON 与 HTML/PDF 报告。
     /// </summary>
     public sealed class DefaultWorkflowArchiveService : IWorkflowArchiveService
     {
         private readonly WorkflowArchiveOptions _options;
         private readonly ILogger<DefaultWorkflowArchiveService> _logger;
+        private readonly ITestReportGenerator _testReportGenerator;
 
         private readonly ConcurrentDictionary<string, ArchiveSessionNaming> _sessionNamingByExecution = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, byte> _rawExportDone = new(StringComparer.Ordinal);
@@ -43,10 +43,12 @@ namespace Astra.Services.WorkflowArchive
 
         public DefaultWorkflowArchiveService(
             WorkflowArchiveOptions options,
-            ILogger<DefaultWorkflowArchiveService> logger)
+            ILogger<DefaultWorkflowArchiveService> logger,
+            ITestReportGenerator testReportGenerator)
         {
             _options = options ?? new WorkflowArchiveOptions();
             _logger = logger;
+            _testReportGenerator = testReportGenerator;
         }
 
         public Task<WorkflowArchiveResult> ArchiveAsync(WorkflowArchiveRequest request, CancellationToken cancellationToken)
@@ -135,14 +137,16 @@ namespace Astra.Services.WorkflowArchive
                 {
                     WriteRunRecordJson(request.RunRecord, Path.Combine(outputDir, $"{filePrefix}_run_record.json"));
 
-                    var reportGen = new DefaultTestReportGenerator();
-                    var reportResult = reportGen.GenerateAsync(new TestReportRequest
+                    var reportResult = _testReportGenerator.GenerateAsync(new TestReportRequest
                     {
                         ArchiveRequest = request,
                         DataBus = request.NodeContext?.GetDataBus(),
                         OutputDirectory = outputDir,
                         FilePrefix = filePrefix,
-                        ExportChartFiles = true
+                        ExportChartFiles = true,
+                        Formats = ReportExportFormats.Html | ReportExportFormats.Pdf,
+                        IncludeRawDataCharts = request.ReportOptions?.IncludeRawDataCharts ?? true,
+                        ReportOptions = request.ReportOptions
                     }, cancellationToken).GetAwaiter().GetResult();
 
                     if (!reportResult.Success)

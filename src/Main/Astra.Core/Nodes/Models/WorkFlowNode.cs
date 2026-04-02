@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using Newtonsoft.Json;
+using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -81,6 +82,7 @@ namespace Astra.Core.Nodes.Models
             if (Nodes.Any(n => n.Id == node.Id))
                 throw new InvalidOperationException($"节点 {node.Id} 已存在");
             Nodes.Add(node);
+            node.ContainingWorkflow = this;
         }
 
         /// <summary>
@@ -92,8 +94,28 @@ namespace Astra.Core.Nodes.Models
         {
             var node = Nodes.FirstOrDefault(n => n.Id == nodeId);
             if (node == null) return false;
+            node.ContainingWorkflow = null;
             Connections.RemoveAll(c => c.SourceNodeId == nodeId || c.TargetNodeId == nodeId);
             return Nodes.Remove(node);
+        }
+
+        /// <summary>
+        /// 将子节点上的 <see cref="Node.ContainingWorkflow"/> 指向本流程（加载或整体替换 <see cref="Nodes"/> 后应调用）。
+        /// </summary>
+        public void RebindChildWorkflowReferences()
+        {
+            if (Nodes == null) return;
+            foreach (var n in Nodes)
+            {
+                if (n != null)
+                    n.ContainingWorkflow = this;
+            }
+        }
+
+        [OnDeserialized]
+        private void OnDeserialized(StreamingContext context)
+        {
+            RebindChildWorkflowReferences();
         }
 
         /// <summary>

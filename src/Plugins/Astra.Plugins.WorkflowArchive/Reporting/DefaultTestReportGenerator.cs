@@ -11,10 +11,10 @@ using Astra.UI.Abstractions.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Astra.Services.Reporting
+namespace Astra.Plugins.WorkflowArchive.Reporting
 {
     /// <summary>
-    /// 默认测试报告生成器：串联 DataCollector → ChartRenderer → HtmlBuilder。
+    /// 测试报告：采集 → PNG 物化（一次）→ HTML / PDF 双渲染。
     /// </summary>
     public sealed class DefaultTestReportGenerator : ITestReportGenerator
     {
@@ -23,6 +23,22 @@ namespace Astra.Services.Reporting
         public DefaultTestReportGenerator(ILogger<DefaultTestReportGenerator>? logger = null)
         {
             _logger = logger ?? (ILogger)NullLogger.Instance;
+        }
+
+        /// <summary>
+        /// 无 <see cref="TestReportRequest.ReportOptions"/> 时（如引擎归档）使用「全部单值/曲线/算法图」，
+        /// Raw 图是否纳入由 <see cref="TestReportRequest.IncludeRawDataCharts"/> 决定。
+        /// </summary>
+        private static ReportGenerationOptions MergeReportOptions(TestReportRequest request)
+        {
+            if (request.ReportOptions != null)
+                return request.ReportOptions;
+
+            return new ReportGenerationOptions
+            {
+                IncludeAlgorithmCharts = true,
+                IncludeRawDataCharts = request.IncludeRawDataCharts
+            };
         }
 
         public async Task<ReportOutput> GenerateAsync(TestReportRequest request, CancellationToken cancellationToken)
@@ -34,24 +50,42 @@ namespace Astra.Services.Reporting
                 return new ReportOutput { Success = false };
             }
 
+            var formats = request.Formats;
+            if (formats == 0)
+                formats = ReportExportFormats.Html | ReportExportFormats.Pdf;
+
             var reportData = ReportDataCollector.Collect(
-                runRecord, request.DataBus, archiveReq!.NodeContext);
+                runRecord,
+                request.DataBus,
+                archiveReq!.NodeContext,
+                MergeReportOptions(request));
 
             var chartPaths = new List<string>();
             await RenderChartsAsync(request, reportData, chartPaths, cancellationToken);
             RenderCurveJudgmentCharts(request, reportData);
 
-            var html = ReportHtmlBuilder.Build(reportData);
-            var htmlPath = Path.Combine(request.OutputDirectory,
-                $"{request.FilePrefix}_report.html");
-
             Directory.CreateDirectory(request.OutputDirectory);
-            await File.WriteAllTextAsync(htmlPath, html, new UTF8Encoding(true), cancellationToken);
+
+            string? htmlPath = null;
+            if ((formats & ReportExportFormats.Html) != 0)
+            {
+                var html = ReportHtmlBuilder.Build(reportData);
+                htmlPath = Path.Combine(request.OutputDirectory, $"{request.FilePrefix}_report.html");
+                await File.WriteAllTextAsync(htmlPath, html, new UTF8Encoding(true), cancellationToken);
+            }
+
+            string? pdfPath = null;
+            if ((formats & ReportExportFormats.Pdf) != 0)
+            {
+                pdfPath = Path.Combine(request.OutputDirectory, $"{request.FilePrefix}_report.pdf");
+                await Task.Run(() => ReportPdfBuilder.Build(reportData, pdfPath), cancellationToken);
+            }
 
             return new ReportOutput
             {
                 Success = true,
                 HtmlPath = htmlPath,
+                PdfPath = pdfPath,
                 ChartImagePaths = chartPaths
             };
         }
@@ -114,8 +148,6 @@ namespace Astra.Services.Reporting
 
             if (rawObj is not ChartDisplayPayload)
             {
-                // NvhMemoryFile 等原始数据暂不在此处渲染（依赖 NVH 库），
-                // 未来可扩展 INvhChartRenderer 接口来处理。
                 return null;
             }
 

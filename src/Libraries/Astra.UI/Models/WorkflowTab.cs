@@ -212,6 +212,21 @@ namespace Astra.UI.Models
         }
 
         /// <summary>
+        /// 将画布 <see cref="Nodes"/> 写回子流程 <see cref="WorkFlowNode.Nodes"/>，并刷新各节点上的
+        /// <see cref="Node.ContainingWorkflow"/>。属性面板等依赖该引用枚举同流程内兄弟节点。
+        /// </summary>
+        public void SyncNodesToSubWorkflowModel()
+        {
+            if (Type != WorkflowType.Sub)
+                return;
+            var sub = GetSubWorkflow();
+            if (sub == null)
+                return;
+            sub.Nodes = Nodes?.ToList() ?? new List<Node>();
+            sub.RebindChildWorkflowReferences();
+        }
+
+        /// <summary>
         /// 标记为已修改
         /// </summary>
         public void MarkAsModified()

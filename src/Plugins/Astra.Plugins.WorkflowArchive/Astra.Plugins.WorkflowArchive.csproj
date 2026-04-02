@@ -13,10 +13,17 @@
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
+		<PackageReference Include="QuestPDF" Version="2024.12.3" />
+		<PackageReference Include="ScottPlot" Version="5.1.57" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj">
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>

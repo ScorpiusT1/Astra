@@ -535,6 +535,17 @@ namespace Astra.UI.Controls
 
         #region 节点双击弹窗
 
+        private static MultiFlowEditorViewModel? TryFindMultiFlowEditorViewModel(DependencyObject? start)
+        {
+            for (var d = start; d != null; d = VisualTreeHelper.GetParent(d))
+            {
+                if (d is FrameworkElement fe && fe.DataContext is MultiFlowEditorViewModel vm)
+                    return vm;
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// 处理节点控件的双击事件（由 NodeControl 冒泡而来）
         /// 默认行为：弹出节点属性编辑窗口（内嵌 PropertyEditorControl）
@@ -556,6 +567,11 @@ namespace Astra.UI.Controls
 
             if (node != null)
             {
+                if (DataContext is Models.WorkflowTab workflowTab)
+                    workflowTab.SyncNodesToSubWorkflowModel();
+
+                TryFindMultiFlowEditorViewModel(this)?.RefreshWorkflowArchivePeerCatalog();
+
                 var window = new NodePropertyEditorWindow(node)
                 {
                     Owner = Application.Current?.MainWindow,

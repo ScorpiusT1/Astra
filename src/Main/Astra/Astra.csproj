@@ -56,6 +56,7 @@
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\Astra.Engine\Astra.Engine.csproj" />
     <ProjectReference Include="..\Astra.Infrastructure\Astra.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Plugins\Astra.Plugins.WorkflowArchive\Astra.Plugins.WorkflowArchive.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -95,10 +96,7 @@
     若历史构建或手工拷贝导致主输出根目录出现该文件，可能与 Plugins\PLC 重复加载。
   -->
   <Target Name="WarnIfPluginDllBesideMainExe" AfterTargets="Build">
-    <Warning
-      Code="ASTRA001"
-      Text="主输出目录存在 Astra.Plugins.PLC.dll，可能与 Bin\$(Configuration)\Plugins\PLC 中的副本重复加载。请删除此文件或检查复制来源。路径: $(TargetDir)Astra.Plugins.PLC.dll"
-      Condition="Exists('$(TargetDir)Astra.Plugins.PLC.dll')" />
+    <Warning Code="ASTRA001" Text="主输出目录存在 Astra.Plugins.PLC.dll，可能与 Bin\$(Configuration)\Plugins\PLC 中的副本重复加载。请删除此文件或检查复制来源。路径: $(TargetDir)Astra.Plugins.PLC.dll" Condition="Exists('$(TargetDir)Astra.Plugins.PLC.dll')" />
   </Target>
 
 </Project>

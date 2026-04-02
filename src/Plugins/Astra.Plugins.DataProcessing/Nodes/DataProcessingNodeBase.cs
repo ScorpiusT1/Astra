@@ -1,5 +1,6 @@
 using Astra.Plugins.DataProcessing.Helpers;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
@@ -12,7 +13,7 @@ using System.Runtime.Serialization;
 namespace Astra.Plugins.DataProcessing.Nodes
 {
     /// <summary>数据处理节点基类：与算法插件相同方式绑定上游多采集 Raw。</summary>
-    public abstract class DataProcessingNodeBase : Node, IDesignTimeDataSourceInfo, IHomeTestItemChartEligibleNode
+    public abstract class DataProcessingNodeBase : Node, IDesignTimeDataSourceInfo, IHomeTestItemChartEligibleNode, IReportWhitelistChartProducerNode
     {
         private string _deviceName = string.Empty;
         private string _channelName = string.Empty;

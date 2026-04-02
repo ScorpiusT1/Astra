@@ -4,7 +4,16 @@ using System.Collections.Generic;
 namespace Astra.Core.Reporting
 {
     /// <summary>
-    /// 测试报告完整数据模型。
+    /// 图表在报告中的来源分类（用于章节与排版）。
+    /// </summary>
+    public enum ReportChartSourceKind
+    {
+        Algorithm = 0,
+        Raw = 1
+    }
+
+    /// <summary>
+    /// 测试报告完整数据模型（仅含最终判定与结果图，不含节点执行过程与文本附录）。
     /// </summary>
     public sealed class TestReportData
     {
@@ -20,8 +29,6 @@ namespace Astra.Core.Reporting
         public List<ScalarJudgmentRow> ScalarJudgments { get; set; } = new();
         public List<CurveJudgmentRow> CurveJudgments { get; set; } = new();
         public List<ChartSection> Charts { get; set; } = new();
-        public List<NodeRunSummary> NodeSummaries { get; set; } = new();
-        public List<TextArtifactSection> TextArtifacts { get; set; } = new();
     }
 
     public sealed class ScalarJudgmentRow
@@ -52,6 +59,8 @@ namespace Astra.Core.Reporting
         public string NodeName { get; set; } = string.Empty;
         public string? Description { get; set; }
 
+        public ReportChartSourceKind SourceKind { get; set; } = ReportChartSourceKind.Algorithm;
+
         /// <summary>渲染后的图表 PNG base64。</summary>
         public string? ImageBase64 { get; set; }
 
@@ -60,20 +69,5 @@ namespace Astra.Core.Reporting
 
         /// <summary>引用的 artifact key（用于渲染时取 payload）。</summary>
         public string? ArtifactKey { get; set; }
-    }
-
-    public sealed class NodeRunSummary
-    {
-        public string NodeName { get; set; } = string.Empty;
-        public string State { get; set; } = string.Empty;
-        public string? Message { get; set; }
-        public TimeSpan Duration { get; set; }
-    }
-
-    public sealed class TextArtifactSection
-    {
-        public string Title { get; set; } = string.Empty;
-        public string ContentType { get; set; } = "text/plain";
-        public string Content { get; set; } = string.Empty;
     }
 }

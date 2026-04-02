@@ -182,10 +182,11 @@ namespace Astra.Services.Home
                 adjacency[node.Id] = new List<string>();
             }
 
-            var flowConnections = (workflow.Connections ?? new List<Connection>())
+            // 与 DefaultStrategyDetector / GraphAnalyzer / ComplexGraphExecutionStrategy 一致：
+            // 调度依赖包含 Flow 与 Data 等全部连线，否则仅存在数据连线时拓扑退化为「节点创建顺序」。
+            var dependencyConnections = (workflow.Connections ?? new List<Connection>())
                 .Where(c =>
                     c != null &&
-                    c.Type == ConnectionType.Flow &&
                     !string.IsNullOrWhiteSpace(c.SourceNodeId) &&
                     !string.IsNullOrWhiteSpace(c.TargetNodeId) &&
                     !string.Equals(c.SourceNodeId, c.TargetNodeId, StringComparison.Ordinal) &&
@@ -193,7 +194,7 @@ namespace Astra.Services.Home
                     nodeById.ContainsKey(c.TargetNodeId))
                 .ToList();
 
-            foreach (var connection in flowConnections)
+            foreach (var connection in dependencyConnections)
             {
                 var source = connection.SourceNodeId;
                 var target = connection.TargetNodeId;

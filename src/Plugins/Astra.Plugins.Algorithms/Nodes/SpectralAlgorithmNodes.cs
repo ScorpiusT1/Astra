@@ -4,6 +4,7 @@ using Astra.Plugins.Algorithms.APIs;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
+using RangeValidationAttribute = Astra.UI.Abstractions.Validations.RangeAttribute;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -53,6 +54,7 @@ namespace Astra.Plugins.Algorithms.Nodes
         }
 
         [Display(Name = "重叠率", GroupName = "参数", Order = 6)]
+        [RangeValidationAttribute(0, 1)]
         public double Overlap { get; set; } = 0.5;
 
         protected override IEnumerable<string> EnumerateDesignTimeScalarLogicalNames(string channelLabel)
@@ -68,6 +70,9 @@ namespace Astra.Plugins.Algorithms.Nodes
 
             if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
+
+            if (Overlap < 0 || Overlap > 1)
+                return Task.FromResult(ExecutionResult.Failed("重叠率必须在 0 到 1 之间。"));
 
             try
             {

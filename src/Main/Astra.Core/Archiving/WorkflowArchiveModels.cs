@@ -1,5 +1,6 @@
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 
 namespace Astra.Core.Archiving
 {
@@ -35,6 +36,11 @@ namespace Astra.Core.Archiving
         /// 流程内节点触发时通常为空，第二轮由引擎补写报告与 JSON。
         /// </summary>
         public WorkFlowRunRecord? RunRecord { get; init; }
+
+        /// <summary>
+        /// 报告单值/曲线/图表过滤；为 null 时与「全部写入」一致（由 <see cref="ITestReportGenerator"/> 使用默认）。
+        /// </summary>
+        public ReportGenerationOptions? ReportOptions { get; init; }
     }
 
     /// <summary>

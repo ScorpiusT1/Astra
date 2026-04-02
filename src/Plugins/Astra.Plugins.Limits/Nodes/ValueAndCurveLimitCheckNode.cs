@@ -1,6 +1,7 @@
 using Astra.Plugins.Limits.Enums;
 using Astra.Plugins.Limits.Helpers;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
@@ -18,7 +19,7 @@ namespace Astra.Plugins.Limits.Nodes
     /// <summary>
     /// 同时或分别启用值卡控与曲线卡控；曲线按上游「设备/通道」解析 Raw。
     /// </summary>
-    public class ValueAndCurveLimitCheckNode : Node, IHomeTestItemChartEligibleNode
+    public class ValueAndCurveLimitCheckNode : Node, IHomeTestItemChartEligibleNode, IReportWhitelistScalarNode, IReportWhitelistCurveNode, IReportWhitelistChartProducerNode
     {
         [JsonIgnore]
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();

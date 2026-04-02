@@ -1,5 +1,6 @@
 using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.Plugins.Algorithms.APIs;
 using Astra.UI.Abstractions.Attributes;
@@ -18,7 +19,7 @@ namespace Astra.Plugins.Algorithms.Nodes
     /// 通道为「设备显示名/通道名」，由上游连线驱动注册表；选项缓存到 <see cref="CachedChannelOptions"/> 并序列化。
     /// 断开上游后保留已选通道，重连后按当前上游选项自动剔除无效项。
     /// </summary>
-    public abstract class AlgorithmNodeBase : Node, IHomeTestItemChartEligibleNode, IDesignTimeScalarOutputProvider
+    public abstract class AlgorithmNodeBase : Node, IHomeTestItemChartEligibleNode, IDesignTimeScalarOutputProvider, IReportWhitelistChartProducerNode
     {
         [JsonIgnore]
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();

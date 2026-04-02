@@ -4,7 +4,7 @@ using System.Linq;
 using Astra.UI.Abstractions.Nodes;
 using ScottPlot;
 
-namespace Astra.Services.Reporting
+namespace Astra.Plugins.WorkflowArchive.Reporting
 {
     /// <summary>
     /// ScottPlot 5 无头渲染器：将 <see cref="ChartDisplayPayload"/> 渲染为 PNG 字节数组。
@@ -257,7 +257,6 @@ namespace Astra.Services.Reporting
             var angleStep = 2 * Math.PI / n;
             var radius = 100.0;
 
-            // grid polygons
             for (double level = 0.2; level <= 1.0; level += 0.2)
             {
                 var gx = new double[n + 1];
@@ -275,7 +274,6 @@ namespace Astra.Services.Reporting
                 grid.MarkerSize = 0;
             }
 
-            // axis spokes + labels
             for (int i = 0; i < n; i++)
             {
                 var angle = -Math.PI / 2 + i * angleStep;
@@ -287,7 +285,6 @@ namespace Astra.Services.Reporting
                 plt.Add.Text(items[i].Label, labelX, labelY);
             }
 
-            // data polygon
             var xs = new double[n + 1];
             var ys = new double[n + 1];
             for (int i = 0; i < n; i++)

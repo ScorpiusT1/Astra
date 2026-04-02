@@ -51,6 +51,8 @@ using Astra.Core.Triggers.Manager;
 using Astra.Engine.Triggers.Interlock;
 using Astra.Services.Interlock;
 using Astra.Services.WorkflowArchive;
+using Astra.Plugins.WorkflowArchive.Reporting;
+using Astra.Core.Reporting;
 
 namespace Astra.Services.Startup
 {
@@ -189,6 +191,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<IManualBarcodeContext, ManualBarcodeContext>();
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
             services.AddSingleton(new WorkflowArchiveOptions());
+            services.AddSingleton<ITestReportGenerator, DefaultTestReportGenerator>();
             services.AddSingleton<IWorkflowArchiveService, DefaultWorkflowArchiveService>();
             services.AddSingleton<IWorkFlowManager>(sp => new WorkFlowManager(
                 defaultEngine: null,

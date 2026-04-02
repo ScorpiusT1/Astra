@@ -4,6 +4,7 @@ using Astra.Core.Data;
 using Astra.Core.Devices.Interfaces;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Providers;
@@ -20,7 +21,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
     /// <summary>
     /// 多采集卡采集节点：在一个脚本节点中同时控制多个采集卡的启动。
     /// </summary>
-    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider, IMultiRawDataPipelineNode, IDesignTimeDataSourceInfo
+    public class MultiDataAcquisitionNode : Node, IHomeTestItemChartNode, IPropertyVisibilityProvider, IMultiRawDataPipelineNode, IDesignTimeDataSourceInfo, IReportWhitelistChartProducerNode
     {
         private bool _usePropertyPanelForChartAxis = true;
 

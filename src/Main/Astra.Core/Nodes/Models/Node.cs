@@ -81,6 +81,12 @@ namespace Astra.Core.Nodes.Models
         [JsonProperty(Order = 6)]
         public string Color { get; set; }
 
+        /// <summary>
+        /// 设计期：本节点所属子流程（画布上的流程页）。不序列化；由 <see cref="WorkFlowNode"/> 维护。
+        /// </summary>
+        [JsonIgnore]
+        public WorkFlowNode? ContainingWorkflow { get; set; }
+
         // ===== 状态属性 =====
         
         [JsonProperty(Order = 7)]

@@ -37,6 +37,8 @@
 		<NodeInfo Name="包络平均谱" TypeName="Astra.Plugins.Algorithms.Nodes.HilbertEnvelopeAvgSpectraNode" IconCode="ChartLine" Description="包络平均谱" Category="NVH 算法" />
 		<NodeInfo Name="Morlet 小波" TypeName="Astra.Plugins.Algorithms.Nodes.MorletWaveletTransformNode" IconCode="Grid" Description="Morlet 小波变换" Category="NVH 算法" />
 		<NodeInfo Name="LMS Morlet 小波" TypeName="Astra.Plugins.Algorithms.Nodes.LmsMorletWaveletTransformNode" IconCode="Grid" Description="对数频率 Morlet 小波" Category="NVH 算法" />
+		<NodeInfo Name="小波频带最大切片" TypeName="Astra.Plugins.Algorithms.Nodes.MorletWaveletBandMaxSliceNode" IconCode="ChartLine" Description="频带内峰值幅值最大的 Morlet 时间–幅值曲线" Category="NVH 算法" />
+		<NodeInfo Name="小波单频切片" TypeName="Astra.Plugins.Algorithms.Nodes.MorletWaveletNearestFrequencySliceNode" IconCode="ChartLine" Description="最接近目标频率的 Morlet 时间–幅值曲线" Category="NVH 算法" />
 		<NodeInfo Name="调制谱(分辨率)" TypeName="Astra.Plugins.Algorithms.Nodes.ModulationSpectrumResolutionNode" IconCode="Grid" Description="调制谱（分辨率模式）" Category="NVH 算法" />
 		<NodeInfo Name="调制谱(STFT)" TypeName="Astra.Plugins.Algorithms.Nodes.ModulationSpectrumStftNode" IconCode="Grid" Description="调制谱（STFT）" Category="NVH 算法" />
 		<NodeInfo Name="稳态响度" TypeName="Astra.Plugins.Algorithms.Nodes.StationaryLoudnessNode" IconCode="ChartBar" Description="稳态响度与特定响度" Category="NVH 算法" />

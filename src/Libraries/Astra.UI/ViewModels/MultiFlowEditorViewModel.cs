@@ -32,6 +32,7 @@ using System.Threading;
 using System.Windows.Threading;
 using System.ComponentModel;
 using Astra.Core.Triggers;
+using Astra.Core.Reporting;
 
 namespace Astra.UI.ViewModels
 {
@@ -843,6 +844,8 @@ namespace Astra.UI.ViewModels
             // 通过命令管理器执行命令
             _commandManager.Execute(addCommand);
 
+            RefreshWorkflowArchivePeerCatalog();
+
             Debug.WriteLine($"[SequenceViewModel] 创建新流程: {workflowName}, 类型: {type}");
         }
 
@@ -929,6 +932,30 @@ namespace Astra.UI.ViewModels
             {
                 Debug.WriteLine($"[SwitchWorkflow]   {t.Name}: Nodes 哈希={t.Nodes.GetHashCode()}, 节点数={t.Nodes.Count}, IsActive={t.IsActive}");
             }
+
+            RefreshWorkflowArchivePeerCatalog();
+        }
+
+        /// <summary>
+        /// 汇总全部子流程画布节点，供结果归档节点白名单下拉使用。
+        /// </summary>
+        public void RefreshWorkflowArchivePeerCatalog()
+        {
+            var list = new List<(string DisplayName, string Id, IReadOnlyList<Node> Nodes)>();
+            foreach (var tab in SubWorkflowTabs ?? Enumerable.Empty<WorkflowTab>())
+            {
+                if (tab.Type != WorkflowType.Sub)
+                    continue;
+                var sw = tab.GetSubWorkflow();
+                if (sw == null)
+                    continue;
+                tab.SyncNodesToSubWorkflowModel();
+                var name = string.IsNullOrWhiteSpace(sw.Name) ? tab.Name ?? "子流程" : sw.Name;
+                var nodes = tab.Nodes?.ToList() ?? new List<Node>();
+                list.Add((name, sw.Id, nodes));
+            }
+
+            WorkflowArchivePeerCatalog.Refresh(list);
         }
 
         /// <summary>
@@ -1204,6 +1231,7 @@ namespace Astra.UI.ViewModels
 
                 // 通过命令管理器执行命令
                 _commandManager.Execute(removeCommand);
+                RefreshWorkflowArchivePeerCatalog();
             }
             finally
             {
@@ -1951,6 +1979,7 @@ namespace Astra.UI.ViewModels
 
                     // 同步节点
                     subWorkflow.Nodes = nodesSource?.ToList() ?? new List<Node>();
+                    subWorkflow.RebindChildWorkflowReferences();
 
                     // 将 Edges 转换为 Connections 并同步到 WorkFlowNode
                     // 注意：WorkFlowNode 使用 Connections，画布使用 Edges
@@ -2314,6 +2343,7 @@ namespace Astra.UI.ViewModels
                     {
                         // 同步节点
                         subWorkflow.Nodes = tab.Nodes?.ToList() ?? new List<Node>();
+                        subWorkflow.RebindChildWorkflowReferences();
 
                         // 将 Edges 转换为 Connections
                         if (subWorkflow.Connections == null)
@@ -2548,6 +2578,8 @@ namespace Astra.UI.ViewModels
                 }
 
                 Debug.WriteLine($"[SequenceViewModel] 多流程数据加载完成: 主流程1个, 子流程{data.SubWorkflows?.Count ?? 0}个");
+
+                RefreshWorkflowArchivePeerCatalog();
             }
             catch (Exception ex)
             {
@@ -2601,6 +2633,8 @@ namespace Astra.UI.ViewModels
         /// </summary>
         private void ClearAllWorkflows()
         {
+            WorkflowArchivePeerCatalog.Clear();
+
             // 清空标签页
             if (WorkflowTabs != null)
             {
@@ -3601,6 +3635,7 @@ namespace Astra.UI.ViewModels
                 // 先保存当前标签页状态，确保 Edges 转换为 Connections
                 // 同步节点
                 subWorkflow.Nodes = tab.Nodes?.ToList() ?? new List<Node>();
+                subWorkflow.RebindChildWorkflowReferences();
 
                 // 将 Edges 转换为 Connections
                 if (subWorkflow.Connections == null)

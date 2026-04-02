@@ -1,6 +1,7 @@
 using System;
 using Astra.Plugins.Limits.Helpers;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
@@ -17,7 +18,7 @@ namespace Astra.Plugins.Limits.Nodes
     /// <summary>
     /// 从 Raw 数据存储读取 NVH 曲线，逐样本检查是否落在闭区间 [下限, 上限] 内。通道为上游「设备/通道」。
     /// </summary>
-    public class CurveLimitCheckNode : Node, IHomeTestItemChartEligibleNode
+    public class CurveLimitCheckNode : Node, IHomeTestItemChartEligibleNode, IReportWhitelistScalarNode, IReportWhitelistCurveNode, IReportWhitelistChartProducerNode
     {
         [JsonIgnore]
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();

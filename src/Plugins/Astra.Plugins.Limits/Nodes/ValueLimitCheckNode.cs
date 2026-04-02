@@ -1,5 +1,6 @@
 using Astra.Plugins.Limits.Helpers;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
@@ -17,7 +18,7 @@ namespace Astra.Plugins.Limits.Nodes
     /// <summary>
     /// 从上游节点输出或工作流全局变量读取标量并与上下限比较；可选按通道在主页显示曲线（不参与判定）。
     /// </summary>
-    public class ValueLimitCheckNode : Node, IHomeTestItemChartEligibleNode
+    public class ValueLimitCheckNode : Node, IHomeTestItemChartEligibleNode, IReportWhitelistScalarNode, IReportWhitelistChartProducerNode
     {
         [JsonIgnore]
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();
