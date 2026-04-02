@@ -56,6 +56,17 @@ namespace NVHDataBridge.Models
         // ✅ 获取全部数据（零拷贝，线程安全）
         // 注意：返回的 span 在读取期间是安全的，但如果后续发生扩容，span 可能指向旧数组
         // 对于实时系统，这通常是可接受的，因为读取操作通常很快完成
+        /// <summary>
+        /// 清空已存储样本（保留底层数组容量，便于连续采集复用）。
+        /// </summary>
+        public void Clear()
+        {
+            lock (_lockObj)
+            {
+                _count = 0;
+            }
+        }
+
         public ReadOnlySpan<T> GetAll()
         {
             long count = Count;

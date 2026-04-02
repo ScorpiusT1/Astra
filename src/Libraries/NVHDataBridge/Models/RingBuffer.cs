@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 
 namespace NVHDataBridge.Models
@@ -72,5 +72,13 @@ namespace NVHDataBridge.Models
         /// 获取当前写入位置（用于调试）
         /// </summary>
         public long WritePosition => Volatile.Read(ref _writeIndex);
+
+        /// <summary>
+        /// 重置环形写入位置，用于新一轮采集前清空实时窗口。
+        /// </summary>
+        public void Reset()
+        {
+            Interlocked.Exchange(ref _writeIndex, 0);
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace NVHDataBridge.Models
 {
@@ -31,6 +31,11 @@ namespace NVHDataBridge.Models
 
         public abstract Type DataType { get; }
         public abstract long TotalSamples { get; }
+
+        /// <summary>
+        /// 清空通道内全部样本（全量缓冲与环形缓冲等），并同步波形样本计数。
+        /// </summary>
+        public abstract void Clear();
 
         // ============================================================
         // 数据读取方法（泛型，在基类中提供统一接口）

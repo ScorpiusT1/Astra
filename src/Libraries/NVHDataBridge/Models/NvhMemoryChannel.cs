@@ -226,6 +226,16 @@ namespace NVHDataBridge.Models
         }
 
         /// <summary>
+        /// 清空全量缓冲与环形缓冲中的样本，并同步 <c>wf_samples</c>。
+        /// </summary>
+        public override void Clear()
+        {
+            _allData.Clear();
+            _ring?.Reset();
+            UpdateTotalSamplesToProperties();
+        }
+
+        /// <summary>
         /// 预分配容量（用于已知数据量的场景，避免频繁扩容）
         /// </summary>
         /// <param name="capacity">目标容量</param>
