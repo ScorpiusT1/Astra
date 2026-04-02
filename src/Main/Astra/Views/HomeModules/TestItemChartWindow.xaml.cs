@@ -10,6 +10,7 @@ using Astra.UI.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using ScottPlot;
 using ScottPlot.Plottables;
+using ScottPlot.TickGenerators;
 using ScottPlot.WPF;
 
 namespace Astra.Views.HomeModules
@@ -80,6 +81,7 @@ namespace Astra.Views.HomeModules
                 if (!isPieOrRadar)
                     AddHorizontalLimits(ItemPlot.Plot, payload, item);
                 ItemPlot.Plot.Axes.AutoScale();
+                AddScalarAnnotations(ItemPlot.Plot, payload.ScalarAnnotations);
                 ItemPlot.Refresh();
             }
         }
@@ -245,6 +247,7 @@ namespace Astra.Views.HomeModules
                 var item = DataContext as TestTreeNodeItem ?? new TestTreeNodeItem();
                 AddHorizontalLimits(plt, payload, item);
                 plt.Axes.AutoScale();
+                AddScalarAnnotations(plt, CollectVisibleScalarAnnotations(payload, _seriesOptions));
             }
 
             ApplyItemPlotStyleToAllPlots();
@@ -291,6 +294,7 @@ namespace Astra.Views.HomeModules
                     AddHorizontalLimits(sp, payload, item);
 
                 sp.Axes.AutoScale();
+                AddScalarAnnotations(sp, entry.Data.ScalarAnnotations);
                 sp.Title(entry.Name);
 
                 var styleOptions = ScottPlotStyleHelper.CreateThemeStyleOptions();
@@ -376,6 +380,12 @@ namespace Astra.Views.HomeModules
 
             if (_currentPayload.LayoutMode == ChartLayoutMode.SinglePlot && _singlePlotPlottables.Count > 0)
             {
+                if (HasAnyScalarAnnotations(_currentPayload))
+                {
+                    RenderMultiSeriesSinglePlot(_currentPayload, _currentPayload.Series ?? new List<ChartSeriesEntry>());
+                    return;
+                }
+
                 for (var i = 0; i < _seriesOptions.Count; i++)
                 {
                     if (_singlePlotPlottables.TryGetValue(i, out var p))
@@ -443,7 +453,33 @@ namespace Astra.Views.HomeModules
             {
                 hm.Rectangle = new CoordinateRect(xCoords.Min(), xCoords.Max(), yCoords.Min(), yCoords.Max());
             }
+
+            if (payload.HeatmapYAxisIsLog10OfQuantity)
+            {
+                // 纵轴数据为 log10(物理量)；ScottPlot Heatmap/YAxis 在数据空间为线性划分（见 ScottPlot Heatmap / YAxisBase 源码），
+                // 故在 log 频率轴下将行坐标换为 log10(Hz)，再用刻度格式化为 Hz（与 SP5 LogScaleTicks 思路一致）。
+                var tickGen = new NumericAutomatic
+                {
+                    MinorTickGenerator = new LogMinorTickGenerator(),
+                    LabelFormatter = FormatHeatmapLog10AxisTickLabel
+                };
+                plot.Axes.Left.TickGenerator = tickGen;
+            }
+
             plot.Add.ColorBar(hm);
+        }
+
+        /// <summary>纵轴坐标为 log10(Hz) 时的刻度标签。</summary>
+        private static string FormatHeatmapLog10AxisTickLabel(double log10Value)
+        {
+            var v = Math.Pow(10, log10Value);
+            if (!double.IsFinite(v) || v <= 0)
+                return string.Empty;
+            if (v >= 1000)
+                return (v / 1000).ToString("G4") + "k";
+            if (v >= 1)
+                return v.ToString("G4");
+            return v.ToString("G3");
         }
 
         private static void RenderSegments(Plot plot, ChartDisplayPayload payload)
@@ -614,6 +650,76 @@ namespace Astra.Views.HomeModules
         }
 
         // ────────────────────────────── 辅助 ──────────────────────────────
+
+        private static bool HasAnyScalarAnnotations(ChartDisplayPayload payload)
+        {
+            if (payload.ScalarAnnotations is { Count: > 0 })
+                return true;
+            if (payload.Series == null)
+                return false;
+            foreach (var s in payload.Series)
+            {
+                if (s.Data.ScalarAnnotations is { Count: > 0 })
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>单图叠加：根载荷标量 + 各可见系列的子 Data 标量。</summary>
+        private static List<ChartScalarAnnotation>? CollectVisibleScalarAnnotations(
+            ChartDisplayPayload payload,
+            IReadOnlyList<SeriesVisibilityOption> options)
+        {
+            var list = new List<ChartScalarAnnotation>();
+            if (payload.ScalarAnnotations is { Count: > 0 })
+                list.AddRange(payload.ScalarAnnotations);
+            var series = payload.Series;
+            if (series == null)
+                return list.Count > 0 ? list : null;
+            for (var i = 0; i < series.Count; i++)
+            {
+                if (i < options.Count && !options[i].IsVisible)
+                    continue;
+                var ann = series[i].Data.ScalarAnnotations;
+                if (ann == null || ann.Count == 0)
+                    continue;
+                list.AddRange(ann);
+            }
+
+            return list.Count > 0 ? list : null;
+        }
+
+        /// <summary>在数据坐标系左上角叠加标量文本（须在 AutoScale 之后调用）。</summary>
+        private static void AddScalarAnnotations(Plot plot, IReadOnlyList<ChartScalarAnnotation>? annotations)
+        {
+            if (annotations == null || annotations.Count == 0)
+                return;
+
+            var r = plot.Axes.GetLimits();
+            var dx = r.Right - r.Left;
+            var dy = r.Top - r.Bottom;
+            if (!double.IsFinite(dx) || dx <= 0)
+                dx = 1;
+            if (!double.IsFinite(dy) || dy <= 0)
+                dy = 1;
+
+            var x = r.Left + 0.02 * dx;
+            var lineHeight = Math.Max(0.028 * dy, 1e-6);
+            var yTop = r.Top - 0.03 * dy;
+
+            for (var i = 0; i < annotations.Count; i++)
+            {
+                var a = annotations[i];
+                var u = string.IsNullOrWhiteSpace(a.Unit) ? string.Empty : $" {a.Unit}";
+                var line = $"{a.Name}: {a.Value:G6}{u}";
+                var y = yTop - i * lineHeight;
+                var txt = plot.Add.Text(line, x, y);
+                txt.LabelFontSize = 11;
+                txt.LabelBold = false;
+                txt.Alignment = Alignment.UpperLeft;
+            }
+        }
 
         private static void AddHorizontalLimits(Plot plot, ChartDisplayPayload payload, TestTreeNodeItem item)
         {
