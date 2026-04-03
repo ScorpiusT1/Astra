@@ -42,7 +42,7 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             sb.AppendLine(@"<style>
 :root{--ok:#22c55e;--ng:#ef4444;--border:#e5e7eb;--bg-header:#f8fafc;}
 *{box-sizing:border-box;}
-body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;margin:0;padding:24px 32px;color:#1e293b;background:#fff;}
+body{font-family:'Microsoft YaHei','Segoe UI',sans-serif;margin:0;padding:24px 32px;color:#1e293b;background:#fff;}
 h1{font-size:24px;border-bottom:2px solid #3b82f6;padding-bottom:8px;}
 h2{font-size:18px;color:#334155;margin-top:32px;border-left:4px solid #3b82f6;padding-left:12px;}
 table{border-collapse:collapse;width:100%;margin:12px 0;}
@@ -51,27 +51,32 @@ th{background:var(--bg-header);font-weight:600;}
 .pass{color:var(--ok);font-weight:700;} .fail{color:var(--ng);font-weight:700;}
 .badge-ok{background:var(--ok);color:#fff;padding:4px 16px;border-radius:4px;font-size:20px;font-weight:700;display:inline-block;}
 .badge-ng{background:var(--ng);color:#fff;padding:4px 16px;border-radius:4px;font-size:20px;font-weight:700;display:inline-block;}
-.chart-card{display:inline-block;margin:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;vertical-align:top;}
-.chart-card img{display:block;max-width:100%;}
+.chart-gallery-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:12px 0;}
+.chart-gallery-table td.chart-cell{border:1px solid var(--border);vertical-align:top;padding:8px;width:50%;background:#fff;}
+.chart-gallery-table td.chart-cell-empty{background:transparent;border-style:dashed;}
+.chart-card{margin:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.chart-card img{display:block;max-width:100%;height:auto;}
 .chart-title{padding:8px 12px;font-size:13px;font-weight:600;background:var(--bg-header);}
 .chart-desc{padding:4px 12px 8px;font-size:12px;color:#64748b;}
-.meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin:16px 0;}
-.meta-item{background:#f1f5f9;padding:10px 14px;border-radius:6px;}
-.meta-label{font-size:11px;color:#64748b;} .meta-value{font-size:15px;font-weight:600;margin-top:2px;}
-@media print{body{padding:12px;} .chart-card{break-inside:avoid;}}
+.meta-table{width:100%;max-width:720px;border-collapse:collapse;margin:16px 0;}
+.meta-table th,.meta-table td{border:1px solid var(--border);padding:8px 12px;font-size:13px;}
+.meta-table th{width:22%;background:var(--bg-header);font-weight:600;text-align:right;vertical-align:top;white-space:nowrap;}
+.meta-table td{text-align:left;background:#fff;word-break:break-word;}
+@media print{body{padding:12px;} .chart-gallery-table tr{break-inside:avoid;} .chart-card{break-inside:avoid;}}
 </style>");
         }
 
         private static void AppendHeader(StringBuilder sb, TestReportData d)
         {
-            sb.AppendLine("<h1>测试报告</h1><div class='meta-grid'>");
-            Meta(sb, "产品序列号", d.SN);
-            Meta(sb, "工况", d.Condition);
-            Meta(sb, "开始时间", d.StartTime.ToString("yyyy-MM-dd HH:mm:ss"));
-            Meta(sb, "耗时", $"{(d.EndTime - d.StartTime).TotalSeconds:F1}s");
-            Meta(sb, "执行策略", d.Strategy);
-            Meta(sb, "执行ID", d.ExecutionId);
-            sb.AppendLine("</div>");
+            sb.AppendLine("<h1>测试报告</h1>");
+            sb.AppendLine("<table class='meta-table' role='presentation'>");
+            MetaRow(sb, "产品序列号", d.SN);
+            MetaRow(sb, "工况", d.Condition);
+            MetaRow(sb, "开始时间", d.StartTime.ToString("yyyy-MM-dd HH:mm:ss"));
+            MetaRow(sb, "耗时", $"{(d.EndTime - d.StartTime).TotalSeconds:F1}s");
+            MetaRow(sb, "执行策略", d.Strategy);
+            MetaRow(sb, "执行ID", d.ExecutionId);
+            sb.AppendLine("</table>");
         }
 
         private static void AppendOverallResult(StringBuilder sb, TestReportData d)
@@ -114,33 +119,83 @@ th{background:var(--bg-header);font-weight:600;}
             }
             sb.AppendLine("</table>");
 
-            foreach (var r in rows.Where(r => !string.IsNullOrEmpty(r.ChartImageBase64)))
+            AppendCurveJudgmentChartGrid(sb, rows);
+        }
+
+        private static void AppendCurveJudgmentChartGrid(StringBuilder sb, List<CurveJudgmentRow> rows)
+        {
+            var withImg = rows.Where(r => !string.IsNullOrEmpty(r.ChartImageBase64)).ToList();
+            if (withImg.Count == 0)
+                return;
+
+            sb.AppendLine("<h3 style='margin-top:20px;font-size:16px;color:#334155;'>曲线附图</h3>");
+            sb.AppendLine("<table class='chart-gallery-table' role='presentation'><tbody>");
+            for (var i = 0; i < withImg.Count; i += 2)
             {
-                sb.AppendLine($"<div class='chart-card'><div class='chart-title'>{E(r.CurveName)}</div>");
-                sb.AppendLine($"<img src='data:image/png;base64,{r.ChartImageBase64}' /></div>");
+                sb.AppendLine("<tr>");
+                AppendChartCellCurve(sb, withImg[i]);
+                AppendChartCellCurve(sb, i + 1 < withImg.Count ? withImg[i + 1] : null);
+                sb.AppendLine("</tr>");
             }
+
+            sb.AppendLine("</tbody></table>");
+        }
+
+        private static void AppendChartCellCurve(StringBuilder sb, CurveJudgmentRow? row)
+        {
+            if (row == null)
+            {
+                sb.AppendLine("<td class='chart-cell chart-cell-empty'></td>");
+                return;
+            }
+
+            sb.AppendLine("<td class='chart-cell'>");
+            sb.AppendLine("<div class='chart-card'>");
+            sb.AppendLine($"<div class='chart-title'>{E(row.CurveName)}</div>");
+            sb.AppendLine($"<img src='data:image/png;base64,{row.ChartImageBase64}' alt='' />");
+            sb.AppendLine("</div></td>");
         }
 
         private static void AppendChartGallery(StringBuilder sb, List<ChartSection> charts)
         {
-            sb.AppendLine("<h2>算法与数据图表</h2><div>");
-            foreach (var c in charts)
+            var list = charts.Where(c => !string.IsNullOrEmpty(c.ImageBase64)).ToList();
+            if (list.Count == 0)
+                return;
+
+            sb.AppendLine("<h2>算法与数据图表</h2>");
+            sb.AppendLine("<table class='chart-gallery-table' role='presentation'><tbody>");
+            for (var i = 0; i < list.Count; i += 2)
             {
-                if (string.IsNullOrEmpty(c.ImageBase64)) continue;
-                var kindLabel = c.SourceKind == ReportChartSourceKind.Raw ? "[原始数据] " : "[算法] ";
-                sb.AppendLine("<div class='chart-card'>");
-                sb.AppendLine($"<div class='chart-title'>{kindLabel}{E(c.Title)}</div>");
-                sb.AppendLine($"<img src='data:image/png;base64,{c.ImageBase64}' width='{c.Width}' height='{c.Height}'/>");
-                if (!string.IsNullOrEmpty(c.Description))
-                    sb.AppendLine($"<div class='chart-desc'>{E(c.Description)}</div>");
-                sb.AppendLine("</div>");
+                sb.AppendLine("<tr>");
+                AppendChartCellSection(sb, list[i]);
+                AppendChartCellSection(sb, i + 1 < list.Count ? list[i + 1] : null);
+                sb.AppendLine("</tr>");
             }
-            sb.AppendLine("</div>");
+
+            sb.AppendLine("</tbody></table>");
         }
 
-        private static void Meta(StringBuilder sb, string label, string value)
+        private static void AppendChartCellSection(StringBuilder sb, ChartSection? c)
         {
-            sb.AppendLine($"<div class='meta-item'><div class='meta-label'>{E(label)}</div><div class='meta-value'>{E(value)}</div></div>");
+            if (c == null)
+            {
+                sb.AppendLine("<td class='chart-cell chart-cell-empty'></td>");
+                return;
+            }
+
+            var kindLabel = c.SourceKind == ReportChartSourceKind.Raw ? "[原始数据] " : "[算法] ";
+            sb.AppendLine("<td class='chart-cell'>");
+            sb.AppendLine("<div class='chart-card'>");
+            sb.AppendLine($"<div class='chart-title'>{kindLabel}{E(c.Title)}</div>");
+            sb.AppendLine($"<img src='data:image/png;base64,{c.ImageBase64}' width='{c.Width}' height='{c.Height}' alt='' />");
+            if (!string.IsNullOrEmpty(c.Description))
+                sb.AppendLine($"<div class='chart-desc'>{E(c.Description)}</div>");
+            sb.AppendLine("</div></td>");
+        }
+
+        private static void MetaRow(StringBuilder sb, string label, string value)
+        {
+            sb.AppendLine($"<tr><th>{E(label)}</th><td>{E(value)}</td></tr>");
         }
 
         private static string E(string? s) => WebUtility.HtmlEncode(s ?? "");

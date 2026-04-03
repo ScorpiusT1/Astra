@@ -12,6 +12,9 @@ namespace Astra.ViewModels.HomeModules
     {
         private bool _disposed;
 
+        /// <summary>首页模块通常在 UI 线程创建；若仍从非 UI 线程创建，Attach/Detach 必须经此调度器，否则会触发 ObservableCollection 跨线程异常。</summary>
+        private readonly Dispatcher? _uiDispatcher;
+
         public ObservableCollection<IoMonitorPointItem> Points { get; } = new();
 
         /// <summary>是否有首页监控点位（用于在无 IO 时隐藏整模块）。与 Points 同步，避免仅依赖计算属性时早于界面绑定丢失通知。</summary>
@@ -23,24 +26,36 @@ namespace Astra.ViewModels.HomeModules
 
         public IOMonitorModuleViewModel()
         {
+            _uiDispatcher = Application.Current?.Dispatcher;
+
             Points.CollectionChanged += OnPointsCollectionChanged;
             IoMonitorRuntimeRegistry.RuntimeRegistered += OnIoMonitorRuntimeRegistered;
 
-            if (IoMonitorRuntimeRegistry.TryGet() != null)
+            // 禁止在 ctor 线程同步 TryAttach：DI/作用域可能在非 UI 线程创建本 VM，Attach 会 Clear/Add Points。
+            ScheduleTryAttach(DispatcherPriority.ApplicationIdle);
+            SyncHasMonitorPoints();
+        }
+
+        private void ScheduleTryAttach(DispatcherPriority priority)
+        {
+            if (_disposed)
             {
-                TryAttach();
+                return;
+            }
+
+            if (_uiDispatcher != null)
+            {
+                _uiDispatcher.BeginInvoke(TryAttach, priority);
             }
             else
             {
-                Application.Current?.Dispatcher.BeginInvoke(TryAttach, DispatcherPriority.ApplicationIdle);
+                TryAttach();
             }
-
-            SyncHasMonitorPoints();
         }
 
         private void OnIoMonitorRuntimeRegistered(object? sender, EventArgs e)
         {
-            Application.Current?.Dispatcher.BeginInvoke(TryAttach, DispatcherPriority.Normal);
+            ScheduleTryAttach(DispatcherPriority.Normal);
         }
 
         private void OnPointsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -81,7 +96,29 @@ namespace Astra.ViewModels.HomeModules
             _disposed = true;
             IoMonitorRuntimeRegistry.RuntimeRegistered -= OnIoMonitorRuntimeRegistered;
             Points.CollectionChanged -= OnPointsCollectionChanged;
-            IoMonitorRuntimeRegistry.TryGet()?.Detach();
+
+            var runtime = IoMonitorRuntimeRegistry.TryGet();
+            if (runtime == null)
+            {
+                return;
+            }
+
+            var d = _uiDispatcher ?? Application.Current?.Dispatcher;
+            if (d != null && !d.CheckAccess())
+            {
+                try
+                {
+                    d.Invoke(runtime.Detach, DispatcherPriority.Send);
+                }
+                catch
+                {
+                    runtime.Detach();
+                }
+            }
+            else
+            {
+                runtime.Detach();
+            }
         }
     }
 }

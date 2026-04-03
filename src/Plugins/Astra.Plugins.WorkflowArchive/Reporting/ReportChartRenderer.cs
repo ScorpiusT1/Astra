@@ -9,9 +9,13 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
     /// <summary>
     /// ScottPlot 5 无头渲染器：将 <see cref="ChartDisplayPayload"/> 渲染为 PNG 字节数组。
     /// 可脱离 WPF 窗口运行，用于报告离线生成。
+    /// 支持根级单图与 <see cref="ChartDisplayPayload.Series"/> 多系列（单图叠加 / 分子图），与主界面图表语义对齐。
     /// </summary>
     public static class ReportChartRenderer
     {
+        /// <summary>与主界面图表一致使用微软雅黑，避免标题/轴标签/图例在 PNG 中乱码。</summary>
+        private const string ReportFontName = "微软雅黑";
+
         private static readonly string[] DefaultPalette =
         {
             "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
@@ -19,19 +23,186 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             "#14b8a6", "#e11d48", "#a855f7", "#0ea5e9", "#65a30d"
         };
 
+        /// <summary>渲染 PNG。分子图（SubPlots）整包传入时仅渲染第一子图（报告侧应已拆分为多张并逐张调用）。</summary>
         public static byte[] RenderToPng(
             ChartDisplayPayload payload,
             int width = 800,
             int height = 400,
             string? title = null)
         {
+            return RenderToPng(payload, width, height, title, out _, out _);
+        }
+
+        /// <inheritdoc cref="RenderToPng(ChartDisplayPayload,int,int,string?)"/>
+        /// <param name="renderedWidth">实际导出宽度（与请求宽度一致）。</param>
+        /// <param name="renderedHeight">实际导出高度（与请求高度一致，单张子图）。</param>
+        public static byte[] RenderToPng(
+            ChartDisplayPayload payload,
+            int width,
+            int height,
+            string? title,
+            out int renderedWidth,
+            out int renderedHeight)
+        {
+            renderedWidth = width;
+            renderedHeight = height;
+
+            if (payload.Series is { Count: > 0 })
+            {
+                if (payload.LayoutMode == ChartLayoutMode.SubPlots)
+                {
+                    var slice = ReportChartPayloadSliceHelper.BuildSubPlotSlice(payload, 0);
+                    return RenderSingleRootPayloadToPng(slice, width, height, title);
+                }
+
+                return RenderSeriesSinglePlotToPng(payload, width, height, title);
+            }
+
+            return RenderSingleRootPayloadToPng(payload, width, height, title);
+        }
+
+        private static void ApplyReportFont(Plot plt)
+        {
+            if (!string.IsNullOrWhiteSpace(ReportFontName))
+                plt.Font.Set(ReportFontName);
+        }
+
+        private static byte[] RenderSingleRootPayloadToPng(
+            ChartDisplayPayload payload,
+            int width,
+            int height,
+            string? title)
+        {
             var plt = new Plot();
+            ApplyReportFont(plt);
             if (!string.IsNullOrEmpty(title))
                 plt.Title(title);
 
+            ApplyAxisLabels(plt, payload);
+            RenderPayloadByKind(plt, payload);
+
+            if (payload.Kind is not ChartPayloadKind.Pie
+                and not ChartPayloadKind.Donut
+                and not ChartPayloadKind.Radar)
+            {
+                AddHorizontalLimits(plt, payload);
+            }
+
+            return plt.GetImageBytes(width, height, ImageFormat.Png);
+        }
+
+        private static byte[] RenderSeriesSinglePlotToPng(
+            ChartDisplayPayload payload,
+            int width,
+            int height,
+            string? title)
+        {
+            var plt = new Plot();
+            ApplyReportFont(plt);
+            if (!string.IsNullOrEmpty(title))
+                plt.Title(title);
+
+            ApplyAxisLabels(plt, payload);
+
+            var series = payload.Series!;
+            for (var i = 0; i < series.Count; i++)
+                AddSeriesEntryToPlot(plt, series[i], i);
+
+            var anyCartesian = series.Any(e =>
+                e.Data.Kind is not ChartPayloadKind.Pie
+                and not ChartPayloadKind.Donut
+                and not ChartPayloadKind.Radar);
+
+            if (anyCartesian)
+            {
+                AddHorizontalLimits(plt, payload);
+                plt.Axes.AutoScale();
+            }
+
+            if (series.Count > 0)
+                plt.ShowLegend(Alignment.UpperRight);
+
+            return plt.GetImageBytes(width, height, ImageFormat.Png);
+        }
+
+        private static void ApplyAxisLabels(Plot plt, ChartDisplayPayload payload)
+        {
             plt.XLabel(ChartDisplayPayload.FormatAxisTitle(payload.BottomAxisLabel, payload.BottomAxisUnit));
             plt.YLabel(ChartDisplayPayload.FormatAxisTitle(payload.LeftAxisLabel, payload.LeftAxisUnit));
+        }
 
+        /// <summary>与主界面 <c>TestItemChartWindow.AddSeriesEntryToPlot</c> 对齐：单坐标系内叠加多系列。</summary>
+        private static void AddSeriesEntryToPlot(Plot plot, ChartSeriesEntry entry, int index)
+        {
+            var data = entry.Data;
+            var color = ResolveColor(entry.Color, index);
+            var name = string.IsNullOrWhiteSpace(entry.Name) ? $"系列 {index + 1}" : entry.Name.Trim();
+
+            switch (data.Kind)
+            {
+                case ChartPayloadKind.Signal1D:
+                {
+                    var y = data.SignalY;
+                    if (y == null || y.Length == 0) return;
+                    var period = data.SamplePeriod > 0 ? data.SamplePeriod : 1.0;
+                    var sig = plot.Add.Signal(y, period);
+                    sig.LegendText = name;
+                    sig.LineWidth = 1.5f;
+                    sig.Color = color;
+                    return;
+                }
+                case ChartPayloadKind.XYLine:
+                case ChartPayloadKind.XYScatter:
+                {
+                    var xs = data.X;
+                    var ys = data.Y;
+                    if (xs == null || ys == null || xs.Length == 0 || xs.Length != ys.Length) return;
+                    var scatter = plot.Add.Scatter(xs, ys);
+                    scatter.Color = color;
+                    scatter.LegendText = name;
+                    if (data.Kind == ChartPayloadKind.XYLine)
+                    {
+                        scatter.LineWidth = 1.5f;
+                        scatter.MarkerSize = 0;
+                    }
+                    else
+                    {
+                        scatter.LineWidth = 0;
+                        scatter.MarkerSize = 5;
+                    }
+
+                    return;
+                }
+                case ChartPayloadKind.Bar:
+                case ChartPayloadKind.HorizontalBar:
+                {
+                    var items = data.Categories;
+                    if (items == null || items.Count == 0) return;
+                    var bars = new List<ScottPlot.Bar>();
+                    for (var i = 0; i < items.Count; i++)
+                    {
+                        bars.Add(new ScottPlot.Bar
+                        {
+                            Position = i,
+                            Value = items[i].Value,
+                            FillColor = ResolveColor(items[i].Color, i),
+                            Label = items[i].Value.ToString("G4")
+                        });
+                    }
+
+                    var bp = plot.Add.Bars(bars.ToArray());
+                    bp.Horizontal = data.Kind == ChartPayloadKind.HorizontalBar;
+                    bp.LegendText = name;
+                    return;
+                }
+                default:
+                    RenderPayloadByKind(plot, data);
+                    return;
+            }
+        }
+
+        private static void RenderPayloadByKind(Plot plt, ChartDisplayPayload payload)
+        {
             switch (payload.Kind)
             {
                 case ChartPayloadKind.Signal1D:
@@ -71,15 +242,6 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
                     RenderRadar(plt, payload);
                     break;
             }
-
-            if (payload.Kind is not ChartPayloadKind.Pie
-                and not ChartPayloadKind.Donut
-                and not ChartPayloadKind.Radar)
-            {
-                AddHorizontalLimits(plt, payload);
-            }
-
-            return plt.GetImageBytes(width, height, ImageFormat.Png);
         }
 
         #region Existing chart types

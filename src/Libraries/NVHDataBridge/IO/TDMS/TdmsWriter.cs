@@ -166,6 +166,10 @@ namespace NVHDataBridge.IO.TDMS
 
             config = config ?? new ChannelConfig();
 
+            int dataCountForNi = config.WfSamples.HasValue
+                ? (int)Math.Min(config.WfSamples.Value, int.MaxValue)
+                : 0;
+
             var meta = WriteSegment.GenerateStandardChannel(
                 groupName,
                 channelName,
@@ -176,9 +180,11 @@ namespace NVHDataBridge.IO.TDMS
                 config.StartTime ?? DateTime.Now,
                 config.Increment,
                 typeof(T),
-                0,
+                dataCountForNi,
                 0
             );
+
+            ApplyStandardWaveformChannelProperties(meta, config);
 
             if (config.CustomProperties != null)
             {
@@ -792,6 +798,27 @@ namespace NVHDataBridge.IO.TDMS
 
         #endregion
 
+        /// <summary>
+        /// 写入 LabVIEW/DAQmx 等工具常用的波形通道属性（与 <see cref="WriteSegment.GenerateStandardChannel"/> 补充配合）。
+        /// </summary>
+        private static void ApplyStandardWaveformChannelProperties(Reader.Metadata meta, ChannelConfig config)
+        {
+            if (meta?.Properties == null)
+                return;
+
+            long samples = config.WfSamples ?? 0;
+            meta.Properties["wf_samples"] = samples;
+
+            double startOffset = config.WfStartOffset ?? 0.0;
+            meta.Properties["wf_start_offset"] = startOffset;
+
+            string xName = config.XName ?? string.Empty;
+            meta.Properties["wf_xname"] = xName;
+
+            string xUnitStr = config.XUnitString ?? string.Empty;
+            meta.Properties["wf_xunit_string"] = xUnitStr;
+        }
+
         #region 辅助方法
 
         private Reader.Metadata GetOrCreateMetadata<T>(string groupName, string channelName) where T : struct
@@ -998,6 +1025,10 @@ namespace NVHDataBridge.IO.TDMS
         public string XName { get; set; }
         public DateTime? StartTime { get; set; }
         public double Increment { get; set; }
+        /// <summary>波形采样点数，对应 TDMS 通道属性 wf_samples，并传入 GenerateStandardChannel 的 dataCount。</summary>
+        public long? WfSamples { get; set; }
+        /// <summary>波形 X 轴起点偏移，对应 wf_start_offset。</summary>
+        public double? WfStartOffset { get; set; }
         public Dictionary<string, object> CustomProperties { get; set; }
 
         public ChannelConfig()

@@ -156,8 +156,6 @@ namespace NVHDataBridge.Converters
 
             if (allData.IsEmpty)
             {
-                // 即使没有数据，也要创建通道元数据
-                writer.SetChannelProperties<T>(groupName, channel.Name);
                 return;
             }
 
@@ -200,10 +198,15 @@ namespace NVHDataBridge.Converters
             config.Description = channel.Properties.Get<string>("description", 
                 channel.Properties.Get<string>("wf_description", string.Empty));
             config.YUnitString = channel.Properties.Get<string>("wf_yunit", string.Empty);
-            config.XUnitString = channel.Properties.Get<string>("wf_xunit", string.Empty);
+            var xUnitString = channel.Properties.Get<string>("wf_xunit_string", string.Empty);
+            if (string.IsNullOrEmpty(xUnitString))
+                xUnitString = channel.Properties.Get<string>("wf_xunit", string.Empty);
+            config.XUnitString = xUnitString;
             config.XName = channel.Properties.Get<string>("wf_xname", string.Empty);
             config.StartTime = channel.WfStartTime ?? channel.Properties.Get<DateTime?>("wf_start_time");
             config.Increment = channel.WfIncrement ?? channel.Properties.Get<double?>("wf_increment") ?? 0.0;
+            config.WfSamples = channel.TotalSamples;
+            config.WfStartOffset = channel.WfStartOffset ?? channel.Properties.Get<double?>("wf_start_offset");
 
             // 收集自定义属性
             foreach (var entry in channel.Properties.Entries)
@@ -236,7 +239,8 @@ namespace NVHDataBridge.Converters
                    lowerKey == "wf_start_time" ||
                    lowerKey == "wf_start_offset" ||
                    lowerKey == "wf_increment" ||
-                   lowerKey == "wf_samples";
+                   lowerKey == "wf_samples" ||
+                   lowerKey == "wf_xunit_string";
         }
 
         #endregion
@@ -462,9 +466,19 @@ namespace NVHDataBridge.Converters
                 nvhChannel.Properties.Set("wf_yunit", yUnit);
             }
 
-            if (channel.Properties.TryGetValue("wf_xunit", out var xUnit))
+            bool hasWfXUnit = channel.Properties.TryGetValue("wf_xunit", out var xUnit);
+            if (hasWfXUnit)
             {
                 nvhChannel.Properties.Set("wf_xunit", xUnit);
+            }
+
+            if (channel.Properties.TryGetValue("wf_xunit_string", out var xUnitString))
+            {
+                nvhChannel.Properties.Set("wf_xunit_string", xUnitString);
+                if (!hasWfXUnit)
+                {
+                    nvhChannel.Properties.Set("wf_xunit", xUnitString);
+                }
             }
 
             if (channel.Properties.TryGetValue("wf_xname", out var xName))
@@ -498,9 +512,17 @@ namespace NVHDataBridge.Converters
 
             if (channel.Properties.TryGetValue("wf_samples", out var samples))
             {
-                if (samples is long count)
+                switch (samples)
                 {
-                    nvhChannel.WfSamples = count;
+                    case long count:
+                        nvhChannel.WfSamples = count;
+                        break;
+                    case ulong u:
+                        nvhChannel.WfSamples = (long)Math.Min(u, long.MaxValue);
+                        break;
+                    case int i:
+                        nvhChannel.WfSamples = i;
+                        break;
                 }
             }
 

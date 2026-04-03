@@ -1,3 +1,4 @@
+using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
 using Astra.UI.Abstractions.Nodes;
 using NVHDataBridge.Models;
@@ -153,8 +154,10 @@ namespace Astra.Plugins.Limits.Helpers
         public static ExecutionResult WithOptionalChartDisplay(
             ExecutionResult result,
             NodeContext context,
+            string producerNodeId,
             bool associateCurveForDisplay,
-            string? chartArtifactKey)
+            string? chartArtifactKey,
+            string? nvhChannelKeyInSignalGroup)
         {
             if (!associateCurveForDisplay || string.IsNullOrWhiteSpace(chartArtifactKey))
             {
@@ -169,9 +172,85 @@ namespace Astra.Plugins.Limits.Helpers
                     .WithOutput(NodeUiOutputKeys.HasChartData, false);
             }
 
+            var filter = nvhChannelKeyInSignalGroup ?? string.Empty;
+            TryPublishLimitChartPayloadForReport(context, producerNodeId, key, filter);
+
             return result
                 .WithOutput(NodeUiOutputKeys.HasChartData, true)
-                .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key);
+                .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key)
+                .WithOutput(NodeUiOutputKeys.ChartNvhChannelFilter, filter);
+        }
+
+        /// <summary>
+        /// 曲线卡控 / 值+曲线等节点在已解析 Raw 与通道时，统一写入主页过滤键并发布单通道 <see cref="ChartDisplayPayload"/> 到测试总线（报告与曲线配图使用）。
+        /// </summary>
+        public static ExecutionResult WithNvhCurveChartOutputs(
+            ExecutionResult result,
+            NodeContext context,
+            string producerNodeId,
+            bool showChart,
+            string? chartArtifactKey,
+            string? nvhChannelKeyInSignalGroup)
+        {
+            if (!showChart || string.IsNullOrWhiteSpace(chartArtifactKey))
+            {
+                return result.WithOutput(NodeUiOutputKeys.HasChartData, false);
+            }
+
+            var key = chartArtifactKey.Trim();
+            if (!context.TryGetArtifact<NvhMemoryFile>(key, out var nvh) || nvh == null)
+            {
+                return result.WithOutput(NodeUiOutputKeys.HasChartData, false);
+            }
+
+            var filter = nvhChannelKeyInSignalGroup ?? string.Empty;
+            TryPublishLimitChartPayloadForReport(context, producerNodeId, key, filter);
+
+            return result
+                .WithOutput(NodeUiOutputKeys.HasChartData, true)
+                .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key)
+                .WithOutput(NodeUiOutputKeys.ChartNvhChannelFilter, filter);
+        }
+
+        private static void TryPublishLimitChartPayloadForReport(
+            NodeContext context,
+            string producerNodeId,
+            string chartArtifactKey,
+            string nvhChannelFilterStored)
+        {
+            var bus = context.GetDataBus();
+            if (bus == null)
+            {
+                return;
+            }
+
+            if (!context.TryGetArtifact<NvhMemoryFile>(chartArtifactKey, out var file) || file == null)
+            {
+                return;
+            }
+
+            var ch = string.IsNullOrWhiteSpace(nvhChannelFilterStored) ? null : nvhChannelFilterStored.Trim();
+            if (!NvhCurveSampleUtil.TryExtractAsDoubleArray(
+                    file,
+                    LimitCurveArtifactResolver.NvhSignalGroupName,
+                    ch,
+                    out var samples,
+                    out var wfInc) ||
+                samples.Length == 0)
+            {
+                return;
+            }
+
+            var payload = new ChartDisplayPayload
+            {
+                Kind = ChartPayloadKind.Signal1D,
+                SignalY = samples,
+                SamplePeriod = wfInc > 0 ? wfInc : 1.0,
+                BottomAxisLabel = "样本",
+                LeftAxisLabel = "数值"
+            };
+
+            bus.PublishAlgorithmResult(producerNodeId, "LimitCurveChart", payload, tag: "limits");
         }
     }
 }

@@ -22,6 +22,10 @@ namespace Astra.Plugins.PLC.Services
         private readonly PlcPlugin _plugin;
         private readonly object _gate = new();
         private ObservableCollection<IoMonitorPointItem>? _bound;
+
+        /// <summary>Attach 时记录的 UI 调度器；Dispose 时 <see cref="Application.Current"/> 可能已为 null，不能依赖其 Dispatcher。</summary>
+        private Dispatcher? _boundDispatcher;
+
         private CancellationTokenSource? _cts;
         private Task? _pollTask;
         private List<(IoPointModel Model, IoMonitorPointItem Item)> _rows = new();
@@ -35,6 +39,7 @@ namespace Astra.Plugins.PLC.Services
         {
             Detach();
             _bound = points;
+            _boundDispatcher = Application.Current?.Dispatcher;
 
             // 必须从 ConfigurationManager 拉全量 IO 配置：仅用插件内 _ioConfigs 可能与磁盘/缓存不一致，导致只显示部分点位。
             var configs = ResolveIoConfigsForAttach();
@@ -120,11 +125,54 @@ namespace Astra.Plugins.PLC.Services
             _cts = null;
             _pollTask = null;
 
+            var uiDispatcher = _boundDispatcher;
+            ObservableCollection<IoMonitorPointItem>? bound;
             lock (_gate)
             {
                 _rows.Clear();
-                _bound?.Clear();
+                bound = _bound;
                 _bound = null;
+            }
+
+            _boundDispatcher = null;
+
+            // ObservableCollection 由首页 VM 绑定到 UI；Dispose/作用域释放可能在非 UI 线程触发，必须在创建绑定时记录的 Dispatcher 上 Clear。
+            if (bound != null)
+            {
+                ClearBoundCollectionOnUiThread(bound, uiDispatcher);
+            }
+        }
+
+        private static void ClearBoundCollectionOnUiThread(ObservableCollection<IoMonitorPointItem> bound, Dispatcher? capturedUiDispatcher)
+        {
+            var dispatcher = capturedUiDispatcher ?? Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                // 应用已退出或未拿到 UI 调度器：无法安全修改仍可能挂在 CollectionView 上的集合，跳过以免跨线程异常。
+                return;
+            }
+
+            void ClearSafe()
+            {
+                bound.Clear();
+            }
+
+            if (dispatcher.CheckAccess())
+            {
+                ClearSafe();
+                return;
+            }
+
+            try
+            {
+                if (dispatcher.HasShutdownStarted)
+                    return;
+
+                dispatcher.Invoke(ClearSafe, DispatcherPriority.Send);
+            }
+            catch
+            {
+                // 关闭过程中 Invoke 失败则放弃清理
             }
         }
 

@@ -275,7 +275,7 @@ namespace Astra.Views.HomeModules
                 var entry = series[i];
                 var host = new Border
                 {
-                    Margin = new Thickness(0, 0, 0, 10),
+                    Margin = new Thickness(4, 4, 4, 4),
                     BorderThickness = new Thickness(1),
                     BorderBrush = TryFindResource("BorderBrush") as System.Windows.Media.Brush,
                     CornerRadius = new CornerRadius(6),

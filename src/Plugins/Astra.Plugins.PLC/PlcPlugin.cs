@@ -298,7 +298,27 @@ namespace Astra.Plugins.PLC
                 }
             }
 
-            _homeIoMonitor?.Detach();
+            var homeIoMonitor = _homeIoMonitor;
+            if (homeIoMonitor != null)
+            {
+                var d = Application.Current?.Dispatcher;
+                if (d != null && !d.CheckAccess())
+                {
+                    try
+                    {
+                        d.Invoke(homeIoMonitor.Detach, DispatcherPriority.Send);
+                    }
+                    catch
+                    {
+                        homeIoMonitor.Detach();
+                    }
+                }
+                else
+                {
+                    homeIoMonitor.Detach();
+                }
+            }
+
             IoMonitorRuntimeRegistry.Register(null);
             _homeIoMonitor = null;
 

@@ -62,7 +62,8 @@
                 <Grid>
                     <scottplot:WpfPlot x:Name="ItemPlot" Margin="14" />
                     <ScrollViewer x:Name="SubPlotScrollViewer" Margin="14" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                        <StackPanel x:Name="SubPlotHost" />
+                        <!-- 多子图：两列多行，与报告 PNG / HTML 网格一致（勿用纵向 StackPanel 会排成一列） -->
+                        <UniformGrid x:Name="SubPlotHost" Columns="2" />
                     </ScrollViewer>
                 </Grid>
             </Border>

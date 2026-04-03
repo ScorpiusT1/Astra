@@ -128,7 +128,7 @@
                                  RelativeSource="{RelativeSource AncestorType={x:Type local:TreeListViewItem}}" />
                         <Binding Path="IndentSize"
                                  RelativeSource="{RelativeSource AncestorType={x:Type local:TreeListView},
-                                                                Mode=FindAncestor}" />
+                                 Mode=FindAncestor}" />
                     </MultiBinding>
                 </ToggleButton.Margin>
                 <ToggleButton.IsChecked>
@@ -139,14 +139,14 @@
 
             <ContentPresenter Content="{Binding}"
                               ContentTemplate="{Binding FirstColumnCellTemplate,
-                                                        RelativeSource={RelativeSource AncestorType={x:Type local:TreeListView},
-                                                                                       Mode=FindAncestor}}"
+                              RelativeSource={RelativeSource AncestorType={x:Type local:TreeListView},
+                              Mode=FindAncestor}}"
                               HorizontalAlignment="Stretch"
                               VerticalAlignment="Center" />
         </DockPanel>
         <DataTemplate.Triggers>
             <DataTrigger Binding="{Binding Path=HasItems,
-                                          RelativeSource={RelativeSource AncestorType={x:Type local:TreeListViewItem}}}"
+                         RelativeSource={RelativeSource AncestorType={x:Type local:TreeListViewItem}}}"
                          Value="False">
                 <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
             </DataTrigger>
@@ -179,8 +179,8 @@
                             <GridViewRowPresenter x:Name="PART_Header"
                                                   Content="{TemplateBinding Header}"
                                                   Columns="{Binding RelativeSource={RelativeSource Mode=FindAncestor,
-                                                                                                  AncestorType={x:Type local:TreeListView}},
-                                                                    Path=Columns}"
+                                                  AncestorType={x:Type local:TreeListView}},
+                                                  Path=Columns}"
                                                   HorizontalAlignment="Stretch"
                                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
@@ -190,7 +190,7 @@
                         <Trigger Property="IsMouseOver"
                                  Value="true"
                                  SourceName="RowBorder">
-                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+
                             <Setter Property="Background" Value="{DynamicResource ThirdlyRegionBrush}" TargetName="RowBorder" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="true">

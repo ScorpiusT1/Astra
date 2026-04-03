@@ -71,20 +71,41 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             var algorithmRefs = dataBus.Query(DataArtifactCategory.Algorithm);
             foreach (var algRef in algorithmRefs)
             {
-                if (!dataBus.TryGet<ChartDisplayPayload>(algRef.Key, out _))
+                if (!dataBus.TryGet<ChartDisplayPayload>(algRef.Key, out var payload) || payload == null)
                     continue;
 
                 if (!ChartArtifactMatches(algRef, producerWhitelist, artifactKeyWhitelist))
                     continue;
 
-                data.Charts.Add(new ChartSection
+                if (payload.Series is { Count: > 0 } && payload.LayoutMode == ChartLayoutMode.SubPlots)
                 {
-                    Title = algRef.DisplayName ?? "算法图表",
-                    NodeName = GetProducerNodeId(algRef),
-                    Description = algRef.Description,
-                    ArtifactKey = algRef.Key,
-                    SourceKind = ReportChartSourceKind.Algorithm
-                });
+                    for (var i = 0; i < payload.Series.Count; i++)
+                    {
+                        var ser = payload.Series[i];
+                        var part = string.IsNullOrWhiteSpace(ser.Name) ? $"子图 {i + 1}" : ser.Name.Trim();
+                        var baseTitle = algRef.DisplayName ?? "算法图表";
+                        data.Charts.Add(new ChartSection
+                        {
+                            Title = $"{baseTitle} — {part}",
+                            NodeName = GetProducerNodeId(algRef),
+                            Description = algRef.Description,
+                            ArtifactKey = algRef.Key,
+                            SubPlotSeriesIndex = i,
+                            SourceKind = ReportChartSourceKind.Algorithm
+                        });
+                    }
+                }
+                else
+                {
+                    data.Charts.Add(new ChartSection
+                    {
+                        Title = algRef.DisplayName ?? "算法图表",
+                        NodeName = GetProducerNodeId(algRef),
+                        Description = algRef.Description,
+                        ArtifactKey = algRef.Key,
+                        SourceKind = ReportChartSourceKind.Algorithm
+                    });
+                }
             }
         }
 
@@ -97,19 +118,39 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             var rawRefs = dataBus.Query(DataArtifactCategory.Raw);
             foreach (var rawRef in rawRefs)
             {
-                if (!dataBus.TryGet<ChartDisplayPayload>(rawRef.Key, out _))
+                if (!dataBus.TryGet<ChartDisplayPayload>(rawRef.Key, out var payload) || payload == null)
                     continue;
 
                 if (!ChartArtifactMatches(rawRef, producerWhitelist, artifactKeyWhitelist))
                     continue;
 
-                data.Charts.Add(new ChartSection
+                var rawBase = rawRef.DisplayName ?? "Raw";
+                if (payload.Series is { Count: > 0 } && payload.LayoutMode == ChartLayoutMode.SubPlots)
                 {
-                    Title = $"原始数据: {rawRef.DisplayName ?? "Raw"}",
-                    NodeName = GetProducerNodeId(rawRef),
-                    ArtifactKey = rawRef.Key,
-                    SourceKind = ReportChartSourceKind.Raw
-                });
+                    for (var i = 0; i < payload.Series.Count; i++)
+                    {
+                        var ser = payload.Series[i];
+                        var part = string.IsNullOrWhiteSpace(ser.Name) ? $"子图 {i + 1}" : ser.Name.Trim();
+                        data.Charts.Add(new ChartSection
+                        {
+                            Title = $"原始数据: {rawBase} — {part}",
+                            NodeName = GetProducerNodeId(rawRef),
+                            ArtifactKey = rawRef.Key,
+                            SubPlotSeriesIndex = i,
+                            SourceKind = ReportChartSourceKind.Raw
+                        });
+                    }
+                }
+                else
+                {
+                    data.Charts.Add(new ChartSection
+                    {
+                        Title = $"原始数据: {rawBase}",
+                        NodeName = GetProducerNodeId(rawRef),
+                        ArtifactKey = rawRef.Key,
+                        SourceKind = ReportChartSourceKind.Raw
+                    });
+                }
             }
         }
 
@@ -177,6 +218,7 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
 
             rows.Add(new CurveJudgmentRow
             {
+                NodeId = nr.NodeId ?? string.Empty,
                 NodeName = nr.NodeName ?? nr.NodeId ?? string.Empty,
                 CurveName = nr.NodeName ?? nr.NodeId ?? string.Empty,
                 Pass = TryGetBool(output, NodeUiOutputKeys.CurveCheckPass),

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Astra.Core.Reporting;
 using QuestPDF.Fluent;
@@ -17,18 +18,22 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
+        /// <summary>每页 PDF 中图表网格为 2 行 × 2 列（与 HTML 报告一致）。</summary>
+        private const int ChartsPerPdfGridPage = 4;
+
         public static void Build(TestReportData data, string outputPath)
         {
             Document.Create(document =>
             {
                 document.Page(page => ComposeSummaryPage(page, data));
 
+                var imagePages = new List<(string Title, byte[] Png, string? Description)>();
+
                 foreach (var cj in data.CurveJudgments.Where(c => !string.IsNullOrEmpty(c.ChartImageBase64)))
                 {
                     var bytes = TryDecodeBase64(cj.ChartImageBase64);
                     if (bytes == null) continue;
-                    var title = $"曲线图: {cj.CurveName}";
-                    document.Page(page => ComposeImagePage(page, title, bytes));
+                    imagePages.Add(($"曲线图: {cj.CurveName}", bytes, null));
                 }
 
                 foreach (var chart in data.Charts.Where(c => !string.IsNullOrEmpty(c.ImageBase64)))
@@ -36,8 +41,13 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
                     var bytes = TryDecodeBase64(chart.ImageBase64);
                     if (bytes == null) continue;
                     var prefix = chart.SourceKind == ReportChartSourceKind.Raw ? "[原始数据] " : "[算法] ";
-                    var title = $"{prefix}{chart.Title}";
-                    document.Page(page => ComposeImagePage(page, title, bytes, chart.Description));
+                    imagePages.Add(($"{prefix}{chart.Title}", bytes, chart.Description));
+                }
+
+                for (var i = 0; i < imagePages.Count; i += ChartsPerPdfGridPage)
+                {
+                    var chunk = imagePages.Skip(i).Take(ChartsPerPdfGridPage).ToList();
+                    document.Page(page => ComposeImageGridPage(page, chunk));
                 }
             }).GeneratePdf(outputPath);
         }
@@ -67,23 +77,30 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
 
                 column.Item().Text("测试报告").FontSize(18).Bold();
 
-                column.Item().Text(text =>
+                column.Item().Table(meta =>
                 {
-                    text.Span("序列号: ").SemiBold();
-                    text.Span(d.SN);
-                    text.Line("");
-                    text.Span("工况: ").SemiBold();
-                    text.Span(d.Condition);
-                    text.Line("");
-                    text.Span("开始: ").SemiBold();
-                    text.Span(d.StartTime.ToString("yyyy-MM-dd HH:mm:ss"));
-                    text.Span("   耗时: ").SemiBold();
-                    text.Span($"{(d.EndTime - d.StartTime).TotalSeconds:F1}s");
-                    text.Line("");
-                    text.Span("策略: ").SemiBold();
-                    text.Span(d.Strategy);
-                    text.Span("   执行ID: ").SemiBold();
-                    text.Span(d.ExecutionId);
+                    meta.ColumnsDefinition(cols =>
+                    {
+                        cols.RelativeColumn(0.32f);
+                        cols.RelativeColumn(1.68f);
+                    });
+
+                    foreach (var (label, value) in new (string Label, string Value)[]
+                    {
+                        ("序列号", d.SN),
+                        ("工况", d.Condition),
+                        ("开始时间", d.StartTime.ToString("yyyy-MM-dd HH:mm:ss")),
+                        ("耗时 (s)", $"{(d.EndTime - d.StartTime).TotalSeconds:F1}"),
+                        ("执行策略", d.Strategy),
+                        ("执行ID", d.ExecutionId)
+                    })
+                    {
+                        static IContainer MetaCell(IContainer c) =>
+                            c.Padding(4).BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2);
+
+                        meta.Cell().Element(MetaCell).AlignRight().Text(label).SemiBold();
+                        meta.Cell().Element(MetaCell).Text(value);
+                    }
                 });
 
                 var ok = d.OverallResult == "OK";
@@ -190,19 +207,54 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             });
         }
 
-        private static void ComposeImagePage(PageDescriptor page, string title, byte[] png, string? description = null)
+        private static void ComposeImageGridPage(PageDescriptor page, IReadOnlyList<(string Title, byte[] Png, string? Description)> cells)
         {
+            if (cells == null || cells.Count == 0)
+                return;
+
             page.Size(PageSizes.A4);
-            page.Margin(36);
+            page.Margin(28);
             page.DefaultTextStyle(x => x.FontSize(9).FontFamily("Microsoft YaHei"));
 
-            page.Content().Column(column =>
+            page.Content().Column(outer =>
             {
-                column.Spacing(8);
-                column.Item().Text(title).FontSize(12).Bold();
-                if (!string.IsNullOrWhiteSpace(description))
-                    column.Item().Text(description).FontSize(8).FontColor(Colors.Grey.Darken1);
-                column.Item().Image(png).FitArea();
+                outer.Spacing(10);
+
+                outer.Item().Row(top =>
+                {
+                    top.Spacing(8);
+                    top.RelativeItem().Element(c => ComposeChartCell(c, cells, 0));
+                    top.RelativeItem().Element(c => ComposeChartCell(c, cells, 1));
+                });
+
+                if (cells.Count > 2)
+                {
+                    outer.Item().Row(bottom =>
+                    {
+                        bottom.Spacing(8);
+                        bottom.RelativeItem().Element(c => ComposeChartCell(c, cells, 2));
+                        bottom.RelativeItem().Element(c => ComposeChartCell(c, cells, 3));
+                    });
+                }
+            });
+        }
+
+        private static void ComposeChartCell(IContainer container, IReadOnlyList<(string Title, byte[] Png, string? Description)> cells, int index)
+        {
+            if (index >= cells.Count)
+            {
+                container.Height(1);
+                return;
+            }
+
+            var item = cells[index];
+            container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(col =>
+            {
+                col.Spacing(4);
+                col.Item().Text(item.Title).FontSize(10).Bold();
+                if (!string.IsNullOrWhiteSpace(item.Description))
+                    col.Item().Text(item.Description!).FontSize(7).FontColor(Colors.Grey.Darken1);
+                col.Item().Image(item.Png).FitArea();
             });
         }
 

@@ -445,15 +445,17 @@ namespace Astra.Plugins.Limits.Nodes
             }
 
             var chartArtifact = resolvedArtifact;
-            if (!enableCurve && ShowChartWithoutCurveValidation && chartArtifact != null)
+            var showChart = chartArtifact != null &&
+                            ((!enableCurve && ShowChartWithoutCurveValidation) || enableCurve);
+            if (showChart)
             {
-                result = LimitNodeShared.WithOptionalChartDisplay(result, context, true, chartArtifact);
-            }
-            else if (enableCurve && chartArtifact != null)
-            {
-                result = result
-                    .WithOutput(NodeUiOutputKeys.HasChartData, true)
-                    .WithOutput(NodeUiOutputKeys.ChartArtifactKey, chartArtifact);
+                result = LimitNodeShared.WithNvhCurveChartOutputs(
+                    result,
+                    context,
+                    Id,
+                    true,
+                    chartArtifact,
+                    nvhChForCurve);
             }
             else
             {
