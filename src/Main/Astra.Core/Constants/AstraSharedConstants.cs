@@ -71,6 +71,8 @@ namespace Astra.Core.Constants
         {
             public const string CodeDefinedChartXAxisLabel = "时间";
             public const string CodeDefinedChartXAxisUnit = "s";
+            /// <summary>TDMS 波形通道 wf_xunit_string 默认值（中文单位）。</summary>
+            public const string CodeDefinedWfXUnitString = "秒";
             public const string CodeDefinedChartYAxisLabel = "幅值";
             public const string CodeDefinedChartYAxisUnitFallback = "";
             public const int DelaySliceMs = 100;

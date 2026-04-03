@@ -12,7 +12,19 @@ namespace Astra.Plugins.Limits.Helpers
             string? channelName,
             out double[] samples)
         {
+            return TryExtractAsDoubleArray(file, groupName, channelName, out samples, out _);
+        }
+
+        /// <summary>与 <see cref="TryExtractAsDoubleArray(NvhMemoryFile?, string?, string?, out double[])"/> 相同，并返回波形增量（用于图表横轴）。</summary>
+        public static bool TryExtractAsDoubleArray(
+            NvhMemoryFile? file,
+            string? groupName,
+            string? channelName,
+            out double[] samples,
+            out double wfIncrement)
+        {
             samples = Array.Empty<double>();
+            wfIncrement = 0;
             if (file == null)
             {
                 return false;
@@ -36,6 +48,11 @@ namespace Astra.Plugins.Limits.Helpers
             if (channel == null)
             {
                 return false;
+            }
+
+            if (channel.WfIncrement is { } inc && inc > 0)
+            {
+                wfIncrement = inc;
             }
 
             if (channel.DataType == typeof(float))

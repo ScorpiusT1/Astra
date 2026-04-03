@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -135,7 +136,10 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
             if (!bus.TryGet<ChartDisplayPayload>(chart.ArtifactKey, out var payload) || payload == null)
                 return null;
 
-            return ReportChartRenderer.RenderToPng(payload, chart.Width, chart.Height, chart.Title);
+            var png = ReportChartRenderer.RenderToPng(payload, chart.Width, chart.Height, chart.Title, out var rw, out var rh);
+            chart.Width = rw;
+            chart.Height = rh;
+            return png;
         }
 
         private static byte[]? TryRenderNvhRaw(ITestDataBus? bus, ChartSection chart)
@@ -163,7 +167,8 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
                 try
                 {
                     var algRefs = request.DataBus.Query(DataArtifactCategory.Algorithm);
-                    foreach (var algRef in algRefs)
+                    var ordered = OrderAlgorithmRefsForCurveJudgment(algRefs, cj);
+                    foreach (var algRef in ordered)
                     {
                         if (!request.DataBus.TryGet<ChartDisplayPayload>(algRef.Key, out var p) || p == null)
                             continue;
@@ -181,6 +186,34 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
                     // best-effort
                 }
             }
+        }
+
+        /// <summary>
+        /// 优先使用与曲线判定节点 <see cref="CurveJudgmentRow.NodeId"/> 相同的算法产物（<c>__ProducerNodeId</c>），
+        /// 否则保持原行为：按总线注册顺序取第一条可渲染的算法图。
+        /// </summary>
+        private static IEnumerable<DataArtifactReference> OrderAlgorithmRefsForCurveJudgment(
+            IReadOnlyList<DataArtifactReference> algRefs,
+            CurveJudgmentRow cj)
+        {
+            if (algRefs == null || algRefs.Count == 0)
+                return Array.Empty<DataArtifactReference>();
+
+            if (string.IsNullOrEmpty(cj.NodeId))
+                return algRefs;
+
+            var matched = algRefs
+                .Where(r => string.Equals(GetArtifactProducerNodeId(r), cj.NodeId, StringComparison.Ordinal))
+                .ToList();
+
+            return matched.Count > 0 ? matched : algRefs;
+        }
+
+        private static string GetArtifactProducerNodeId(DataArtifactReference r)
+        {
+            if (r.Preview != null && r.Preview.TryGetValue("__ProducerNodeId", out var v))
+                return v?.ToString() ?? string.Empty;
+            return string.Empty;
         }
     }
 }

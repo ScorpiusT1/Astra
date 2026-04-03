@@ -1,5 +1,8 @@
+using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
+using Astra.Plugins.Algorithms.APIs;
+using Microsoft.VisualBasic.Logging;
 
 namespace Astra.Plugins.Algorithms
 {
@@ -12,7 +15,15 @@ namespace Astra.Plugins.Algorithms
         public Version Version => new(1, 0, 0);
 
         public Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            return Task.Run(() =>
+            {
+                if (!Nvh.LoadLicense("license.lic", out string msg))
+                {
+                    context.Logger.LogError($"加载license失败: {msg}");
+                }
+            });
+        }
 
         public Task OnEnableAsync(CancellationToken cancellationToken = default)
             => Task.CompletedTask;

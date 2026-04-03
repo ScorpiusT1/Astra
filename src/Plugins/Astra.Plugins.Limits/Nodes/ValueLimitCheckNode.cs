@@ -293,8 +293,9 @@ namespace Astra.Plugins.Limits.Nodes
                 .WithOutput(NodeUiOutputKeys.Summary, summary);
 
             string? chartKey = null;
+            string? nvhChForChart = null;
             if (AssociateCurveForDisplay &&
-                LimitNodeShared.TryResolveCurveSelection(_curveChannelName, out var dev, out _, out _) &&
+                LimitNodeShared.TryResolveCurveSelection(_curveChannelName, out var dev, out nvhChForChart, out _) &&
                 LimitCurveArtifactResolver.TryResolveRawArtifactKey(context, Id, dev, out var art, out _))
             {
                 chartKey = art;
@@ -303,8 +304,10 @@ namespace Astra.Plugins.Limits.Nodes
             result = LimitNodeShared.WithOptionalChartDisplay(
                 result,
                 context,
+                Id,
                 AssociateCurveForDisplay,
-                chartKey);
+                chartKey,
+                nvhChForChart);
 
             if (pass)
             {

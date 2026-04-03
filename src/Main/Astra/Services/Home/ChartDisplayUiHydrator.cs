@@ -1,3 +1,4 @@
+using Astra.Core.Constants;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Ui;
 using Astra.UI.Abstractions.Nodes;
@@ -71,6 +72,12 @@ namespace Astra.Services.Home
                 return;
             }
 
+            if (TryBuildFilteredNvhPayloadFromLimitsOutput(file, result.OutputData, out var filteredPayload))
+            {
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(filteredPayload, result.OutputData));
+                return;
+            }
+
             var allChannels = NvhMemoryFileSampleExtractor.ExtractAllChannels(file);
             if (allChannels.Count == 0)
             {
@@ -119,6 +126,43 @@ namespace Astra.Services.Home
             _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(singleFilePayload, result.OutputData));
         }
 
+        /// <summary>
+        /// Limits 卡控节点输出 <see cref="NodeUiOutputKeys.ChartNvhChannelFilter"/> 时，仅构建所选 Signal 通道的单曲线（与报告一致）。
+        /// </summary>
+        private static bool TryBuildFilteredNvhPayloadFromLimitsOutput(
+            NvhMemoryFile file,
+            IReadOnlyDictionary<string, object> outputData,
+            out ChartDisplayPayload payload)
+        {
+            payload = null!;
+            if (!outputData.TryGetValue(NodeUiOutputKeys.ChartNvhChannelFilter, out var fo) || fo is not string filterStr)
+            {
+                return false;
+            }
+
+            var ch = string.IsNullOrWhiteSpace(filterStr) ? null : filterStr.Trim();
+            if (!NvhMemoryFileSampleExtractor.TryExtractAsDoubleArray(
+                    file,
+                    AstraSharedConstants.DataGroups.Signal,
+                    ch,
+                    out var samples,
+                    out var wfInc) ||
+                samples.Length == 0)
+            {
+                return false;
+            }
+
+            payload = new ChartDisplayPayload
+            {
+                Kind = ChartPayloadKind.Signal1D,
+                SignalY = samples,
+                SamplePeriod = wfInc > 0 ? wfInc : 1.0,
+                BottomAxisLabel = "样本",
+                LeftAxisLabel = "数值"
+            };
+            return true;
+        }
+
         private static bool TryBuildMultiSeriesPayload(
             NodeContext context,
             IReadOnlyDictionary<string, object> outputData,
@@ -152,6 +196,33 @@ namespace Astra.Services.Home
 
                 if (artifactObj is NvhMemoryFile nvh)
                 {
+                    if (outputData.TryGetValue(NodeUiOutputKeys.ChartNvhChannelFilter, out var cf) && cf is string fstr)
+                    {
+                        var chKey = string.IsNullOrWhiteSpace(fstr) ? null : fstr.Trim();
+                        if (NvhMemoryFileSampleExtractor.TryExtractAsDoubleArray(
+                                nvh,
+                                AstraSharedConstants.DataGroups.Signal,
+                                chKey,
+                                out var samples,
+                                out var wfInc) &&
+                            samples.Length > 0)
+                        {
+                            series.Add(new ChartSeriesEntry
+                            {
+                                Name = "曲线",
+                                IsVisibleByDefault = true,
+                                Data = new ChartDisplayPayload
+                                {
+                                    Kind = ChartPayloadKind.Signal1D,
+                                    SignalY = samples,
+                                    SamplePeriod = wfInc > 0 ? wfInc : 1.0
+                                }
+                            });
+                        }
+
+                        continue;
+                    }
+
                     var channels = NvhMemoryFileSampleExtractor.ExtractAllChannels(nvh);
                     foreach (var ch in channels)
                     {

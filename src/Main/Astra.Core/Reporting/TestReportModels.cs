@@ -44,6 +44,9 @@ namespace Astra.Core.Reporting
 
     public sealed class CurveJudgmentRow
     {
+        /// <summary>节点 ID，与数据总线产物 <c>__ProducerNodeId</c> 对齐，用于报告曲线配图匹配。</summary>
+        public string NodeId { get; set; } = string.Empty;
+
         public string NodeName { get; set; } = string.Empty;
         public string CurveName { get; set; } = string.Empty;
         public bool Pass { get; set; }
@@ -65,6 +68,11 @@ namespace Astra.Core.Reporting
         public string? ImageBase64 { get; set; }
 
         public int Width { get; set; } = 800;
+
+        /// <summary>
+        /// 单图时为整张图高度（像素）。多子图（分子图 / SubPlots 布局）报告渲染时表示<strong>每一行</strong>的期望高度；
+        /// 导出 PNG 总高度 ≈ 行数 × 本值（由 <c>ReportChartRenderer</c> 夹紧）。
+        /// </summary>
         public int Height { get; set; } = 400;
 
         /// <summary>引用的 artifact key（用于渲染时取 payload）。</summary>

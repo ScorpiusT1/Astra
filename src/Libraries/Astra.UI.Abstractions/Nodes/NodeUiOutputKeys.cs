@@ -17,6 +17,11 @@ public static class NodeUiOutputKeys
     public const string ChartArtifactKeys = "Ui.ChartArtifactKeys";
     public const string ChartUseSubPlots = "Ui.ChartUseSubPlots";
 
+    /// <summary>
+    /// 从 Raw NVH 内存文件生成主页/报告图表时，仅显示 Signal 组内该 NVH 通道键的曲线；空字符串表示组内首通道。由 Limits 卡控节点写入。
+    /// </summary>
+    public const string ChartNvhChannelFilter = "Ui.ChartNvhChannelFilter";
+
     /// <summary>主页图表横轴标题（与 <see cref="ChartDisplayPayload.BottomAxisLabel"/> 一致）。</summary>
     public const string ChartXAxisLabel = "Ui.ChartXAxisLabel";
 
@@ -56,6 +61,7 @@ public static class NodeUiOutputKeys
         ChartArtifactKey,
         ChartArtifactKeys,
         ChartUseSubPlots,
+        ChartNvhChannelFilter,
         ChartXAxisLabel,
         ChartXAxisUnit,
         ChartYAxisLabel,

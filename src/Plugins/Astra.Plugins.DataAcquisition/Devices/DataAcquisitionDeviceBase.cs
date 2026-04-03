@@ -666,6 +666,9 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 dataChannel.WfStartTime = DateTime.UtcNow;
                 dataChannel.WfIncrement = 1.0 / channelConfig.SampleRate;
                 dataChannel.WfStartOffset = 0.0;
+                dataChannel.Properties.Set("wf_xname", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisLabel);
+                dataChannel.Properties.Set("wf_xunit", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisUnit);
+                dataChannel.Properties.Set("wf_xunit_string", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedWfXUnitString);
 
                 dataChannel.Properties.Set("ChannelId", channelConfig.ChannelId);
                 dataChannel.Properties.Set("SampleRate", channelConfig.SampleRate);

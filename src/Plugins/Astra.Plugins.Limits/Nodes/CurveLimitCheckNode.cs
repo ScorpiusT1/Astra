@@ -259,9 +259,9 @@ namespace Astra.Plugins.Limits.Nodes
                 .WithOutput(NodeUiOutputKeys.LowerLimit, lo)
                 .WithOutput(NodeUiOutputKeys.UpperLimit, hi)
                 .WithOutput(NodeUiOutputKeys.CurveCheckPass, pass)
-                .WithOutput(NodeUiOutputKeys.Summary, summary)
-                .WithOutput(NodeUiOutputKeys.HasChartData, true)
-                .WithOutput(NodeUiOutputKeys.ChartArtifactKey, artifact);
+                .WithOutput(NodeUiOutputKeys.Summary, summary);
+
+            result = LimitNodeShared.WithNvhCurveChartOutputs(result, context, Id, true, artifact, nvhCh);
 
             if (!pass)
             {

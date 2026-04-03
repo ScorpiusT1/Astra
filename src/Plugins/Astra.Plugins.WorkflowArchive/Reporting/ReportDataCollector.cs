@@ -177,6 +177,7 @@ namespace Astra.Plugins.WorkflowArchive.Reporting
 
             rows.Add(new CurveJudgmentRow
             {
+                NodeId = nr.NodeId ?? string.Empty,
                 NodeName = nr.NodeName ?? nr.NodeId ?? string.Empty,
                 CurveName = nr.NodeName ?? nr.NodeId ?? string.Empty,
                 Pass = TryGetBool(output, NodeUiOutputKeys.CurveCheckPass),
