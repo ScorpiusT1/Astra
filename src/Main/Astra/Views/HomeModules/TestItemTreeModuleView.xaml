@@ -57,7 +57,7 @@
                 <DataTrigger Binding="{Binding Status}"
                              Value="Cancel">
                     <Setter Property="Background"
-                            Value="{DynamicResource ThirdlyRegionBrush}" />
+                            Value="{DynamicResource DangerBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -316,11 +316,11 @@
                                     <BeginStoryboard Name="HomeModeManualBlinkStoryboard">
                                         <Storyboard RepeatBehavior="Forever">
                                             <DoubleAnimation Storyboard.TargetName="Root"
-                                                               Storyboard.TargetProperty="Opacity"
-                                                               From="1"
-                                                               To="0.52"
-                                                               Duration="0:0:0.55"
-                                                               AutoReverse="True" />
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             From="1"
+                                                             To="0.52"
+                                                             Duration="0:0:0.55"
+                                                             AutoReverse="True" />
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </MultiDataTrigger.EnterActions>
@@ -329,9 +329,9 @@
                                     <BeginStoryboard>
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="Root"
-                                                               Storyboard.TargetProperty="Opacity"
-                                                               To="1"
-                                                               Duration="0:0:0" />
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0" />
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </MultiDataTrigger.ExitActions>
@@ -347,11 +347,11 @@
                                     <BeginStoryboard Name="HomeModeAutoBlinkStoryboard">
                                         <Storyboard RepeatBehavior="Forever">
                                             <DoubleAnimation Storyboard.TargetName="Root"
-                                                               Storyboard.TargetProperty="Opacity"
-                                                               From="1"
-                                                               To="0.52"
-                                                               Duration="0:0:0.55"
-                                                               AutoReverse="True" />
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             From="1"
+                                                             To="0.52"
+                                                             Duration="0:0:0.55"
+                                                             AutoReverse="True" />
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </MultiDataTrigger.EnterActions>
@@ -360,9 +360,9 @@
                                     <BeginStoryboard>
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="Root"
-                                                               Storyboard.TargetProperty="Opacity"
-                                                               To="1"
-                                                               Duration="0:0:0" />
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0" />
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </MultiDataTrigger.ExitActions>
