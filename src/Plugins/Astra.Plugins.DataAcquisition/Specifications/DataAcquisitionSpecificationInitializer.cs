@@ -98,6 +98,40 @@ namespace Astra.Plugins.DataAcquisition.Specifications
                 }
             });
 
+          
+            specifications.Add(new DeviceSpecification
+            {
+                DeviceType = DeviceType.DataAcquisition,
+                Manufacturer = "BRC",
+                Model = "BRC6861",
+                DisplayName = $"BRC - 6861",
+                Description = "BRC厂家数据采集卡，1通道，最高4kHz采样率",
+                Constraints = new Dictionary<string, object>
+                {
+                    ["ChannelCount"] = 1,
+                    ["MaxSampleRate"] = 4000.0,
+                    ["MinSampleRate"] = 1000.0,
+                    ["MaxBufferSize"] = 512000,
+                    ["MinBufferSize"] = 1024,
+                    ["AllowedSampleRates"] = new List<double>
+                    {
+                        4000.0
+                    },
+                    ["AllowedCouplingModes"] = new List<CouplingMode>
+                    {                
+                        CouplingMode.DC
+                    },
+                    ["AllowedTriggerLevels"] = new List<double>
+                    {
+                        0.0,
+                    }
+                },
+                Capabilities = new Dictionary<string, object>
+                {
+                    ["SupportsSyncSampling"] = true
+                }
+            });
+
             // MGS 厂家规格
             // MGS 型号1
             specifications.Add(new DeviceSpecification
