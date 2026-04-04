@@ -21,16 +21,20 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 属性编辑器主体 -->
-        <ScrollViewer Grid.Row="0"
+        <!-- 属性编辑器主体：宿主在 code-behind 中根据节点类型填充内容
+             - 若节点标注了 [NodePropertyEditorAttribute]，则填充插件提供的自定义视图；
+             - 否则填充默认的通用属性网格（PropertyEditorControl）。 -->
+        <ScrollViewer x:Name="EditorScrollViewer"
+                      Grid.Row="0"
                       Margin="0,0,0,16"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto"
                       CanContentScroll="False">
-            <ui:PropertyEditorControl x:Name="PropertyEditor"
-                                      ShowSearchBox="False"
-                                      HorizontalAlignment="Stretch"
-                                      VerticalAlignment="Stretch" />
+            <ContentControl x:Name="EditorContentHost"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch" />
         </ScrollViewer>
 
         <!-- 底部确认 / 取消按钮 -->
@@ -42,7 +46,7 @@
                         Height="44"
                         Margin="0,0,12,0"
                         Click="CancelButton_Click"
-                        Background="{DynamicResource ThirdlyRegionBrush}"
+                        Background="{DynamicResource SurfaceBrush}"
                         Foreground="{DynamicResource PrimaryTextBrush}"
                         FontSize="14"
                         FontWeight="Medium"
@@ -55,6 +59,8 @@
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="border"
                                                 Background="{TemplateBinding Background}"
+                                                BorderBrush="{DynamicResource BorderBrush}"
+                                                BorderThickness="1"
                                                 CornerRadius="10"
                                                 Padding="20,10">
                                             <ContentPresenter HorizontalAlignment="Center"

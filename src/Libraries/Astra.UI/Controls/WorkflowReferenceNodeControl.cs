@@ -210,9 +210,7 @@ namespace Astra.UI.Controls
 
                 if (_executionTimeText != null)
                 {
-                    _executionTimeText.Text = node.LastExecutionResult?.Duration.HasValue == true
-                        ? $"{node.LastExecutionResult.Duration.Value.TotalMilliseconds:F2} ms"
-                        : "0.00 ms";
+                    _executionTimeText.Text = node.ExecutionTimeDisplay ?? "0.00 s";
                 }
             }
             else if (DataContext is Node node2)

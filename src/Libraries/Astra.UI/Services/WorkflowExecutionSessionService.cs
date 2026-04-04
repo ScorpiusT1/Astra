@@ -3,7 +3,6 @@ using Astra.Core.Logs;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Ui;
-using Astra.UI.Abstractions.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -44,6 +43,11 @@ namespace Astra.UI.Services
             _executionLogSink = executionLogSink;
             _nodeExecutionUiHydrator = nodeExecutionUiHydrator;
             _serviceProvider = serviceProvider;
+
+            _workflowEngineProvider.NodeExecutionChanged += (_, e) =>
+            {
+                NodeExecutionChanged?.Invoke(this, e);
+            };
         }
 
         public bool IsRunning
@@ -187,22 +191,29 @@ namespace Astra.UI.Services
 
         public OperationResult Pause()
         {
-            if (!TryResolveCurrentExecutionId(out var executionId))
+            // 经 StartAsync 启动的单子流程：有稳定的 workflowKey / executionId。
+            // 主流程编排器直接走 WorkFlowManager，从未调用 StartAsync，须回退为「暂停全部运行中实例」
+            // （含主流程下并行多子流程）。
+            if (TryResolveCurrentExecutionId(out var executionId))
             {
-                return OperationResult.Failure("未找到可暂停的执行实例");
+                return _workFlowManager.PauseWorkFlowExecution(executionId);
             }
 
-            return _workFlowManager.PauseWorkFlowExecution(executionId);
+            return PauseAllRunningManagedExecutions();
         }
 
         public OperationResult Resume()
         {
-            if (!TryResolveCurrentExecutionId(out var executionId))
+            if (TryResolveCurrentExecutionId(out var executionId))
             {
-                return OperationResult.Failure("未找到可恢复的执行实例");
+                var single = _workFlowManager.ResumeWorkFlowExecution(executionId);
+                if (single.Success)
+                {
+                    return single;
+                }
             }
 
-            return _workFlowManager.ResumeWorkFlowExecution(executionId);
+            return ResumeAllPausedManagedExecutions();
         }
 
         public OperationResult Stop()
@@ -340,6 +351,90 @@ namespace Astra.UI.Services
             }
         }
 
+        /// <summary>
+        /// 主流程编排等未经过 <see cref="StartAsync"/> 的路径：按管理器内全部「运行中」实例逐个暂停。
+        /// </summary>
+        private OperationResult PauseAllRunningManagedExecutions()
+        {
+            var runningResult = _workFlowManager.GetRunningWorkFlows();
+            if (!runningResult.Success || runningResult.Data == null)
+            {
+                return OperationResult.Failure("未找到可暂停的执行实例");
+            }
+
+            var targets = runningResult.Data
+                .Where(x => x != null &&
+                            x.Status == WorkFlowExecutionStatus.Running &&
+                            !string.IsNullOrWhiteSpace(x.ExecutionId))
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                return OperationResult.Failure("未找到可暂停的执行实例");
+            }
+
+            var ok = 0;
+            string lastErr = null;
+            foreach (var t in targets)
+            {
+                var r = _workFlowManager.PauseWorkFlowExecution(t.ExecutionId);
+                if (r.Success)
+                {
+                    ok++;
+                }
+                else
+                {
+                    lastErr = r.Message;
+                }
+            }
+
+            return ok > 0
+                ? OperationResult.Succeed(targets.Count == 1 ? "流程已暂停" : $"已暂停 {ok} 个执行实例")
+                : OperationResult.Failure(string.IsNullOrWhiteSpace(lastErr) ? "暂停失败" : lastErr);
+        }
+
+        /// <summary>
+        /// 与 <see cref="PauseAllRunningManagedExecutions"/> 配对：恢复管理器内全部「已暂停」实例。
+        /// </summary>
+        private OperationResult ResumeAllPausedManagedExecutions()
+        {
+            var runningResult = _workFlowManager.GetRunningWorkFlows();
+            if (!runningResult.Success || runningResult.Data == null)
+            {
+                return OperationResult.Failure("未找到可恢复的执行实例");
+            }
+
+            var targets = runningResult.Data
+                .Where(x => x != null &&
+                            x.Status == WorkFlowExecutionStatus.Paused &&
+                            !string.IsNullOrWhiteSpace(x.ExecutionId))
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                return OperationResult.Failure("未找到可恢复的执行实例");
+            }
+
+            var ok = 0;
+            string lastErr = null;
+            foreach (var t in targets)
+            {
+                var r = _workFlowManager.ResumeWorkFlowExecution(t.ExecutionId);
+                if (r.Success)
+                {
+                    ok++;
+                }
+                else
+                {
+                    lastErr = r.Message;
+                }
+            }
+
+            return ok > 0
+                ? OperationResult.Succeed(targets.Count == 1 ? "流程已恢复" : $"已恢复 {ok} 个执行实例")
+                : OperationResult.Failure(string.IsNullOrWhiteSpace(lastErr) ? "恢复失败" : lastErr);
+        }
+
         private async Task<string> ResolveExecutionIdAsync(string workflowKey, CancellationToken cancellationToken)
         {
             // 启动后短时间轮询运行列表，获取本次 executionId。
@@ -408,144 +503,12 @@ namespace Astra.UI.Services
         {
             try
             {
-                var engine = _workflowEngineProvider.Create();
-                if (engine == null)
-                {
-                    return null;
-                }
-
-                engine.NodeExecutionStarted += (_, e) =>
-                {
-                    if (e?.Node == null)
-                    {
-                        return;
-                    }
-
-                    NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
-                    {
-                        ExecutionId = ResolveExecutionId(e.Context),
-                        WorkflowKey = ResolveWorkflowKey(e.Context),
-                        NodeId = e.Node.Id,
-                        State = NodeExecutionState.Running,
-                        DetailMessage = null
-                    });
-                };
-
-                engine.NodeExecutionCompleted += (_, e) =>
-                {
-                    if (e?.Node == null)
-                    {
-                        return;
-                    }
-
-                    _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(e.Context, e.Node.Id, e.Result);
-
-                    NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
-                    {
-                        ExecutionId = ResolveExecutionId(e.Context),
-                        WorkflowKey = ResolveWorkflowKey(e.Context),
-                        NodeId = e.Node.Id,
-                        State = MapState(e.Result),
-                        DetailMessage = BuildNodeDetailMessage(e.Result),
-                        UiPayload = NodeUiPayloadFactory.FromOutputData(e.Result?.OutputData)
-                    });
-                };
-
-                return engine;
+                return _workflowEngineProvider.CreateWithNodeEventBridge();
             }
             catch
             {
                 return null;
             }
-        }
-
-        private static string ResolveExecutionId(NodeContext context)
-        {
-            if (context?.Metadata != null &&
-                context.Metadata.TryGetValue("ExecutionId", out var metadataExecutionId) &&
-                metadataExecutionId is string executionId)
-            {
-                return executionId;
-            }
-
-            return context?.ExecutionId;
-        }
-
-        private static string ResolveWorkflowKey(NodeContext context)
-        {
-            if (context?.Metadata != null &&
-                context.Metadata.TryGetValue("WorkFlowKey", out var metadataWorkFlowKey) &&
-                metadataWorkFlowKey is string workflowKey)
-            {
-                return workflowKey;
-            }
-
-            return string.Empty;
-        }
-
-        private static NodeExecutionState MapState(ExecutionResult result)
-        {
-            if (result == null) return NodeExecutionState.Failed;
-            if (result.ResultType == ExecutionResultType.Cancelled) return NodeExecutionState.Cancelled;
-            if (result.IsSkipped || result.ResultType == ExecutionResultType.Skipped) return NodeExecutionState.Skipped;
-            return result.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
-        }
-
-        private static string? BuildNodeDetailMessage(ExecutionResult? r)
-        {
-            if (r == null)
-            {
-                return "未返回结果";
-            }
-
-            if (r.IsSkipped || r.ResultType == ExecutionResultType.Skipped)
-            {
-                return string.IsNullOrWhiteSpace(r.Message) ? "已跳过" : r.Message.Trim();
-            }
-
-            if (r.ResultType == ExecutionResultType.Cancelled)
-            {
-                return string.IsNullOrWhiteSpace(r.Message) ? "已取消" : r.Message.Trim();
-            }
-
-            if (!r.Success)
-            {
-                var parts = new List<string>();
-                if (r.OutputData != null &&
-                    r.OutputData.TryGetValue(NodeUiOutputKeys.Summary, out var sumObj) &&
-                    sumObj != null &&
-                    !string.IsNullOrWhiteSpace(sumObj.ToString()))
-                {
-                    parts.Add(sumObj.ToString()!.Trim());
-                }
-
-                if (!string.IsNullOrWhiteSpace(r.Message))
-                {
-                    parts.Add(r.Message.Trim());
-                }
-
-                if (!string.IsNullOrWhiteSpace(r.ErrorCode))
-                {
-                    parts.Add($"错误码 {r.ErrorCode}");
-                }
-
-                if (r.Exception != null && !string.IsNullOrWhiteSpace(r.Exception.Message))
-                {
-                    parts.Add(r.Exception.Message);
-                }
-
-                return parts.Count > 0 ? string.Join(" · ", parts) : "执行失败";
-            }
-
-            if (r.OutputData != null &&
-                r.OutputData.TryGetValue(NodeUiOutputKeys.Summary, out var okSum) &&
-                okSum != null &&
-                !string.IsNullOrWhiteSpace(okSum.ToString()))
-            {
-                return okSum.ToString()!.Trim();
-            }
-
-            return string.IsNullOrWhiteSpace(r.Message) ? string.Empty : r.Message.Trim();
         }
     }
 }

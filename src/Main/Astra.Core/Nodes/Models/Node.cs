@@ -34,6 +34,13 @@ namespace Astra.Core.Nodes.Models
         private bool _isSelected;
         private ExecutionResult? _lastExecutionResult;
         private NodeExecutionState _executionState;
+        private string _executionTimeDisplay = "0.00 s";
+
+        // 节点自身持有的执行计时器（运行期间每 100 ms 更新 ExecutionTimeDisplay，支持暂停/继续）
+        private System.Timers.Timer? _executionTimer;
+        private DateTime _executionTimerStartedAt;   // 调整后的"虚拟起点"，= UtcNow - 已累积耗时
+        private TimeSpan _executionTimerAccumulated; // 暂停前已累积的耗时（用于继续时恢复进度）
+        private volatile bool _executionTimerActive;
 
         private static readonly JsonSerializerSettings jsonCloneSettings = new JsonSerializerSettings
         {
@@ -175,6 +182,22 @@ namespace Astra.Core.Nodes.Models
             }
         }
 
+        /// <summary>
+        /// 用于 UI 实时展示的执行耗时字符串，执行期间由定时器定期更新。
+        /// </summary>
+        [JsonIgnore]
+        public string ExecutionTimeDisplay
+        {
+            get => _executionTimeDisplay;
+            set
+            {
+                if (string.Equals(_executionTimeDisplay, value, StringComparison.Ordinal))
+                    return;
+                _executionTimeDisplay = value;
+                OnPropertyChanged();
+            }
+        }
+
         [JsonIgnore]
         public NodeExecutionState ExecutionState
         {
@@ -182,13 +205,110 @@ namespace Astra.Core.Nodes.Models
             set
             {
                 if (_executionState == value)
-                {
                     return;
-                }
 
+                var previous = _executionState;
                 _executionState = value;
                 OnPropertyChanged();
+
+                HandleExecutionTimerStateChange(previous, value);
             }
+        }
+
+        // ── 节点内置执行计时器（支持暂停/继续）──────────────────────────────────────
+
+        private void HandleExecutionTimerStateChange(NodeExecutionState previous, NodeExecutionState current)
+        {
+            if (current == NodeExecutionState.Running)
+            {
+                if (previous == NodeExecutionState.Paused)
+                    ResumeExecutionTimer();   // 继续：在已累积耗时基础上接着计时
+                else
+                    StartExecutionTimer();    // 全新开始：重置累积量
+            }
+            else if (current == NodeExecutionState.Paused)
+            {
+                PauseExecutionTimer();        // 暂停：保存已耗时，停止计时器
+            }
+            else
+            {
+                StopExecutionTimer(current);  // 终态 / Idle：停止并写入最终耗时
+            }
+        }
+
+        private void StartExecutionTimer()
+        {
+            DisposeExecutionTimer();
+            _executionTimerAccumulated = TimeSpan.Zero;
+            _executionTimerStartedAt = DateTime.UtcNow;
+            _executionTimerActive = true;
+            ExecutionTimeDisplay = "0.00 s";
+            CreateAndStartTimer();
+        }
+
+        private void PauseExecutionTimer()
+        {
+            _executionTimerActive = false;
+            // 累积到暂停时刻的耗时（_executionTimer 不为 null 说明计时器曾经启动过）
+            if (_executionTimer != null)
+                _executionTimerAccumulated += DateTime.UtcNow - _executionTimerStartedAt;
+            DisposeExecutionTimer();
+            // 保持当前 ExecutionTimeDisplay 不变，让用户看到暂停时刻的计时值
+        }
+
+        private void ResumeExecutionTimer()
+        {
+            DisposeExecutionTimer();
+            // 把"虚拟起点"往回拨，使得 (UtcNow - StartedAt) == 已累积耗时 + 继续后的耗时
+            _executionTimerStartedAt = DateTime.UtcNow - _executionTimerAccumulated;
+            _executionTimerActive = true;
+            CreateAndStartTimer();
+        }
+
+        private void StopExecutionTimer(NodeExecutionState newState)
+        {
+            _executionTimerActive = false;
+            DisposeExecutionTimer();
+
+            if (newState == NodeExecutionState.Idle)
+            {
+                _executionTimerAccumulated = TimeSpan.Zero;
+                ExecutionTimeDisplay = "0.00 s";
+            }
+            else
+            {
+                // 优先使用引擎写回的精确耗时（LastExecutionResult 在 ExecutionState 变化前已被引擎赋值）
+                var ms = _lastExecutionResult?.ActiveDurationMs
+                         ?? _lastExecutionResult?.Duration?.TotalMilliseconds;
+                if (ms.HasValue)
+                    ExecutionTimeDisplay = $"{ms.Value / 1000d:F2} s";
+                // 否则保留计时器最后一次更新的值
+            }
+        }
+
+        private void CreateAndStartTimer()
+        {
+            var timer = new System.Timers.Timer(100) { AutoReset = true };
+            timer.Elapsed += OnExecutionTimerElapsed;
+            _executionTimer = timer;
+            timer.Start();
+        }
+
+        private void DisposeExecutionTimer()
+        {
+            var timer = System.Threading.Interlocked.Exchange(ref _executionTimer, null);
+            if (timer == null) return;
+            timer.Stop();
+            timer.Elapsed -= OnExecutionTimerElapsed;
+            timer.Dispose();
+        }
+
+        private void OnExecutionTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (!_executionTimerActive) return;
+            // _executionTimerStartedAt 已修正为"虚拟起点"，直接减就得到包含暂停前累积量的总耗时
+            var elapsedMs = (DateTime.UtcNow - _executionTimerStartedAt).TotalMilliseconds;
+            ExecutionTimeDisplay = $"{elapsedMs / 1000d:F2} s";
         }
 
         // ===== 端口集合 =====

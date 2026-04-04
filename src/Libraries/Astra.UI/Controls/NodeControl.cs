@@ -11,6 +11,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.ComponentModel;
 
 namespace Astra.UI.Controls
 {
@@ -19,6 +20,7 @@ namespace Astra.UI.Controls
     /// </summary>
     public class NodeControl : Control
     {
+        private Node _observedNode;
         private TextBox _editTextBox;
         private TextBlock _titleTextBlock;
         private PortControl _portTop;
@@ -99,25 +101,91 @@ namespace Astra.UI.Controls
 
         private void NodeControl_Loaded(object sender, RoutedEventArgs e)
         {
-            // 初始化时设置默认图标和颜色
             UpdateStatusColors();
             UpdateDefaultIcon();
+            SyncFromNode(DataContext as Node);
         }
         
         private void NodeControl_Unloaded(object sender, RoutedEventArgs e)
         {
-            // 目前不再使用应用程序级别的鼠标监听
+            DetachObservedNode();
         }
 
         private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
+            DetachObservedNode();
+
             // 当节点数据切换时重新分配端口 ID，保证 Edge 可通过端口ID定位到正确端口
             EnsurePortIds();
 
-            // 同步节点模型上的 Icon 到控件的 Icon 属性，便于样式中直接绑定 NodeControl.Icon
             if (e.NewValue is Node node)
             {
-                Icon = node.Icon;
+                AttachObservedNode(node);
+                SyncFromNode(node);
+            }
+        }
+
+        private void AttachObservedNode(Node node)
+        {
+            if (node == null)
+                return;
+
+            _observedNode = node;
+            _observedNode.PropertyChanged += OnObservedNodePropertyChanged;
+        }
+
+        private void DetachObservedNode()
+        {
+            if (_observedNode == null)
+                return;
+
+            _observedNode.PropertyChanged -= OnObservedNodePropertyChanged;
+            _observedNode = null;
+        }
+
+        private void OnObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (sender is not Node node)
+                return;
+
+            if (Dispatcher.CheckAccess())
+            {
+                SyncFromNode(node, e.PropertyName);
+                return;
+            }
+
+            Dispatcher.BeginInvoke(new Action(() => SyncFromNode(node, e.PropertyName)));
+        }
+
+        private void SyncFromNode(Node? node, string? propertyName = null)
+        {
+            if (node == null)
+                return;
+
+            if (string.IsNullOrEmpty(propertyName) || propertyName == nameof(Node.Name))
+            {
+                SetCurrentValue(TitleProperty, node.Name ?? "节点");
+            }
+
+            if (string.IsNullOrEmpty(propertyName) || propertyName == nameof(Node.Icon))
+            {
+                SetCurrentValue(IconProperty, node.Icon);
+            }
+
+            if (string.IsNullOrEmpty(propertyName) || propertyName == nameof(Node.ExecutionTimeDisplay))
+            {
+                SetCurrentValue(ExecutionTimeProperty,
+                    string.IsNullOrWhiteSpace(node.ExecutionTimeDisplay) ? "0.00 s" : node.ExecutionTimeDisplay);
+            }
+
+            if (string.IsNullOrEmpty(propertyName) || propertyName == nameof(Node.ExecutionState))
+            {
+                SetCurrentValue(StatusProperty, node.ExecutionState);
+            }
+
+            if (string.IsNullOrEmpty(propertyName) || propertyName == nameof(Node.IsSelected))
+            {
+                SetCurrentValue(IsSelectedProperty, node.IsSelected);
             }
         }
 
@@ -284,7 +352,7 @@ namespace Astra.UI.Controls
         /// </summary>
         public static readonly DependencyProperty ExecutionTimeProperty =
             DependencyProperty.Register("ExecutionTime", typeof(string), typeof(NodeControl),
-                new PropertyMetadata("0 s"));
+                new PropertyMetadata("0.00 s"));
 
         public string ExecutionTime
         {
@@ -1335,10 +1403,8 @@ namespace Astra.UI.Controls
                     IconColor = GetBrushFromResource("SuccessBrush");
                     break;
                 case NodeExecutionState.Running:
-                    IconColor = GetBrushFromResource("WarningBrush");
-                    break;
                 case NodeExecutionState.Paused:
-                    IconColor = GetBrushFromResource("DarkInfoBrush");
+                    IconColor = GetBrushFromResource("WarningBrush");
                     break;
                 case NodeExecutionState.Skipped:
                     IconColor = GetBrushFromResource("InfoBrush");

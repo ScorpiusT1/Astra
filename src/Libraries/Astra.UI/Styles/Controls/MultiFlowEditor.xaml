@@ -62,7 +62,7 @@
         <DataTemplate x:Key="DefaultNodeTemplate">
             <controls:NodeControl Title="{Binding Name, Mode=TwoWay, FallbackValue='节点'}"
                                   Status="{Binding ExecutionState, FallbackValue={x:Static nodeModels:NodeExecutionState.Idle}}"
-                                  ExecutionTime="{Binding LastExecutionResult, Converter={StaticResource ExecutionResultToTimeConverter}, FallbackValue='0 s'}"
+                                  ExecutionTime="{Binding ExecutionTimeDisplay, FallbackValue='0.00 s'}"
                                   IsSelected="{Binding IsSelected, Mode=TwoWay}" />
         </DataTemplate>
 

@@ -429,17 +429,17 @@
                                Value="{DynamicResource DarkWarningBrush}" />
                     </DataTrigger>
 
-                    <!-- 暂停：暂停色强调 -->
+                    <!-- 暂停：与运行中同色 -->
                     <DataTrigger Binding="{Binding ExecutionState}" Value="{x:Static nodeModels:NodeExecutionState.Paused}">
                         <Setter TargetName="StateDot"
                                Property="Fill"
-                               Value="{DynamicResource PauseBrush}" />
+                               Value="{DynamicResource WarningBrush}" />
                         <Setter TargetName="HeaderBorder"
                                Property="Background"
-                               Value="{DynamicResource PauseBrush}" />
+                               Value="{DynamicResource WarningBrush}" />
                         <Setter TargetName="MainBorder"
                                Property="BorderBrush"
-                               Value="{DynamicResource DarkPauseBrush}" />
+                               Value="{DynamicResource DarkWarningBrush}" />
                     </DataTrigger>
 
                     <!-- 成功：绿色 -->

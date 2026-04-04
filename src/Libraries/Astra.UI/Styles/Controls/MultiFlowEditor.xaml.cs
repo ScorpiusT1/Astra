@@ -17,6 +17,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace Astra.UI.Styles.Controls
 {
@@ -54,6 +55,7 @@ namespace Astra.UI.Styles.Controls
             if (e.NewValue is ViewModels.MultiFlowEditorViewModel viewModel)
             {
                 _currentViewModel = viewModel;
+                StartNodeElapsedTimerForViewModel(viewModel);
 
                 // 订阅 SubWorkflowTabs 集合变化
                 if (viewModel.SubWorkflowTabs != null)
@@ -125,7 +127,31 @@ namespace Astra.UI.Styles.Controls
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            // 标准 TabControl 不需要特殊事件订阅，关闭按钮通过命令绑定处理
+            if (DataContext is ViewModels.MultiFlowEditorViewModel vm)
+                StartNodeElapsedTimerForViewModel(vm);
+        }
+
+        /// <summary>
+        /// 与主页测试项模块一致：在 UI 线程尽早启动常驻 DispatcherTimer，避免 ViewModel 在非 UI 线程构造导致定时器无效。
+        /// </summary>
+        private static void StartNodeElapsedTimerForViewModel(ViewModels.MultiFlowEditorViewModel viewModel)
+        {
+            if (viewModel == null)
+                return;
+
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null)
+                return;
+
+            if (dispatcher.CheckAccess())
+            {
+                viewModel.EnsurePerpetualNodeElapsedTimerStarted();
+                return;
+            }
+
+            _ = dispatcher.BeginInvoke(
+                (Action)(() => viewModel.EnsurePerpetualNodeElapsedTimerStarted()),
+                DispatcherPriority.Loaded);
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
