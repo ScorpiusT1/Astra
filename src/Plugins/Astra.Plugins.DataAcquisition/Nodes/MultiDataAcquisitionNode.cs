@@ -1,3 +1,4 @@
+using System;
 using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Constants;
 using Astra.Core.Data;
@@ -65,7 +66,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         [Display(Name = "采集完成后自动停止", GroupName = "采集卡配置", Order = 1, Description = "为 true 时在采集时长结束后停止本次节点启动的采集卡；为 false 时保持运行")]
         public bool StopAcquisitionAfterCompletion { get; set; } = true;
 
-        [Display(Name = "采集时长(秒)", GroupName = "采集卡配置", Order = 2, Description = "为 0 表示只启动不自动停止")]
+        [Display(Name = "采集时长(秒)", GroupName = "采集卡配置", Order = 2, Description = "为 0 表示只启动不自动停止。大于 0 时优先按「配置采样率 × 本时长」得到目标样本数，待各卡已启用通道的最小累积样本数达到后再停；若无法按样本判断则回退为按墙上时钟等待。")]
         public double DurationSeconds { get; set; }
 
         /// <summary>
@@ -191,6 +192,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             var startErrors = new ConcurrentBag<Exception>();
 
             var actualDurationSeconds = 0d;
+            var usedSampleBasedStop = false;
+            long? actualMinSamplesAcrossDevices = null;
             try
             {
                 log.Info($"开始执行，目标采集卡数量: {distinctDevices.Count}。");
@@ -306,28 +309,151 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     .Distinct()
                     .ToList();
 
-                // 如果配置了采集时长，则当前节点等待指定时长
+                // 如果配置了采集时长：优先按「采样率 × 时长」得到目标样本数并轮询，否则回退为墙上时钟等待
                 if (DurationSeconds > 0 && activeDevices.Count > 0)
                 {
-                    log.Info($"进入采集等待阶段，配置时长: {DurationSeconds:F2}s。");
-                    var delayMs = (int)(DurationSeconds * 1000);
                     const int delaySliceMs = AstraSharedConstants.DataAcquisitionDefaults.DelaySliceMs;
-                    var durationStopwatch = Stopwatch.StartNew();
-                    while (durationStopwatch.ElapsedMilliseconds < delayMs)
+                    var delayMs = (int)(DurationSeconds * 1000);
+
+                    var activeRefs = distinctDevices
+                        .Where(d => activeDevices.Contains(d.DeviceId))
+                        .ToList();
+
+                    var sampleTargets = new List<(DataAcquisitionDeviceBase Device, long Target)>();
+                    var canUseSampleStop = true;
+                    foreach (var d in activeRefs)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        await WaitIfPausedAsync().ConfigureAwait(false);
-                        var remainingMs = delayMs - (int)durationStopwatch.ElapsedMilliseconds;
-                        if (remainingMs <= 0)
+                        if (d is not DataAcquisitionDeviceBase daq)
                         {
+                            canUseSampleStop = false;
                             break;
                         }
 
-                        var nextDelay = Math.Min(delaySliceMs, remainingMs);
-                        await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
+                        var sr = daq.CurrentConfig.SampleRate;
+                        if (sr <= 0)
+                        {
+                            canUseSampleStop = false;
+                            break;
+                        }
+
+                        var target = Math.Max(1L, (long)Math.Round(DurationSeconds * sr, MidpointRounding.AwayFromZero));
+                        sampleTargets.Add((daq, target));
                     }
-                    durationStopwatch.Stop();
-                    actualDurationSeconds = durationStopwatch.Elapsed.TotalSeconds;
+
+                    if (sampleTargets.Count == 0)
+                    {
+                        canUseSampleStop = false;
+                    }
+
+                    var durationStopwatch = Stopwatch.StartNew();
+
+                    EventHandler? onPausing = null;
+                    EventHandler? onResumed = null;
+                    EventHandler? onCancelling = null;
+                    if (executionController != null)
+                    {
+                        onPausing = (_, _) => durationStopwatch.Stop();
+                        onResumed = (_, _) => durationStopwatch.Start();
+                        onCancelling = (_, _) => durationStopwatch.Stop();
+                        executionController.Pausing += onPausing;
+                        executionController.Resumed += onResumed;
+                        executionController.Cancelling += onCancelling;
+                    }
+
+                    try
+                    {
+                        if (canUseSampleStop)
+                        {
+                            usedSampleBasedStop = true;
+                            log.Info(
+                                $"进入按样本等待阶段，配置时长: {DurationSeconds:F2}s；目标样本数(每卡): " +
+                                $"{string.Join(", ", sampleTargets.Select(t => $"{t.Device.DeviceId}={t.Target}"))}。");
+
+                            var maxActiveWaitMs = (long)(DurationSeconds * 1000 * 2);
+
+                            while (true)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                await WaitIfPausedAsync().ConfigureAwait(false);
+
+                                if (sampleTargets.All(t =>
+                                    {
+                                        var n = t.Device.TryGetMinimumAcquiredSampleCountAcrossEnabledChannels();
+                                        return n.HasValue && n.Value >= t.Target;
+                                    }))
+                                {
+                                    break;
+                                }
+
+                                if (durationStopwatch.ElapsedMilliseconds > maxActiveWaitMs)
+                                {
+                                    log.Warn(
+                                        $"按样本等待已超过有效时长上限 ({maxActiveWaitMs}ms)，将停止等待并进入停采。");
+                                    break;
+                                }
+
+                                await Task.Delay(delaySliceMs, cancellationToken).ConfigureAwait(false);
+                            }
+
+                            durationStopwatch.Stop();
+                            actualDurationSeconds = durationStopwatch.Elapsed.TotalSeconds;
+
+                            long? crossMin = null;
+                            foreach (var t in sampleTargets)
+                            {
+                                var n = t.Device.TryGetMinimumAcquiredSampleCountAcrossEnabledChannels();
+                                if (!n.HasValue)
+                                {
+                                    continue;
+                                }
+
+                                crossMin = crossMin.HasValue ? Math.Min(crossMin.Value, n.Value) : n.Value;
+                            }
+
+                            actualMinSamplesAcrossDevices = crossMin;
+                        }
+                        else
+                        {
+                            log.Info($"进入按时间等待阶段（回退），配置时长: {DurationSeconds:F2}s。");
+
+                            while (durationStopwatch.ElapsedMilliseconds < delayMs)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                await WaitIfPausedAsync().ConfigureAwait(false);
+                                var remainingMs = delayMs - (int)durationStopwatch.ElapsedMilliseconds;
+                                if (remainingMs <= 0)
+                                {
+                                    break;
+                                }
+
+                                var nextDelay = Math.Min(delaySliceMs, remainingMs);
+                                await Task.Delay(nextDelay, cancellationToken).ConfigureAwait(false);
+                            }
+
+                            durationStopwatch.Stop();
+                            actualDurationSeconds = durationStopwatch.Elapsed.TotalSeconds;
+                        }
+                    }
+                    finally
+                    {
+                        if (executionController != null)
+                        {
+                            if (onPausing != null)
+                            {
+                                executionController.Pausing -= onPausing;
+                            }
+
+                            if (onResumed != null)
+                            {
+                                executionController.Resumed -= onResumed;
+                            }
+
+                            if (onCancelling != null)
+                            {
+                                executionController.Cancelling -= onCancelling;
+                            }
+                        }
+                    }
 
                     if (StopAcquisitionAfterCompletion && startedList.Count > 0)
                     {
@@ -392,7 +518,13 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 .WithOutput("ActiveDevices", activeDeviceListForOutput)
                 .WithOutput("DurationSeconds", DurationSeconds)
                 .WithOutput("ActualDurationSeconds", actualDurationSeconds)
-                .WithOutput("StopAcquisitionAfterCompletion", StopAcquisitionAfterCompletion);
+                .WithOutput("StopAcquisitionAfterCompletion", StopAcquisitionAfterCompletion)
+                .WithOutput("UsedSampleBasedAcquisitionStop", usedSampleBasedStop);
+
+            if (actualMinSamplesAcrossDevices.HasValue)
+            {
+                result = result.WithOutput("ActualMinSamplesAcrossDevices", actualMinSamplesAcrossDevices.Value);
+            }
             log.Info($"执行完成，启动设备 {startedListForOutput.Count} 个，已运行设备 {runningListForOutput.Count} 个。");
 
             var dataBus = context.GetDataBus();

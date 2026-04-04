@@ -1,5 +1,6 @@
 using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Configuration.Helpers;
+using Astra.Core.Data;
 using Astra.Core.Devices.Abstractions;
 using Astra.Core.Devices.Base;
 using Astra.Core.Devices.Interfaces;
@@ -12,6 +13,7 @@ using Astra.Core.Plugins.Messaging;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Factories;
+using Astra.Plugins.DataAcquisition.Providers;
 using Astra.Plugins.DataAcquisition.Specifications;
 using Astra.UI.Helpers;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +38,7 @@ namespace Astra.Plugins.DataAcquisition
         private Microsoft.Extensions.Logging.ILogger? _logger;
         private readonly List<IDataAcquisition> _devices = new();
         private readonly List<IDeviceFactory> _factories = new();
+        private readonly IAcquisitionDeviceCatalog _acquisitionCatalog = new DataAcquisitionPluginCatalog();
         private bool _disposed;
 
         public string Id => "Astra.Plugins.DataAcquisition";
@@ -135,7 +138,9 @@ namespace Astra.Plugins.DataAcquisition
             
             // ✅ 订阅配置变更事件（仅在保存时触发，不会在编辑时触发）
             SubscribeToConfigChanges();
-            
+
+            AcquisitionDeviceCatalog.Register(_acquisitionCatalog);
+
             _logger?.LogInfo($"[{Name}] 插件初始化完成，已加载 {_devices.Count} 个设备", LogCategory.System);
         }
 
@@ -332,6 +337,10 @@ namespace Astra.Plugins.DataAcquisition
         {
             if (_disposed)
                 return;
+
+            AcquisitionDeviceCatalog.Unregister(_acquisitionCatalog);
+            if (ReferenceEquals(Current, this))
+                Current = null;
 
             await OnDisableAsync().ConfigureAwait(false);
 

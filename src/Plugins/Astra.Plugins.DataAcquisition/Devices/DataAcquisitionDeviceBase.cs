@@ -92,6 +92,55 @@ namespace Astra.Plugins.DataAcquisition.Devices
         }
 
         /// <summary>
+        /// 当前运行（或暂停）会话中，各有效启用通道在内存中已累积样本数的最小值，用于多通道对齐判断。
+        /// 无启用通道或不在运行/暂停时返回 null。
+        /// </summary>
+        public long? TryGetMinimumAcquiredSampleCountAcrossEnabledChannels()
+        {
+            if (_state != AcquisitionState.Running && _state != AcquisitionState.Paused)
+            {
+                return null;
+            }
+
+            if (_channelMap.Count == 0)
+            {
+                return null;
+            }
+
+            long? min = null;
+
+            var channelConfigs = _config.Channels;
+            if (channelConfigs == null || channelConfigs.Count == 0)
+            {
+                foreach (var ch in _channelMap.Values)
+                {
+                    var n = ch.TotalSamples;
+                    min = min.HasValue ? Math.Min(min.Value, n) : n;
+                }
+
+                return min;
+            }
+
+            foreach (var cc in channelConfigs)
+            {
+                if (!GetEffectiveChannelEnabled(cc))
+                {
+                    continue;
+                }
+
+                if (!_channelMap.TryGetValue(cc.ChannelId, out var ch))
+                {
+                    continue;
+                }
+
+                var n = ch.TotalSamples;
+                min = min.HasValue ? Math.Min(min.Value, n) : n;
+            }
+
+            return min;
+        }
+
+        /// <summary>
         /// 是否正在使用调试会话中的通道参数覆盖（关闭后与配置一致）。
         /// </summary>
         public bool UseDebugOverrides

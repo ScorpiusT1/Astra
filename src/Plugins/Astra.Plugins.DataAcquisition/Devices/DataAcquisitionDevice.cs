@@ -35,10 +35,10 @@ namespace Astra.Plugins.DataAcquisition.Devices
 
             WriteDataToChannels(payload);
 
-            if (frameInterval > TimeSpan.Zero)
-            {
-                await Task.Delay(frameInterval, token).ConfigureAwait(false);
-            }
+            //if (frameInterval > TimeSpan.Zero)
+            //{
+            //    await Task.Delay(frameInterval, token).ConfigureAwait(false);
+            //}
         }
 
         private TimeSpan CalculateFrameInterval()
