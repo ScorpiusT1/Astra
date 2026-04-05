@@ -10,6 +10,7 @@ using Astra.Core.Logs.Extensions;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Health;
 using Astra.Core.Plugins.Messaging;
+using Astra.Core.Nodes.Models;
 using Astra.Plugins.DataAcquisition.Configs;
 using Astra.Plugins.DataAcquisition.Devices;
 using Astra.Plugins.DataAcquisition.Factories;
@@ -710,6 +711,7 @@ namespace Astra.Plugins.DataAcquisition
                     if (applyResult.Success)
                     {
                         _logger?.LogInfo($"[{Name}] 设备 {config.DeviceName} ({config.DeviceId}) 配置更新成功: {applyResult.Message}", LogCategory.Device);
+                        DesignTimeUpstreamRegistry.NotifyDeviceChannelOptionsMayHaveChanged(config.DeviceName);
                     }
                     else
                     {
@@ -794,6 +796,7 @@ namespace Astra.Plugins.DataAcquisition
                 }
 
                 _logger?.LogInfo($"[{Name}] 已删除设备: {deviceName} (ID: {deviceId})", LogCategory.Device);
+                DesignTimeUpstreamRegistry.NotifyDeviceChannelOptionsMayHaveChanged(deviceName);
             }
             catch (Exception ex)
             {

@@ -70,24 +70,34 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         initialCapacity: Math.Max(span.Length, 4096),
                         estimatedTotalSamples: span.Length);
 
-                    if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
-                    {
-                        outChannel.WriteSamples(span);
-                    }
-                    else if (channelConfig.TryGetAffinePhysicalTransform(out var linearScale, out var linearOffset))
+                    var hasSensor = channelConfig != null && channelConfig.HasSensor && channelConfig.Sensor != null;
+                    double linearScaleF = 0, linearOffsetF = 0;
+                    var hasAffine = hasSensor && channelConfig!.TryGetAffinePhysicalTransform(out linearScaleF, out linearOffsetF);
+
+                    if (hasAffine)
                     {
                         if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
-                        {
-                            yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
-                        }
+                            yAxisPhysicalUnit = channelConfig!.Sensor!.GetYAxisDisplayUnit();
 
                         var buffer = GC.AllocateUninitializedArray<float>(span.Length);
-                        ConvertFloatAffine(span, buffer, (float)linearScale, (float)linearOffset);
+                        ConvertFloatAffine(span, buffer, (float)linearScaleF, (float)linearOffsetF);
                         outChannel.WriteSamples(buffer);
+                    }
+                    else if (hasSensor)
+                    {
+                        continue;
                     }
                     else
                     {
-                        continue;
+                        outChannel.WriteSamples(span);
+                    }
+
+                    CopyAllChannelProperties(channel, outChannel);
+                    if (hasAffine)
+                    {
+                        var yu = channelConfig!.Sensor!.GetYAxisDisplayUnit();
+                        if (!string.IsNullOrEmpty(yu))
+                            outChannel.Properties.Set("wf_yunit", yu);
                     }
 
                     CopyWfIncrementAndFlush(channel, outChannel);
@@ -110,26 +120,36 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         initialCapacity: Math.Max(span.Length, 4096),
                         estimatedTotalSamples: span.Length);
 
-                    if (channelConfig == null || !channelConfig.HasSensor || channelConfig.Sensor == null)
+                    var hasSensor = channelConfig != null && channelConfig.HasSensor && channelConfig.Sensor != null;
+                    double linearScaleD = 0, linearOffsetD = 0;
+                    var hasAffine = hasSensor && channelConfig!.TryGetAffinePhysicalTransform(out linearScaleD, out linearOffsetD);
+
+                    if (hasAffine)
+                    {
+                        if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
+                            yAxisPhysicalUnit = channelConfig!.Sensor!.GetYAxisDisplayUnit();
+
+                        var buffer = GC.AllocateUninitializedArray<float>(span.Length);
+                        ConvertDoubleAffineToFloat(span, buffer, linearScaleD, linearOffsetD);
+                        outChannel.WriteSamples(buffer);
+                    }
+                    else if (hasSensor)
+                    {
+                        continue;
+                    }
+                    else
                     {
                         var buffer = GC.AllocateUninitializedArray<float>(span.Length);
                         ConvertDoubleToFloat(span, buffer);
                         outChannel.WriteSamples(buffer);
                     }
-                    else if (channelConfig.TryGetAffinePhysicalTransform(out var linearScale, out var linearOffset))
-                    {
-                        if (string.IsNullOrWhiteSpace(yAxisPhysicalUnit))
-                        {
-                            yAxisPhysicalUnit = GetDisplayPhysicalUnit(channelConfig.Sensor);
-                        }
 
-                        var buffer = GC.AllocateUninitializedArray<float>(span.Length);
-                        ConvertDoubleAffineToFloat(span, buffer, linearScale, linearOffset);
-                        outChannel.WriteSamples(buffer);
-                    }
-                    else
+                    CopyAllChannelProperties(channel, outChannel);
+                    if (hasAffine)
                     {
-                        continue;
+                        var yu = channelConfig!.Sensor!.GetYAxisDisplayUnit();
+                        if (!string.IsNullOrEmpty(yu))
+                            outChannel.Properties.Set("wf_yunit", yu);
                     }
 
                     CopyWfIncrementAndFlush(channel, outChannel);
@@ -162,6 +182,12 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
             group = null;
             return false;
+        }
+
+        private static void CopyAllChannelProperties(NvhMemoryChannelBase source, NvhMemoryChannel<float> dest)
+        {
+            foreach (var entry in source.Properties.Entries)
+                dest.Properties.Set(entry.Key, entry.Value);
         }
 
         private static void CopyWfIncrementAndFlush(NvhMemoryChannelBase source, NvhMemoryChannel<float> dest)
@@ -261,16 +287,6 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             }
 
             return null;
-        }
-
-        private static string GetDisplayPhysicalUnit(SensorConfig sensor)
-        {
-            if (!string.IsNullOrWhiteSpace(sensor.PhysicalUnit))
-            {
-                return sensor.PhysicalUnit.Trim();
-            }
-
-            return SensorConfig.GetPhysicalUnitFromSensitivityUnit(sensor.SensitivityUnit, sensor.SensorType) ?? string.Empty;
         }
     }
 }

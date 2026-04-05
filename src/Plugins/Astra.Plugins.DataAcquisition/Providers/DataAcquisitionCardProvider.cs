@@ -2,6 +2,8 @@ using Astra.Core.Constants;
 using Astra.Core.Data;
 using Astra.Core.Devices.Interfaces;
 using Astra.Plugins.DataAcquisition.Devices;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Astra.Plugins.DataAcquisition.Providers
@@ -65,29 +67,24 @@ namespace Astra.Plugins.DataAcquisition.Providers
         }
 
         /// <summary>
-        /// 返回当前插件中所有采集卡的设备名称列表（含虚拟设备与别名），用于属性编辑器多选。
+        /// 仅返回已注册的<strong>硬件</strong>采集设备显示名（不含「文件导入」及 <see cref="VirtualDeviceChannelRegistry"/> 别名）。
+        /// 供数据采集节点「选择采集卡」等场景使用。
+        /// </summary>
+        public static List<string> GetHardwareDataAcquisitionNames() => GetHardwareDeviceDisplayNamesCore();
+
+        /// <summary>
+        /// 返回当前插件中所有采集相关设备显示名：硬件实例 + 虚拟导入及别名（供全局 <see cref="AcquisitionDeviceCatalog"/> 等需要解析文件导入下游的场景）。
         /// </summary>
         public static List<string> GetDataAcquisitionNames()
         {
             try
             {
-                var plugin = DataAcquisitionPlugin.Current;
-                if (plugin == null)
+                var list = GetHardwareDeviceDisplayNamesCore();
+                if (DataAcquisitionPlugin.Current == null && list.Count == 0)
                 {
-                    var fallback = new List<string>();
-                    AppendVirtualAliasesOrGeneric(fallback);
-                    return fallback;
+                    AppendVirtualAliasesOrGeneric(list);
+                    return list;
                 }
-
-                var devices = plugin.GetAllDataAcquisitions();
-
-                var list = devices?
-                               .Select(d => d as IDevice)
-                               .Where(d => d != null && !string.IsNullOrWhiteSpace(d.DeviceName))
-                               .Select(d => d!.DeviceName!)
-                               .Distinct()
-                               .ToList()
-                           ?? new List<string>();
 
                 AppendVirtualAliasesOrGeneric(list);
                 return list;
@@ -96,6 +93,46 @@ namespace Astra.Plugins.DataAcquisition.Providers
             {
                 return new List<string>();
             }
+        }
+
+        /// <summary>
+        /// 从插件设备列表收集显示名，排除虚拟/文件导入占位及注册表中的虚拟别名。
+        /// </summary>
+        private static List<string> GetHardwareDeviceDisplayNamesCore()
+        {
+            var list = new List<string>();
+            try
+            {
+                var plugin = DataAcquisitionPlugin.Current;
+                if (plugin == null)
+                    return list;
+
+                foreach (var dev in plugin.GetAllDataAcquisitions())
+                {
+                    if (dev is not IDevice d || string.IsNullOrWhiteSpace(d.DeviceName))
+                        continue;
+                    var name = d.DeviceName.Trim();
+                    if (IsNonHardwareDeviceDisplayName(name))
+                        continue;
+                    if (!list.Contains(name, StringComparer.OrdinalIgnoreCase))
+                        list.Add(name);
+                }
+            }
+            catch
+            {
+            }
+
+            return list;
+        }
+
+        private static bool IsNonHardwareDeviceDisplayName(string deviceName)
+        {
+            if (string.IsNullOrWhiteSpace(deviceName))
+                return true;
+            var t = deviceName.Trim();
+            if (string.Equals(t, AstraSharedConstants.VirtualImportDevices.DisplayName, StringComparison.OrdinalIgnoreCase))
+                return true;
+            return VirtualDeviceChannelRegistry.IsVirtualDevice(t);
         }
 
         /// <summary>

@@ -729,6 +729,12 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 {
                     dataChannel.Properties.Set("SensorName", channelConfig.Sensor.ConfigName);
                     dataChannel.Properties.Set("SensorType", channelConfig.Sensor.SensorType.ToString());
+                    var sensorSn = channelConfig.Sensor.SerialNumber;
+                    if (!string.IsNullOrWhiteSpace(sensorSn))
+                        dataChannel.Properties.Set("SensorSerialNumber", sensorSn.Trim());
+                    var yAxisUnit = channelConfig.Sensor.GetYAxisDisplayUnit();
+                    if (!string.IsNullOrEmpty(yAxisUnit))
+                        dataChannel.Properties.Set("wf_yunit", yAxisUnit);
                 }
 
                 _channelMap[channelConfig.ChannelId] = dataChannel;

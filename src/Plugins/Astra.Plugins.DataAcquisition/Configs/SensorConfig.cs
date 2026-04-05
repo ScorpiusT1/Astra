@@ -261,6 +261,17 @@ namespace Astra.Plugins.DataAcquisition.Configs
             return null;
         }
 
+        /// <summary>
+        /// 图表、TDMS 纵轴等与灵敏度换算结果一致的物理量单位：优先 <see cref="PhysicalUnit"/>，
+        /// 否则由 <see cref="SensitivityUnit"/> 与 <see cref="SensorType"/> 推断。
+        /// </summary>
+        public string GetYAxisDisplayUnit()
+        {
+            if (!string.IsNullOrWhiteSpace(PhysicalUnit))
+                return PhysicalUnit.Trim();
+            return GetPhysicalUnitFromSensitivityUnit(SensitivityUnit, SensorType) ?? string.Empty;
+        }
+
         public string Manufacturer
         {
             get => _manufacturer;

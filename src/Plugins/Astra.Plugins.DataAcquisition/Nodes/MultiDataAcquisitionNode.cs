@@ -74,8 +74,22 @@ namespace Astra.Plugins.DataAcquisition.Nodes
         /// </summary>     
         [Display(Name = "选择采集卡", GroupName = "采集卡配置", Order = 3)]
         [Editor(typeof(CheckComboBoxPropertyEditor))]
-        [ItemsSource(typeof(DataAcquisitionCardProvider), "GetDataAcquisitionNames", DisplayMemberPath = ".")]
-        public List<string> DataAcquisitionDeviceNames { get; set; } = new();
+        [ItemsSource(typeof(DataAcquisitionCardProvider), "GetHardwareDataAcquisitionNames", DisplayMemberPath = ".")]
+        public List<string> DataAcquisitionDeviceNames
+        {
+            get => _dataAcquisitionDeviceNames;
+            set
+            {
+                value ??= new();
+                if (_dataAcquisitionDeviceNames.SequenceEqual(value, StringComparer.Ordinal))
+                    return;
+                _dataAcquisitionDeviceNames = value;
+                OnPropertyChanged();
+                DesignTimeUpstreamRegistry.NotifyUpstreamChannelOptionsChanged(Id);
+            }
+        }
+
+        private List<string> _dataAcquisitionDeviceNames = new();
 
         IEnumerable<string> IMultiRawDataPipelineNode.DataAcquisitionDeviceDisplayNames => DataAcquisitionDeviceNames;
 
@@ -572,7 +586,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         artifactName: $"{device.DeviceId}:raw",
                         rawData: dataForArtifact,
                         displayName: $"{(device as IDevice)?.DeviceName ?? device.DeviceId}-RawData",
-                        deviceId: device.DeviceId);
+                        deviceId: device.DeviceId,
+                        includeInTestReport: IncludeInTestReport);
 
                     rawDataKeys.Add(artifactRef.Key);
 
