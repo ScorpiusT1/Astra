@@ -6,6 +6,9 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
+using Astra.Workflow.AlgorithmChannel.Nodes;
+using Astra.Workflow.AlgorithmChannel.APIs;
+using Astra.Workflow.AlgorithmChannel.Helpers;
 
 namespace Astra.Plugins.Algorithms.Nodes
 {
@@ -65,17 +68,18 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var z = Nvh.TimeFrequencyMap(e.Signal, SpectrumLines, TimeIncrementSeconds, ReferenceValue,
                         SpectrumFormat, WindowType, WeightType, ScaleType, out var timeAxis, out var freqAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var chart = ChartDisplayPayloadFactory.Heatmap(z, freqAxis, timeAxis, "频率 (Hz)", "时间 (s)");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
@@ -171,7 +175,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             var (_, rpmChannel) = ResolveRpmSpec();
@@ -179,7 +183,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             var rpms = new (Rpm rpm, Action dispose)[entries.Count];
             for (int j = 0; j < entries.Count; j++)
             {
-                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm))
+                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 {
                     for (int k = 0; k < j; k++) rpms[k].dispose();
                     AlgorithmInputLoader.DisposeAll(entries);
@@ -191,7 +195,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var data = Nvh.OrderSection(e.Signal, rpms[i].rpm, SpectrumLines, TargetOrder, OrderBandwidth,
@@ -287,7 +291,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             var (_, rpmChannel) = ResolveRpmSpec();
@@ -295,7 +299,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             var rpms = new (Rpm rpm, Action dispose)[entries.Count];
             for (int j = 0; j < entries.Count; j++)
             {
-                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm))
+                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 {
                     for (int k = 0; k < j; k++) rpms[k].dispose();
                     AlgorithmInputLoader.DisposeAll(entries);
@@ -307,7 +311,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var z = Nvh.RpmFrequencyMap(e.Signal, rpms[i].rpm, SpectrumLines, MinRpm, MaxRpm, RpmStep, ReferenceValue,
@@ -402,7 +406,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             var (_, rpmChannel) = ResolveRpmSpec();
@@ -410,7 +414,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             var rpms = new (Rpm rpm, Action dispose)[entries.Count];
             for (int j = 0; j < entries.Count; j++)
             {
-                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm))
+                if (!AlgorithmInputLoader.TryLoadRpm(entries[j].File, rpmChannel, out var rpm, out var disposeRpm, out var errRpm, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 {
                     for (int k = 0; k < j; k++) rpms[k].dispose();
                     AlgorithmInputLoader.DisposeAll(entries);
@@ -422,7 +426,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var z = Nvh.RpmOrderMap(e.Signal, rpms[i].rpm, MaxOrder, OrderResolution, MinRpm, MaxRpm, RpmStep, ReferenceValue,

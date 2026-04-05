@@ -1,15 +1,14 @@
 using Astra.Core.Nodes.Models;
-using Astra.Plugins.Algorithms.Helpers;
 using Astra.Plugins.Algorithms.APIs;
-using Astra.UI.Abstractions.Nodes;
+using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
-using Astra.UI.PropertyEditors;
-using RangeValidationAttribute = Astra.UI.Abstractions.Validations.RangeAttribute;
-using System.Collections.Generic;
+using Astra.UI.Abstractions.Nodes;
+using Astra.Workflow.AlgorithmChannel.APIs;
+using Astra.Workflow.AlgorithmChannel.Helpers;
+using Astra.Workflow.AlgorithmChannel.Nodes;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Threading.Tasks;
 using EnumsScaleOptions = Astra.Plugins.Algorithms.Enums.ScaleOptions;
+using RangeValidationAttribute = Astra.UI.Abstractions.Validations.RangeAttribute;
 
 namespace Astra.Plugins.Algorithms.Nodes
 {
@@ -68,7 +67,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             if (Overlap < 0 || Overlap > 1)
@@ -77,7 +76,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
 
@@ -85,6 +84,7 @@ namespace Astra.Plugins.Algorithms.Nodes
 
                     var data = Nvh.OverallLevelSpectral(e.Signal, SpectrumLines, increment, ReferenceValue,
                         WindowType, WeightType, ScaleType, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var chart = SpectralChartPayloadHelper.CreateAdaptive(timeAxis, data, "时间 (s)", "幅值");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(data));
                 });
@@ -180,13 +180,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var calcOpt = new SpectraCalcOptions(CalcType, CalcValue);
@@ -293,13 +293,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var calcOpt = new SpectraCalcOptions(CalcType, CalcValue);

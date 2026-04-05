@@ -1,4 +1,5 @@
 ﻿using Astra.Plugins.Algorithms.APIs;
+using Astra.Workflow.AlgorithmChannel.APIs;
 using System;
 using System.Collections.Generic;
 using System.Linq;

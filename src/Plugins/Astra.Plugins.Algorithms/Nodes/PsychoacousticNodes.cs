@@ -4,6 +4,8 @@ using Astra.Plugins.Algorithms.Enums;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
+using Astra.Workflow.AlgorithmChannel.Helpers;
+using Astra.Workflow.AlgorithmChannel.Nodes;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
@@ -34,13 +36,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var (loudness, spec) = Nvh.StationaryLoudnessAnalyze(e.Signal, SoundField, SkipSeconds, out var barkAxis, out _);
@@ -88,16 +90,17 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var (_, spec) = Nvh.TimeVaryingLoudnessAnalyze(e.Signal, SoundField, SkipSeconds, out var barkAxis, out _, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec, timeAxis, barkAxis, "时间 (s)", "Bark"));
                 });
                 return Task.FromResult(PublishMultiChart(context, "TimeVaryingLoudness", results.ToList(), tag: "psycho"));
@@ -146,13 +149,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var sharp = Nvh.StationarySharpnessAnalyze(e.Signal, SharpnessWeighting, SoundField, SkipSeconds, out var spec, out var barkAxis, out _);
@@ -207,16 +210,17 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var sharpSeries = Nvh.TimeVaryingSharpnessAnalyze(e.Signal, SharpnessWeighting, SoundField, SkipSeconds, out var spec2d, out var barkAxis, out _, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var meanSharp = sharpSeries.Length > 0 ? sharpSeries.Average() : double.NaN;
                     results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, barkAxis, "时间 (s)", "Bark"),
                         $"平均锐度({e.Label})", meanSharp, "acum");
@@ -266,16 +270,17 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var overall = Nvh.RoughnessAnalyze(e.Signal, SoundField, SkipSeconds, out _, out var spec2d, out _, out var bandAxis, out _, out _, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, bandAxis, "时间 (s)", "频带"),
                         $"粗糙度({e.Label})", overall, "asper");
                 });
@@ -321,16 +326,17 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, string ScalarName, double ScalarValue, string ScalarUnit)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var total = Nvh.FluctuationStrengthAnalyze(e.Signal, Method, out _, out var spec2d, out _, out var bandAxis, out _, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     results[i] = (e.Label, ChartDisplayPayloadFactory.Heatmap(spec2d, timeAxis, bandAxis, "时间 (s)", "频带"),
                         $"波动度({e.Label})", total, "vacil");
                 });

@@ -1,4 +1,5 @@
 ﻿using Astra.Plugins.Algorithms.Enums;
+using Astra.Workflow.AlgorithmChannel.APIs;
 using System.Runtime.InteropServices;
 
 namespace Astra.Plugins.Algorithms.APIs

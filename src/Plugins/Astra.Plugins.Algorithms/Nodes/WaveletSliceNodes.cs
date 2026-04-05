@@ -3,6 +3,9 @@ using Astra.Plugins.Algorithms.APIs;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
+using Astra.Workflow.AlgorithmChannel.APIs;
+using Astra.Workflow.AlgorithmChannel.Helpers;
+using Astra.Workflow.AlgorithmChannel.Nodes;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
@@ -76,7 +79,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             if (BandMinFrequency >= BandMaxFrequency)
@@ -105,11 +108,12 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double SelFreq, double RowPeak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.MorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, freqAxis, NCycles, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var (slice, selFreq, rowPeak) = WaveletSliceHelper.PickBandMaxRow(z, freqAxis, timeAxis.Length, BandMinFrequency, BandMaxFrequency);
                     var chart = ChartDisplayPayloadFactory.XYLine(timeAxis, slice, "时间 (s)", "幅值");
                     results[i] = (e.Label, chart, selFreq, rowPeak);
@@ -202,7 +206,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             if (MinFrequency >= MaxFrequency)
@@ -225,11 +229,12 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double UsedFreq, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.MorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, freqAxis, NCycles, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var (slice, usedFreq) = WaveletSliceHelper.PickNearestFrequencyRow(z, freqAxis, timeAxis, TargetFrequencyHz);
                     var peak = AlgorithmScalarMath.MaxAbs(slice);
                     var chart = ChartDisplayPayloadFactory.XYLine(timeAxis, slice, "时间 (s)", "幅值");

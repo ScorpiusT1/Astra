@@ -2,6 +2,8 @@ using Astra.Core.Nodes.Models;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
+using Astra.Workflow.AlgorithmChannel.Helpers;
+using Astra.Workflow.AlgorithmChannel.Nodes;
 using Newtonsoft.Json;
 using System.ComponentModel.DataAnnotations;
 
@@ -19,7 +21,7 @@ namespace Astra.Plugins.Algorithms.Nodes
         [JsonIgnore]
         public IEnumerable<string> RpmChannelOptions => ChannelNameOptions;
 
-        [Display(Name = "转速通道", GroupName = "输入", Order = 2, Description = "格式为「设备名/通道名」；须与振动通道在同一采集卡内")]
+        [Display(Name = "转速通道", GroupName = "输入", Order = 3, Description = "格式为「设备名/通道名」；须与振动通道在同一采集卡内")]
         [Editor(typeof(ComboBoxPropertyEditor))]
         [ItemsSource(nameof(RpmChannelOptions), DisplayMemberPath = ".")]
         public string RpmChannelName

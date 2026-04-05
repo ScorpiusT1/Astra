@@ -3,11 +3,16 @@ using Astra.Plugins.Algorithms.APIs;
 using Astra.Plugins.Algorithms.Helpers;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
+using Astra.Workflow.AlgorithmChannel.APIs;
+using Astra.Workflow.AlgorithmChannel.Helpers;
+using Astra.Workflow.AlgorithmChannel.Nodes;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using EnumsScaleOptions = Astra.Plugins.Algorithms.Enums.ScaleOptions;
+using Window = Astra.Workflow.AlgorithmChannel.APIs.Window;
 
 namespace Astra.Plugins.Algorithms.Nodes
 {
@@ -29,21 +34,22 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var env = Nvh.HilbertEnvelope(e.Signal);
                     var n = env.Length;
                     var t = new double[n];
                     var dt = e.Signal.DeltaTime;
+                    var t0 = e.TimeAxisOriginSeconds;
                     for (var k = 0; k < n; k++)
-                        t[k] = k * dt;
+                        t[k] = t0 + k * dt;
                     var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(env));
                 });
@@ -93,13 +99,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var opt = new EnvelopeExOptions(BandwidthHz, CenterFrequency);
@@ -107,8 +113,9 @@ namespace Astra.Plugins.Algorithms.Nodes
                     var n = env.Length;
                     var t = new double[n];
                     var dt = e.Signal.DeltaTime;
+                    var t0 = e.TimeAxisOriginSeconds;
                     for (var k = 0; k < n; k++)
-                        t[k] = k * dt;
+                        t[k] = t0 + k * dt;
                     var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(env));
                 });
@@ -167,7 +174,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             var (rpmDevice, rpmChannel) = ResolveRpmSpec();
@@ -189,11 +196,13 @@ namespace Astra.Plugins.Algorithms.Nodes
                     if (!AlgorithmNvhSampleUtil.TryExtractAsDoubleArray(rpmFile, AlgorithmRawArtifactHelper.NvhSignalGroupName, rpmChannel, out var rpmSamples) ||
                         rpmSamples.Length == 0)
                         return Task.FromResult(ExecutionResult.Failed($"无法从 {rpmDevice ?? e.Label} 读取转速通道样本。"));
-                    rpmData[i] = rpmSamples;
+                    if (!AlgorithmNvhSampleUtil.TryGetWaveformIncrement(rpmFile, AlgorithmRawArtifactHelper.NvhSignalGroupName, rpmChannel, out var rpmDt) || rpmDt <= 0)
+                        rpmDt = 1.0 / 25600.0;
+                    rpmData[i] = AlgorithmInputLoader.SliceSamplesForAnalysisWindow(rpmSamples, rpmDt, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds);
                 }
 
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var opt = new EnvelopeExOptions(CenterOrder, OrderBandwidth, WindowLength, MinFrequency, MaxFrequency, rpmData[i]);
@@ -201,8 +210,9 @@ namespace Astra.Plugins.Algorithms.Nodes
                     var n = env.Length;
                     var t = new double[n];
                     var dt = e.Signal.DeltaTime;
+                    var t0 = e.TimeAxisOriginSeconds;
                     for (var k = 0; k < n; k++)
-                        t[k] = k * dt;
+                        t[k] = t0 + k * dt;
                     var chart = ChartDisplayPayloadFactory.XYLine(t, env, "时间 (s)", "包络");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.MaxAbs(env));
                 });
@@ -252,13 +262,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var data = Nvh.HilbertEnvelopeSpectra(e.Signal, WindowType, SpectrumFormat, out var freqAxis);
@@ -329,13 +339,13 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var calcOpt = new SpectraCalcOptions(CalcType, CalcValue);
@@ -422,7 +432,7 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             var fCount = Math.Max(2, FrequencyPointCount);
@@ -433,11 +443,12 @@ namespace Astra.Plugins.Algorithms.Nodes
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.MorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, freqAxis, NCycles, out var timeAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
@@ -516,17 +527,18 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.LmsMorletWaveletTransform(e.Signal, scaleOpt, StartTimeSeconds, MinFrequency, MaxFrequency, BandsPerOctave, out var timeAxis, out var freqAxis);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var freqAxisLog10 = ToLog10Coordinates(freqAxis);
                     var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxisLog10, "时间 (s)", "频率 (Hz)", heatmapYAxisIsLog10OfQuantity: true);
                     results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
@@ -609,18 +621,19 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.ModulationSpectrumAnalysis(e.Signal, FrequencyResolution, CutoffFrequency, scaleOpt,
                         out var freqAxis, out var timeAxis, out _, out _);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });
@@ -696,18 +709,19 @@ namespace Astra.Plugins.Algorithms.Nodes
             if (specs.Count == 0)
                 return Task.FromResult(ExecutionResult.Failed("请至少选择一个通道，或确保上游存在可用采集卡（未选通道时将使用各卡首通道）。"));
 
-            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err))
+            if (!AlgorithmInputLoader.TryLoadMultipleVibrations(context, Id, specs, out var entries, out var err, AnalysisWindowStartSeconds, AnalysisWindowEndSeconds))
                 return Task.FromResult(ExecutionResult.Failed(err ?? "输入错误"));
 
             try
             {
                 var results = new (string Label, ChartDisplayPayload Chart, double Peak)[entries.Count];
-                Parallel.For(0, entries.Count, i =>
+                AlgorithmParallel.For(0, entries.Count, cancellationToken, i =>
                 {
                     var e = entries[i];
                     var scaleOpt = new EnumsScaleOptions(OutputScale, ReferenceValue);
                     var z = Nvh.ModulationSpectrumAnalysis(e.Signal, WindowSize, HopSize, CutoffFrequency, scaleOpt,
                         out var freqAxis, out var timeAxis, out _, out _);
+                    AlgorithmTimeAxisHelper.ApplyAnalysisOriginInPlace(timeAxis, e.TimeAxisOriginSeconds);
                     var chart = ChartDisplayPayloadFactory.Heatmap(z, timeAxis, freqAxis, "时间 (s)", "频率 (Hz)");
                     results[i] = (e.Label, chart, AlgorithmScalarMath.Max(z));
                 });

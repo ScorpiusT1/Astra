@@ -1,4 +1,5 @@
 using Astra.Plugins.Algorithms.APIs;
+using Astra.Workflow.AlgorithmChannel.APIs;
 
 namespace Astra.Plugins.Algorithms.Nodes
 {
