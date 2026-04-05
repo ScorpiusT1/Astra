@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AddinManifest>
+	<Schema>http://pluginsystem.org/schema/v1</Schema>
+	<Addin>
+		<Id>Astra.Plugins.Logic</Id>
+		<Name>流程逻辑插件</Name>
+		<Version>1.0.0</Version>
+		<Description>上游测试结果聚合、主流程精确延时、条件分支等逻辑节点</Description>
+		<Author>Astra Team</Author>
+		<Copyright>Copyright © Astra Team</Copyright>
+		<Website />
+		<IconPath>CodeBranch</IconPath>
+		<Order>12</Order>
+		<Runtime>
+			<Assembly>Astra.Plugins.Logic.dll</Assembly>
+			<TypeName>Astra.Plugins.Logic.LogicPlugin</TypeName>
+			<TargetFramework>net8.0-windows</TargetFramework>
+		</Runtime>
+		<Dependencies />
+		<Permissions>
+			<Required />
+		</Permissions>
+	</Addin>
+	<Nodes>
+		<NodeInfo
+			Name="上游测试结果聚合"
+			TypeName="Astra.Plugins.Logic.Nodes.UpstreamTestAggregationNode"
+			IconCode="CodeBranch"
+			Description="主流程或子流程中均可使用：按连线聚合多个直连上游（含子流程引用块）的最近一次执行结果；用于判断各 Workflow 步骤是否全部通过或失败等"
+			Category="流程编排" />
+		<NodeInfo
+			Name="精确延时"
+			TypeName="Astra.Plugins.Logic.Nodes.MasterWorkflowDelayNode"
+			IconCode="Clock"
+			Description="按配置毫秒数阻塞流程（Task.Delay）；主流程画布外观与流程引用块一致；子流程中也可使用"
+			Category="流程编排" />
+	</Nodes>
+</AddinManifest>
