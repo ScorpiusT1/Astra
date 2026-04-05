@@ -298,26 +298,10 @@ namespace Astra.Plugins.PLC
                 }
             }
 
+            // Detach 内部已对 ObservableCollection.Clear 使用 BeginInvoke，此处禁止同步 Invoke，
+            // 否则卸载线程与阻塞在 GetResult() 的 UI 线程死锁（见 PlcHomeIoMonitorRuntime）。
             var homeIoMonitor = _homeIoMonitor;
-            if (homeIoMonitor != null)
-            {
-                var d = Application.Current?.Dispatcher;
-                if (d != null && !d.CheckAccess())
-                {
-                    try
-                    {
-                        d.Invoke(homeIoMonitor.Detach, DispatcherPriority.Send);
-                    }
-                    catch
-                    {
-                        homeIoMonitor.Detach();
-                    }
-                }
-                else
-                {
-                    homeIoMonitor.Detach();
-                }
-            }
+            homeIoMonitor?.Detach();
 
             IoMonitorRuntimeRegistry.Register(null);
             _homeIoMonitor = null;

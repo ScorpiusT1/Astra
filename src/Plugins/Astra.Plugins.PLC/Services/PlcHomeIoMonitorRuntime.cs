@@ -168,11 +168,13 @@ namespace Astra.Plugins.PLC.Services
                 if (dispatcher.HasShutdownStarted)
                     return;
 
-                dispatcher.Invoke(ClearSafe, DispatcherPriority.Send);
+                // 必须用 BeginInvoke：插件卸载在线程池执行时，同步 Invoke 会与主线程上
+                // CleanupCriticalResources().GetResult() 互相等待导致死锁。
+                dispatcher.BeginInvoke(DispatcherPriority.Send, ClearSafe);
             }
             catch
             {
-                // 关闭过程中 Invoke 失败则放弃清理
+                // 关闭过程中投递失败则放弃清理
             }
         }
 
