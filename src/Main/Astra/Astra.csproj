@@ -56,7 +56,7 @@
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\Astra.Engine\Astra.Engine.csproj" />
     <ProjectReference Include="..\Astra.Infrastructure\Astra.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Plugins\Astra.Plugins.WorkflowArchive\Astra.Plugins.WorkflowArchive.csproj" />
+    <ProjectReference Include="..\Astra.Reporting\Astra.Reporting.csproj" />
   </ItemGroup>
 
   <ItemGroup>
