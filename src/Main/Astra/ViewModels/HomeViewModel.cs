@@ -188,7 +188,6 @@ namespace Astra.ViewModels
 
             UpdateCurrentSn(manualSn);
             RealTimeLogModule.ClearLogsCommand.Execute(null);
-            TestItemTreeModule.ResetForNewRun();
             _hasPendingYieldRecord = true;
             _isCurrentRunCanceled = false;
 
@@ -200,6 +199,7 @@ namespace Astra.ViewModels
                 return Task.CompletedTask;
             }
 
+            TestItemTreeModule.ResetForNewRun();
             TestItemTreeModule.BeginStandaloneExecutionEventSession();
             IsTestRunning = true;
             IsTestPaused = false;
@@ -328,13 +328,19 @@ namespace Astra.ViewModels
             }
             finally
             {
-                Application.Current?.Dispatcher?.Invoke(() =>
+                // 用 Background 优先级，确保先排队的 Normal 优先级节点状态回调全部执行完毕后再关闭会话；
+                // 否则 Invoke 默认 Send 优先级会抢先于 InvokeAsync(Normal)，导致并行子流程的晚到事件被丢弃。
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher != null)
                 {
-                    TestItemTreeModule.EndStandaloneExecutionEventSession();
-                    TestItemTreeModule.StopRunTimer();
-                    IsTestRunning = false;
-                    IsTestPaused = false;
-                });
+                    dispatcher.Invoke(() =>
+                    {
+                        TestItemTreeModule.EndStandaloneExecutionEventSession();
+                        TestItemTreeModule.StopRunTimer();
+                        IsTestRunning = false;
+                        IsTestPaused = false;
+                    }, System.Windows.Threading.DispatcherPriority.Background);
+                }
             }
         }
 
@@ -399,7 +405,7 @@ namespace Astra.ViewModels
                 TestItemTreeModule.StopRunTimer();
                 IsTestRunning = false;
                 IsTestPaused = false;
-            });
+            }, System.Windows.Threading.DispatcherPriority.Background);
         }
 
         private async Task LoadLinkageConfigAsync()
@@ -478,8 +484,17 @@ namespace Astra.ViewModels
                 return;
             }
 
+            var wasRunning = IsTestRunning;
             IsTestRunning = editor.IsRunning;
             IsTestPaused = editor.IsPaused;
+
+            // 联动：从序列界面点「启动」时不会走主页 StartTest 的 ResetForNewRun，此处必须在 IsRunning 上升沿启动总表计时，
+            // 否则 OnSummaryTimerTick 因 _isRunActive==false 不会刷新运行中叶子耗时与 SummaryTime。
+            if (IsSequenceLinkageEnabled && IsTestRunning && !wasRunning)
+            {
+                TestItemTreeModule.ResetForNewRun();
+            }
+
             if (!IsTestRunning)
             {
                 TestItemTreeModule.StopRunTimer();

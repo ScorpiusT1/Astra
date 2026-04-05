@@ -513,11 +513,17 @@
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsRoot}"
-                             Value="True">
+                <!-- 子流程分组根（无 NodeId）隐藏图表；主流程插件单行根保留按钮 -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsRoot}"
+                                   Value="True" />
+                        <Condition Binding="{Binding NodeId}"
+                                   Value="" />
+                    </MultiDataTrigger.Conditions>
                     <Setter Property="Visibility"
                             Value="Collapsed" />
-                </DataTrigger>
+                </MultiDataTrigger>
                 <DataTrigger Binding="{Binding IsChartButtonVisible}"
                              Value="False">
                     <Setter Property="Visibility"
@@ -746,7 +752,8 @@
             <!-- TreeListView：StretchFillColumnIndex=6（消息列）吸满剩余宽度，宽屏无横向条；视口窄于各列最小总宽时 ScrollViewer.HorizontalScrollBarVisibility=Auto 才出现横条 -->
             <Grid Grid.Row="3"
                   MinHeight="0">
-                <tv:TreeListView ItemsSource="{Binding Roots}"
+                <tv:TreeListView x:Name="TestItemsTree"
+                                 ItemsSource="{Binding Roots}"
                                  Padding="0"
                                  VerticalAlignment="Stretch"
                                  HorizontalAlignment="Stretch"
@@ -827,26 +834,31 @@
                     <!-- 第一列（树形展开列） -->
                     <tv:TreeListView.FirstColumnCellTemplate>
                         <DataTemplate>
-                            <Grid VerticalAlignment="Center"
-                                  ClipToBounds="True">
+                            <Grid VerticalAlignment="Center">
 
-                                <!-- 叶子节点：普通文字，左侧小圆点指示状态 -->
-                                <StackPanel x:Name="LeafPanel"
-                                            Orientation="Horizontal"
-                                            Visibility="Visible">
+                                <!-- 叶子节点：普通文字，左侧小圆点指示状态（* 列约束宽度以使省略号生效） -->
+                                <Grid x:Name="LeafPanel"
+                                      Visibility="Visible">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
                                     <Ellipse x:Name="StatusDot"
+                                             Grid.Column="0"
                                              Width="6"
                                              Height="6"
                                              Margin="0,0,7,0"
                                              VerticalAlignment="Center"
                                              Fill="{DynamicResource SecondaryBorderBrush}" />
-                                    <TextBlock Text="{Binding Name}"
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Name}"
                                                VerticalAlignment="Center"
                                                FontSize="13"
-                                               MaxWidth="170"
+                                               TextWrapping="NoWrap"
                                                TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Name}"
                                                Foreground="{DynamicResource PrimaryTextBrush}" />
-                                </StackPanel>
+                                </Grid>
 
                                 <!-- 根节点：加粗 + 数量 -->
                                 <Border x:Name="RootPanel"
@@ -854,20 +866,29 @@
                                         BorderThickness="0"
                                         Padding="0"
                                         Visibility="Collapsed">
-                                    <StackPanel Orientation="Horizontal">
-                                        <fa:IconBlock Icon="Cubes"
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <fa:IconBlock Grid.Column="0"
+                                                      Icon="Cubes"
                                                       FontSize="11"
                                                       Margin="0,0,6,0"
                                                       VerticalAlignment="Center"
                                                       Foreground="{DynamicResource InfoBrush}" />
-                                        <TextBlock Text="{Binding Name}"
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Name}"
                                                    FontWeight="SemiBold"
                                                    FontSize="13"
-                                                   MaxWidth="110"
+                                                   TextWrapping="NoWrap"
                                                    TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Name}"
                                                    VerticalAlignment="Center"
                                                    Foreground="{DynamicResource TitleBrush}" />
-                                        <Border CornerRadius="8"
+                                        <Border Grid.Column="2"
+                                                CornerRadius="8"
                                                 Padding="6,1"
                                                 Margin="8,0,0,0"
                                                 Background="{DynamicResource LightInfoBrush}"
@@ -879,7 +900,7 @@
                                                        FontWeight="SemiBold"
                                                        Foreground="{DynamicResource InfoBrush}" />
                                         </Border>
-                                    </StackPanel>
+                                    </Grid>
                                 </Border>
                             </Grid>
 
@@ -925,7 +946,7 @@
                     <tv:TreeListView.Columns>
                         <!-- 测试项名称 -->
                         <GridViewColumn Header="测试项名称"
-                                        Width="220"
+                                        Width="280"
                                         CellTemplate="{StaticResource TreeListView.FirstColumnWithExpanderTemplate}" />
 
                         <!-- 测试项状态 -->
@@ -1012,11 +1033,16 @@
                                             <Style TargetType="TextBlock"
                                                    BasedOn="{StaticResource ActualValueTextStyle}">
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRoot}"
-                                                                 Value="True">
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsRoot}"
+                                                                       Value="True" />
+                                                            <Condition Binding="{Binding NodeId}"
+                                                                       Value="" />
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Visibility"
                                                                 Value="Collapsed" />
-                                                    </DataTrigger>
+                                                    </MultiDataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </TextBlock.Style>
@@ -1041,11 +1067,16 @@
                                                 <Setter Property="Visibility"
                                                         Value="Visible" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRoot}"
-                                                                 Value="True">
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsRoot}"
+                                                                       Value="True" />
+                                                            <Condition Binding="{Binding NodeId}"
+                                                                       Value="" />
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Visibility"
                                                                 Value="Collapsed" />
-                                                    </DataTrigger>
+                                                    </MultiDataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </TextBlock.Style>
@@ -1070,11 +1101,16 @@
                                                 <Setter Property="Visibility"
                                                         Value="Visible" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRoot}"
-                                                                 Value="True">
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsRoot}"
+                                                                       Value="True" />
+                                                            <Condition Binding="{Binding NodeId}"
+                                                                       Value="" />
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Visibility"
                                                                 Value="Collapsed" />
-                                                    </DataTrigger>
+                                                    </MultiDataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </TextBlock.Style>
@@ -1083,7 +1119,7 @@
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
 
-                        <!-- 消息：仅子节点（测试项）展示报错/警告等，根节点不展示 -->
+                        <!-- 消息：子流程分组根不展示；主流程插件单行根与叶子展示 -->
                         <GridViewColumn Header="消息"
                                         Width="200">
                             <GridViewColumn.CellTemplate>
@@ -1102,15 +1138,20 @@
                                                 <Setter Property="ToolTip"
                                                         Value="{Binding StatusMessage}" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRoot}"
-                                                                 Value="True">
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsRoot}"
+                                                                       Value="True" />
+                                                            <Condition Binding="{Binding NodeId}"
+                                                                       Value="" />
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Visibility"
                                                                 Value="Collapsed" />
                                                         <Setter Property="Text"
                                                                 Value="" />
                                                         <Setter Property="ToolTip"
                                                                 Value="{x:Null}" />
-                                                    </DataTrigger>
+                                                    </MultiDataTrigger>
                                                     <DataTrigger Binding="{Binding Status}"
                                                                  Value="Fail">
                                                         <Setter Property="Foreground"
