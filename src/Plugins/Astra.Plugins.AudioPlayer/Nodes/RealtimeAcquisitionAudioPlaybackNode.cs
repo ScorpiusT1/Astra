@@ -7,8 +7,7 @@ using Astra.Core.Devices.Management;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Plugins.Messaging;
-using Astra.Plugins.DataAcquisition.Devices;
-using Astra.Plugins.DataAcquisition.Providers;
+using Astra.Core.Data;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.PropertyEditors;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,13 +21,16 @@ using System.Runtime.Serialization;
 namespace Astra.Plugins.AudioPlayer.Nodes
 {
     /// <summary>
-    /// 订阅数据采集设备在消息总线上发布的实时帧（与 <see cref="DataAcquisitionDeviceBase.PublishData"/> 一致），
+    /// 订阅数据采集设备在消息总线上发布的实时帧（与采集设备 IDataAcquisition 发布帧一致），
     /// 将指定通道转为单声道浮点音频并实时播放。需与采集节点并行；监听在采集卡停止采集（Idle）时结束，与采样时长一致。
     /// </summary>
     public class RealtimeAcquisitionAudioPlaybackNode : Node
     {
         private string _dataAcquisitionDeviceName = string.Empty;
         private string _channelName = string.Empty;
+
+        [JsonIgnore]
+        private string? _autoPlaybackDevChSuffix;
 
         [Display(Name = "采集卡", GroupName = "播放", Order = 1, Description = "首项为未选择；选定后须与多采集节点中的采集卡设备名一致")]
         [Editor(typeof(ComboBoxPropertyEditor))]
@@ -56,6 +58,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
                 _channelName = string.Empty;
                 OnPropertyChanged(nameof(ChannelName));
                 OnPropertyChanged(nameof(ChannelOptions));
+                SyncDisplayNameFromPlaybackSelection();
             }
         }
 
@@ -98,7 +101,23 @@ namespace Astra.Plugins.AudioPlayer.Nodes
 
                 _channelName = v;
                 OnPropertyChanged();
+                SyncDisplayNameFromPlaybackSelection();
             }
+        }
+
+        private void SyncDisplayNameFromPlaybackSelection()
+        {
+            if (string.IsNullOrWhiteSpace(_dataAcquisitionDeviceName))
+            {
+                ApplyAutoChannelSuffixToDisplayName(ref _autoPlaybackDevChSuffix, "");
+                return;
+            }
+
+            var dev = _dataAcquisitionDeviceName.Trim();
+            var frag = string.IsNullOrWhiteSpace(_channelName)
+                ? dev
+                : $"{dev}/{_channelName.Trim()}";
+            ApplyAutoChannelSuffixToDisplayName(ref _autoPlaybackDevChSuffix, frag);
         }
 
         [Display(Name = "输出增益", GroupName = "播放", Order = 3, Description = "将采集值放大/缩小到扬声器合适电平（依传感器量纲调整）")]
@@ -126,12 +145,10 @@ namespace Astra.Plugins.AudioPlayer.Nodes
         [OnDeserialized]
         private void OnDeserialized(StreamingContext context)
         {
-            if (!string.IsNullOrEmpty(PlaybackMmDeviceId) || string.IsNullOrEmpty(LegacyPlaybackDeviceSelection))
-            {
-                return;
-            }
+            if (string.IsNullOrEmpty(PlaybackMmDeviceId) && !string.IsNullOrEmpty(LegacyPlaybackDeviceSelection))
+                PlaybackMmDeviceId = ExtractMmDeviceIdFromLegacyPlaybackSelection(LegacyPlaybackDeviceSelection);
 
-            PlaybackMmDeviceId = ExtractMmDeviceIdFromLegacyPlaybackSelection(LegacyPlaybackDeviceSelection);
+            SyncDisplayNameFromPlaybackSelection();
         }
 
         protected override async Task<ExecutionResult> ExecuteCoreAsync(NodeContext context, CancellationToken cancellationToken)
@@ -150,7 +167,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
                 return ExecutionResult.Skip("未选择采集卡");
             }
 
-            if (!DataAcquisitionCardProvider.TryGetDeviceIdByDisplayName(_dataAcquisitionDeviceName, out var deviceId))
+            if (!AcquisitionDeviceCatalog.TryGetDeviceIdByDisplayName(_dataAcquisitionDeviceName, out var deviceId))
             {
                 log.Warn($"无法解析设备 ID: {_dataAcquisitionDeviceName}");
                 return ExecutionResult.Skip("无法解析采集卡设备 ID");
@@ -343,7 +360,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
                         continue;
                     }
 
-                    if (device is not DataAcquisitionDeviceBase daq)
+                    if (device is not IDataAcquisition daq)
                     {
                         return -1;
                     }

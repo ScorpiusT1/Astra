@@ -30,9 +30,5 @@
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
-		<ProjectReference Include="..\Astra.Plugins.DataAcquisition\Astra.Plugins.DataAcquisition.csproj">
-			<Private>false</Private>
-			<CopyLocal>false</CopyLocal>
-		</ProjectReference>
 	</ItemGroup>
 </Project>

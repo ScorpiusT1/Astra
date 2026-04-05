@@ -1,6 +1,6 @@
 using Astra.Plugins.AudioPlayer.Models;
-using Astra.Plugins.DataAcquisition.Providers;
 using Astra.Core.Constants;
+using Astra.Core.Data;
 using NVHDataBridge.IO.WAV;
 using System;
 using System.Collections.Generic;
@@ -60,7 +60,7 @@ namespace Astra.Plugins.AudioPlayer.Helpers
 
         public static IEnumerable<string> GetAcquisitionDeviceNames()
         {
-            var list = DataAcquisitionCardProvider.GetDataAcquisitionNames().ToList();
+            var list = AcquisitionDeviceCatalog.GetAcquisitionDeviceDisplayNames().ToList();
             list.Insert(0, UnselectedLabel);
             return list;
         }
@@ -73,7 +73,7 @@ namespace Astra.Plugins.AudioPlayer.Helpers
                 return new[] { UnselectedLabel };
             }
 
-            var list = DataAcquisitionCardProvider.GetConfiguredChannelNamesForDeviceDisplayName(d).ToList();
+            var list = AcquisitionDeviceCatalog.GetConfiguredChannelNamesForDeviceDisplayName(d).ToList();
             if (list.Count > 0 && list[0] == string.Empty)
             {
                 list[0] = UseFirstChannelInGroupLabel;

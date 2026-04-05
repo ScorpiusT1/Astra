@@ -1,3 +1,4 @@
+using Astra.Contract.Communication.Abstractions;
 using Astra.Plugins.AudioPlayer.Helpers;
 using Astra.Plugins.AudioPlayer.Models;
 using Astra.Core.Devices;
@@ -6,9 +7,6 @@ using Astra.Core.Devices.Management;
 using Astra.Core.Constants;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Management;
-using Astra.Plugins.DataAcquisition.Devices;
-using Astra.Plugins.DataAcquisition.Nodes;
-using Astra.Plugins.DataAcquisition.Providers;
 using Astra.UI.Abstractions.Attributes;
 using Microsoft.Extensions.DependencyInjection;
 using Astra.UI.PropertyEditors;
@@ -16,18 +14,22 @@ using Newtonsoft.Json;
 using NVHDataBridge.IO.WAV;
 using NVHDataBridge.Models;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.Serialization;
 
 namespace Astra.Plugins.AudioPlayer.Nodes
 {
     /// <summary>
     /// 在多采集节点完成之后，从 Raw 数据工件中读取指定通道并播放（顺序连线：多采集 → 本节点）。
-    /// 数据与 <see cref="MultiDataAcquisitionNode"/> 写入工件的规则一致。
+    /// 数据与上游多采集节点写入 Raw 工件的规则一致。
     /// 可通过 <see cref="Gain"/> 调整送播放器的幅值。
     /// </summary>
     public class PostAcquisitionAudioPlaybackNode : Node
     {
         private string _dataAcquisitionDeviceName = string.Empty;
         private string _channelName = string.Empty;
+
+        [JsonIgnore]
+        private string? _autoPlaybackDevChSuffix;
 
         [Display(Name = "采集卡", GroupName = "播放", Order = 1, Description = "须与上游多采集节点中勾选的采集卡名称一致")]
         [Editor(typeof(ComboBoxPropertyEditor))]
@@ -55,6 +57,7 @@ namespace Astra.Plugins.AudioPlayer.Nodes
                 _channelName = string.Empty;
                 OnPropertyChanged(nameof(ChannelName));
                 OnPropertyChanged(nameof(ChannelOptions));
+                SyncDisplayNameFromPlaybackSelection();
             }
         }
 
@@ -94,7 +97,29 @@ namespace Astra.Plugins.AudioPlayer.Nodes
 
                 _channelName = v;
                 OnPropertyChanged();
+                SyncDisplayNameFromPlaybackSelection();
             }
+        }
+
+        private void SyncDisplayNameFromPlaybackSelection()
+        {
+            if (string.IsNullOrWhiteSpace(_dataAcquisitionDeviceName))
+            {
+                ApplyAutoChannelSuffixToDisplayName(ref _autoPlaybackDevChSuffix, "");
+                return;
+            }
+
+            var dev = _dataAcquisitionDeviceName.Trim();
+            var frag = string.IsNullOrWhiteSpace(_channelName)
+                ? dev
+                : $"{dev}/{_channelName.Trim()}";
+            ApplyAutoChannelSuffixToDisplayName(ref _autoPlaybackDevChSuffix, frag);
+        }
+
+        [OnDeserialized]
+        private void OnDeserialized(StreamingContext context)
+        {
+            SyncDisplayNameFromPlaybackSelection();
         }
 
         [Display(Name = "输出增益", GroupName = "播放", Order = 3, Description = "在送播放器前将全部样本乘以该系数")]
@@ -269,9 +294,9 @@ namespace Astra.Plugins.AudioPlayer.Nodes
                         continue;
                     }
 
-                    if (device is not DataAcquisitionDeviceBase daq)
+                    if (device is not IDataAcquisition daq)
                     {
-                        error = "设备不是 DataAcquisitionDeviceBase";
+                        error = "设备未实现数据采集接口，无法枚举已启用通道";
                         return false;
                     }
 
