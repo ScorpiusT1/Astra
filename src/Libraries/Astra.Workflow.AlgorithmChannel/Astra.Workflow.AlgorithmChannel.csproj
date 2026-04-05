@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWPF>true</UseWPF>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<AssemblyName>Astra.Workflow.AlgorithmChannel</AssemblyName>
+		<RootNamespace>Astra.Workflow.AlgorithmChannel</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="Astra.Workflow.AlgorithmChannel" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj">
+			<Private>true</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
+	</ItemGroup>
+
+</Project>
