@@ -3,8 +3,8 @@ using Astra.Core.Configuration;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Serialization;
+using Astra.Core.Orchestration;
 using Astra.Services.Logging;
-using Astra.UI.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,18 +17,18 @@ namespace Astra.Services.Home
     public sealed class HomeWorkflowExecutionService : IHomeWorkflowExecutionService
     {
         private readonly IConfigurationManager _configurationManager;
-        private readonly IWorkflowExecutionSessionService _workflowExecutionSessionService;
         private readonly IUiLogService _uiLogService;
         private readonly IMultiWorkflowSerializer _multiWorkflowSerializer = new MultiWorkflowSerializer();
+        private readonly IMasterWorkflowOrchestrator _orchestrator;
 
         public HomeWorkflowExecutionService(
             IConfigurationManager configurationManager,
-            IWorkflowExecutionSessionService workflowExecutionSessionService,
-            IUiLogService uiLogService)
+            IUiLogService uiLogService,
+            IMasterWorkflowOrchestrator orchestrator)
         {
             _configurationManager = configurationManager;
-            _workflowExecutionSessionService = workflowExecutionSessionService;
             _uiLogService = uiLogService;
+            _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         }
 
         public async Task ExecuteCurrentConfiguredMasterAsync(CancellationToken cancellationToken, string? manualBarcode = null)
@@ -54,204 +54,31 @@ namespace Astra.Services.Home
             }
 
             var plan = BuildExecutionPlan(loadResult.Data);
-            if (plan.Nodes.Count == 0)
+            if (plan.Entries.Count == 0)
             {
                 _uiLogService.Warn("Home 独立执行：当前脚本没有可执行子流程。");
                 return;
             }
 
-            var mainPlan = BuildFilteredStandaloneExecutionPlan(plan, executeLast: false);
-            var finallyPlan = BuildFilteredStandaloneExecutionPlan(plan, executeLast: true);
+            var options = new MasterExecutionOptions { Sn = snForGlobalVariable };
 
-            if (!plan.HasDependencies)
+            try
             {
-                await RunHomeParallelBatchAsync(mainPlan.OrderedNodes, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
-                await RunHomeParallelBatchAsync(finallyPlan.OrderedNodes, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
-                return;
+                var result = await _orchestrator.ExecuteAsync(plan, options, cancellationToken).ConfigureAwait(false);
+
+                if (result.OverallSuccess)
+                    _uiLogService.Info($"Home 独立执行完成：成功 {result.SuccessCount}，跳过 {result.SkippedCount}");
+                else
+                    _uiLogService.Warn($"Home 独立执行完成：成功 {result.SuccessCount}，失败 {result.FailedCount}，跳过 {result.SkippedCount}");
             }
-
-            await RunHomeDependencyPhaseAsync(mainPlan, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
-            await RunHomeDependencyPhaseAsync(finallyPlan, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
-        }
-
-        private async Task RunHomeParallelBatchAsync(
-            IReadOnlyList<StandaloneExecutionNode> nodes,
-            CancellationToken cancellationToken,
-            string? snForGlobalVariable)
-        {
-            if (nodes == null || nodes.Count == 0)
-                return;
-
-            var tasks = nodes.Select(async node =>
+            catch (OperationCanceledException)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (!node.IsEnabled)
-                {
-                    _uiLogService.Info($"Home 独立执行：跳过禁用子流程 {node.DisplayName}");
-                    return;
-                }
-
-                await ExecuteSubWorkflowAsync(node.Workflow, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
-            });
-
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-        }
-
-        private async Task RunHomeDependencyPhaseAsync(
-            StandaloneExecutionPlan plan,
-            CancellationToken cancellationToken,
-            string? snForGlobalVariable)
-        {
-            if (plan.Nodes.Count == 0)
-                return;
-
-            var canContinue = new Dictionary<string, bool>(StringComparer.Ordinal);
-            var completed = new HashSet<string>(StringComparer.Ordinal);
-
-            var inDegree = plan.Nodes.Values.ToDictionary(n => n.RefId, n => n.PredecessorIds.Count, StringComparer.Ordinal);
-            var queue = new Queue<string>(inDegree.Where(x => x.Value == 0).Select(x => x.Key));
-
-            while (queue.Count > 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var batch = new List<string>();
-                while (queue.Count > 0)
-                {
-                    batch.Add(queue.Dequeue());
-                }
-
-                var runnable = new List<StandaloneExecutionNode>();
-                foreach (var refId in batch)
-                {
-                    if (!plan.Nodes.TryGetValue(refId, out var node))
-                    {
-                        completed.Add(refId);
-                        canContinue[refId] = false;
-                        continue;
-                    }
-
-                    if (!node.IsEnabled)
-                    {
-                        completed.Add(refId);
-                        canContinue[refId] = true;
-                        _uiLogService.Info($"Home 独立执行：跳过禁用子流程 {node.DisplayName}");
-                        continue;
-                    }
-
-                    var blocked = node.PredecessorIds.Any(preId =>
-                        canContinue.TryGetValue(preId, out var preCanContinue) && !preCanContinue);
-                    if (blocked)
-                    {
-                        completed.Add(refId);
-                        canContinue[refId] = false;
-                        _uiLogService.Warn($"Home 独立执行：前置流程失败且不继续，已跳过 {node.DisplayName}");
-                        continue;
-                    }
-
-                    runnable.Add(node);
-                }
-
-                var runTasks = runnable.Select(async node =>
-                {
-                    var ok = await ExecuteSubWorkflowAsync(node.Workflow, cancellationToken, snForGlobalVariable).ConfigureAwait(false);
-                    return (node, ok);
-                }).ToList();
-
-                var runResults = await Task.WhenAll(runTasks).ConfigureAwait(false);
-                foreach (var (node, ok) in runResults)
-                {
-                    completed.Add(node.RefId);
-                    canContinue[node.RefId] = ok || node.ContinueOnFailure;
-                }
-
-                foreach (var refId in batch)
-                {
-                    if (!plan.Successors.TryGetValue(refId, out var successors))
-                        continue;
-
-                    foreach (var next in successors)
-                    {
-                        if (!inDegree.ContainsKey(next))
-                            continue;
-
-                        inDegree[next]--;
-                        if (inDegree[next] == 0 && !completed.Contains(next))
-                        {
-                            queue.Enqueue(next);
-                        }
-                    }
-                }
+                _uiLogService.Info("Home 独立执行已取消。");
             }
-        }
-
-        private static StandaloneExecutionPlan BuildFilteredStandaloneExecutionPlan(StandaloneExecutionPlan source, bool executeLast)
-        {
-            var nodes = source.Nodes.Values
-                .Where(n => n.ExecuteLast == executeLast)
-                .ToDictionary(
-                    n => n.RefId,
-                    n => new StandaloneExecutionNode
-                    {
-                        RefId = n.RefId,
-                        DisplayName = n.DisplayName,
-                        Workflow = n.Workflow,
-                        IsEnabled = n.IsEnabled,
-                        ContinueOnFailure = n.ContinueOnFailure,
-                        ExecuteLast = n.ExecuteLast
-                    },
-                    StringComparer.Ordinal);
-
-            var orderedNodes = source.OrderedNodes.Where(n => nodes.ContainsKey(n.RefId)).ToList();
-
-            var successors = nodes.Keys.ToDictionary(id => id, _ => new List<string>(), StringComparer.Ordinal);
-            foreach (var srcId in nodes.Keys)
+            catch (Exception ex)
             {
-                if (!source.Successors.TryGetValue(srcId, out var outs))
-                    continue;
-                foreach (var tgtId in outs)
-                {
-                    if (!nodes.ContainsKey(tgtId))
-                        continue;
-                    successors[srcId].Add(tgtId);
-                    nodes[tgtId].PredecessorIds.Add(srcId);
-                }
+                _uiLogService.Error($"Home 独立执行异常: {ex.Message}");
             }
-
-            var depCount = successors.Values.Sum(l => l.Count);
-            return new StandaloneExecutionPlan
-            {
-                Nodes = nodes,
-                OrderedNodes = orderedNodes,
-                Successors = successors,
-                HasDependencies = depCount > 0
-            };
-        }
-
-        private async Task<bool> ExecuteSubWorkflowAsync(WorkFlowNode workflow, CancellationToken cancellationToken, string? manualBarcode)
-        {
-            var context = new NodeContext();
-            if (!string.IsNullOrWhiteSpace(manualBarcode))
-                context.SetGlobalVariable("SN", manualBarcode);
-
-            var start = await _workflowExecutionSessionService
-                .StartAsync(workflow.Id, workflow, context, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (!start.Success || start.ExecutionTask == null)
-            {
-                _uiLogService.Error($"Home 独立执行：启动流程失败 {workflow.Name}，{start.Message}");
-                return false;
-            }
-
-            var result = await start.ExecutionTask.ConfigureAwait(false);
-            if (!result.Success || result.Data == null || !result.Data.Success)
-            {
-                _uiLogService.Error($"Home 独立执行：流程失败 {workflow.Name}");
-                return false;
-            }
-
-            return true;
         }
 
         private async Task<string?> ResolveCurrentWorkflowPathAsync()
@@ -277,10 +104,10 @@ namespace Astra.Services.Home
                 .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
         }
 
-        private static StandaloneExecutionPlan BuildExecutionPlan(MultiWorkflowData data)
+        internal static MasterExecutionPlan BuildExecutionPlan(MultiWorkflowData data)
         {
-            var nodes = new Dictionary<string, StandaloneExecutionNode>(StringComparer.Ordinal);
-            var orderedNodes = new List<StandaloneExecutionNode>();
+            var entries = new Dictionary<string, SubWorkflowEntry>(StringComparer.Ordinal);
+            var ordered = new List<SubWorkflowEntry>();
             var successors = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
             var refs = data.MasterWorkflow?.SubWorkflowReferences ?? new List<WorkflowReference>();
@@ -292,25 +119,27 @@ namespace Astra.Services.Home
                 if (!data.SubWorkflows.TryGetValue(reference.SubWorkflowId, out var workflow) || workflow == null)
                     continue;
 
-                var node = new StandaloneExecutionNode
+                var entry = new SubWorkflowEntry
                 {
                     RefId = reference.Id,
-                    DisplayName = string.IsNullOrWhiteSpace(reference.DisplayName) ? (workflow.Name ?? "未命名子流程") : reference.DisplayName,
+                    DisplayName = string.IsNullOrWhiteSpace(reference.DisplayName)
+                        ? (workflow.Name ?? "未命名子流程")
+                        : reference.DisplayName,
                     Workflow = workflow,
                     IsEnabled = reference.IsEnabled,
                     ContinueOnFailure = reference.ContinueOnFailure,
                     ExecuteLast = reference.ExecuteLast
                 };
 
-                nodes[reference.Id] = node;
-                orderedNodes.Add(node);
+                entries[reference.Id] = entry;
+                ordered.Add(entry);
             }
 
-            if (nodes.Count == 0)
+            if (entries.Count == 0)
             {
                 foreach (var workflow in data.SubWorkflows?.Values?.Where(w => w != null) ?? Enumerable.Empty<WorkFlowNode>())
                 {
-                    orderedNodes.Add(new StandaloneExecutionNode
+                    var entry = new SubWorkflowEntry
                     {
                         RefId = workflow.Id,
                         DisplayName = workflow.Name ?? "未命名子流程",
@@ -318,60 +147,41 @@ namespace Astra.Services.Home
                         IsEnabled = true,
                         ContinueOnFailure = true,
                         ExecuteLast = false
-                    });
+                    };
+                    entries[workflow.Id] = entry;
+                    ordered.Add(entry);
                 }
 
-                return new StandaloneExecutionPlan
+                return new MasterExecutionPlan
                 {
-                    Nodes = orderedNodes.ToDictionary(x => x.RefId, x => x, StringComparer.Ordinal),
-                    OrderedNodes = orderedNodes,
-                    Successors = orderedNodes.ToDictionary(x => x.RefId, _ => new List<string>(), StringComparer.Ordinal),
+                    Entries = entries,
+                    OrderedEntries = ordered,
+                    Successors = entries.Keys.ToDictionary(k => k, _ => new List<string>(), StringComparer.Ordinal),
                     HasDependencies = false
                 };
             }
 
-            foreach (var nodeId in nodes.Keys)
-            {
-                successors[nodeId] = new List<string>();
-            }
+            foreach (var id in entries.Keys)
+                successors[id] = new List<string>();
 
-            var dependencyCount = 0;
+            var depCount = 0;
             foreach (var edge in data.MasterWorkflow?.Edges ?? new List<Edge>())
             {
-                if (edge == null || !nodes.ContainsKey(edge.SourceNodeId) || !nodes.ContainsKey(edge.TargetNodeId))
+                if (edge == null || !entries.ContainsKey(edge.SourceNodeId) || !entries.ContainsKey(edge.TargetNodeId))
                     continue;
 
                 successors[edge.SourceNodeId].Add(edge.TargetNodeId);
-                nodes[edge.TargetNodeId].PredecessorIds.Add(edge.SourceNodeId);
-                dependencyCount++;
+                entries[edge.TargetNodeId].PredecessorIds.Add(edge.SourceNodeId);
+                depCount++;
             }
 
-            return new StandaloneExecutionPlan
+            return new MasterExecutionPlan
             {
-                Nodes = nodes,
-                OrderedNodes = orderedNodes,
+                Entries = entries,
+                OrderedEntries = ordered,
                 Successors = successors,
-                HasDependencies = dependencyCount > 0
+                HasDependencies = depCount > 0
             };
-        }
-
-        private sealed class StandaloneExecutionNode
-        {
-            public string RefId { get; init; } = string.Empty;
-            public string DisplayName { get; init; } = string.Empty;
-            public WorkFlowNode Workflow { get; init; } = default!;
-            public bool IsEnabled { get; init; } = true;
-            public bool ContinueOnFailure { get; init; }
-            public bool ExecuteLast { get; init; }
-            public List<string> PredecessorIds { get; } = new();
-        }
-
-        private sealed class StandaloneExecutionPlan
-        {
-            public Dictionary<string, StandaloneExecutionNode> Nodes { get; init; } = new(StringComparer.Ordinal);
-            public List<StandaloneExecutionNode> OrderedNodes { get; init; } = new();
-            public Dictionary<string, List<string>> Successors { get; init; } = new(StringComparer.Ordinal);
-            public bool HasDependencies { get; init; }
         }
     }
 }

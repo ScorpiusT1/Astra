@@ -55,69 +55,273 @@ namespace Astra.Services.Home
                 throw new InvalidOperationException($"加载流程脚本失败: {loadResult.ErrorMessage}");
             }
 
-            var roots = new List<TestTreeNodeItem>();
             var subWorkflows = loadResult.Data.SubWorkflows?.Values?.ToList() ?? new List<WorkFlowNode>();
-            var refBySubId = (loadResult.Data.MasterWorkflow?.SubWorkflowReferences ?? Enumerable.Empty<WorkflowReference>())
+            var master = loadResult.Data.MasterWorkflow;
+
+            // 根节点顺序：按主流程画布 Flow/Data 边拓扑排序（与编排器依赖一致）；未出现在主流程上的子流程仍排在后面。
+            return BuildHomeTestTreeRootsOrderedByMasterTopology(master, subWorkflows, loadResult.Data);
+        }
+
+        /// <summary>
+        /// 构建首页测试树根列表：主流程上可见的「引用块 + 插件节点」按 <see cref="MasterWorkflow.Edges"/> 拓扑排序；
+        /// 同一子流程仅对应一行根（多引用指向同一子流程时，首次在拓扑中出现时输出）。
+        /// </summary>
+        private static List<TestTreeNodeItem> BuildHomeTestTreeRootsOrderedByMasterTopology(
+            MasterWorkflow? master,
+            List<WorkFlowNode> subWorkflows,
+            MultiWorkflowData data)
+        {
+            var roots = new List<TestTreeNodeItem>();
+            if (master == null || string.IsNullOrWhiteSpace(master.Id))
+            {
+                AppendSubWorkflowRootsLegacyOrder(roots, master, subWorkflows);
+                return roots;
+            }
+
+            var masterKey = master.Id;
+            var declarationOrder = new Dictionary<string, int>(StringComparer.Ordinal);
+            var order = 0;
+
+            // 并列（同层入度为 0）时：先按主流程引用块在脚本中的顺序，再按插件在脚本中的顺序，避免与画布拓扑无关的插件抢到子流程前面。
+            var pluginRootByCanvasId = new Dictionary<string, TestTreeNodeItem>(StringComparer.Ordinal);
+            var subRootBySubWorkflowId = new Dictionary<string, TestTreeNodeItem>(StringComparer.Ordinal);
+            var refCanvasIdToSubWorkflowId = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var reference in master.SubWorkflowReferences ?? new List<WorkflowReference>())
+            {
+                if (reference == null || string.IsNullOrWhiteSpace(reference.Id) || string.IsNullOrWhiteSpace(reference.SubWorkflowId))
+                    continue;
+                if (!data.SubWorkflows.TryGetValue(reference.SubWorkflowId, out var workflow) || workflow == null)
+                    continue;
+
+                var showFromWorkflow = workflow.ShowInHomeTestItems;
+                var showFromReference = reference.ShowInHomeTestItems;
+                if (!showFromWorkflow || !showFromReference)
+                    continue;
+
+                refCanvasIdToSubWorkflowId[reference.Id] = reference.SubWorkflowId;
+                if (!declarationOrder.ContainsKey(reference.Id))
+                    declarationOrder[reference.Id] = order++;
+
+                if (subRootBySubWorkflowId.ContainsKey(reference.SubWorkflowId))
+                    continue;
+
+                var root = CreateSubWorkflowGroupRoot(workflow);
+                subRootBySubWorkflowId[reference.SubWorkflowId] = root;
+            }
+
+            foreach (var plugin in master.MasterPluginNodes ?? new List<Node>())
+            {
+                if (plugin == null || string.IsNullOrWhiteSpace(plugin.Id) || !plugin.ShowInHomeTestItems)
+                    continue;
+                if (pluginRootByCanvasId.ContainsKey(plugin.Id))
+                    continue;
+
+                pluginRootByCanvasId[plugin.Id] = new TestTreeNodeItem
+                {
+                    NodeId = plugin.Id,
+                    SubWorkflowId = masterKey,
+                    Name = string.IsNullOrWhiteSpace(plugin.Name) ? plugin.NodeType ?? "主流程节点" : plugin.Name,
+                    Status = "Ready",
+                    TestTime = DateTime.Now,
+                    ActualValue = 0,
+                    LowerLimit = 0,
+                    UpperLimit = 0,
+                    IsRoot = true,
+                    SupportsHomeChartButton = ComputeSupportsHomeChartButton(plugin)
+                };
+                if (!declarationOrder.ContainsKey(plugin.Id))
+                    declarationOrder[plugin.Id] = order++;
+            }
+
+            var vertices = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var id in pluginRootByCanvasId.Keys)
+                vertices.Add(id);
+            foreach (var id in refCanvasIdToSubWorkflowId.Keys)
+                vertices.Add(id);
+
+            if (vertices.Count == 0)
+            {
+                AppendSubWorkflowRootsLegacyOrder(roots, master, subWorkflows);
+                return roots;
+            }
+
+            var sortedCanvasIds = SortMasterCanvasNodeIdsTopologically(vertices, master.Edges, declarationOrder);
+            var emittedSubWorkflowIds = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var canvasId in sortedCanvasIds)
+            {
+                if (pluginRootByCanvasId.TryGetValue(canvasId, out var pluginRoot))
+                {
+                    roots.Add(pluginRoot);
+                    continue;
+                }
+
+                if (!refCanvasIdToSubWorkflowId.TryGetValue(canvasId, out var subId))
+                    continue;
+                if (!emittedSubWorkflowIds.Add(subId))
+                    continue;
+                if (subRootBySubWorkflowId.TryGetValue(subId, out var subRoot))
+                    roots.Add(subRoot);
+            }
+
+            AppendOrphanSubWorkflowRoots(roots, master, subWorkflows, data, emittedSubWorkflowIds);
+            return roots;
+        }
+
+        private static TestTreeNodeItem CreateSubWorkflowGroupRoot(WorkFlowNode workflow)
+        {
+            var root = new TestTreeNodeItem
+            {
+                Name = string.IsNullOrWhiteSpace(workflow.Name) ? "未命名流程" : workflow.Name,
+                Status = "Ready",
+                IsRoot = true,
+                TestTime = DateTime.Now,
+                SubWorkflowId = workflow.Id ?? string.Empty
+            };
+
+            var orderedNodes = SortNodesByTopology(workflow);
+            foreach (var node in orderedNodes)
+            {
+                if (node == null || !node.ShowInHomeTestItems)
+                    continue;
+
+                root.Children.Add(new TestTreeNodeItem
+                {
+                    NodeId = node.Id,
+                    SubWorkflowId = workflow.Id ?? string.Empty,
+                    Name = string.IsNullOrWhiteSpace(node.Name) ? node.NodeType ?? "未命名节点" : node.Name,
+                    Status = MapStatus(node.ExecutionState),
+                    TestTime = DateTime.Now,
+                    ActualValue = 0,
+                    LowerLimit = 0,
+                    UpperLimit = 0,
+                    IsRoot = false,
+                    SupportsHomeChartButton = ComputeSupportsHomeChartButton(node)
+                });
+            }
+
+            return root;
+        }
+
+        /// <summary>主流程无拓扑顶点时的回退：保持子流程字典迭代顺序。</summary>
+        private static void AppendSubWorkflowRootsLegacyOrder(
+            List<TestTreeNodeItem> roots,
+            MasterWorkflow? master,
+            List<WorkFlowNode> subWorkflows)
+        {
+            var refBySubId = (master?.SubWorkflowReferences ?? Enumerable.Empty<WorkflowReference>())
                 .Where(r => r != null && !string.IsNullOrWhiteSpace(r.SubWorkflowId))
                 .ToDictionary(r => r.SubWorkflowId!, r => r, StringComparer.Ordinal);
 
-            // 以“子流程”为根节点，子流程中的每个节点作为测试项叶子节点。
-            // 根节点保持脚本内原始顺序，不再按名称排序。
-            // 整组是否展示：子流程根节点 ShowInHomeTestItems 与主流程引用 WorkflowReference.ShowInHomeTestItems 须同时为 true
-            //（仅在子流程 Tab 改时可能只更新 WorkFlowNode；仅在主流程画布改时可能只更新引用，故两处都要判断）。
             foreach (var workflow in subWorkflows)
             {
                 if (workflow == null)
-                {
                     continue;
-                }
+                var showFromWorkflow = workflow.ShowInHomeTestItems;
+                var showFromReference = true;
+                if (refBySubId.TryGetValue(workflow.Id, out var reference))
+                    showFromReference = reference.ShowInHomeTestItems;
+                if (!showFromWorkflow || !showFromReference)
+                    continue;
+                roots.Add(CreateSubWorkflowGroupRoot(workflow));
+            }
+        }
+
+        /// <summary>已在主流程引用中输出过的子流程不再重复；其余可见子流程按原列表顺序追加。</summary>
+        private static void AppendOrphanSubWorkflowRoots(
+            List<TestTreeNodeItem> roots,
+            MasterWorkflow master,
+            List<WorkFlowNode> subWorkflows,
+            MultiWorkflowData data,
+            HashSet<string> emittedSubWorkflowIds)
+        {
+            var refBySubId = (master.SubWorkflowReferences ?? Enumerable.Empty<WorkflowReference>())
+                .Where(r => r != null && !string.IsNullOrWhiteSpace(r.SubWorkflowId))
+                .ToDictionary(r => r.SubWorkflowId!, r => r, StringComparer.Ordinal);
+
+            foreach (var workflow in subWorkflows)
+            {
+                if (workflow == null || string.IsNullOrWhiteSpace(workflow.Id))
+                    continue;
+                if (emittedSubWorkflowIds.Contains(workflow.Id))
+                    continue;
 
                 var showFromWorkflow = workflow.ShowInHomeTestItems;
                 var showFromReference = true;
                 if (refBySubId.TryGetValue(workflow.Id, out var reference))
-                {
                     showFromReference = reference.ShowInHomeTestItems;
-                }
-
                 if (!showFromWorkflow || !showFromReference)
-                {
                     continue;
-                }
 
-                var root = new TestTreeNodeItem
-                {
-                    Name = string.IsNullOrWhiteSpace(workflow.Name) ? "未命名流程" : workflow.Name,
-                    Status = "Ready",
-                    IsRoot = true,
-                    TestTime = DateTime.Now
-                };
+                if (!data.SubWorkflows.ContainsKey(workflow.Id))
+                    continue;
 
-                var orderedNodes = SortNodesByTopology(workflow);
-                foreach (var node in orderedNodes)
-                {
-                    if (node == null || !node.ShowInHomeTestItems)
-                    {
-                        continue;
-                    }
+                roots.Add(CreateSubWorkflowGroupRoot(workflow));
+            }
+        }
 
-                    root.Children.Add(new TestTreeNodeItem
-                    {
-                        NodeId = node.Id,
-                        Name = string.IsNullOrWhiteSpace(node.Name) ? node.NodeType ?? "未命名节点" : node.Name,
-                        Status = MapStatus(node.ExecutionState),
-                        TestTime = DateTime.Now,
-                        ActualValue = 0,
-                        LowerLimit = 0,
-                        UpperLimit = 0,
-                        IsRoot = false,
-                        SupportsHomeChartButton = ComputeSupportsHomeChartButton(node)
-                    });
-                }
+        /// <summary>与 <see cref="SortNodesByTopology"/> 相同策略：全边依赖 + Kahn，同层按清单声明序再按 Id。</summary>
+        private static List<string> SortMasterCanvasNodeIdsTopologically(
+            HashSet<string> vertices,
+            IEnumerable<Edge>? edges,
+            IReadOnlyDictionary<string, int> declarationOrder)
+        {
+            var indegree = vertices.ToDictionary(id => id, _ => 0, StringComparer.Ordinal);
+            var adjacency = vertices.ToDictionary(id => id, _ => new List<string>(), StringComparer.Ordinal);
 
-                roots.Add(root);
+            foreach (var e in edges ?? Enumerable.Empty<Edge>())
+            {
+                if (e == null ||
+                    string.IsNullOrWhiteSpace(e.SourceNodeId) ||
+                    string.IsNullOrWhiteSpace(e.TargetNodeId))
+                    continue;
+                if (string.Equals(e.SourceNodeId, e.TargetNodeId, StringComparison.Ordinal))
+                    continue;
+                if (!vertices.Contains(e.SourceNodeId) || !vertices.Contains(e.TargetNodeId))
+                    continue;
+
+                adjacency[e.SourceNodeId].Add(e.TargetNodeId);
+                indegree[e.TargetNodeId]++;
             }
 
-            return roots;
+            int OrderKey(string id) =>
+                declarationOrder.TryGetValue(id, out var o) ? o : int.MaxValue;
+
+            var ordered = new List<string>(vertices.Count);
+            var queue = vertices
+                .Where(id => indegree[id] == 0)
+                .OrderBy(OrderKey)
+                .ThenBy(id => id, StringComparer.Ordinal)
+                .ToList();
+
+            while (queue.Count > 0)
+            {
+                var current = queue[0];
+                queue.RemoveAt(0);
+                ordered.Add(current);
+
+                foreach (var targetId in adjacency[current])
+                {
+                    indegree[targetId]--;
+                    if (indegree[targetId] == 0)
+                        queue.Add(targetId);
+                }
+
+                queue = queue.OrderBy(OrderKey).ThenBy(id => id, StringComparer.Ordinal).ToList();
+            }
+
+            if (ordered.Count >= vertices.Count)
+                return ordered;
+
+            var inOrdered = new HashSet<string>(ordered, StringComparer.Ordinal);
+            foreach (var id in vertices.OrderBy(OrderKey).ThenBy(id => id, StringComparer.Ordinal))
+            {
+                if (!inOrdered.Contains(id))
+                    ordered.Add(id);
+            }
+
+            return ordered;
         }
 
         /// <summary>

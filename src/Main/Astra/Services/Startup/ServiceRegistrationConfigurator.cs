@@ -1,3 +1,4 @@
+using Astra.Core.Archiving;
 using Astra.Core.Access.Services;
 using Astra.Infrastructure.Access.Extensions;
 using Astra.Core.Triggers.Configuration;
@@ -26,6 +27,7 @@ using Astra.Services.Logging;
 using Astra.Services.Navigation;
 using Astra.Services.Session;
 using Astra.Core.Nodes.Management;
+using Astra.Core.Orchestration;
 using Astra.Core.Nodes.Ui;
 using Astra.Engine.Execution.WorkFlowEngine.Management;
 using Astra.Engine.Triggers;
@@ -51,7 +53,7 @@ using Astra.Core.Triggers.Manager;
 using Astra.Engine.Triggers.Interlock;
 using Astra.Services.Interlock;
 using Astra.Services.WorkflowArchive;
-using Astra.Plugins.WorkflowArchive.Reporting;
+using Astra.Reporting;
 using Astra.Core.Reporting;
 
 namespace Astra.Services.Startup
@@ -191,14 +193,34 @@ namespace Astra.Services.Startup
             services.AddSingleton<IManualBarcodeContext, ManualBarcodeContext>();
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
             services.AddSingleton(new WorkflowArchiveOptions());
+            services.AddSingleton<ICombinedReportCollector, CombinedReportCollector>();
             services.AddSingleton<ITestReportGenerator, DefaultTestReportGenerator>();
-            services.AddSingleton<IWorkflowArchiveService, DefaultWorkflowArchiveService>();
+            services.AddSingleton<IReportStationLineSource, ReportStationLineSource>();
+            services.AddSingleton<IWorkflowArchiveService>(sp => new DefaultWorkflowArchiveService(
+                sp.GetRequiredService<WorkflowArchiveOptions>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DefaultWorkflowArchiveService>>(),
+                sp.GetRequiredService<ITestReportGenerator>(),
+                sp.GetService<ICombinedReportCollector>(),
+                sp.GetRequiredService<IConfigurationManager>(),
+                sp.GetRequiredService<IReportStationLineSource>()));
+            services.AddSingleton<IMasterWorkflowOrchestrator>(sp =>
+                new Astra.Engine.Execution.Orchestration.MasterWorkflowOrchestrator(
+                    sp.GetRequiredService<IWorkFlowManager>(),
+                    sp.GetService<ICombinedReportCollector>(),
+                    sp.GetService<ITestReportGenerator>(),
+                    sp.GetService<IWorkflowArchiveService>(),
+                    sp.GetService<IWorkflowEngineProvider>(),
+                    sp,
+                    sp.GetService<Astra.Core.Logs.IExecutionLogSink>(),
+                    sp.GetService<Microsoft.Extensions.Logging.ILogger<Astra.Engine.Execution.Orchestration.MasterWorkflowOrchestrator>>(),
+                    sp.GetService<IReportStationLineSource>()));
             services.AddSingleton<IWorkFlowManager>(sp => new WorkFlowManager(
                 defaultEngine: null,
                 maxHistorySize: 1000,
                 nodeRunCollector: null,
                 workflowArchiveService: sp.GetService<IWorkflowArchiveService>()));
-            services.AddSingleton<IWorkflowEngineProvider, DefaultWorkflowEngineProvider>();
+            services.AddSingleton<IWorkflowEngineProvider>(sp =>
+                new DefaultWorkflowEngineProvider(sp.GetService<INodeExecutionUiHydrator>()));
             services.AddSingleton<ChartDisplayDataCache>();
             services.AddSingleton<IChartDisplayDataCache>(sp => sp.GetRequiredService<ChartDisplayDataCache>());
             services.AddSingleton<IChartCurveDataCache>(sp => sp.GetRequiredService<ChartDisplayDataCache>());
@@ -208,7 +230,8 @@ namespace Astra.Services.Startup
                 sp.GetRequiredService<IWorkflowEngineProvider>(),
                 sp.GetService<IExecutionLogSink>(),
                 sp.GetService<INodeExecutionUiHydrator>(),
-                sp));
+                sp,
+                sp.GetService<IMasterWorkflowOrchestrator>()));
             services.AddSingleton<ITestExecutionInterlockController, TestExecutionInterlockController>();
             services.AddSingleton<SafetyInterlockIoReaderBridge>();
             services.AddSingleton<ISafetyInterlockIoReader>(sp => sp.GetRequiredService<SafetyInterlockIoReaderBridge>());
