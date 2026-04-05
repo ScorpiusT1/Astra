@@ -15,7 +15,8 @@ namespace Astra.Core.Data
             string artifactName,
             object rawData,
             string? displayName = null,
-            string? deviceId = null)
+            string? deviceId = null,
+            bool includeInTestReport = true)
         {
             return bus.Publish(new DataEntry
             {
@@ -25,6 +26,7 @@ namespace Astra.Core.Data
                 Data = rawData,
                 DisplayName = displayName ?? artifactName,
                 Tag = deviceId,
+                IncludeInTestReport = includeInTestReport,
                 Preview = deviceId != null
                     ? new Dictionary<string, object> { ["DeviceId"] = deviceId }
                     : null
@@ -38,7 +40,8 @@ namespace Astra.Core.Data
             string algorithmName,
             object result,
             string? tag = null,
-            Dictionary<string, object>? parameters = null)
+            Dictionary<string, object>? parameters = null,
+            bool includeInTestReport = true)
         {
             return bus.Publish(new DataEntry
             {
@@ -48,6 +51,7 @@ namespace Astra.Core.Data
                 Data = result,
                 DisplayName = algorithmName,
                 Tag = tag,
+                IncludeInTestReport = includeInTestReport,
                 Preview = parameters
             });
         }
@@ -59,7 +63,8 @@ namespace Astra.Core.Data
             string name,
             T value,
             string? unit = null,
-            string? tag = null) where T : struct
+            string? tag = null,
+            bool includeInTestReport = true) where T : struct
         {
             return bus.Publish(new DataEntry
             {
@@ -69,6 +74,7 @@ namespace Astra.Core.Data
                 Data = value,
                 DisplayName = name,
                 Tag = tag,
+                IncludeInTestReport = includeInTestReport,
                 Preview = new Dictionary<string, object>
                 {
                     ["Value"] = value!,
@@ -85,7 +91,8 @@ namespace Astra.Core.Data
             string name,
             string text,
             string contentType = "text/plain",
-            string? tag = null)
+            string? tag = null,
+            bool includeInTestReport = true)
         {
             return bus.Publish(new DataEntry
             {
@@ -95,6 +102,7 @@ namespace Astra.Core.Data
                 Data = text,
                 DisplayName = name,
                 Tag = tag,
+                IncludeInTestReport = includeInTestReport,
                 Preview = new Dictionary<string, object>
                 {
                     ["ContentType"] = contentType,

@@ -143,6 +143,14 @@ namespace Astra.Core.Nodes.Models
         public bool ShowInHomeTestItems { get; set; } = true;
 
         /// <summary>
+        /// 关闭后：该节点的单值/曲线判定行及本节点发布到测试总线的图表类产物不写入 HTML/PDF 测试报告（原始 TDMS/WAV 等归档不受影响）。
+        /// </summary>
+        [JsonProperty(Order = 17)]
+        [Display(Name = "纳入测试报告", GroupName = "基础配置", Order = 3,
+            Description = "关闭后该节点结果不出现在测试报告（图表与单值/曲线判定）；归档原始数据仍可按策略导出。")]
+        public bool IncludeInTestReport { get; set; } = true;
+
+        /// <summary>
         /// 节点是否被选中（用于 UI 框选等交互）
         /// </summary>
         [JsonIgnore]
@@ -527,6 +535,22 @@ namespace Astra.Core.Nodes.Models
         // ===== 执行入口（通过扩展方法提供，在 Astra.Engine 中实现） =====
         // 注意：ExecuteAsync 方法已移至 Astra.Engine.Execution.NodeExecutor.NodeExecutionExtensions
         // 这样可以避免 Core 直接依赖 Engine 的实现
+
+        /// <summary>
+        /// 设计期：在节点标题上自动维护「 - 设备/通道…」后缀。
+        /// <paramref name="trackedAutoSuffix"/> 为当前自动追加的片段（不含「 - 」），用于下次更新前从 <see cref="Name"/> 中剥离。
+        /// </summary>
+        protected void ApplyAutoChannelSuffixToDisplayName(ref string? trackedAutoSuffix, string newSuffixFragment)
+        {
+            var newS = newSuffixFragment ?? "";
+            var baseName = NodeNameChannelSuffixHelper.StripTrackedSuffix(Name, trackedAutoSuffix);
+            var composed = NodeNameChannelSuffixHelper.ComposeWithAutoSuffix(baseName, newS);
+            trackedAutoSuffix = string.IsNullOrEmpty(newS) ? null : newS;
+            if (string.Equals(Name, composed, StringComparison.Ordinal))
+                return;
+            Name = composed;
+            OnPropertyChanged(nameof(Name));
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
 

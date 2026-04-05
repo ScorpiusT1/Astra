@@ -31,5 +31,8 @@ namespace Astra.Core.Data
 
         /// <summary>可选的预览元数据（轻量 KV，会写入 <see cref="DataArtifactReference.Preview"/>）。</summary>
         public Dictionary<string, object>? Preview { get; set; }
+
+        /// <summary>是否纳入测试报告（写入 Preview 中 <see cref="Astra.Core.Reporting.ReportIncludeKeys.IncludeInReport"/>）。默认 true。</summary>
+        public bool IncludeInTestReport { get; set; } = true;
     }
 }

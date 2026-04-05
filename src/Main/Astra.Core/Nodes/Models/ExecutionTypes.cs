@@ -147,6 +147,14 @@ namespace Astra.Core.Nodes.Models
     }
 
     /// <summary>
+    /// 同一并行执行层内多个节点将同时开始执行（一次 UI/采集通知）。
+    /// </summary>
+    public sealed class ParallelWaveExecutionStartedEventArgs : EventArgs
+    {
+        public IReadOnlyList<NodeExecutionEventArgs> Nodes { get; init; } = Array.Empty<NodeExecutionEventArgs>();
+    }
+
+    /// <summary>
     /// 进度变化事件参数
     /// </summary>
     public class ProgressChangedEventArgs : EventArgs

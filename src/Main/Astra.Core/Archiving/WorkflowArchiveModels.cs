@@ -5,7 +5,7 @@ using Astra.Core.Reporting;
 namespace Astra.Core.Archiving
 {
     /// <summary>
-    /// 归档触发来源：引擎在释放 Raw 存储前，或流程中的显式归档节点。
+    /// 归档触发来源：当前由引擎在释放 Raw 存储前统一调用；保留 <see cref="WorkflowNode"/> 以兼容历史序列化数据。
     /// </summary>
     public enum WorkflowArchiveTrigger
     {

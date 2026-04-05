@@ -503,6 +503,11 @@ namespace Astra.Core.Nodes.Models
         event EventHandler<NodeExecutionEventArgs> NodeExecutionStarted;
 
         /// <summary>
+        /// 同一并行层内多节点同时进入执行（一次事件，供 UI 批量刷新 Running 态）。
+        /// </summary>
+        event EventHandler<ParallelWaveExecutionStartedEventArgs>? ParallelWaveExecutionStarted;
+
+        /// <summary>
         /// 节点执行完成事件
         /// </summary>
         event EventHandler<NodeExecutionEventArgs> NodeExecutionCompleted;

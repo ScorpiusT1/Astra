@@ -32,6 +32,33 @@ namespace Astra.Core.Foundation.Common
         }
 
         /// <summary>
+        /// 报告与测试归档的默认根目录：程序所在卷的根路径（Windows 下如 <c>D:\</c>；UNC 为 <c>\\server\share\</c>）。
+        /// 无法解析时回退为 <see cref="GetApplicationRootDirectory"/>。
+        /// </summary>
+        public static string GetReportDefaultRootDirectory()
+        {
+            try
+            {
+                var baseDir = Path.GetFullPath(GetApplicationRootDirectory());
+                var volumeRoot = Path.GetPathRoot(baseDir);
+                if (!string.IsNullOrWhiteSpace(volumeRoot))
+                    return Path.GetFullPath(volumeRoot);
+                return baseDir;
+            }
+            catch
+            {
+                try
+                {
+                    return Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
+                }
+                catch
+                {
+                    return AppDomain.CurrentDomain.BaseDirectory;
+                }
+            }
+        }
+
+        /// <summary>
         /// 获取应用程序根目录下的Config文件夹路径
         /// </summary>
         public static string GetConfigDirectory()

@@ -42,7 +42,8 @@ namespace Astra.Core.Nodes.Models
             string displayName = null,
             string description = null,
             long? sizeBytes = null,
-            Dictionary<string, object> preview = null)
+            Dictionary<string, object> preview = null,
+            bool includeInTestReport = true)
         {
             if (data == null) return null;
 
@@ -57,6 +58,7 @@ namespace Astra.Core.Nodes.Models
                     Data = data,
                     DisplayName = displayName ?? artifactName,
                     Description = description,
+                    IncludeInTestReport = includeInTestReport,
                     Preview = preview
                 });
             }

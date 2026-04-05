@@ -18,6 +18,7 @@ namespace Astra.Core.Nodes.Models
             Name = "主流程";
             SubWorkflowReferences = new List<WorkflowReference>();
             Edges = new List<Edge>();
+            MasterPluginNodes = new List<Node>();
             CreatedAt = DateTime.Now;
             ModifiedAt = DateTime.Now;
         }
@@ -53,6 +54,12 @@ namespace Astra.Core.Nodes.Models
         /// </summary>
         [JsonProperty(Order = 5)]
         public List<Edge> Edges { get; set; }
+
+        /// <summary>
+        /// 主流程画布上的非引用节点（逻辑/判定等插件），与引用块、<see cref="Edges"/> 一并持久化。
+        /// </summary>
+        [JsonProperty(Order = 9)]
+        public List<Node> MasterPluginNodes { get; set; }
 
         /// <summary>
         /// 创建时间

@@ -94,7 +94,7 @@ namespace Astra.Core.Constants
 
         /// <summary>
         /// 文件导入类节点发布的 Raw 使用与多采集相同的「设备显示名 → DeviceId」规则；
-        /// 数据采集插件中的 <c>DataAcquisitionCardProvider</c> 将 <see cref="DisplayName"/> 解析为 <see cref="DeviceId"/>。
+        /// 由 <see cref="Astra.Core.Data.AcquisitionDeviceCatalog"/>（数据采集插件注册实现）将 <see cref="DisplayName"/> 解析为 <see cref="DeviceId"/>。
         /// </summary>
         public static class VirtualImportDevices
         {

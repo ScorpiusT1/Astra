@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 
 namespace Astra.Core.Data
 {
@@ -43,6 +44,9 @@ namespace Astra.Core.Data
                 preview["__Tag"] = entry.Tag;
 
             preview["__ProducerNodeId"] = entry.ProducerNodeId ?? string.Empty;
+
+            if (!preview.ContainsKey(ReportIncludeKeys.IncludeInReport))
+                preview[ReportIncludeKeys.IncludeInReport] = entry.IncludeInTestReport;
 
             var reference = new DataArtifactReference
             {

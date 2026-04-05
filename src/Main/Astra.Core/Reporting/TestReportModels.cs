@@ -3,6 +3,19 @@ using System.Collections.Generic;
 
 namespace Astra.Core.Reporting
 {
+    /// <summary>写入 <see cref="Astra.Core.Nodes.Models.DataArtifactReference"/> 的 <c>Preview</c> 字典的键：报告标题「设备/通道」段。</summary>
+    public static class ReportArtifactPreviewKeys
+    {
+        public const string DeviceChannel = "__ReportDeviceChannel";
+    }
+
+    /// <summary>写入 <see cref="Astra.Core.Nodes.Models.NodeContext"/> 全局变量的键（合并报告按工况编排顺序排序）。</summary>
+    public static class ReportContextKeys
+    {
+        /// <summary>整型，从 0 递增：对主计划 <c>OrderedEntries</c>（含非 ExecuteLast 段后接 ExecuteLast 段）中的位置。</summary>
+        public const string SectionSequenceOrder = "__ReportSectionSequence";
+    }
+
     /// <summary>
     /// 图表在报告中的来源分类（用于章节与排版）。
     /// </summary>
@@ -20,11 +33,21 @@ namespace Astra.Core.Reporting
         public string ExecutionId { get; set; } = string.Empty;
         public string WorkFlowName { get; set; } = string.Empty;
         public string SN { get; set; } = string.Empty;
+
+        /// <summary>测试工位（来自 NodeContext 全局变量 <c>测试工位</c>/<c>TestStation</c>，未配置时为空）。</summary>
+        public string TestStation { get; set; } = string.Empty;
+
+        /// <summary>测试线体（来自 NodeContext 全局变量 <c>测试线体</c>/<c>TestLine</c>，未配置时为空）。</summary>
+        public string TestLine { get; set; } = string.Empty;
+
         public string Condition { get; set; } = string.Empty;
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
         public string OverallResult { get; set; } = "UNK";
         public string Strategy { get; set; } = string.Empty;
+
+        /// <summary>主流程编排顺序（<see cref="ReportContextKeys.SectionSequenceOrder"/>），合并报告与 JSON/CSV 按此排序；未设置时为 0。</summary>
+        public int SectionSequenceOrder { get; set; }
 
         public List<ScalarJudgmentRow> ScalarJudgments { get; set; } = new();
         public List<CurveJudgmentRow> CurveJudgments { get; set; } = new();
@@ -54,6 +77,9 @@ namespace Astra.Core.Reporting
 
         /// <summary>渲染后的图表 PNG base64（报告中内嵌）。</summary>
         public string? ChartImageBase64 { get; set; }
+
+        /// <summary>报告图表上方标题：测试项-设备/通道-名称（曲线判定场景下中段多为判定节点名）。</summary>
+        public string ReportHeading { get; set; } = string.Empty;
     }
 
     public sealed class ChartSection
@@ -76,8 +102,11 @@ namespace Astra.Core.Reporting
         public string? ArtifactKey { get; set; }
 
         /// <summary>
-        /// 非 null 时：从 <see cref="ArtifactKey"/> 对应载荷的 <c>Series[index]</c> 单独成图（分子图拆分，与 HTML/PDF 两列画廊一一对应）。
+        /// 非 null 时：从 <see cref="ArtifactKey"/> 对应载荷的 <c>Series[index]</c> 单独成图（分子图拆分，报告里每图一行）。
         /// </summary>
         public int? SubPlotSeriesIndex { get; set; }
+
+        /// <summary>报告图表区块主标题：测试项名字-设备/通道名-算法名（由采集阶段根据总线 Preview 等拼装）。</summary>
+        public string ReportHeading { get; set; } = string.Empty;
     }
 }
