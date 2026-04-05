@@ -62,6 +62,12 @@ namespace Astra.Contract.Communication.Abstractions
         /// 错误事件
         /// </summary>
         event EventHandler<Exception> ErrorOccurred;
+
+        /// <summary>
+        /// 当前配置中已启用的通道显示名列表（与多采集/属性面板一致）。
+        /// 非采集实现可返回空列表。
+        /// </summary>
+        IReadOnlyList<string> GetConfiguredEnabledChannelNames();
     }
 
     /// <summary>
