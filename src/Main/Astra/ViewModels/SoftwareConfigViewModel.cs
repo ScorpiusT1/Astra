@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Astra.Configuration;
+using Astra.Core.Foundation.Common;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -9,6 +11,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace Astra.ViewModels
 {
@@ -37,19 +40,52 @@ namespace Astra.ViewModels
     [ObservableProperty]
     private ObservableCollection<DutViewModel> _dutViewModels = new ObservableCollection<DutViewModel>();
 
-    public SoftwareConfigViewModel(SoftwareConfig config, IConfigurationManager configurationManager)
-    {
-        _config = config ?? new SoftwareConfig();
-        _configurationManager = configurationManager;
-        _onTriggerConfigChangedHandler = OnTriggerConfigChanged;
+        public SoftwareConfigViewModel(SoftwareConfig config, IConfigurationManager configurationManager)
+        {
+            _config = config ?? new SoftwareConfig();
+            _configurationManager = configurationManager;
+            _onTriggerConfigChangedHandler = OnTriggerConfigChanged;
 
-        HookDutEvents();
-        SyncDutViewModels();
-        LoadWorkflowOptionsFromSolutions();
-        InitializeWorkflowOptionsWatcher();
-        InitializeTriggerOptionsSubscription();
-        _ = LoadTriggerOptionsAsync();
-    }
+            HookDutEvents();
+            SyncDutViewModels();
+            LoadWorkflowOptionsFromSolutions();
+            InitializeWorkflowOptionsWatcher();
+            InitializeTriggerOptionsSubscription();
+            _ = LoadTriggerOptionsAsync();
+
+            if(string.IsNullOrWhiteSpace(Config.ReportOutputRootDirectory))
+                Config.ReportOutputRootDirectory = PathHelper.GetReportDefaultRootDirectory();
+            
+        }
+
+        [RelayCommand]
+        private void BrowseReportOutputRoot()
+        {
+            if (_isDisposed || Config == null || _configurationManager == null)
+                return;
+
+            var dlg = new OpenFolderDialog
+            {
+                Title = "选择报告输出根目录",
+                Multiselect = false,
+            };
+
+            var current = Config.ReportOutputRootDirectory?.Trim();
+            if (!string.IsNullOrWhiteSpace(current) && Directory.Exists(current))
+                dlg.InitialDirectory = current;
+            else
+                dlg.InitialDirectory = PathHelper.GetReportDefaultRootDirectory();
+
+            if (dlg.ShowDialog() != true)
+                return;
+
+            var picked = dlg.FolderName?.Trim();
+            if (string.IsNullOrWhiteSpace(picked))
+                return;
+
+            Config.ReportOutputRootDirectory = picked;
+            _ = PublishSoftwareConfigUpdatedAsync();
+        }
 
     /// <summary>DUT 集合，便于 XAML 绑定</summary>
     public ObservableCollection<DutConfig> Duts => Config?.Duts;
