@@ -1,4 +1,4 @@
-using Astra.Core.Nodes.Models;
+﻿using Astra.Core.Nodes.Models;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Controls;
 using System;
@@ -53,12 +53,18 @@ namespace Astra.UI.Windows
 
             if (_hasCustomEditor && _customEditorView != null)
             {
-                // 使用插件提供的自定义编辑视图
+                // 使用插件提供的自定义编辑视图。
+                // 垂直方向若用 Stretch，ScrollViewer 会把子级高度钳在视口内，总高度永远等于可视区，
+                // 外层纵向滚动条永不出现；Top 让高度按内容 DesiredSize 计算，超出才可滚动。
+                //EditorContentHost.VerticalAlignment = VerticalAlignment.Top;
+                //EditorContentHost.VerticalContentAlignment = VerticalAlignment.Top;
                 EditorContentHost.Content = _customEditorView;
             }
             else
             {
-                // 回退：使用默认通用属性网格
+                // 回退：使用默认通用属性网格（内部带 * 行 + ScrollViewer，需 Stretch 才能获得视口高度）
+                EditorContentHost.VerticalAlignment = VerticalAlignment.Stretch;
+                EditorContentHost.VerticalContentAlignment = VerticalAlignment.Stretch;
                 var propertyEditor = new PropertyEditorControl
                 {
                     ShowSearchBox = false,

@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.Core.Orchestration;
 using Astra.Core.Plugins.Abstractions;
 using Astra.Core.Plugins.Manifest.Serializers;
 using Astra.UI.Controls;
@@ -32,7 +33,6 @@ using System.Threading;
 using System.Windows.Threading;
 using System.ComponentModel;
 using Astra.Core.Triggers;
-using Astra.Core.Reporting;
 
 namespace Astra.UI.ViewModels
 {
@@ -174,6 +174,12 @@ namespace Astra.UI.ViewModels
         /// </summary>
         [ObservableProperty]
         private ObservableCollection<ToolCategory> _toolBoxItemsSource;
+
+        /// <summary>
+        /// 主流程编辑器专用工具箱：仅含 <see cref="PluginNodeService.MasterWorkflowToolboxPluginId"/> 等允许出现在主流程画布上的节点。
+        /// </summary>
+        [ObservableProperty]
+        private ObservableCollection<ToolCategory> _masterWorkflowToolBoxItemsSource;
 
         /// <summary>
         /// 画布数据源 - 节点集合（使用 Node 基类）
@@ -552,11 +558,13 @@ namespace Astra.UI.ViewModels
             if (ToolBoxItemsSource != null && ToolBoxItemsSource.Count > 0)
             {
                 Debug.WriteLine("[SequenceViewModel] 数据源已存在，跳过初始化");
+                MasterWorkflowToolBoxItemsSource ??= new ObservableCollection<ToolCategory>();
                 return;
             }
 
             // 初始化工具箱数据源
             ToolBoxItemsSource = new ObservableCollection<ToolCategory>();
+            MasterWorkflowToolBoxItemsSource ??= new ObservableCollection<ToolCategory>();
 
             // 初始化画布数据源（如果为空则创建新集合，否则保持现有数据）
             if (CanvasItemsSource == null)
@@ -612,6 +620,44 @@ namespace Astra.UI.ViewModels
             }
 
             LoadToolCategoriesFromPlugins();
+            RefreshMasterWorkflowToolBoxFromPlugins();
+        }
+
+        /// <summary>
+        /// 重建主流程工具箱（仅逻辑插件等，见 <see cref="PluginNodeService.MasterWorkflowToolboxPluginId"/>）。
+        /// </summary>
+        private void RefreshMasterWorkflowToolBoxFromPlugins()
+        {
+            if (_pluginNodeService == null)
+            {
+                Debug.WriteLine("[MultiFlowEditorViewModel] 插件节点服务未初始化，跳过主流程工具箱刷新");
+                return;
+            }
+
+            if (MasterWorkflowToolBoxItemsSource == null)
+            {
+                MasterWorkflowToolBoxItemsSource = new ObservableCollection<ToolCategory>();
+            }
+            else
+            {
+                MasterWorkflowToolBoxItemsSource.Clear();
+            }
+
+            try
+            {
+                var logicOnly = _pluginNodeService.GetToolCategoriesForPlugins(PluginNodeService.MasterWorkflowToolboxPluginId);
+                foreach (var category in logicOnly)
+                {
+                    MasterWorkflowToolBoxItemsSource.Add(category);
+                }
+
+                Debug.WriteLine(
+                    $"[SequenceViewModel] 主流程工具箱已刷新，类别数: {MasterWorkflowToolBoxItemsSource.Count}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SequenceViewModel] 主流程工具箱刷新失败: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -847,8 +893,6 @@ namespace Astra.UI.ViewModels
             // 通过命令管理器执行命令
             _commandManager.Execute(addCommand);
 
-            RefreshWorkflowArchivePeerCatalog();
-
             Debug.WriteLine($"[SequenceViewModel] 创建新流程: {workflowName}, 类型: {type}");
         }
 
@@ -935,30 +979,6 @@ namespace Astra.UI.ViewModels
             {
                 Debug.WriteLine($"[SwitchWorkflow]   {t.Name}: Nodes 哈希={t.Nodes.GetHashCode()}, 节点数={t.Nodes.Count}, IsActive={t.IsActive}");
             }
-
-            RefreshWorkflowArchivePeerCatalog();
-        }
-
-        /// <summary>
-        /// 汇总全部子流程画布节点，供结果归档节点白名单下拉使用。
-        /// </summary>
-        public void RefreshWorkflowArchivePeerCatalog()
-        {
-            var list = new List<(string DisplayName, string Id, IReadOnlyList<Node> Nodes)>();
-            foreach (var tab in SubWorkflowTabs ?? Enumerable.Empty<WorkflowTab>())
-            {
-                if (tab.Type != WorkflowType.Sub)
-                    continue;
-                var sw = tab.GetSubWorkflow();
-                if (sw == null)
-                    continue;
-                tab.SyncNodesToSubWorkflowModel();
-                var name = string.IsNullOrWhiteSpace(sw.Name) ? tab.Name ?? "子流程" : sw.Name;
-                var nodes = tab.Nodes?.ToList() ?? new List<Node>();
-                list.Add((name, sw.Id, nodes));
-            }
-
-            WorkflowArchivePeerCatalog.Refresh(list);
         }
 
         /// <summary>
@@ -1234,7 +1254,6 @@ namespace Astra.UI.ViewModels
 
                 // 通过命令管理器执行命令
                 _commandManager.Execute(removeCommand);
-                RefreshWorkflowArchivePeerCatalog();
             }
             finally
             {
@@ -2007,6 +2026,10 @@ namespace Astra.UI.ViewModels
 
             SynchronizeSubWorkflowReferencesWithMasterCanvas();
 
+            masterWorkflow.MasterPluginNodes = MasterWorkflowTab.Nodes?
+                .Where(n => n != null && n is not WorkflowReferenceNode)
+                .ToList() ?? new List<Node>();
+
             // 更新流程引用节点的位置
             foreach (var node in MasterWorkflowTab.Nodes.OfType<WorkflowReferenceNode>())
             {
@@ -2027,21 +2050,19 @@ namespace Astra.UI.ViewModels
                 }
             }
 
-            // 保存连线：直接使用 Edge，因为节点ID已经是引用ID（稳定），无需转换
-            // 先清空现有连线，然后从主流程标签页的 Edges 重建
+            // 保存连线：与画布一致，包含引用块与逻辑/插件节点之间的连线（供混合执行与重载拓扑）
             masterWorkflow.Edges.Clear();
-            var validNodeIds = MasterWorkflowTab.Nodes
-                .OfType<WorkflowReferenceNode>()
+            var validNodeIds = MasterWorkflowTab.Nodes?
+                .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
                 .Select(n => n.Id)
-                .ToHashSet();
-            var invalidEdges = new List<Edge>();
+                .ToHashSet(StringComparer.Ordinal) ?? new HashSet<string>(StringComparer.Ordinal);
 
-            // 直接保存 Edge，因为节点ID已经是引用ID（稳定）
-            foreach (var edge in MasterWorkflowTab.Edges)
+            foreach (var edge in MasterWorkflowTab.Edges ?? new ObservableCollection<Edge>())
             {
+                if (edge == null)
+                    continue;
                 if (!validNodeIds.Contains(edge.SourceNodeId) || !validNodeIds.Contains(edge.TargetNodeId))
                 {
-                    invalidEdges.Add(edge);
                     Debug.WriteLine($"[SequenceViewModel] 丢弃无效主流程连线: {edge.SourceNodeId} -> {edge.TargetNodeId}");
                     continue;
                 }
@@ -2786,7 +2807,6 @@ namespace Astra.UI.ViewModels
                     MasterWorkflowTab.Nodes = new ObservableCollection<Node>();
                     MasterWorkflowTab.Edges = new ObservableCollection<Edge>();
 
-                    // 恢复主流程的连线
                     if (MasterWorkflow.Edges != null)
                     {
                         foreach (var edge in MasterWorkflow.Edges)
@@ -2795,11 +2815,18 @@ namespace Astra.UI.ViewModels
                         }
                     }
 
-                    // 如果主流程编辑界面已打开，刷新节点
-                    if (IsMasterWorkflowViewVisible)
+                    MasterWorkflow.MasterPluginNodes ??= new List<Node>();
+                    foreach (var pluginNode in MasterWorkflow.MasterPluginNodes)
                     {
-                        RefreshMasterWorkflowNodes();
+                        if (pluginNode != null && !string.IsNullOrWhiteSpace(pluginNode.Id) &&
+                            MasterWorkflowTab.Nodes.All(n => n?.Id != pluginNode.Id))
+                        {
+                            MasterWorkflowTab.Nodes.Add(pluginNode);
+                        }
                     }
+
+                    // 合并子流程引用块与已加载的插件节点、连线
+                    RefreshMasterWorkflowNodes();
                 }
 
                 // 切换到第一个子流程标签页（如果存在）
@@ -2814,8 +2841,6 @@ namespace Astra.UI.ViewModels
                 }
 
                 Debug.WriteLine($"[SequenceViewModel] 多流程数据加载完成: 主流程1个, 子流程{data.SubWorkflows?.Count ?? 0}个");
-
-                RefreshWorkflowArchivePeerCatalog();
             }
             catch (Exception ex)
             {
@@ -2869,8 +2894,6 @@ namespace Astra.UI.ViewModels
         /// </summary>
         private void ClearAllWorkflows()
         {
-            WorkflowArchivePeerCatalog.Clear();
-
             // 清空标签页
             if (WorkflowTabs != null)
             {
@@ -4260,12 +4283,13 @@ namespace Astra.UI.ViewModels
         private async Task ExecuteMasterWorkflowAsync(CancellationToken cancellationToken)
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            Astra.Core.Orchestration.MasterExecutionPlan plan;
+            MasterExecutionPlan plan;
+            MasterCanvasRuntimeGraph? masterCanvasRuntime = null;
 
             if (dispatcher != null)
             {
                 await Task.Run(() => { }).ConfigureAwait(false);
-                plan = await dispatcher.InvokeAsync(() =>
+                (plan, masterCanvasRuntime) = await dispatcher.InvokeAsync(() =>
                 {
                     SaveCurrentTabState();
                     ResetAllExecutionVisualStateBeforeRun();
@@ -4283,7 +4307,7 @@ namespace Astra.UI.ViewModels
                         Debug.WriteLine($"[PreExec] {CurrentTab.Name}: Nodes={totalCount}, Enabled={enabledCount}, Connections={totalConnections}, Flow={flowConnections}");
                     }
 
-                    return BuildMasterExecutionPlan();
+                    return (BuildMasterExecutionPlan(), BuildMasterCanvasRuntimeSnapshot());
                 }, DispatcherPriority.Background);
             }
             else
@@ -4291,10 +4315,96 @@ namespace Astra.UI.ViewModels
                 SaveCurrentTabState();
                 ResetAllExecutionVisualStateBeforeRun();
                 plan = BuildMasterExecutionPlan();
+                masterCanvasRuntime = BuildMasterCanvasRuntimeSnapshot();
             }
 
-            void OnOrchestratorProgress(object? sender, Astra.Core.Orchestration.SubWorkflowProgressEventArgs e)
+            void OnOrchestratorProgress(object? sender, SubWorkflowProgressEventArgs e)
             {
+                if (e.ParallelRunningGroup is { Count: > 0 } grp &&
+                    e.State == Astra.Core.Orchestration.SubWorkflowState.Running)
+                {
+                    RunOnUiThread(() =>
+                    {
+                        foreach (var it in grp)
+                        {
+                            if (it.IsHybridMasterPlugin)
+                            {
+                                var pluginNode = MasterWorkflowTab?.Nodes?.FirstOrDefault(x =>
+                                    string.Equals(x.Id, it.RefId, StringComparison.Ordinal));
+                                if (pluginNode == null)
+                                {
+                                    continue;
+                                }
+
+                                pluginNode.ExecutionState = NodeExecutionState.Running;
+                                RefreshMasterWorkflowNode(pluginNode.Id);
+                                continue;
+                            }
+
+                            if (!plan.Entries.TryGetValue(it.RefId, out var ent) || ent?.Workflow == null)
+                            {
+                                continue;
+                            }
+
+                            var wf = ent.Workflow;
+                            if (MasterWorkflowTab?.Nodes == null)
+                            {
+                                continue;
+                            }
+
+                            var referenceNode = MasterWorkflowTab.Nodes
+                                .OfType<WorkflowReferenceNode>()
+                                .FirstOrDefault(x => string.Equals(x.SubWorkflowId, wf.Id, StringComparison.Ordinal));
+                            if (referenceNode != null)
+                            {
+                                referenceNode.ExecutionState = NodeExecutionState.Running;
+                                RefreshMasterWorkflowNode(referenceNode.Id);
+                            }
+
+                            var tab = SubWorkflowTabs?.FirstOrDefault(
+                                t => t?.Type == WorkflowType.Sub &&
+                                     t.GetSubWorkflow() != null &&
+                                     string.Equals(t.GetSubWorkflow().Id, wf.Id, StringComparison.Ordinal));
+                            if (tab != null)
+                            {
+                                tab.TabExecutionState = NodeExecutionState.Running;
+                            }
+                        }
+                    }, System.Windows.Threading.DispatcherPriority.Normal);
+                    return;
+                }
+
+                // 混合主流程：插件节点进度的 RefId 不在子流程计划键集中（不依赖 Core 上新增标志位，避免旧 DLL 不同步）
+                if (!plan.Entries.ContainsKey(e.RefId))
+                {
+                    var pluginNodeExecutionState = e.State switch
+                    {
+                        SubWorkflowState.Running => NodeExecutionState.Running,
+                        SubWorkflowState.Success => NodeExecutionState.Success,
+                        SubWorkflowState.Failed => NodeExecutionState.Failed,
+                        SubWorkflowState.Cancelled => NodeExecutionState.Cancelled,
+                        SubWorkflowState.Skipped => NodeExecutionState.Skipped,
+                        _ => NodeExecutionState.Idle
+                    };
+                    RunOnUiThread(() =>
+                    {
+                        var n = MasterWorkflowTab?.Nodes?.FirstOrDefault(x => string.Equals(x.Id, e.RefId, StringComparison.Ordinal));
+                        if (n == null)
+                        {
+                            return;
+                        }
+
+                        n.ExecutionState = pluginNodeExecutionState;
+                        if (e.Result != null)
+                        {
+                            n.LastExecutionResult = e.Result;
+                        }
+
+                        RefreshMasterWorkflowNode(n.Id);
+                    });
+                    return;
+                }
+
                 // RefId 为主流程引用节点 Id，与 WorkFlowNode.Id（子流程 Id）不同；从执行计划反查 Workflow。
                 var wf = plan.Entries.TryGetValue(e.RefId, out var ent) && ent?.Workflow != null
                     ? ent.Workflow
@@ -4303,20 +4413,31 @@ namespace Astra.UI.ViewModels
 
                 var state = e.State switch
                 {
-                    Astra.Core.Orchestration.SubWorkflowState.Running => NodeExecutionState.Running,
-                    Astra.Core.Orchestration.SubWorkflowState.Success => NodeExecutionState.Success,
-                    Astra.Core.Orchestration.SubWorkflowState.Failed => NodeExecutionState.Failed,
-                    Astra.Core.Orchestration.SubWorkflowState.Cancelled => NodeExecutionState.Cancelled,
-                    Astra.Core.Orchestration.SubWorkflowState.Skipped => NodeExecutionState.Skipped,
+                    SubWorkflowState.Running => NodeExecutionState.Running,
+                    SubWorkflowState.Success => NodeExecutionState.Success,
+                    SubWorkflowState.Failed => NodeExecutionState.Failed,
+                    SubWorkflowState.Cancelled => NodeExecutionState.Cancelled,
+                    SubWorkflowState.Skipped => NodeExecutionState.Skipped,
                     _ => NodeExecutionState.Idle
                 };
-                UpdateMasterReferenceNodeState(wf, state);
+                if (e.Result != null)
+                {
+                    UpdateMasterReferenceNodeResult(wf, e.Result);
+                }
+                else
+                {
+                    UpdateMasterReferenceNodeState(wf, state);
+                }
+
                 SetTabExecutionState(wf, state);
             }
 
             try
             {
-                if (plan.Entries.Count == 0)
+                var hasSubs = plan.Entries.Count > 0;
+                var hasHybridPlugins = masterCanvasRuntime?.Nodes != null
+                    && masterCanvasRuntime.Nodes.Any(n => n is not WorkflowReferenceNode);
+                if (!hasSubs && !hasHybridPlugins)
                 {
                     IsStatusError = true;
                     StatusMessage = "没有可执行的子流程";
@@ -4327,16 +4448,19 @@ namespace Astra.UI.ViewModels
 
                 if (_orchestrator != null)
                 {
-                    RunOnUiThreadBlocking(() => StatusMessage = $"执行中：共 {plan.Entries.Count} 个子流程");
+                    RunOnUiThreadBlocking(() => StatusMessage = hasSubs
+                        ? $"执行中：共 {plan.Entries.Count} 个子流程"
+                        : "执行中：主流程节点");
 
                     _orchestrator.SubWorkflowProgressChanged += OnOrchestratorProgress;
                     try
                     {
                         var context = BuildExecutionContext();
-                        var options = new Astra.Core.Orchestration.MasterExecutionOptions
+                        var options = new MasterExecutionOptions
                         {
                             Sn = context.GlobalVariables.TryGetValue("SN", out var snVal) ? snVal?.ToString() : null,
-                            InitialGlobalVariables = context.GlobalVariables
+                            InitialGlobalVariables = context.GlobalVariables,
+                            MasterCanvasRuntime = masterCanvasRuntime
                         };
 
                         var result = await _orchestrator.ExecuteAsync(plan, options, cancellationToken).ConfigureAwait(false);
@@ -4346,11 +4470,14 @@ namespace Astra.UI.ViewModels
                         if (result.FailedCount > 0 || result.SkippedCount > 0)
                             {
                                 IsStatusError = result.FailedCount > 0;
-                                StatusMessage = $"执行完成：成功 {result.SuccessCount}，失败 {result.FailedCount}，跳过 {result.SkippedCount}（共 {plan.Entries.Count}）";
+                                var scope = hasSubs ? $"{plan.Entries.Count} 个子流程及相关节点" : "主流程节点";
+                                StatusMessage = $"执行完成：成功 {result.SuccessCount}，失败 {result.FailedCount}，跳过 {result.SkippedCount}（{scope}）";
                             }
                             else
                             {
-                                StatusMessage = $"执行完成，共执行 {plan.Entries.Count} 个子流程";
+                                StatusMessage = hasSubs
+                                    ? $"执行完成，共执行 {plan.Entries.Count} 个子流程"
+                                    : "执行完成";
                                 IsStatusError = false;
                             }
                         });
@@ -4480,6 +4607,35 @@ namespace Astra.UI.ViewModels
                 OrderedEntries = ordered,
                 Successors = successors,
                 HasDependencies = depCount > 0
+            };
+        }
+
+        /// <summary>
+        /// 捕获主流程画布上的节点与连线，供编排器在存在插件/逻辑节点时按拓扑执行。
+        /// </summary>
+        private MasterCanvasRuntimeGraph? BuildMasterCanvasRuntimeSnapshot()
+        {
+            if (MasterWorkflowTab?.Nodes == null || MasterWorkflow == null)
+            {
+                return null;
+            }
+
+            var nodes = MasterWorkflowTab.Nodes.Where(n => n != null).Cast<Node>().ToList();
+            if (!nodes.Any(n => n is not WorkflowReferenceNode))
+            {
+                return null;
+            }
+
+            // 必须以画布 Tab 的连线为准：MasterWorkflow.Edges 在保存前可能尚未包含逻辑节点相关边
+            var edges = (MasterWorkflowTab.Edges ?? new ObservableCollection<Edge>())
+                .Where(e => e != null)
+                .Cast<Edge>()
+                .ToList();
+            return new MasterCanvasRuntimeGraph
+            {
+                MasterWorkflowId = string.IsNullOrWhiteSpace(MasterWorkflow.Id) ? null : MasterWorkflow.Id,
+                Nodes = nodes,
+                Edges = edges
             };
         }
 
@@ -5009,7 +5165,76 @@ namespace Astra.UI.ViewModels
 
         private void OnNodeExecutionChanged(object sender, WorkflowNodeExecutionChangedEventArgs e)
         {
-            if (e == null || string.IsNullOrWhiteSpace(e.NodeId))
+            if (e == null)
+            {
+                return;
+            }
+
+            if (e.ParallelRunningNodeIds is { Count: > 0 } batchIds &&
+                e.State == NodeExecutionState.Running)
+            {
+                WorkFlowNode? batchTarget = _activeExecutionWorkflow;
+                if (batchTarget?.Nodes == null)
+                {
+                    if (string.IsNullOrWhiteSpace(e.WorkflowKey) ||
+                        SubWorkflows == null ||
+                        !SubWorkflows.TryGetValue(e.WorkflowKey, out var wfByKey) ||
+                        wfByKey?.Nodes == null)
+                    {
+                        return;
+                    }
+
+                    batchTarget = wfByKey;
+                }
+
+                if (_activeExecutionWorkflow != null &&
+                    !string.IsNullOrWhiteSpace(_activeExecutionId) &&
+                    !string.IsNullOrWhiteSpace(e.ExecutionId) &&
+                    !string.Equals(_activeExecutionId, e.ExecutionId, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                var nowUtc = DateTime.UtcNow;
+                lock (_nodeStateVisualLock)
+                {
+                    foreach (var nid in batchIds)
+                    {
+                        if (string.IsNullOrWhiteSpace(nid))
+                        {
+                            continue;
+                        }
+
+                        _nodeStateVersions.TryGetValue(nid, out var v);
+                        _nodeStateVersions[nid] = v + 1;
+                        _nodeRunningSinceUtc[nid] = nowUtc;
+                    }
+                }
+
+                var tw = batchTarget;
+                RunOnUiThread(() =>
+                {
+                    foreach (var nid in batchIds)
+                    {
+                        if (string.IsNullOrWhiteSpace(nid))
+                        {
+                            continue;
+                        }
+
+                        var node = tw.Nodes.FirstOrDefault(x => x.Id == nid);
+                        if (node == null)
+                        {
+                            continue;
+                        }
+
+                        node.ExecutionState = NodeExecutionState.Running;
+                        RefreshNodeStateInTab(tw, nid);
+                    }
+                }, System.Windows.Threading.DispatcherPriority.Normal);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(e.NodeId))
             {
                 return;
             }
@@ -5085,15 +5310,11 @@ namespace Astra.UI.ViewModels
                     return;
                 }
 
-                foreach (var refNode in MasterWorkflowTab.Nodes.OfType<WorkflowReferenceNode>())
+                // 主流程画布除子流程引用外还有逻辑/延时等插件节点（MasterPluginNodes），须一并切换 Running↔Paused
+                foreach (var node in MasterWorkflowTab.Nodes.Where(x => x != null && x.ExecutionState == fromState))
                 {
-                    if (refNode.ExecutionState != fromState)
-                    {
-                        continue;
-                    }
-
-                    refNode.ExecutionState = toState;
-                    RefreshMasterWorkflowNode(refNode.Id);
+                    node.ExecutionState = toState;
+                    RefreshMasterWorkflowNode(node.Id);
                 }
             });
         }
@@ -5200,7 +5421,7 @@ namespace Astra.UI.ViewModels
             RunOnUiThread(Refresh);
         }
 
-        private static void RunOnUiThread(Action action)
+        private static void RunOnUiThread(Action action, System.Windows.Threading.DispatcherPriority priority = System.Windows.Threading.DispatcherPriority.Background)
         {
             if (action == null)
             {
@@ -5214,8 +5435,8 @@ namespace Astra.UI.ViewModels
                 return;
             }
 
-            // 使用较低优先级，避免执行期间过多状态更新把 UI 消息队列挤爆
-            dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.Background);
+            // 并行波次批量刷新用 Normal；其余用 Background，避免执行期间过多状态更新把 UI 消息队列挤爆
+            dispatcher.BeginInvoke(action, priority);
         }
 
         /// <summary>
@@ -5455,16 +5676,16 @@ namespace Astra.UI.ViewModels
             }
             else
             {
-                // 检查子流程数量是否与节点数量匹配
+                // 仅按「流程引用节点」与子流程字典对齐；逻辑等非引用节点不参与计数，避免误触发整表刷新
                 var masterWorkflow = MasterWorkflowTab.GetMasterWorkflow();
                 if (masterWorkflow != null)
                 {
                     int subWorkflowCount = SubWorkflows.Count;
-                    int nodeCount = MasterWorkflowTab.Nodes.Count;
-                    if (subWorkflowCount != nodeCount)
+                    int referenceNodeCount = MasterWorkflowTab.Nodes.OfType<WorkflowReferenceNode>().Count();
+                    if (subWorkflowCount != referenceNodeCount)
                     {
                         needRefresh = true;
-                        Debug.WriteLine($"[SequenceViewModel] 子流程数量 ({subWorkflowCount}) 与节点数量 ({nodeCount}) 不匹配，需要刷新");
+                        Debug.WriteLine($"[SequenceViewModel] 子流程数量 ({subWorkflowCount}) 与流程引用节点数 ({referenceNodeCount}) 不匹配，需要刷新");
                     }
                     else
                     {
@@ -5492,12 +5713,7 @@ namespace Astra.UI.ViewModels
                 // 立即刷新一次（确保数据准备就绪）
                 RefreshMasterWorkflowNodes();
 
-                // 延迟再次刷新，确保 UI 已完全加载并更新
-                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new System.Action(() =>
-                {
-                    RefreshMasterWorkflowNodes();
-                    Debug.WriteLine($"[SequenceViewModel] 延迟刷新完成，节点数: {MasterWorkflowTab?.Nodes?.Count ?? 0}, 连线数: {MasterWorkflowTab?.Edges?.Count ?? 0}");
-                }), System.Windows.Threading.DispatcherPriority.Loaded);
+                // 不再二次 RefreshMasterWorkflowNodes：会再次 Clear 节点/连线，与画布 ItemsSource 刷新竞态时易导致连线层被清空后不恢复。
             }
             else
             {
@@ -5530,6 +5746,9 @@ namespace Astra.UI.ViewModels
 
             Debug.WriteLine($"[SequenceViewModel] 开始刷新主流程节点，子流程数量: {SubWorkflows.Count}");
             Debug.WriteLine($"[SequenceViewModel] 刷新前 MasterWorkflowTab.Nodes 数量: {MasterWorkflowTab.Nodes.Count}");
+
+            // 保留非流程引用节点（如主流程逻辑插件节点），刷新后写回
+            var nonReferenceNodes = MasterWorkflowTab.Nodes.Where(n => n is not WorkflowReferenceNode).ToList();
 
             // 创建节点ID到节点的映射（用于复用已存在的节点）
             var existingNodes = MasterWorkflowTab.Nodes.OfType<WorkflowReferenceNode>()
@@ -5660,18 +5879,44 @@ namespace Astra.UI.ViewModels
                 index++;
             }
 
-            // 恢复连线：优先使用 masterWorkflow.Edges 中保存的连线，如果没有则使用之前保存的连线
-            var edgesToAdd = masterWorkflow.Edges.Count > 0 ? masterWorkflow.Edges : edgesToRestore;
+            foreach (var extra in nonReferenceNodes)
+            {
+                if (!MasterWorkflowTab.Nodes.Contains(extra))
+                {
+                    MasterWorkflowTab.Nodes.Add(extra);
+                }
+            }
+
+            // 合并模型中的边与刷新前画布上的边，避免模型尚未保存时丢失逻辑/插件相关连线
+            var edgeDedup = new HashSet<string>(StringComparer.Ordinal);
+            string EdgeKey(Edge e)
+            {
+                if (e == null) return string.Empty;
+                if (!string.IsNullOrEmpty(e.Id)) return e.Id;
+                return $"{e.SourceNodeId}|{e.SourcePortId}|{e.TargetNodeId}|{e.TargetPortId}";
+            }
+
+            var edgesToAdd = new List<Edge>();
+            foreach (var e in masterWorkflow.Edges ?? new List<Edge>())
+            {
+                if (e != null && edgeDedup.Add(EdgeKey(e)))
+                    edgesToAdd.Add(e);
+            }
+
+            foreach (var e in edgesToRestore)
+            {
+                if (e != null && edgeDedup.Add(EdgeKey(e)))
+                    edgesToAdd.Add(e);
+            }
+
             int restoredEdgeCount = 0;
             foreach (var savedEdge in edgesToAdd)
             {
-                // 验证连线的节点ID是否存在于当前节点集合中
                 var sourceNodeExists = MasterWorkflowTab.Nodes.Any(n => n.Id == savedEdge.SourceNodeId);
                 var targetNodeExists = MasterWorkflowTab.Nodes.Any(n => n.Id == savedEdge.TargetNodeId);
 
                 if (sourceNodeExists && targetNodeExists)
                 {
-                    // 直接使用保存的 Edge，因为节点ID已经是引用ID（稳定）
                     MasterWorkflowTab.Edges.Add(savedEdge);
                     restoredEdgeCount++;
                     Debug.WriteLine($"[SequenceViewModel] 恢复连线: {savedEdge.SourceNodeId} -> {savedEdge.TargetNodeId}");
@@ -5682,7 +5927,7 @@ namespace Astra.UI.ViewModels
                 }
             }
 
-            Debug.WriteLine($"[SequenceViewModel] 连线恢复完成: 共 {edgesToAdd.Count} 条连线，成功恢复 {restoredEdgeCount} 条");
+            Debug.WriteLine($"[SequenceViewModel] 连线恢复完成: 共 {edgesToAdd.Count} 条候选连线，成功恢复 {restoredEdgeCount} 条");
 
             Debug.WriteLine($"[SequenceViewModel] 刷新主流程节点完成: 显示 {MasterWorkflowTab.Nodes.Count} 个子流程, {MasterWorkflowTab.Edges.Count} 条连线");
 

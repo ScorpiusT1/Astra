@@ -1,5 +1,6 @@
 using Astra.UI;
 using Astra.UI.Adapters;
+using Astra.UI.Helpers;
 using Astra.UI.Services;
 using FontAwesome.Sharp;
 using System;
@@ -17,6 +18,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 
 namespace Astra.UI.Controls
@@ -744,6 +747,7 @@ namespace Astra.UI.Controls
         private Window _dragPreviewWindow;
         private ScaleTransform _dragPreviewScaleTransform;  // 预览窗口的缩放变换
         private Border _dragPreviewBorder;  // 预览窗口的主边框（用于调整大小）
+        private bool _dragPreviewUsesWorkflowReferenceChrome;
         private double _currentCanvasScale = 1.0;  // 当前画布缩放比例
         private IToolItem _currentDraggingTool;
         private bool _panelHitTestDisabled;
@@ -901,6 +905,7 @@ namespace Astra.UI.Controls
                 return;
             }
 
+            _toolPanel.MouseEnter += OnToolPanelMouseEnter;
             _toolPanel.MouseLeave += OnToolPanelMouseLeave;
 
             // 直接使用 GetTemplateParts 中已经获取的 _toolsItemsControl
@@ -953,6 +958,7 @@ namespace Astra.UI.Controls
         {
             if (_toolPanel != null)
             {
+                _toolPanel.MouseEnter -= OnToolPanelMouseEnter;
                 _toolPanel.MouseLeave -= OnToolPanelMouseLeave;
                 _toolPanel.SizeChanged -= OnToolPanelSizeChanged;
                 _toolPanel.Loaded -= OnToolPanelLoaded;
@@ -1326,8 +1332,16 @@ namespace Astra.UI.Controls
             UpdatePanelPosition(button);
             IsPanelVisible = true;
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            // 快速切换类别时 ToolsMaxHeight / ItemsSource 连续变化，强制度量与渲染与 Clip 同步
+            _toolsItemsControl?.InvalidateMeasure();
+            _toolsScrollViewer?.InvalidateMeasure();
+            _toolPanel?.InvalidateMeasure();
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
+                _toolPanel?.UpdateLayout();
+                if (_toolPanel != null && _toolPanel.ActualWidth > 0 && _toolPanel.ActualHeight > 0)
+                    ApplyToolPanelClip(_toolPanel.ActualWidth, _toolPanel.ActualHeight);
                 _toolsScrollViewer?.ScrollToTop();
             }));
         }
@@ -1681,7 +1695,50 @@ namespace Astra.UI.Controls
             {
                 bool inToolbar = _mainToolbar?.IsMouseOver == true;
                 bool inPanel = _toolPanel?.IsVisible == true && _toolPanel.IsMouseOver;
-                return inToolbar || inPanel;
+                if (inToolbar || inPanel)
+                    return true;
+
+                // Popup 在独立 HWND 中时，从面板移回主窗口可能不触发 MouseLeave/MouseEnter，
+                // IsMouseOver 与真实指针不同步；用屏幕坐标与元素外接矩形兜底。
+                if (!TryGetCursorScreenPoint(out var screenPt))
+                    return false;
+
+                if (IsScreenPointInsideElement(_mainToolbar, screenPt))
+                    return true;
+                if (IsPanelVisible && IsScreenPointInsideElement(_toolPanel, screenPt))
+                    return true;
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryGetCursorScreenPoint(out Point screenPt)
+        {
+            screenPt = default;
+            var p = new System.Drawing.Point();
+            if (!GetCursorPos(ref p))
+                return false;
+            screenPt = new Point(p.X, p.Y);
+            return true;
+        }
+
+        private static bool IsScreenPointInsideElement(FrameworkElement element, Point screenPt)
+        {
+            if (element == null || element.Visibility != Visibility.Visible)
+                return false;
+
+            try
+            {
+                if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+                    return false;
+
+                var topLeft = element.PointToScreen(new Point(0, 0));
+                var rect = new Rect(topLeft, new System.Windows.Size(element.ActualWidth, element.ActualHeight));
+                return rect.Contains(screenPt);
             }
             catch
             {
@@ -1720,7 +1777,7 @@ namespace Astra.UI.Controls
             {
                 _toolPanel.SizeChanged += OnToolPanelSizeChanged;
                 _toolPanel.Loaded += OnToolPanelLoaded;
-                UpdateToolPanelClip();
+                UpdateToolPanelClipImmediateOrDeferred();
             }
         }
 
@@ -1729,7 +1786,12 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnToolPanelSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            UpdateToolPanelClip();
+            // 必须用本次布局的新尺寸同步更新 Clip。若 defer 到 Loaded，快速换类增高时 Clip 会滞后，
+            // 新露出的区域仍按旧高度裁剪，表现为“变长部分未及时渲染/发灰发黑”。
+            if (e.NewSize.Width > 0 && e.NewSize.Height > 0)
+                ApplyToolPanelClip(e.NewSize.Width, e.NewSize.Height);
+            else
+                UpdateToolPanelClipDeferred();
         }
 
         /// <summary>
@@ -1737,29 +1799,47 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnToolPanelLoaded(object sender, RoutedEventArgs e)
         {
-            UpdateToolPanelClip();
+            UpdateToolPanelClipImmediateOrDeferred();
         }
 
         /// <summary>
-        /// 更新主面板的裁剪区域
+        /// 将圆角裁剪应用到工具面板（与模板 CornerRadius 一致）
         /// </summary>
-        private void UpdateToolPanelClip()
+        private void ApplyToolPanelClip(double width, double height)
+        {
+            if (_toolPanel == null || width <= 0 || height <= 0)
+                return;
+
+            const double cornerRadius = 14.0;
+            _toolPanel.Clip = new RectangleGeometry
+            {
+                RadiusX = cornerRadius,
+                RadiusY = cornerRadius,
+                Rect = new Rect(0, 0, width, height)
+            };
+        }
+
+        /// <summary>
+        /// 更新主面板的裁剪区域（尺寸已知则立即应用，否则延后一帧）
+        /// </summary>
+        private void UpdateToolPanelClipImmediateOrDeferred()
         {
             if (_toolPanel == null) return;
 
-            // 等待布局完成
+            if (_toolPanel.ActualWidth > 0 && _toolPanel.ActualHeight > 0)
+                ApplyToolPanelClip(_toolPanel.ActualWidth, _toolPanel.ActualHeight);
+            else
+                UpdateToolPanelClipDeferred();
+        }
+
+        private void UpdateToolPanelClipDeferred()
+        {
+            if (_toolPanel == null) return;
+
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
                 if (_toolPanel.ActualWidth > 0 && _toolPanel.ActualHeight > 0)
-                {
-                    const double cornerRadius = 14.0;
-                    _toolPanel.Clip = new RectangleGeometry
-                    {
-                        RadiusX = cornerRadius,
-                        RadiusY = cornerRadius,
-                        Rect = new Rect(0, 0, _toolPanel.ActualWidth, _toolPanel.ActualHeight)
-                    };
-                }
+                    ApplyToolPanelClip(_toolPanel.ActualWidth, _toolPanel.ActualHeight);
             }));
         }
 
@@ -1929,6 +2009,16 @@ namespace Astra.UI.Controls
             HidePanelAndClearSelection();
         }
 
+        /// <summary>
+        /// 在指针可能已离开工具箱区域时启动隐藏延迟（例如鼠标进入画布，而 Popup 未收到 MouseLeave）。
+        /// </summary>
+        public void BeginHidePanelDelay()
+        {
+            if (!IsPanelVisible)
+                return;
+            StartHideDelay();
+        }
+
         #endregion
 
         #region 生命周期管理
@@ -2066,6 +2156,13 @@ namespace Astra.UI.Controls
             
             // 如果已经有预览窗口，先关闭
             HideDragPreview();
+
+            _dragPreviewUsesWorkflowReferenceChrome = MasterWorkflowCanvasChrome.ToolItemUsesWorkflowReferenceDragPreview(tool);
+            if (_dragPreviewUsesWorkflowReferenceChrome)
+            {
+                ShowWorkflowReferenceChromeDragPreview(tool);
+                return;
+            }
             
             // 获取初始画布缩放比例
             var initialScale = FindCanvasScale() ?? 1.0;
@@ -2182,6 +2279,135 @@ namespace Astra.UI.Controls
             _dragPreviewWindow.Show();
             
             // 初始化位置
+            UpdateDragPreviewPosition();
+        }
+
+        /// <summary>
+        /// 与 <see cref="WorkflowReferenceNodeControl"/> 模板一致的拖拽预览（仅 <see cref="MasterWorkflowCanvasChrome.ToolItemUsesWorkflowReferenceDragPreview"/> 为真时启用，如流程引用块）。
+        /// </summary>
+        private void ShowWorkflowReferenceChromeDragPreview(IToolItem tool)
+        {
+            var initialScale = FindCanvasScale() ?? 1.0;
+            _currentCanvasScale = initialScale;
+
+            const double baseWidth = 208.0;
+            const double baseHeight = 108.0;
+
+            _dragPreviewWindow = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
+                ShowInTaskbar = false,
+                Topmost = true,
+                Width = baseWidth * initialScale,
+                Height = baseHeight * initialScale,
+                Left = -10000,
+                Top = -10000,
+                IsHitTestVisible = false,
+                Opacity = 0.92
+            };
+
+            var mainBorder = new Border
+            {
+                Width = baseWidth,
+                Height = baseHeight,
+                Background = (Brush)TryFindResource("SecondaryRegionBrush") ?? new SolidColorBrush(Color.FromRgb(245, 245, 245)),
+                BorderBrush = (Brush)TryFindResource("BorderBrush") ?? new SolidColorBrush(Color.FromRgb(220, 220, 220)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(9),
+                RenderTransformOrigin = new Point(0, 0)
+            };
+
+            if (TryFindResource("ShadowColor") is Color shadowColor)
+                mainBorder.Effect = new DropShadowEffect { Color = shadowColor, BlurRadius = 10, ShadowDepth = 2, Opacity = 0.14 };
+            else
+                mainBorder.Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 10, ShadowDepth = 2, Opacity = 0.14 };
+
+            _dragPreviewScaleTransform = new ScaleTransform(initialScale, initialScale);
+            mainBorder.LayoutTransform = _dragPreviewScaleTransform;
+            BorderClipHelper.SetClipToBounds(mainBorder, true);
+            _dragPreviewBorder = mainBorder;
+
+            var rootGrid = new Grid();
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var headerBorder = new Border
+            {
+                Background = (Brush)TryFindResource("PrimaryBrush") ?? new SolidColorBrush(Color.FromRgb(0, 120, 215)),
+                CornerRadius = new CornerRadius(9, 9, 0, 0),
+                Opacity = 0.94,
+                Padding = new Thickness(10, 8, 10, 8)
+            };
+            Grid.SetRow(headerBorder, 0);
+
+            var headerGrid = new Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var stateDot = new Ellipse
+            {
+                Width = 8,
+                Height = 8,
+                Fill = (Brush)TryFindResource("SecondaryBorderBrush") ?? new SolidColorBrush(Colors.Gray),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            Grid.SetColumn(stateDot, 0);
+
+            var diagramIcon = new IconBlock
+            {
+                Icon = IconChar.ProjectDiagram,
+                FontSize = 12,
+                Foreground = (Brush)TryFindResource("ReverseTextBrush") ?? Brushes.White,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            Grid.SetColumn(diagramIcon, 1);
+
+            var titleBlock = new TextBlock
+            {
+                Text = tool.Name ?? "节点",
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)TryFindResource("ReverseTextBrush") ?? Brushes.White,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(titleBlock, 2);
+
+            headerGrid.Children.Add(stateDot);
+            headerGrid.Children.Add(diagramIcon);
+            headerGrid.Children.Add(titleBlock);
+            headerBorder.Child = headerGrid;
+
+            var bodyBorder = new Border
+            {
+                Background = (Brush)TryFindResource("SurfaceBrush") ?? Brushes.White,
+                CornerRadius = new CornerRadius(0, 0, 9, 9),
+                Padding = new Thickness(10, 10, 10, 10)
+            };
+            Grid.SetRow(bodyBorder, 1);
+
+            var bodyText = new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(tool.Description) ? "拖拽到主流程画布" : tool.Description,
+                FontSize = 12,
+                Foreground = (Brush)TryFindResource("SecondaryTextBrush") ?? new SolidColorBrush(Colors.Gray),
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxHeight = 48
+            };
+            bodyBorder.Child = bodyText;
+
+            rootGrid.Children.Add(headerBorder);
+            rootGrid.Children.Add(bodyBorder);
+            mainBorder.Child = rootGrid;
+
+            _dragPreviewWindow.Content = mainBorder;
+            _dragPreviewWindow.Show();
             UpdateDragPreviewPosition();
         }
 
@@ -2315,8 +2541,8 @@ namespace Astra.UI.Controls
             // Border 本身保持基础尺寸（220x40），通过变换缩放到画布比例
             if (_dragPreviewWindow != null)
             {
-                var baseWidth = 220.0;  // 基础宽度
-                var baseHeight = 40.0;   // 基础高度
+                var baseWidth = _dragPreviewUsesWorkflowReferenceChrome ? 208.0 : 220.0;
+                var baseHeight = _dragPreviewUsesWorkflowReferenceChrome ? 108.0 : 40.0;
                 var scaledWidth = baseWidth * scale;
                 var scaledHeight = baseHeight * scale;
                 
@@ -2353,6 +2579,7 @@ namespace Astra.UI.Controls
             }
             _dragPreviewScaleTransform = null;
             _dragPreviewBorder = null;
+            _dragPreviewUsesWorkflowReferenceChrome = false;
             _currentCanvasScale = 1.0;
         }
         

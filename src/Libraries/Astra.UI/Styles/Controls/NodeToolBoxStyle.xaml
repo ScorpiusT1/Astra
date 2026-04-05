@@ -327,12 +327,13 @@
                                    IsOpen="{Binding IsPanelVisible, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
                                    StaysOpen="True"
                                    AllowsTransparency="True"
-                                   PopupAnimation="Fade">
+                                   PopupAnimation="None">
 
                                 <!-- 让弹出面板仅根据内容自适应大小，避免 400x400 的透明区域遮挡画布左侧鼠标事件 -->
                                 <Grid Margin="10">
 
-                                    <Border Background="{DynamicResource PrimaryTextBrush}"
+                                    <!-- 与 PART_ToolPanel 同底色，避免快速切换类别/布局时短暂露底呈黑色（勿用 PrimaryTextBrush） -->
+                                    <Border Background="{DynamicResource SurfaceBrush}"
                                             CornerRadius="14"
                                             Margin="0,8,8,12"
                                             IsHitTestVisible="False">
@@ -399,10 +400,11 @@
                                                           MaxHeight="{TemplateBinding ToolsMaxHeight}"
                                                           HorizontalScrollBarVisibility="Disabled"
                                                           VerticalScrollBarVisibility="Auto"
-                                                          Background="Transparent"
+                                                          Background="{DynamicResource SurfaceBrush}"
                                                           BorderThickness="0"
                                                           Padding="0">
                                                 <ItemsControl x:Name="PART_ToolsItemsControl"
+                                                              Background="{DynamicResource SurfaceBrush}"
                                                               ItemsSource="{Binding CurrentCategory.Tools, RelativeSource={RelativeSource TemplatedParent}}">
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>

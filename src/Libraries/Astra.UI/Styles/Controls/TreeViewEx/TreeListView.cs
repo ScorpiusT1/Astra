@@ -225,6 +225,11 @@ namespace Astra.UI.Styles.Controls.TreeViewEx
                 ScheduleStretchLastColumn();
         }
 
+        /// <summary>
+        /// 由首列等动态列宽变更后调用，使 <see cref="StretchFillColumnIndex"/> / <see cref="StretchLastColumn"/> 重新分配剩余宽度。
+        /// </summary>
+        public void InvalidateColumnFillLayout() => ScheduleStretchLastColumn();
+
         private void ScheduleStretchLastColumn()
         {
             if (!StretchAllColumns && !StretchLastColumn && StretchFillColumnIndex < 0)

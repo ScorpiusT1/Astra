@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -104,7 +104,7 @@ namespace Astra.UI.Controls
                 canvas.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     canvas.RefreshEdgesImmediate();
-                }), System.Windows.Threading.DispatcherPriority.Background);
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
             }
         }
 
@@ -122,6 +122,12 @@ namespace Astra.UI.Controls
         private INotifyCollectionChanged _edgeCollectionNotify;
         private FrameworkElement _hoveredPort;  // 当前悬停的端口
         private const double PortSnapDistance = 30.0;  // 端口吸附距离（像素）
+
+        /// <summary>0=正常；1=已对 ItemsSource==null 且仍有边的情况推迟过一次刷新。</summary>
+        private int _edgeRefreshNullItemsPass;
+
+        /// <summary>0=正常；1=已对节点数为 0 但仍有边的情况推迟过一次刷新。</summary>
+        private int _edgeRefreshEmptyNodesPass;
 
         #endregion
 
@@ -423,18 +429,70 @@ namespace Astra.UI.Controls
                 return;
             }
 
-            if (EdgeItemsSource == null || ItemsSource == null)
+            if (EdgeItemsSource == null)
             {
+                _edgeRefreshNullItemsPass = 0;
+                _edgeRefreshEmptyNodesPass = 0;
                 _edgeLayer.Children.Clear();
-                System.Diagnostics.Debug.WriteLine($"[连线刷新] EdgeItemsSource: {EdgeItemsSource != null}, ItemsSource: {ItemsSource != null}");
+                System.Diagnostics.Debug.WriteLine("[连线刷新] EdgeItemsSource 为 null，清空连线层");
                 return;
             }
+
+            var edgeModelCount = 0;
+            foreach (var o in EdgeItemsSource)
+            {
+                if (o is Edge)
+                    edgeModelCount++;
+            }
+
+            if (ItemsSource == null)
+            {
+                if (edgeModelCount > 0 && _edgeRefreshNullItemsPass == 0)
+                {
+                    _edgeRefreshNullItemsPass = 1;
+                    System.Diagnostics.Debug.WriteLine("[连线刷新] ItemsSource 暂为 null 但仍有边，推迟到 Loaded 再刷新");
+                    Dispatcher.BeginInvoke(new Action(() => RefreshEdgesInternal(force: true)), DispatcherPriority.Loaded);
+                    return;
+                }
+
+                _edgeRefreshNullItemsPass = 0;
+                _edgeLayer.Children.Clear();
+                System.Diagnostics.Debug.WriteLine("[连线刷新] ItemsSource 为 null，清空连线层");
+                return;
+            }
+
+            _edgeRefreshNullItemsPass = 0;
 
             // 🔧 性能优化：完全禁用调试日志（严重影响性能）
             bool verboseLogging = false; // 拖动时完全禁用日志，提升流畅度
 
             var nodes = ItemsSource.OfType<Node>().ToDictionary(n => n.Id, n => n);
-            
+
+            if (nodes.Count > 0)
+                _edgeRefreshEmptyNodesPass = 0;
+
+            if (nodes.Count == 0 && edgeModelCount > 0)
+            {
+                if (_edgeRefreshEmptyNodesPass == 0)
+                {
+                    _edgeRefreshEmptyNodesPass = 1;
+                    System.Diagnostics.Debug.WriteLine("[连线刷新] 节点暂空但仍有边，推迟到 Loaded 再刷新");
+                    Dispatcher.BeginInvoke(new Action(() => RefreshEdgesInternal(force: true)), DispatcherPriority.Loaded);
+                    return;
+                }
+
+                _edgeRefreshEmptyNodesPass = 0;
+                _edgeLayer.Children.Clear();
+                System.Diagnostics.Debug.WriteLine("[连线刷新] 推迟后仍无节点，清空连线层");
+                return;
+            }
+
+            if (nodes.Count == 0)
+            {
+                _edgeLayer.Children.Clear();
+                return;
+            }
+
             // 🔧 核心优化：增量更新 - 只移除/重绘需要更新的连线
             // 构建当前边缘ID集合
             var currentEdgeIds = new HashSet<string>(EdgeItemsSource.OfType<Edge>().Select(e => e.Id));
@@ -1084,13 +1142,20 @@ namespace Astra.UI.Controls
                     System.Diagnostics.Debug.WriteLine("[连线] 从 FlowEditor 获取 EdgeItemsSource");
                     EdgeItemsSource = flowEditor.EdgeItemsSource;
 
-                    // 如果 FlowEditor 的也是 null，自动创建一个新的集合
+                    // 如果 FlowEditor 的也是 null：主流程编辑器必须先挂到 MasterWorkflowTab.Edges，避免写入孤儿集合导致无法保存
                     if (flowEditor.EdgeItemsSource == null)
                     {
-                        System.Diagnostics.Debug.WriteLine("[连线] FlowEditor 的 EdgeItemsSource 也为 null，自动创建新的集合");
-                        var edges = new System.Collections.ObjectModel.ObservableCollection<Edge>();
-                        flowEditor.EdgeItemsSource = edges;
-                        EdgeItemsSource = edges;
+                        if (TryAttachMasterWorkflowTabEdges(flowEditor, this))
+                        {
+                            System.Diagnostics.Debug.WriteLine("[连线] 已绑定主流程 MasterWorkflowTab.Edges 作为 EdgeItemsSource");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine("[连线] FlowEditor 的 EdgeItemsSource 为 null，自动创建新的集合");
+                            var edges = new System.Collections.ObjectModel.ObservableCollection<Edge>();
+                            flowEditor.EdgeItemsSource = edges;
+                            EdgeItemsSource = edges;
+                        }
                     }
                 }
                 else
@@ -1322,7 +1387,7 @@ namespace Astra.UI.Controls
             var pointByPos = GetPortCenterByNodePosition(portElement);
             if (!double.IsNaN(pointByPos.X) && !double.IsNaN(pointByPos.Y))
             {
-                System.Diagnostics.Debug.WriteLine($"[端口位置] 使用 GetPortCenterByNodePosition: ({pointByPos.X:F2}, {pointByPos.Y:F2})");
+                
                 return pointByPos;
             }
 

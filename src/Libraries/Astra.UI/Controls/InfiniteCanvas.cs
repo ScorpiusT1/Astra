@@ -16,7 +16,9 @@ using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
 using HandyControl.Tools.Extension;
 using Astra.UI.Commands;
+using Astra.UI.ViewModels;
 using CommandManager = Astra.UI.Commands.CommandManager;
+using System.Collections.ObjectModel;
 
 namespace Astra.UI.Controls
 {
@@ -83,6 +85,23 @@ namespace Astra.UI.Controls
                 parent = VisualTreeHelper.GetParent(parent);
             }
             return null;
+        }
+
+        /// <summary>
+        /// 主流程全屏编辑时 <see cref="FlowEditor"/> 的 DataContext 为 <see cref="MultiFlowEditorViewModel"/>，
+        /// 若此时 <see cref="FlowEditor.EdgeItemsSource"/> 仍为 null，完成连线时会误建孤儿集合，
+        /// 边无法进入主流程 <c>WorkflowTab.Edges</c>，保存时连线丢失。
+        /// </summary>
+        private static bool TryAttachMasterWorkflowTabEdges(FlowEditor flowEditor, InfiniteCanvas canvas)
+        {
+            if (flowEditor?.DataContext is not MultiFlowEditorViewModel vm || vm.MasterWorkflowTab == null)
+                return false;
+
+            var tab = vm.MasterWorkflowTab;
+            tab.Edges ??= new ObservableCollection<Edge>();
+            flowEditor.EdgeItemsSource = tab.Edges;
+            canvas.EdgeItemsSource = tab.Edges;
+            return true;
         }
 
         /// <summary>
@@ -2454,6 +2473,10 @@ namespace Astra.UI.Controls
             // 鼠标进入画布时获取焦点，确保能接收鼠标滚轮事件
             if (!IsFocused)
             {
+                // 键盘焦点已在画布子树内（例如节点重命名 TextBox）时不要抢焦点，否则会中断输入
+                if (Keyboard.FocusedElement is DependencyObject focused && IsAncestorOf(focused))
+                    return;
+
                 Focus();
             }
         }
@@ -3376,29 +3399,37 @@ namespace Astra.UI.Controls
         /// </summary>
         private void DeleteItemsDirectly(IList nodeList, IList edgeList, List<object> itemsToDelete)
         {
-            // 先删除相关连线
-            if (edgeList != null)
+            DesignTimeUpstreamRegistry.BeginDesignTimeGraphMutationsBatch();
+            try
             {
-                var removeIds = new HashSet<string>(itemsToDelete.OfType<Node>().Select(n => n.Id));
-                if (removeIds.Count > 0)
+                // 先删除相关连线
+                if (edgeList != null)
                 {
-                    var edgesToDelete = edgeList
-                        .Cast<object>()
-                        .OfType<Edge>()
-                        .Where(e => removeIds.Contains(e.SourceNodeId) || removeIds.Contains(e.TargetNodeId))
-                        .Cast<object>()
-                        .ToList();
-                    foreach (var edge in edgesToDelete)
+                    var removeIds = new HashSet<string>(itemsToDelete.OfType<Node>().Select(n => n.Id));
+                    if (removeIds.Count > 0)
                     {
-                        edgeList.Remove(edge);
+                        var edgesToDelete = edgeList
+                            .Cast<object>()
+                            .OfType<Edge>()
+                            .Where(e => removeIds.Contains(e.SourceNodeId) || removeIds.Contains(e.TargetNodeId))
+                            .Cast<object>()
+                            .ToList();
+                        foreach (var edge in edgesToDelete)
+                        {
+                            edgeList.Remove(edge);
+                        }
                     }
                 }
-            }
 
-            // 再删除节点
-            foreach (var item in itemsToDelete)
+                // 再删除节点
+                foreach (var item in itemsToDelete)
+                {
+                    nodeList.Remove(item);
+                }
+            }
+            finally
             {
-                nodeList.Remove(item);
+                DesignTimeUpstreamRegistry.EndDesignTimeGraphMutationsBatch();
             }
 
             UpdateSelectedGroupBox();

@@ -1,4 +1,5 @@
 using System.Collections;
+using Astra.Core.Nodes.Models;
 
 namespace Astra.UI.Commands
 {
@@ -21,17 +22,33 @@ namespace Astra.UI.Commands
 
         public override void Execute()
         {
-            foreach (var e in _deleted)
+            DesignTimeUpstreamRegistry.BeginDesignTimeGraphMutationsBatch();
+            try
             {
-                _edges.Remove(e);
+                foreach (var e in _deleted)
+                {
+                    _edges.Remove(e);
+                }
+            }
+            finally
+            {
+                DesignTimeUpstreamRegistry.EndDesignTimeGraphMutationsBatch();
             }
         }
 
         public override void Undo()
         {
-            foreach (var e in _deleted)
+            DesignTimeUpstreamRegistry.BeginDesignTimeGraphMutationsBatch();
+            try
             {
-                _edges.Add(e);
+                foreach (var e in _deleted)
+                {
+                    _edges.Add(e);
+                }
+            }
+            finally
+            {
+                DesignTimeUpstreamRegistry.EndDesignTimeGraphMutationsBatch();
             }
         }
     }

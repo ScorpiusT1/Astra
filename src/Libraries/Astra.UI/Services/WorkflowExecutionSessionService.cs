@@ -3,6 +3,8 @@ using Astra.Core.Logs;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Ui;
+using Astra.Core.Orchestration;
+using Astra.UI.Abstractions.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -22,6 +24,7 @@ namespace Astra.UI.Services
         private readonly IExecutionLogSink? _executionLogSink;
         private readonly INodeExecutionUiHydrator? _nodeExecutionUiHydrator;
         private readonly IServiceProvider? _serviceProvider;
+        private readonly IMasterWorkflowOrchestrator? _masterWorkflowOrchestrator;
         private readonly object _stateLock = new object();
 
         private string _currentWorkflowKey;
@@ -36,18 +39,125 @@ namespace Astra.UI.Services
             IWorkflowEngineProvider workflowEngineProvider,
             IExecutionLogSink? executionLogSink = null,
             INodeExecutionUiHydrator? nodeExecutionUiHydrator = null,
-            IServiceProvider? serviceProvider = null)
+            IServiceProvider? serviceProvider = null,
+            IMasterWorkflowOrchestrator? masterWorkflowOrchestrator = null)
         {
             _workFlowManager = workFlowManager ?? throw new ArgumentNullException(nameof(workFlowManager));
             _workflowEngineProvider = workflowEngineProvider ?? throw new ArgumentNullException(nameof(workflowEngineProvider));
             _executionLogSink = executionLogSink;
             _nodeExecutionUiHydrator = nodeExecutionUiHydrator;
             _serviceProvider = serviceProvider;
+            _masterWorkflowOrchestrator = masterWorkflowOrchestrator;
 
             _workflowEngineProvider.NodeExecutionChanged += (_, e) =>
             {
                 NodeExecutionChanged?.Invoke(this, e);
             };
+
+            if (_masterWorkflowOrchestrator != null)
+                _masterWorkflowOrchestrator.SubWorkflowProgressChanged += OnMasterOrchestratorSubWorkflowProgress;
+        }
+
+        /// <summary>
+        /// 主流程混合执行中的插件节点不经 <see cref="IWorkFlowManager"/> 子流程引擎，将编排器进度转为与引擎一致的 <see cref="NodeExecutionChanged"/>。
+        /// </summary>
+        private void OnMasterOrchestratorSubWorkflowProgress(object? sender, SubWorkflowProgressEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(e.ScopeWorkflowKey))
+                return;
+
+            if (e.ParallelRunningGroup is { Count: > 0 } grp)
+            {
+                foreach (var it in grp)
+                {
+                    if (!it.IsHybridMasterPlugin || string.IsNullOrWhiteSpace(it.RefId))
+                        continue;
+
+                    if (e.State != SubWorkflowState.Running && e.Result != null)
+                        _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(null, it.RefId, e.Result);
+
+                    NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
+                    {
+                        ExecutionId = string.Empty,
+                        WorkflowKey = e.ScopeWorkflowKey,
+                        NodeId = it.RefId,
+                        State = MapOrchestratorPluginState(e.State),
+                        DetailMessage = BuildOrchestratorPluginDetailMessage(e.State, e.Result),
+                        UiPayload = e.Result != null ? NodeUiPayloadFactory.FromOutputData(e.Result.OutputData) : null
+                    });
+                }
+
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(e.RefId))
+                return;
+
+            if (e.State != SubWorkflowState.Running && e.Result != null)
+                _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(null, e.RefId, e.Result);
+
+            NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
+            {
+                ExecutionId = string.Empty,
+                WorkflowKey = e.ScopeWorkflowKey,
+                NodeId = e.RefId,
+                State = MapOrchestratorPluginState(e.State),
+                DetailMessage = BuildOrchestratorPluginDetailMessage(e.State, e.Result),
+                UiPayload = e.Result != null ? NodeUiPayloadFactory.FromOutputData(e.Result.OutputData) : null
+            });
+        }
+
+        private static NodeExecutionState MapOrchestratorPluginState(SubWorkflowState state)
+        {
+            return state switch
+            {
+                SubWorkflowState.Running => NodeExecutionState.Running,
+                SubWorkflowState.Success => NodeExecutionState.Success,
+                SubWorkflowState.Failed => NodeExecutionState.Failed,
+                SubWorkflowState.Skipped => NodeExecutionState.Skipped,
+                SubWorkflowState.Cancelled => NodeExecutionState.Cancelled,
+                _ => NodeExecutionState.Idle
+            };
+        }
+
+        private static string? BuildOrchestratorPluginDetailMessage(SubWorkflowState state, ExecutionResult? r)
+        {
+            if (state == SubWorkflowState.Running)
+                return null;
+            return BuildNodeDetailMessageForUi(r);
+        }
+
+        private static string? BuildNodeDetailMessageForUi(ExecutionResult? r)
+        {
+            if (r == null)
+                return "未返回结果";
+            if (r.IsSkipped || r.ResultType == ExecutionResultType.Skipped)
+                return string.IsNullOrWhiteSpace(r.Message) ? "已跳过" : r.Message.Trim();
+            if (r.ResultType == ExecutionResultType.Cancelled)
+                return string.IsNullOrWhiteSpace(r.Message) ? "已取消" : r.Message.Trim();
+
+            if (!r.Success)
+            {
+                var parts = new List<string>();
+                if (r.OutputData != null &&
+                    r.OutputData.TryGetValue(NodeUiOutputKeys.Summary, out var sumObj) &&
+                    sumObj != null && !string.IsNullOrWhiteSpace(sumObj.ToString()))
+                    parts.Add(sumObj.ToString()!.Trim());
+                if (!string.IsNullOrWhiteSpace(r.Message))
+                    parts.Add(r.Message.Trim());
+                if (!string.IsNullOrWhiteSpace(r.ErrorCode))
+                    parts.Add($"错误码 {r.ErrorCode}");
+                if (r.Exception != null && !string.IsNullOrWhiteSpace(r.Exception.Message))
+                    parts.Add(r.Exception.Message);
+                return parts.Count > 0 ? string.Join(" · ", parts) : "执行失败";
+            }
+
+            if (r.OutputData != null &&
+                r.OutputData.TryGetValue(NodeUiOutputKeys.Summary, out var okSum) &&
+                okSum != null && !string.IsNullOrWhiteSpace(okSum.ToString()))
+                return okSum.ToString()!.Trim();
+
+            return string.IsNullOrWhiteSpace(r.Message) ? string.Empty : r.Message.Trim();
         }
 
         public bool IsRunning

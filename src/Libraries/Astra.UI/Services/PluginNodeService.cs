@@ -17,6 +17,11 @@ namespace Astra.UI.Services
     /// </summary>
     public class PluginNodeService
     {
+        /// <summary>
+        /// 主流程画布工具箱仅展示该插件注册的节点（与子流程完整工具箱分离）。
+        /// </summary>
+        public const string MasterWorkflowToolboxPluginId = "Astra.Plugins.Logic";
+
         private readonly IPluginHost _pluginHost;
         private readonly List<IManifestSerializer> _serializers;
 
@@ -54,6 +59,25 @@ namespace Astra.UI.Services
         /// 调用方（如 <see cref="Astra.UI.ViewModels.MultiFlowEditorViewModel"/>）应在适当时机（如 ApplicationIdle 或视图 Loaded）再刷新。
         /// </remarks>
         public ObservableCollection<ToolCategory> GetToolCategoriesFromPlugins()
+            => CollectToolCategories(_ => true);
+
+        /// <summary>
+        /// 仅从指定插件 Id（不区分大小写）加载工具类别，用于主流程等场景下的精简工具箱。
+        /// </summary>
+        public ObservableCollection<ToolCategory> GetToolCategoriesForPlugins(params string[] pluginIds)
+        {
+            var idSet = new HashSet<string>(
+                pluginIds?.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()) ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            if (idSet.Count == 0)
+            {
+                return new ObservableCollection<ToolCategory>();
+            }
+
+            return CollectToolCategories(p => idSet.Contains(p.Id));
+        }
+
+        private ObservableCollection<ToolCategory> CollectToolCategories(Func<IPlugin, bool> includePlugin)
         {
             var categories = new ObservableCollection<ToolCategory>();
 
@@ -64,6 +88,12 @@ namespace Astra.UI.Services
             var pluginIdx = 0;
             foreach (var plugin in _pluginHost.LoadedPlugins)
             {
+                if (plugin == null || !includePlugin(plugin))
+                {
+                    pluginIdx++;
+                    continue;
+                }
+
                 try
                 {
                     var pluginCategories = CreateToolCategoriesFromPlugin(plugin);

@@ -56,6 +56,12 @@ namespace Astra.UI.Services
         /// 结构化 UI 载荷（来自 <c>ExecutionResult.OutputData</c> 中 <see cref="Astra.UI.Abstractions.Nodes.NodeUiOutputKeys"/> 约定键）。
         /// </summary>
         public IReadOnlyDictionary<string, object>? UiPayload { get; init; }
+
+        /// <summary>
+        /// 并行层同时进入 <see cref="NodeExecutionState.Running"/> 的节点 Id；非空时订阅者应在一帧内批量更新 UI。
+        /// <see cref="NodeId"/> 为首项，兼容旧逻辑。
+        /// </summary>
+        public IReadOnlyList<string>? ParallelRunningNodeIds { get; init; }
     }
 
     public sealed class WorkflowExecutionSessionStartResult

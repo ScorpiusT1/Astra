@@ -1241,7 +1241,12 @@ namespace Astra.UI.Controls
 
         private void EditTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
-            // IME 组合输入期间可能发生临时焦点切换，延迟确认后再决定是否结束编辑
+            // 焦点仍留在本节点可视树内（模板子级、IME 相关元素等）时不应结束编辑
+            if (e.NewFocus is DependencyObject newFocus && IsAncestorOf(newFocus))
+                return;
+
+            // IME 或 WPF 内部可能在同一消息内短暂移走键盘焦点再恢复。
+            // Background 优先级过高，会在焦点尚未回到 TextBox 时误判并退出编辑（常见于输入第 2 个字符时）。
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (!IsEditing || _editTextBox == null)
@@ -1250,11 +1255,11 @@ namespace Astra.UI.Controls
                 if (_isImeComposing)
                     return;
 
-                if (!_editTextBox.IsKeyboardFocusWithin)
-                {
-                    ExitEditMode();
-                }
-            }), System.Windows.Threading.DispatcherPriority.Background);
+                if (_editTextBox.IsKeyboardFocusWithin)
+                    return;
+
+                ExitEditMode();
+            }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
 
         private void EditTextBox_KeyDown(object sender, KeyEventArgs e)

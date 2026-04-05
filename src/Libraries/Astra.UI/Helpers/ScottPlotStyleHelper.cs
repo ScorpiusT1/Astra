@@ -24,7 +24,7 @@ public static class ScottPlotStyleHelper
         Alignment legendAlignment = Alignment.UpperRight,
         bool transparentBackground = true,
         string frameColorResourceKey = "SecondaryBorderColor",
-        string frameColorFallbackHex = "#B8C2CC",
+        string frameColorFallbackHex = "#BDBDBD",
         string textColorResourceKey = "SecondaryTextColor",
         string textColorFallbackHex = "#757575")
     {
@@ -84,9 +84,14 @@ public static class ScottPlotStyleHelper
     public static Color ResolvePlotColorFromResource(string colorResourceKey, string fallbackHex)
     {
         var resources = Application.Current?.Resources;
-        if (resources != null && resources[colorResourceKey] is MediaColor mediaColor)
+        if (resources != null)
         {
-            return ToPlotColor(mediaColor);
+            if (resources[colorResourceKey] is MediaColor mediaColor)
+                return ToPlotColor(mediaColor);
+
+            // 与 Themes/Light/Colors.xaml 一致：同一键可能以 SolidColorBrush 合并进应用资源
+            if (resources[colorResourceKey] is System.Windows.Media.SolidColorBrush brush)
+                return ToPlotColor(brush.Color);
         }
 
         return Color.FromHex(fallbackHex);

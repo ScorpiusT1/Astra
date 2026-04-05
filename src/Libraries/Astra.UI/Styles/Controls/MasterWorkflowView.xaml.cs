@@ -9,7 +9,6 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -28,7 +27,6 @@ namespace Astra.UI.Styles.Controls
         public MasterWorkflowView()
         {
             InitializeComponent();
-            Loaded += MasterWorkflowView_Loaded;
             DataContextChanged += MasterWorkflowView_DataContextChanged;
         }
 
@@ -59,32 +57,17 @@ namespace Astra.UI.Styles.Controls
 
                     // 延迟刷新，确保数据已更新
                     MasterWorkflowEditor.Dispatcher.BeginInvoke(new System.Action(() =>
-                    { 
-                        // 强制刷新绑定
-                        var binding = System.Windows.Data.BindingOperations.GetBinding(MasterWorkflowEditor, FlowEditor.CanvasItemsSourceProperty);
-                        if (binding != null)
-                        {
-                            System.Windows.Data.BindingOperations.ClearBinding(MasterWorkflowEditor, FlowEditor.CanvasItemsSourceProperty);
-                            System.Windows.Data.BindingOperations.SetBinding(MasterWorkflowEditor, FlowEditor.CanvasItemsSourceProperty, binding);
-                            Debug.WriteLine("[MasterWorkflowView] MasterWorkflowTab 属性变更，已刷新 CanvasItemsSource 绑定");
-                        }
-
-                        // 直接设置数据源，确保更新
-                        MasterWorkflowEditor.CanvasItemsSource = viewModel.MasterWorkflowTab.Nodes;
-                        MasterWorkflowEditor.EdgeItemsSource = viewModel.MasterWorkflowTab.Edges;
-                        Debug.WriteLine($"[MasterWorkflowView] 已直接设置数据源，节点数: {viewModel.MasterWorkflowTab.Nodes?.Count ?? 0}");
+                    {
+                        // 不要用 ClearBinding 刷新 CanvasItemsSource：会短暂置 null，InfiniteCanvas.ItemsSource 为空时会清空整条连线层。
+                        var tab = viewModel.MasterWorkflowTab;
+                        tab.Nodes ??= new System.Collections.ObjectModel.ObservableCollection<Astra.Core.Nodes.Models.Node>();
+                        tab.Edges ??= new System.Collections.ObjectModel.ObservableCollection<Astra.Core.Nodes.Models.Edge>();
+                        MasterWorkflowEditor.CanvasItemsSource = tab.Nodes;
+                        MasterWorkflowEditor.EdgeItemsSource = tab.Edges;
+                        MasterWorkflowEditor.RefreshEdgesImmediate();
+                        Debug.WriteLine($"[MasterWorkflowView] MasterWorkflowTab 变更后已同步画布与连线，节点数: {tab.Nodes.Count}, 边数: {tab.Edges.Count}");
                     }), System.Windows.Threading.DispatcherPriority.Loaded);
                 }
-            }
-        }
-
-        private void MasterWorkflowView_Loaded(object sender, RoutedEventArgs e)
-        {
-            // 禁用主流程编辑界面的拖放功能，防止误将节点拖到主流程中
-            if (MasterWorkflowEditor != null)
-            {
-                MasterWorkflowEditor.AllowDrop = false;
-                System.Diagnostics.Debug.WriteLine("[MasterWorkflowView] 已禁用主流程编辑器的拖放功能");
             }
         }
 
@@ -95,30 +78,20 @@ namespace Astra.UI.Styles.Controls
         {
             if (sender is FlowEditor flowEditor && DataContext is MultiFlowEditorViewModel viewModel)
             {
-                // 确保主流程编辑器禁用拖放
-                flowEditor.AllowDrop = false;
-                Debug.WriteLine("[MasterWorkflowView] 在主流程编辑器加载时禁用拖放功能");
-
                 // 延迟执行，确保所有子元素都已加载
                 flowEditor.Dispatcher.BeginInvoke(new System.Action(() =>
                 {
-                    // 再次确保禁用拖放（防止被其他代码重新启用）
-                    flowEditor.AllowDrop = false;
-
                     // 使用 ViewModel 的 MasterWorkflowTab
                     var masterWorkflowTab = viewModel.MasterWorkflowTab;
                     if (masterWorkflowTab != null)
                     {
                         Debug.WriteLine($"[MasterWorkflowView] MasterWorkflowTab 节点数: {masterWorkflowTab.Nodes?.Count ?? 0}");
 
-                        // 强制刷新数据源绑定
-                        var binding = System.Windows.Data.BindingOperations.GetBinding(flowEditor, FlowEditor.CanvasItemsSourceProperty);
-                        if (binding != null)
-                        {
-                            System.Windows.Data.BindingOperations.ClearBinding(flowEditor, FlowEditor.CanvasItemsSourceProperty);
-                            System.Windows.Data.BindingOperations.SetBinding(flowEditor, FlowEditor.CanvasItemsSourceProperty, binding);
-                            Debug.WriteLine("[MasterWorkflowView] 已刷新 CanvasItemsSource 绑定");
-                        }
+                        // 不要用 ClearBinding 刷新 CanvasItemsSource（同上，会导致 ItemsSource 空窗期并清空连线）。
+                        masterWorkflowTab.Nodes ??= new System.Collections.ObjectModel.ObservableCollection<Astra.Core.Nodes.Models.Node>();
+                        masterWorkflowTab.Edges ??= new System.Collections.ObjectModel.ObservableCollection<Astra.Core.Nodes.Models.Edge>();
+                        flowEditor.CanvasItemsSource = masterWorkflowTab.Nodes;
+                        flowEditor.EdgeItemsSource = masterWorkflowTab.Edges;
 
                         // 根据 WorkflowTab 的 Type 获取正确的模板选择器
                         var converter = this.TryFindResource("WorkflowTypeToTemplateSelectorConverter") as WorkflowTypeToTemplateSelectorConverter;
@@ -140,9 +113,16 @@ namespace Astra.UI.Styles.Controls
                                         Debug.WriteLine($"[MasterWorkflowView] 主流程编辑器 - WorkflowReferenceNodeTemplate: {nodeSelector.WorkflowReferenceNodeTemplate != null}");
                                         Debug.WriteLine($"[MasterWorkflowView] 主流程编辑器 - DefaultNodeTemplate: {nodeSelector.DefaultNodeTemplate != null}");
                                     }
+
+                                    // 节点容器与端口布局就绪后再画线，避免仅出现一帧后被后续刷新清空
+                                    flowEditor.RefreshEdgesImmediate();
                                 }), System.Windows.Threading.DispatcherPriority.Loaded);
                             }
                         }
+
+                        // 模板选择器缺失时也要在布局后补一次连线重绘；与上面 inner 回调中的刷新叠加也无妨
+                        flowEditor.Dispatcher.BeginInvoke(new System.Action(() => flowEditor.RefreshEdgesImmediate()),
+                            System.Windows.Threading.DispatcherPriority.Loaded);
                     }
                     else
                     {

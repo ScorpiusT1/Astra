@@ -382,6 +382,9 @@ namespace Astra.UI.Controls
 
                 // 订阅视图变换事件（缩放/平移变化）
                 _infiniteCanvas.ViewTransformChanged += OnCanvasViewTransformChanged;
+
+                // Popup 在独立窗口层时，从工具面板移入画布可能收不到 ToolPanel.MouseLeave，靠画布 MouseEnter 触发隐藏延迟
+                _infiniteCanvas.MouseEnter += OnInfiniteCanvasMouseEnterForToolboxPanel;
             }
         }
 
@@ -396,6 +399,14 @@ namespace Astra.UI.Controls
 
             var scale = zoomPercentage / 100.0;
             _infiniteCanvas.Scale = scale;
+        }
+
+        /// <summary>
+        /// 强制立即重绘连线（节点模板/布局就绪后调用，避免端口未生成时连线被清空后不再恢复）。
+        /// </summary>
+        public void RefreshEdgesImmediate()
+        {
+            _infiniteCanvas?.RefreshEdgesImmediate();
         }
 
         /// <summary>
@@ -442,6 +453,32 @@ namespace Astra.UI.Controls
             return false;
         }
 
+        /// <summary>
+        /// 主流程全屏编辑打开时，子流程标签对应的 FlowEditor 不得处理工具箱拖放（由主流程 FlowEditor 独占）。
+        /// </summary>
+        private bool ShouldSkipDropForSubFlowEditorWhileMasterIsVisible()
+        {
+            if (DataContext is not Models.WorkflowTab)
+            {
+                return false;
+            }
+
+            return TryGetViewModel(out var vm) && vm.IsMasterWorkflowViewVisible;
+        }
+
+        /// <summary>
+        /// 主窗口级拖放兜底：每个 FlowEditor 都会订阅 <see cref="Window.PreviewDrop"/>。
+        /// 主流程编辑器 DataContext 为 ViewModel（非 WorkflowTab），若不在主流程编辑模式仍参与处理，
+        /// 可能误判命中区域并把子流程工具箱拖放写进主流程画布。
+        /// </summary>
+        private bool ShouldParticipateInWindowLevelToolboxDrop()
+        {
+            if (DataContext is Models.WorkflowTab)
+                return true;
+
+            return TryGetViewModel(out var vm) && vm.IsMasterWorkflowViewVisible;
+        }
+
         private void UnsubscribeFromEvents()
         {
             if (_infiniteCanvas != null)
@@ -465,7 +502,18 @@ namespace Astra.UI.Controls
 
                 // 取消视图变换事件
                 _infiniteCanvas.ViewTransformChanged -= OnCanvasViewTransformChanged;
+
+                _infiniteCanvas.MouseEnter -= OnInfiniteCanvasMouseEnterForToolboxPanel;
             }
+        }
+
+        /// <summary>
+        /// 鼠标进入画布时，若工具面板仍展开则启动隐藏延迟（补偿 Popup 与主窗口之间的鼠标路由缺口）。
+        /// </summary>
+        private void OnInfiniteCanvasMouseEnterForToolboxPanel(object sender, MouseEventArgs e)
+        {
+            if (_nodeToolBox?.IsPanelVisible == true)
+                _nodeToolBox.BeginHidePanelDelay();
         }
 
         #endregion
@@ -482,6 +530,12 @@ namespace Astra.UI.Controls
 
         private void OnCanvasDragOver(object sender, DragEventArgs e)
         {
+            if (ShouldSkipDropForSubFlowEditorWhileMasterIsVisible())
+            {
+                e.Effects = DragDropEffects.None;
+                return;
+            }
+
             // 检查当前 WorkflowTab 是否是活动状态
             if (DataContext is Models.WorkflowTab workflowTab && !workflowTab.IsActive)
             {
@@ -515,6 +569,11 @@ namespace Astra.UI.Controls
             if (_infiniteCanvas == null)
             {
                 System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnCanvasDrop] _infiniteCanvas 为 null，返回");
+                return;
+            }
+
+            if (ShouldSkipDropForSubFlowEditorWhileMasterIsVisible())
+            {
                 return;
             }
 
@@ -569,8 +628,6 @@ namespace Astra.UI.Controls
             {
                 if (DataContext is Models.WorkflowTab workflowTab)
                     workflowTab.SyncNodesToSubWorkflowModel();
-
-                TryFindMultiFlowEditorViewModel(this)?.RefreshWorkflowArchivePeerCatalog();
 
                 var window = new NodePropertyEditorWindow(node)
                 {
@@ -633,6 +690,12 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnFlowEditorPreviewDragOver(object sender, DragEventArgs e)
         {
+            if (ShouldSkipDropForSubFlowEditorWhileMasterIsVisible())
+            {
+                e.Effects = DragDropEffects.None;
+                return;
+            }
+
             var workflowTab = DataContext as Models.WorkflowTab;
             
             // 检查当前 WorkflowTab 是否是活动状态
@@ -672,6 +735,11 @@ namespace Astra.UI.Controls
             if (_infiniteCanvas == null)
             {
                 System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnFlowEditorPreviewDrop] _infiniteCanvas 为 null，返回");
+                return;
+            }
+
+            if (ShouldSkipDropForSubFlowEditorWhileMasterIsVisible())
+            {
                 return;
             }
 
@@ -2086,6 +2154,14 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnWindowPreviewDragOver(object sender, DragEventArgs e)
         {
+            if (!ShouldParticipateInWindowLevelToolboxDrop())
+                return;
+
+            if (ShouldSkipDropForSubFlowEditorWhileMasterIsVisible())
+            {
+                return;
+            }
+
             var workflowTab = DataContext as Models.WorkflowTab;
             
             // 检查当前 WorkflowTab 是否是活动状态
@@ -2114,6 +2190,14 @@ namespace Astra.UI.Controls
         /// </summary>
         private void OnWindowPreviewDrop(object sender, DragEventArgs e)
         {
+            if (!ShouldParticipateInWindowLevelToolboxDrop())
+                return;
+
+            if (ShouldSkipDropForSubFlowEditorWhileMasterIsVisible())
+            {
+                return;
+            }
+
             var workflowTab = DataContext as Models.WorkflowTab;
             System.Diagnostics.Debug.WriteLine($"[FlowEditor.OnWindowPreviewDrop] 收到拖放事件 - WorkflowTab: {workflowTab?.Name ?? "null"}, IsActive: {workflowTab?.IsActive}");
             

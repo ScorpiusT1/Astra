@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using Astra.Core.Nodes.Models;
+using Astra.UI.Helpers;
 
 namespace Astra.UI.Converters
 {
@@ -24,10 +25,12 @@ namespace Astra.UI.Converters
         {
             if (item is Node node)
             {
-                // 如果是 WorkflowReferenceNode，使用特殊模板
+                // 如果是 WorkflowReferenceNode，或主流程逻辑类节点，使用流程引用外框模板（Sub 流程未设置该模板时自动回落默认）
                 bool isWorkflowReference = node.NodeType == "WorkflowReferenceNode" || item is WorkflowReferenceNode;
-                
-                if (isWorkflowReference)
+                bool useReferenceChrome = isWorkflowReference
+                    || MasterWorkflowCanvasChrome.UsesWorkflowReferenceChrome(node.NodeType);
+
+                if (useReferenceChrome)
                 {
                     if (WorkflowReferenceNodeTemplate != null)
                     {

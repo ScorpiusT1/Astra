@@ -29,72 +29,88 @@ namespace Astra.UI.Commands
 
         public override void Execute()
         {
-            // 先删除相关连线（并记录索引）
-            if (_edges != null && _deletedNodes.Count > 0)
+            DesignTimeUpstreamRegistry.BeginDesignTimeGraphMutationsBatch();
+            try
             {
-                var nodeIds = new HashSet<string>();
-                foreach (var nodeObj in _deletedNodes)
+                // 先删除相关连线（并记录索引）
+                if (_edges != null && _deletedNodes.Count > 0)
                 {
-                    if (nodeObj is Node node)
+                    var nodeIds = new HashSet<string>();
+                    foreach (var nodeObj in _deletedNodes)
                     {
-                        nodeIds.Add(node.Id);
-                    }
-                }
-
-                if (nodeIds.Count > 0)
-                {
-                    // 从后往前遍历，记录边和其原始索引
-                    for (int i = _edges.Count - 1; i >= 0; i--)
-                    {
-                        var edgeObj = _edges[i];
-                        if (edgeObj is Edge edge)
+                        if (nodeObj is Node node)
                         {
-                            if (nodeIds.Contains(edge.SourceNodeId) || nodeIds.Contains(edge.TargetNodeId))
+                            nodeIds.Add(node.Id);
+                        }
+                    }
+
+                    if (nodeIds.Count > 0)
+                    {
+                        // 从后往前遍历，记录边和其原始索引
+                        for (int i = _edges.Count - 1; i >= 0; i--)
+                        {
+                            var edgeObj = _edges[i];
+                            if (edgeObj is Edge edge)
                             {
-                                _deletedEdges.Add((edgeObj, i));
-                                _edges.RemoveAt(i);
+                                if (nodeIds.Contains(edge.SourceNodeId) || nodeIds.Contains(edge.TargetNodeId))
+                                {
+                                    _deletedEdges.Add((edgeObj, i));
+                                    _edges.RemoveAt(i);
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // 再删除节点
-            foreach (var node in _deletedNodes)
+                // 再删除节点
+                foreach (var node in _deletedNodes)
+                {
+                    _nodes.Remove(node);
+                }
+            }
+            finally
             {
-                _nodes.Remove(node);
+                DesignTimeUpstreamRegistry.EndDesignTimeGraphMutationsBatch();
             }
         }
 
         public override void Undo()
         {
-            // 先恢复节点
-            foreach (var node in _deletedNodes)
+            DesignTimeUpstreamRegistry.BeginDesignTimeGraphMutationsBatch();
+            try
             {
-                _nodes.Add(node);
-            }
-
-            // 再恢复连线（按原始索引恢复）
-            if (_edges != null && _deletedEdges.Count > 0)
-            {
-                // 按索引从小到大排序，确保正确恢复顺序
-                var sortedEdges = _deletedEdges.OrderBy(x => x.index).ToList();
-                foreach (var (edge, index) in sortedEdges)
+                // 先恢复节点
+                foreach (var node in _deletedNodes)
                 {
-                    // 如果索引超出当前范围，直接添加到末尾
-                    if (index >= _edges.Count)
+                    _nodes.Add(node);
+                }
+
+                // 再恢复连线（按原始索引恢复）
+                if (_edges != null && _deletedEdges.Count > 0)
+                {
+                    // 按索引从小到大排序，确保正确恢复顺序
+                    var sortedEdges = _deletedEdges.OrderBy(x => x.index).ToList();
+                    foreach (var (edge, index) in sortedEdges)
                     {
-                        _edges.Add(edge);
-                    }
-                    else
-                    {
-                        _edges.Insert(index, edge);
+                        // 如果索引超出当前范围，直接添加到末尾
+                        if (index >= _edges.Count)
+                        {
+                            _edges.Add(edge);
+                        }
+                        else
+                        {
+                            _edges.Insert(index, edge);
+                        }
                     }
                 }
-            }
 
-            // 清空记录，为下次撤销做准备
-            _deletedEdges.Clear();
+                // 清空记录，为下次撤销做准备
+                _deletedEdges.Clear();
+            }
+            finally
+            {
+                DesignTimeUpstreamRegistry.EndDesignTimeGraphMutationsBatch();
+            }
         }
 
         public override System.Collections.IList GetRelatedNodeCollection()

@@ -69,12 +69,15 @@
         <!-- 主流程编辑区域 -->
         <controls:FlowEditor x:Name="MasterWorkflowEditor"
                              ClipToBounds="True"
-                             ToolBoxItemsSource="{x:Null}"
+                             ToolBoxItemsSource="{Binding MasterWorkflowToolBoxItemsSource}"
                              CanvasItemsSource="{Binding MasterWorkflowTab.Nodes, Mode=OneWay}"
                              EdgeItemsSource="{Binding MasterWorkflowTab.Edges, Mode=OneWay}"
                              ItemTemplateSelector="{Binding MasterWorkflowTab.Type, Converter={StaticResource WorkflowTypeToTemplateSelectorConverter}}"
-                             IsToolBoxVisible="False"
-                             AllowDrop="False"
+                             IsToolBoxVisible="True"
+                             AllowDrop="True"
+                             SharedClipboardNodes="{Binding GlobalClipboardNodes, Mode=TwoWay}"
+                             SharedClipboardEdges="{Binding GlobalClipboardEdges, Mode=TwoWay}"
+                             SharedClipboardBounds="{Binding GlobalClipboardBounds, Mode=TwoWay}"
                              Loaded="MasterWorkflowEditor_Loaded" />
     </Grid>
 </UserControl>
