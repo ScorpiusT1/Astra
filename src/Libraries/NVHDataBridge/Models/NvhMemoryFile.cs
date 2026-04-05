@@ -185,6 +185,54 @@ namespace NVHDataBridge.Models
         }
 
         /// <summary>
+        /// 将 <paramref name="source"/> 中所有组内的通道追加到 <paramref name="target"/> 的指定组，
+        /// 目标通道名由 <paramref name="nameForChannel"/> 计算；与 <paramref name="usedChannelNames"/> 冲突时自动加数值后缀。
+        /// </summary>
+        public static void AppendAllChannelsRenamed(
+            NvhMemoryFile target,
+            string targetGroupName,
+            NvhMemoryFile source,
+            Func<NvhMemoryChannelBase, string> nameForChannel,
+            HashSet<string> usedChannelNames,
+            MergeOptions? mergeOptions = null)
+        {
+            if (target == null)
+                throw new ArgumentNullException(nameof(target));
+            if (string.IsNullOrWhiteSpace(targetGroupName))
+                throw new ArgumentException("Group name cannot be null or empty", nameof(targetGroupName));
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (nameForChannel == null)
+                throw new ArgumentNullException(nameof(nameForChannel));
+            if (usedChannelNames == null)
+                throw new ArgumentNullException(nameof(usedChannelNames));
+
+            mergeOptions ??= new MergeOptions { CopyProperties = true, CopyData = true };
+            var targetGroup = target.GetOrCreateGroup(targetGroupName);
+
+            foreach (var sourceGroup in source.Groups.Values)
+            {
+                foreach (var sourceChannel in sourceGroup.Channels.Values)
+                {
+                    var baseName = nameForChannel(sourceChannel)?.Trim();
+                    if (string.IsNullOrEmpty(baseName))
+                        baseName = sourceChannel.Name;
+
+                    var finalName = baseName;
+                    var suffix = 1;
+                    while (usedChannelNames.Contains(finalName))
+                    {
+                        finalName = $"{baseName}_{suffix}";
+                        suffix++;
+                    }
+
+                    usedChannelNames.Add(finalName);
+                    CopyChannelToGroup(sourceChannel, targetGroup, finalName, mergeOptions);
+                }
+            }
+        }
+
+        /// <summary>
         /// 生成目标通道名称（处理名称冲突）
         /// </summary>
         private static string GenerateChannelName(

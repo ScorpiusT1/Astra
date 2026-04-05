@@ -231,6 +231,7 @@ namespace NVHDataBridge.Models
         public override void Clear()
         {
             _allData.Clear();
+           var c = _allData.GetAll();
             _ring?.Reset();
             UpdateTotalSamplesToProperties();
         }
