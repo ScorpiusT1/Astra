@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>Bessel 带通（NWaves）。</summary>
+    /// <summary>Bessel 带通（NWaves）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class BesselBandPassFilterNode : IirFilterNodeBase
     {
         public BesselBandPassFilterNode() : base(nameof(BesselBandPassFilterNode), "Bessel 带通")

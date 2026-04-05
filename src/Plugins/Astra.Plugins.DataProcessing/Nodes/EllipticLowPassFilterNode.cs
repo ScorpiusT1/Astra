@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>椭圆（Cauer）低通（NWaves，最窄过渡带）。</summary>
+    /// <summary>椭圆（Cauer）低通（NWaves，最窄过渡带）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class EllipticLowPassFilterNode : IirFilterNodeBase
     {
         public EllipticLowPassFilterNode() : base(nameof(EllipticLowPassFilterNode), "椭圆 低通")

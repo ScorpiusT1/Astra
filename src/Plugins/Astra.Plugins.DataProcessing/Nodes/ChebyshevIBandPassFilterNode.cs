@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>Chebyshev I 带通（NWaves）。</summary>
+    /// <summary>Chebyshev I 带通（NWaves）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class ChebyshevIBandPassFilterNode : IirFilterNodeBase
     {
         public ChebyshevIBandPassFilterNode() : base(nameof(ChebyshevIBandPassFilterNode), "Chebyshev I 带通")

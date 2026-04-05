@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>Chebyshev I 低通（NWaves，通带等纹波）。</summary>
+    /// <summary>Chebyshev I 低通（NWaves，通带等纹波）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class ChebyshevILowPassFilterNode : IirFilterNodeBase
     {
         public ChebyshevILowPassFilterNode() : base(nameof(ChebyshevILowPassFilterNode), "Chebyshev I 低通")

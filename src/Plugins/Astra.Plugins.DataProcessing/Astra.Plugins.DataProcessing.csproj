@@ -20,6 +20,10 @@
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
+		<ProjectReference Include="..\..\Libraries\Astra.UI\Astra.UI.csproj">
+			<Private>false</Private>
+			<CopyLocal>false</CopyLocal>
+		</ProjectReference>
 		<ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj">
 			<Private>true</Private>
 			<CopyLocal>false</CopyLocal>
@@ -29,10 +33,6 @@
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>
 		<ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
-			<Private>false</Private>
-			<CopyLocal>false</CopyLocal>
-		</ProjectReference>
-		<ProjectReference Include="..\Astra.Plugins.DataAcquisition\Astra.Plugins.DataAcquisition.csproj">
 			<Private>false</Private>
 			<CopyLocal>false</CopyLocal>
 		</ProjectReference>

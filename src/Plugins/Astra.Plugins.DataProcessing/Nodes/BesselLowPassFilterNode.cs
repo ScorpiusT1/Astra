@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>Bessel 低通（NWaves，最平坦群时延）。</summary>
+    /// <summary>Bessel 低通（NWaves，最平坦群时延）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class BesselLowPassFilterNode : IirFilterNodeBase
     {
         public BesselLowPassFilterNode() : base(nameof(BesselLowPassFilterNode), "Bessel 低通")

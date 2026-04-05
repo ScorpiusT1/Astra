@@ -5,7 +5,7 @@
 		<Id>Astra.Plugins.DataProcessing</Id>
 		<Name>数据处理插件</Name>
 		<Version>1.0.0</Version>
-		<Description>基于 NWaves 的 IIR 数字滤波：Butterworth、Bessel、Chebyshev I/II、椭圆；低/高/带通独立节点，输出 Raw 供下游使用</Description>
+		<Description>基于 NWaves 的 IIR 数字滤波：Butterworth、Bessel、Chebyshev I/II、椭圆；低/高/带通独立节点。各滤波节点均支持多采集卡/多路 Raw、多通道（与下游算法多选一致），输出 Raw 供下游使用</Description>
 		<Author>Astra Team</Author>
 		<Copyright>Copyright © Astra Team</Copyright>
 		<Website />
@@ -22,20 +22,20 @@
 		</Permissions>
 	</Addin>
 	<Nodes>
-		<NodeInfo Name="Butterworth 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.ButterworthLowPassFilterNode" IconCode="SlidersH" Description="NWaves Butterworth 低通" Category="数据处理" />
-		<NodeInfo Name="Butterworth 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.ButterworthHighPassFilterNode" IconCode="SlidersH" Description="NWaves Butterworth 高通" Category="数据处理" />
-		<NodeInfo Name="Butterworth 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.ButterworthBandPassFilterNode" IconCode="SlidersH" Description="NWaves Butterworth 带通" Category="数据处理" />
-		<NodeInfo Name="Bessel 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.BesselLowPassFilterNode" IconCode="SlidersH" Description="NWaves Bessel 低通（平坦群时延）" Category="数据处理" />
-		<NodeInfo Name="Bessel 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.BesselHighPassFilterNode" IconCode="SlidersH" Description="NWaves Bessel 高通" Category="数据处理" />
-		<NodeInfo Name="Bessel 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.BesselBandPassFilterNode" IconCode="SlidersH" Description="NWaves Bessel 带通" Category="数据处理" />
-		<NodeInfo Name="Chebyshev I 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevILowPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev I 低通（通带纹波）" Category="数据处理" />
-		<NodeInfo Name="Chebyshev I 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIHighPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev I 高通" Category="数据处理" />
-		<NodeInfo Name="Chebyshev I 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIBandPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev I 带通" Category="数据处理" />
-		<NodeInfo Name="Chebyshev II 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIILowPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev II 低通（阻带纹波）" Category="数据处理" />
-		<NodeInfo Name="Chebyshev II 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIIHighPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev II 高通" Category="数据处理" />
-		<NodeInfo Name="Chebyshev II 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIIBandPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev II 带通" Category="数据处理" />
-		<NodeInfo Name="椭圆 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.EllipticLowPassFilterNode" IconCode="SlidersH" Description="NWaves 椭圆（Cauer）低通" Category="数据处理" />
-		<NodeInfo Name="椭圆 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.EllipticHighPassFilterNode" IconCode="SlidersH" Description="NWaves 椭圆 高通" Category="数据处理" />
-		<NodeInfo Name="椭圆 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.EllipticBandPassFilterNode" IconCode="SlidersH" Description="NWaves 椭圆 带通" Category="数据处理" />
+		<NodeInfo Name="Butterworth 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.ButterworthLowPassFilterNode" IconCode="SlidersH" Description="NWaves Butterworth 低通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Butterworth 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.ButterworthHighPassFilterNode" IconCode="SlidersH" Description="NWaves Butterworth 高通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Butterworth 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.ButterworthBandPassFilterNode" IconCode="SlidersH" Description="NWaves Butterworth 带通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Bessel 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.BesselLowPassFilterNode" IconCode="SlidersH" Description="NWaves Bessel 低通（平坦群时延）；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Bessel 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.BesselHighPassFilterNode" IconCode="SlidersH" Description="NWaves Bessel 高通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Bessel 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.BesselBandPassFilterNode" IconCode="SlidersH" Description="NWaves Bessel 带通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Chebyshev I 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevILowPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev I 低通（通带纹波）；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Chebyshev I 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIHighPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev I 高通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Chebyshev I 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIBandPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev I 带通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Chebyshev II 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIILowPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev II 低通（阻带纹波）；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Chebyshev II 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIIHighPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev II 高通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="Chebyshev II 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.ChebyshevIIBandPassFilterNode" IconCode="SlidersH" Description="NWaves Chebyshev II 带通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="椭圆 低通" TypeName="Astra.Plugins.DataProcessing.Nodes.EllipticLowPassFilterNode" IconCode="SlidersH" Description="NWaves 椭圆（Cauer）低通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="椭圆 高通" TypeName="Astra.Plugins.DataProcessing.Nodes.EllipticHighPassFilterNode" IconCode="SlidersH" Description="NWaves 椭圆 高通；支持多设备多通道" Category="数据处理" />
+		<NodeInfo Name="椭圆 带通" TypeName="Astra.Plugins.DataProcessing.Nodes.EllipticBandPassFilterNode" IconCode="SlidersH" Description="NWaves 椭圆 带通；支持多设备多通道" Category="数据处理" />
 	</Nodes>
 </AddinManifest>

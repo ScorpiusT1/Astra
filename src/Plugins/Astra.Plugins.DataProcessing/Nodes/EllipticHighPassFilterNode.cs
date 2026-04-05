@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>椭圆（Cauer）高通（NWaves）。</summary>
+    /// <summary>椭圆（Cauer）高通（NWaves）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class EllipticHighPassFilterNode : IirFilterNodeBase
     {
         public EllipticHighPassFilterNode() : base(nameof(EllipticHighPassFilterNode), "椭圆 高通")

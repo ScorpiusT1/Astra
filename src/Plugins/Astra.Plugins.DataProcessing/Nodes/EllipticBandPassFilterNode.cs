@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>椭圆（Cauer）带通（NWaves）。</summary>
+    /// <summary>椭圆（Cauer）带通（NWaves）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class EllipticBandPassFilterNode : IirFilterNodeBase
     {
         public EllipticBandPassFilterNode() : base(nameof(EllipticBandPassFilterNode), "椭圆 带通")

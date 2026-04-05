@@ -1,10 +1,32 @@
 using NVHDataBridge.Models;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Astra.Plugins.DataProcessing.Helpers
 {
     internal static class DataProcessingNvhSampleUtil
     {
+        /// <summary>列出 Signal 组内可用 IIR 写回的 float/double 通道名（有序）。</summary>
+        public static List<string> ListFilterableChannelNames(NvhMemoryFile? file, string? groupName)
+        {
+            var list = new List<string>();
+            if (file == null)
+                return list;
+            if (!TryResolveGroup(file, groupName, out var group))
+                return list;
+            foreach (var kv in group.Channels)
+            {
+                var ch = kv.Value;
+                if (ch == null || string.IsNullOrEmpty(kv.Key))
+                    continue;
+                var dt = ch.DataType;
+                if (dt == typeof(float) || dt == typeof(double))
+                    list.Add(kv.Key);
+            }
+
+            return list;
+        }
+
         public static bool TryExtractAsDoubleArray(
             NvhMemoryFile? file,
             string? groupName,

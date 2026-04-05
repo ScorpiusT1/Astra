@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Astra.Plugins.DataProcessing.Nodes
 {
-    /// <summary>Butterworth 高通滤波（NWaves）。</summary>
+    /// <summary>Butterworth 高通滤波（NWaves）；与同基类共享多设备、多通道 Raw 管道。</summary>
     public sealed class ButterworthHighPassFilterNode : IirFilterNodeBase
     {
         public ButterworthHighPassFilterNode() : base(nameof(ButterworthHighPassFilterNode), "Butterworth 高通")

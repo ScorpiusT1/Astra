@@ -1,7 +1,6 @@
 using Astra.Core.Constants;
 using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
-using Astra.Plugins.DataAcquisition.Providers;
 
 namespace Astra.Plugins.DataProcessing.Helpers
 {
@@ -37,7 +36,7 @@ namespace Astra.Plugins.DataProcessing.Helpers
                 return false;
             }
 
-            if (!DataAcquisitionCardProvider.TryGetDeviceIdByDisplayName(deviceName, out var deviceId))
+            if (!AcquisitionDeviceCatalog.TryGetDeviceIdByDisplayName(deviceName, out var deviceId))
             {
                 error = $"找不到采集卡设备: {deviceName}";
                 return false;
