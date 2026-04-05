@@ -4,6 +4,7 @@ using Astra.UI.Abstractions.Nodes;
 using NVHDataBridge.Models;
 using System;
 using System.Globalization;
+using System.Linq;
 
 namespace Astra.Plugins.Limits.Helpers
 {
@@ -157,28 +158,36 @@ namespace Astra.Plugins.Limits.Helpers
             string producerNodeId,
             bool associateCurveForDisplay,
             string? chartArtifactKey,
-            string? nvhChannelKeyInSignalGroup)
+            string? nvhChannelKeyInSignalGroup,
+            bool includeInTestReport = true)
         {
-            if (!associateCurveForDisplay || string.IsNullOrWhiteSpace(chartArtifactKey))
+            if (!associateCurveForDisplay)
             {
                 return result
                     .WithOutput(NodeUiOutputKeys.HasChartData, false);
             }
 
-            var key = chartArtifactKey.Trim();
-            if (!context.TryGetArtifact<NvhMemoryFile>(key, out var _nvh) || _nvh == null)
+            if (TryResolveUpstreamChartDisplayForLimits(context, out var upKey, out var upFilter))
+            {
+                var filter = string.IsNullOrEmpty(upFilter)
+                    ? (nvhChannelKeyInSignalGroup ?? string.Empty)
+                    : upFilter;
+                return ApplyChartArtifactToLimitOutputs(result, context, producerNodeId, upKey, filter, includeInTestReport);
+            }
+
+            if (string.IsNullOrWhiteSpace(chartArtifactKey))
             {
                 return result
                     .WithOutput(NodeUiOutputKeys.HasChartData, false);
             }
 
-            var filter = nvhChannelKeyInSignalGroup ?? string.Empty;
-            TryPublishLimitChartPayloadForReport(context, producerNodeId, key, filter);
-
-            return result
-                .WithOutput(NodeUiOutputKeys.HasChartData, true)
-                .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key)
-                .WithOutput(NodeUiOutputKeys.ChartNvhChannelFilter, filter);
+            return ApplyChartArtifactToLimitOutputs(
+                result,
+                context,
+                producerNodeId,
+                chartArtifactKey.Trim(),
+                nvhChannelKeyInSignalGroup ?? string.Empty,
+                includeInTestReport);
         }
 
         /// <summary>
@@ -190,33 +199,155 @@ namespace Astra.Plugins.Limits.Helpers
             string producerNodeId,
             bool showChart,
             string? chartArtifactKey,
-            string? nvhChannelKeyInSignalGroup)
+            string? nvhChannelKeyInSignalGroup,
+            bool includeInTestReport = true)
         {
-            if (!showChart || string.IsNullOrWhiteSpace(chartArtifactKey))
+            if (!showChart)
             {
                 return result.WithOutput(NodeUiOutputKeys.HasChartData, false);
             }
 
-            var key = chartArtifactKey.Trim();
-            if (!context.TryGetArtifact<NvhMemoryFile>(key, out var nvh) || nvh == null)
+            if (TryResolveUpstreamChartDisplayForLimits(context, out var upKey, out var upFilter))
+            {
+                var filter = string.IsNullOrEmpty(upFilter)
+                    ? (nvhChannelKeyInSignalGroup ?? string.Empty)
+                    : upFilter;
+                return ApplyChartArtifactToLimitOutputs(result, context, producerNodeId, upKey, filter, includeInTestReport);
+            }
+
+            if (string.IsNullOrWhiteSpace(chartArtifactKey))
             {
                 return result.WithOutput(NodeUiOutputKeys.HasChartData, false);
             }
 
-            var filter = nvhChannelKeyInSignalGroup ?? string.Empty;
-            TryPublishLimitChartPayloadForReport(context, producerNodeId, key, filter);
+            return ApplyChartArtifactToLimitOutputs(
+                result,
+                context,
+                producerNodeId,
+                chartArtifactKey.Trim(),
+                nvhChannelKeyInSignalGroup ?? string.Empty,
+                includeInTestReport);
+        }
 
-            return result
-                .WithOutput(NodeUiOutputKeys.HasChartData, true)
-                .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key)
-                .WithOutput(NodeUiOutputKeys.ChartNvhChannelFilter, filter);
+        /// <summary>
+        /// 上游算法/采集等节点经 <see cref="NodeContext.InputData"/> 传入的图表产物键（<see cref="NodeUiOutputKeys.ChartArtifactKey"/>），
+        /// 对应总线中 <see cref="ChartDisplayPayload"/> 或 <see cref="NvhMemoryFile"/>；优先于按采集卡解析的 Raw 键用于主页/报告配图。
+        /// </summary>
+        private static bool TryResolveUpstreamChartDisplayForLimits(
+            NodeContext context,
+            out string artifactKey,
+            out string nvhChannelFilterFromUpstream)
+        {
+            artifactKey = string.Empty;
+            nvhChannelFilterFromUpstream = string.Empty;
+
+            if (context.InputData == null || context.InputData.Count == 0)
+                return false;
+
+            static bool TryReadKeys(
+                IReadOnlyDictionary<string, object> input,
+                out bool hasChart,
+                out string? chartKey,
+                out string? nvhFilter)
+            {
+                hasChart = input.TryGetValue(NodeUiOutputKeys.HasChartData, out var hObj) &&
+                           hObj is bool hb &&
+                           hb;
+                chartKey = null;
+                nvhFilter = null;
+                if (!hasChart)
+                    return false;
+                if (!input.TryGetValue(NodeUiOutputKeys.ChartArtifactKey, out var kObj) ||
+                    kObj is not string ks ||
+                    string.IsNullOrWhiteSpace(ks))
+                    return false;
+                chartKey = ks.Trim();
+                if (input.TryGetValue(NodeUiOutputKeys.ChartNvhChannelFilter, out var fObj) &&
+                    fObj is string fs)
+                    nvhFilter = fs;
+                return true;
+            }
+
+            var prefixedChartKeySuffix = ":" + NodeUiOutputKeys.ChartArtifactKey;
+            foreach (var kvp in context.InputData.OrderByDescending(x => x.Key.Length))
+            {
+                if (!kvp.Key.EndsWith(prefixedChartKeySuffix, StringComparison.Ordinal) ||
+                    kvp.Key.Length <= prefixedChartKeySuffix.Length)
+                    continue;
+                if (kvp.Value is not string candidate || string.IsNullOrWhiteSpace(candidate))
+                    continue;
+                var sourceId = kvp.Key[..^prefixedChartKeySuffix.Length];
+                if (string.IsNullOrEmpty(sourceId))
+                    continue;
+                if (!context.InputData.TryGetValue($"{sourceId}:{NodeUiOutputKeys.HasChartData}", out var hObj) ||
+                    hObj is not bool hb ||
+                    !hb)
+                    continue;
+                var ck = candidate.Trim();
+                if (!context.TryGetArtifact(ck, out var obj) || obj is not (ChartDisplayPayload or NvhMemoryFile))
+                    continue;
+                artifactKey = ck;
+                if (context.InputData.TryGetValue($"{sourceId}:{NodeUiOutputKeys.ChartNvhChannelFilter}", out var nf) &&
+                    nf is string nfs)
+                    nvhChannelFilterFromUpstream = nfs ?? string.Empty;
+                return true;
+            }
+
+            if (!TryReadKeys(context.InputData, out _, out var key, out var filter))
+                return false;
+            if (string.IsNullOrEmpty(key))
+                return false;
+            if (!context.TryGetArtifact(key, out var o) || o is not (ChartDisplayPayload or NvhMemoryFile))
+                return false;
+            artifactKey = key;
+            nvhChannelFilterFromUpstream = filter ?? string.Empty;
+            return true;
+        }
+
+        private static ExecutionResult ApplyChartArtifactToLimitOutputs(
+            ExecutionResult result,
+            NodeContext context,
+            string producerNodeId,
+            string artifactKey,
+            string nvhChannelKeyInSignalGroup,
+            bool includeInTestReport)
+        {
+            if (string.IsNullOrWhiteSpace(artifactKey) ||
+                !context.TryGetArtifact(artifactKey.Trim(), out var obj) ||
+                obj == null)
+            {
+                return result.WithOutput(NodeUiOutputKeys.HasChartData, false);
+            }
+
+            var key = artifactKey.Trim();
+
+            if (obj is ChartDisplayPayload)
+            {
+                return result
+                    .WithOutput(NodeUiOutputKeys.HasChartData, true)
+                    .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key)
+                    .WithOutput(NodeUiOutputKeys.ChartNvhChannelFilter, string.Empty);
+            }
+
+            if (obj is NvhMemoryFile)
+            {
+                var filter = nvhChannelKeyInSignalGroup ?? string.Empty;
+                TryPublishLimitChartPayloadForReport(context, producerNodeId, key, filter, includeInTestReport);
+                return result
+                    .WithOutput(NodeUiOutputKeys.HasChartData, true)
+                    .WithOutput(NodeUiOutputKeys.ChartArtifactKey, key)
+                    .WithOutput(NodeUiOutputKeys.ChartNvhChannelFilter, filter);
+            }
+
+            return result.WithOutput(NodeUiOutputKeys.HasChartData, false);
         }
 
         private static void TryPublishLimitChartPayloadForReport(
             NodeContext context,
             string producerNodeId,
             string chartArtifactKey,
-            string nvhChannelFilterStored)
+            string nvhChannelFilterStored,
+            bool includeInTestReport)
         {
             var bus = context.GetDataBus();
             if (bus == null)
@@ -250,7 +381,7 @@ namespace Astra.Plugins.Limits.Helpers
                 LeftAxisLabel = "数值"
             };
 
-            bus.PublishAlgorithmResult(producerNodeId, "LimitCurveChart", payload, tag: "limits");
+            bus.PublishAlgorithmResult(producerNodeId, "LimitCurveChart", payload, tag: "limits", includeInTestReport: includeInTestReport);
         }
     }
 }

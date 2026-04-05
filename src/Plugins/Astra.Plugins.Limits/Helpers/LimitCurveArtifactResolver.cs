@@ -1,12 +1,12 @@
 using Astra.Core.Constants;
 using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
-using Astra.Plugins.DataAcquisition.Providers;
 
 namespace Astra.Plugins.Limits.Helpers
 {
     /// <summary>
-    /// 根据采集卡显示名解析 Raw 工件键。BFS 逻辑委托给 <see cref="RawDataPipelineResolver"/>。
+    /// 根据采集卡显示名解析 Raw 工件键（用于曲线逐点卡控等必须读时域样本的场景）。BFS 委托给 <see cref="RawDataPipelineResolver"/>。
+    /// 主页/报告中的图表展示在可能时改由 <see cref="LimitNodeShared"/> 优先转发上游 <see cref="NodeUiOutputKeys.ChartArtifactKey"/>（如算法节点的 <see cref="ChartDisplayPayload"/>）。
     /// </summary>
     internal static class LimitCurveArtifactResolver
     {
@@ -37,7 +37,7 @@ namespace Astra.Plugins.Limits.Helpers
                 return false;
             }
 
-            if (!DataAcquisitionCardProvider.TryGetDeviceIdByDisplayName(deviceName, out var deviceId))
+            if (!AcquisitionDeviceCatalog.TryGetDeviceIdByDisplayName(deviceName, out var deviceId))
             {
                 error = $"找不到采集卡设备: {deviceName}";
                 return false;

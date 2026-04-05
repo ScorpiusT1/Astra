@@ -1,5 +1,5 @@
-using Astra.Plugins.DataAcquisition.Providers;
 using Astra.Core.Constants;
+using Astra.Core.Data;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -25,7 +25,7 @@ namespace Astra.Plugins.Limits.Helpers
         /// </summary>
         public static IEnumerable<string> GetAcquisitionDeviceNames()
         {
-            var list = DataAcquisitionCardProvider.GetDataAcquisitionNames().ToList();
+            var list = AcquisitionDeviceCatalog.GetAcquisitionDeviceDisplayNames().ToList();
             list.Insert(0, UnselectedLabel);
             return list;
         }
@@ -41,7 +41,7 @@ namespace Astra.Plugins.Limits.Helpers
                 return new[] { UnselectedLabel };
             }
 
-            var list = DataAcquisitionCardProvider.GetConfiguredChannelNamesForDeviceDisplayName(d).ToList();
+            var list = AcquisitionDeviceCatalog.GetConfiguredChannelNamesForDeviceDisplayName(d).ToList();
             if (list.Count > 0 && list[0] == string.Empty)
             {
                 list[0] = UseFirstChannelInGroupLabel;

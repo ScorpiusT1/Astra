@@ -30,6 +30,9 @@ namespace Astra.Plugins.Limits.Nodes
         [JsonIgnore]
         private bool _registrySubscribed;
 
+        [JsonIgnore]
+        private string? _autoCurveChannelNameSuffix;
+
         [JsonProperty("DataAcquisitionDeviceName", NullValueHandling = NullValueHandling.Ignore)]
         private string? _legacyDataAcquisitionDeviceName;
 
@@ -39,6 +42,7 @@ namespace Astra.Plugins.Limits.Nodes
             MigrateLegacyCurveSelection();
             if (CachedChannelOptions?.Count > 0 && !string.IsNullOrEmpty(Id))
                 DesignTimeUpstreamRegistry.CacheChannelOptions(Id, CachedChannelOptions);
+            SyncDisplayNameFromCurveChannel();
         }
 
         private void MigrateLegacyCurveSelection()
@@ -61,17 +65,45 @@ namespace Astra.Plugins.Limits.Nodes
 
         private void EnsureRegistrySubscription()
         {
-            if (_registrySubscribed) return;
+            if (_registrySubscribed || string.IsNullOrEmpty(Id)) return;
             _registrySubscribed = true;
-            DesignTimeUpstreamRegistry.SourcesChanged += id =>
+            var wr = new WeakReference<object>(this);
+            DesignTimeUpstreamRegistry.RegisterOwnSourcesChanged(Id, this, changedId =>
             {
-                if (id == Id)
-                {
-                    RefreshAndCacheChannelOptions();
-                    IntersectCurveSelectionWithOptions();
-                    OnPropertyChanged(nameof(CurveChannelOptions));
-                }
-            };
+                if (!wr.TryGetTarget(out var t) || t is not CurveLimitCheckNode self) return;
+                if (changedId != self.Id) return;
+                self.RefreshAndCacheChannelOptions();
+                self.OnPropertyChanged(nameof(CurveChannelOptions));
+            });
+            DesignTimeUpstreamRegistry.RegisterUpstreamChannelOptionsListener(this, producerId =>
+            {
+                if (!wr.TryGetTarget(out var t) || t is not CurveLimitCheckNode self) return;
+                if (string.IsNullOrEmpty(self.Id) ||
+                    !DesignTimeUpstreamRegistry.IsDownstreamAffectedByProducerChain(self.Id, producerId))
+                    return;
+                self.RefreshAndCacheChannelOptions();
+                self.IntersectCurveSelectionWithOptions();
+                self.OnPropertyChanged(nameof(CurveChannelOptions));
+            });
+            DesignTimeUpstreamRegistry.RegisterDeviceChannelOptionsListener(this, deviceName =>
+            {
+                if (!wr.TryGetTarget(out var t) || t is not CurveLimitCheckNode self) return;
+                if (!DesignTimeUpstreamRegistry.RegisteredUpstreamExposesDevice(self.Id, deviceName)) return;
+                self.RefreshAndCacheChannelOptions();
+                self.IntersectCurveSelectionWithOptions();
+                self.OnPropertyChanged(nameof(CurveChannelOptions));
+            });
+        }
+
+        public override void OnRemovedFromWorkflow()
+        {
+            if (_registrySubscribed)
+            {
+                DesignTimeUpstreamRegistry.UnregisterDesignTimeListeners(this);
+                _registrySubscribed = false;
+            }
+
+            base.OnRemovedFromWorkflow();
         }
 
         private void RefreshAndCacheChannelOptions()
@@ -94,7 +126,7 @@ namespace Astra.Plugins.Limits.Nodes
         }
 
         [Display(Name = "通道", GroupName = "曲线数据", Order = 1,
-            Description = "直连数据源时列出通道；仅连算法等标量上游时从标量键括号内解析。未连线时保留缓存或当前已选值。")]
+            Description = "与算法节点一致：连线后由上游驱动通道列表；删除/断开上游后仍保留已选与缓存；上游通道或设备配置变化时再剔除无效项。")]
         [Editor(typeof(ComboBoxPropertyEditor))]
         [ItemsSource(nameof(CurveChannelOptions), DisplayMemberPath = ".")]
         public string CurveChannelName
@@ -111,7 +143,14 @@ namespace Astra.Plugins.Limits.Nodes
                     return;
                 _curveChannelName = v;
                 OnPropertyChanged();
+                SyncDisplayNameFromCurveChannel();
             }
+        }
+
+        private void SyncDisplayNameFromCurveChannel()
+        {
+            var frag = NodeNameChannelSuffixHelper.BuildSingleSelectionSuffix(_curveChannelName);
+            ApplyAutoChannelSuffixToDisplayName(ref _autoCurveChannelNameSuffix, frag);
         }
 
         public override void OnConnectionAttached(Edge edge, Node? sourceNode, Node? targetNode)
@@ -127,30 +166,26 @@ namespace Astra.Plugins.Limits.Nodes
             {
                 _upstreamScalarProviders.Add(sp);
                 DesignTimeUpstreamRegistry.SetScalarUpstreamProviders(Id, _upstreamScalarProviders);
-                RefreshAndCacheChannelOptions();
-                IntersectCurveSelectionWithOptions();
-                OnPropertyChanged(nameof(CurveChannelOptions));
             }
 
             if (sourceNode is IDesignTimeDataSourceInfo src && !_upstreamSources.Contains(src))
             {
                 _upstreamSources.Add(src);
                 DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
-                RefreshAndCacheChannelOptions();
-                IntersectCurveSelectionWithOptions();
-                OnPropertyChanged(nameof(CurveChannelOptions));
             }
         }
 
         private void IntersectCurveSelectionWithOptions()
         {
-            var opts = CurveChannelOptions.ToHashSet(StringComparer.Ordinal);
-            if (opts.Count == 0 || string.IsNullOrEmpty(_curveChannelName))
+            var available = LimitCurveChannelOptionsHelper.GetLiveQualifiedCurveChannels(Id)
+                .ToHashSet(StringComparer.Ordinal);
+            if (available.Count == 0 || string.IsNullOrEmpty(_curveChannelName))
                 return;
-            if (opts.Contains(_curveChannelName))
+            if (available.Contains(_curveChannelName))
                 return;
             _curveChannelName = string.Empty;
             OnPropertyChanged(nameof(CurveChannelName));
+            SyncDisplayNameFromCurveChannel();
         }
 
         public override void OnConnectionDetached(Edge? edge, Node? sourceNode, Node? targetNode)
@@ -162,22 +197,21 @@ namespace Astra.Plugins.Limits.Nodes
                 _upstreamScalarProviders.Clear();
                 DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
                 DesignTimeUpstreamRegistry.SetScalarUpstreamProviders(Id, _upstreamScalarProviders);
-                return;
-            }
-
-            if (targetNode?.Id == Id && sourceNode is IDesignTimeScalarOutputProvider sp)
-            {
-                _upstreamScalarProviders.RemoveAll(p => p.ProviderNodeId == sp.ProviderNodeId);
-                DesignTimeUpstreamRegistry.SetScalarUpstreamProviders(Id, _upstreamScalarProviders);
                 RefreshAndCacheChannelOptions();
                 IntersectCurveSelectionWithOptions();
                 OnPropertyChanged(nameof(CurveChannelOptions));
+                return;
             }
 
-            if (targetNode?.Id == Id && sourceNode is IDesignTimeDataSourceInfo src)
-                _upstreamSources.Remove(src);
+            if (targetNode?.Id != Id)
+                return;
 
+            LimitUpstreamDetachHelper.RemoveUpstreamForDetachedEdge(edge, _upstreamSources, _upstreamScalarProviders);
+            DesignTimeUpstreamRegistry.SetScalarUpstreamProviders(Id, _upstreamScalarProviders);
             DesignTimeUpstreamRegistry.SetSources(Id, _upstreamSources);
+            RefreshAndCacheChannelOptions();
+            IntersectCurveSelectionWithOptions();
+            OnPropertyChanged(nameof(CurveChannelOptions));
         }
 
         [Display(Name = "合格下限（逐点）", GroupName = "曲线合格带", Order = 1, Description = "每个采样点不得低于此值")]
@@ -261,7 +295,7 @@ namespace Astra.Plugins.Limits.Nodes
                 .WithOutput(NodeUiOutputKeys.CurveCheckPass, pass)
                 .WithOutput(NodeUiOutputKeys.Summary, summary);
 
-            result = LimitNodeShared.WithNvhCurveChartOutputs(result, context, Id, true, artifact, nvhCh);
+            result = LimitNodeShared.WithNvhCurveChartOutputs(result, context, Id, true, artifact, nvhCh, IncludeInTestReport);
 
             if (!pass)
             {
