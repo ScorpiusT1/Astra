@@ -136,6 +136,40 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             return OperationResult.Failure($"工作流 '{key}' 注册失败", ErrorCodes.InvalidData);
         }
 
+        /// <inheritdoc />
+        public OperationResult RegisterOrReplaceWorkFlow(string key, WorkFlowNode workflow)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                return OperationResult.Failure("工作流键不能为空", ErrorCodes.InvalidData);
+
+            if (workflow == null)
+                return OperationResult.Failure("工作流不能为空", ErrorCodes.InvalidData);
+
+            var isNew = false;
+            _workflows.AddOrUpdate(
+                key,
+                _ =>
+                {
+                    isNew = true;
+                    return workflow;
+                },
+                (_, _) => workflow);
+
+            if (isNew)
+            {
+                _workflowStatistics[key] = new WorkFlowExecutionStatistics();
+                _workflowHistory[key] = new ConcurrentQueue<WorkFlowExecutionInfo>();
+                OnWorkFlowRegistered(new WorkFlowRegisteredEventArgs
+                {
+                    Key = key,
+                    WorkFlow = workflow
+                });
+                return OperationResult.Succeed($"工作流 '{key}' 注册成功");
+            }
+
+            return OperationResult.Succeed($"工作流 '{key}' 已更新");
+        }
+
         /// <summary>
         /// 批量注册工作流
         /// </summary>
@@ -305,9 +339,10 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         public async Task<OperationResult<ExecutionResult>> ExecuteWorkFlowAsync(
             string key,
             NodeContext context,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? workFlowKeyForContextMetadata = null)
         {
-            return await ExecuteWorkFlowAsync(key, _defaultEngine, context, cancellationToken);
+            return await ExecuteWorkFlowAsync(key, _defaultEngine, context, cancellationToken, workFlowKeyForContextMetadata);
         }
 
         /// <summary>
@@ -317,7 +352,8 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             string key,
             IWorkFlowEngine engine,
             NodeContext context,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? workFlowKeyForContextMetadata = null)
         {
             if (string.IsNullOrWhiteSpace(key))
                 return OperationResult<ExecutionResult>.Failure("工作流键不能为空", ErrorCodes.InvalidData);
@@ -339,6 +375,10 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             var workflowLock = _workflowExecutionLocks.GetOrAdd(canonicalKey, _ => new SemaphoreSlim(1, 1));
             await workflowLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             var executionId = Guid.NewGuid().ToString();
+
+            var contextMetadataWorkFlowKey = string.IsNullOrWhiteSpace(workFlowKeyForContextMetadata)
+                ? key
+                : workFlowKeyForContextMetadata.Trim();
 
             // 创建执行信息
             var executionInfo = new WorkFlowExecutionInfo
@@ -364,7 +404,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 context.ExecutionId = executionId;
                 context.SetMetadata(EngineConstants.MetadataKeys.WorkflowExecutionController, controller);
                 context.SetMetadata(EngineConstants.MetadataKeys.ExecutionId, executionId);
-                context.SetMetadata(EngineConstants.MetadataKeys.WorkFlowKey, key);
+                context.SetMetadata(EngineConstants.MetadataKeys.WorkFlowKey, contextMetadataWorkFlowKey);
                 context.SetRawDataStore(rawDataStore);
                 var dataBus = new TestDataBus(executionId, rawDataStore);
                 context.SetDataBus(dataBus);
@@ -373,7 +413,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 OnWorkFlowExecutionStarted(new WorkFlowExecutionStartedEventArgs
                 {
                     ExecutionId = executionId,
-                    WorkFlowKey = key,
+                    WorkFlowKey = contextMetadataWorkFlowKey,
                     WorkFlow = workflow
                 });
 
@@ -395,7 +435,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     OnWorkFlowExecutionCompleted(new WorkFlowExecutionCompletedEventArgs
                     {
                         ExecutionId = executionId,
-                        WorkFlowKey = key,
+                        WorkFlowKey = contextMetadataWorkFlowKey,
                         Result = result,
                         Duration = executionInfo.Duration ?? TimeSpan.Zero
                     });
@@ -412,7 +452,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     OnWorkFlowExecutionCompleted(new WorkFlowExecutionCompletedEventArgs
                     {
                         ExecutionId = executionId,
-                        WorkFlowKey = key,
+                        WorkFlowKey = contextMetadataWorkFlowKey,
                         Result = executionInfo.Result,
                         Duration = executionInfo.Duration ?? TimeSpan.Zero
                     });
@@ -429,7 +469,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     OnWorkFlowExecutionCompleted(new WorkFlowExecutionCompletedEventArgs
                     {
                         ExecutionId = executionId,
-                        WorkFlowKey = key,
+                        WorkFlowKey = contextMetadataWorkFlowKey,
                         Result = executionInfo.Result,
                         Duration = executionInfo.Duration ?? TimeSpan.Zero
                     });
@@ -848,6 +888,20 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 if (string.IsNullOrWhiteSpace(executionId)) return;
                 var workflowKey = ResolveWorkFlowKey(e.Context);
                 _nodeRunCollector.MarkNodeStarted(executionId, workflowKey, e.Node, e.Context, DateTime.Now);
+            };
+
+            engine.ParallelWaveExecutionStarted += (_, wave) =>
+            {
+                if (wave?.Nodes == null || wave.Nodes.Count == 0) return;
+                var ts = DateTime.Now;
+                foreach (var item in wave.Nodes)
+                {
+                    if (item?.Node == null || item.Context == null) continue;
+                    var executionId = ResolveExecutionId(item.Context);
+                    if (string.IsNullOrWhiteSpace(executionId)) continue;
+                    var workflowKey = ResolveWorkFlowKey(item.Context);
+                    _nodeRunCollector.MarkNodeStarted(executionId, workflowKey, item.Node, item.Context, ts);
+                }
             };
 
             engine.NodeExecutionCompleted += (_, e) =>

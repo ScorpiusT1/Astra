@@ -4,7 +4,6 @@ using Astra.Engine.Execution.WorkFlowEngine;
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,24 +72,35 @@ namespace Astra.Engine.Execution.Strategies
                 }
 
                 var results = new ConcurrentBag<(Node node, ExecutionResult result)>();
-                var options = new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = workflow.Configuration.MaxParallelism,
-                    CancellationToken = context.CancellationToken
-                };
 
-                await Parallel.ForEachAsync(batch, options, async (batchNode, ct) =>
+                var prepared = new List<(Node Node, NodeContext Context)>(batch.Count);
+                foreach (var batchNode in batch)
                 {
-                    if (context.ExecutionController != null)
-                    {
-                        await context.ExecutionController.WaitIfPausedAsync(ct);
-                    }
-
                     var node = WorkflowNodeFailurePolicy.ResolveExecutionNode(workflow, batchNode);
                     var nodeContext = PrepareNodeContext(node, workflow, context.NodeContext);
-                    var nodeResult = await ExecuteNodeAsync(node, nodeContext, context, ct);
-                    results.Add((node, nodeResult));
-                });
+                    prepared.Add((node, nodeContext));
+                }
+
+                StrategyNodeExecutionCore.NotifyParallelWaveStarted(context, prepared);
+
+                await SynchronizedParallelLayerExecutor.ForEachAsync(
+                    prepared,
+                    workflow.Configuration.MaxParallelism,
+                    context.CancellationToken,
+                    async (item, ct) =>
+                    {
+                        if (context.ExecutionController != null)
+                        {
+                            await context.ExecutionController.WaitIfPausedAsync(ct);
+                        }
+
+                        var nodeResult = await StrategyNodeExecutionCore.ExecuteWithoutStartNotificationAsync(
+                            item.Node,
+                            item.Context,
+                            context,
+                            ct);
+                        results.Add((item.Node, nodeResult));
+                    }).ConfigureAwait(false);
 
                 var batchOrdered = results.ToList();
                 batchOrdered.Sort((a, b) => string.CompareOrdinal(a.node.Id, b.node.Id));
@@ -194,61 +204,6 @@ namespace Astra.Engine.Execution.Strategies
             }
 
             return context;
-        }
-
-        /// <summary>
-        /// 执行单个节点
-        /// </summary>
-        private async Task<ExecutionResult> ExecuteNodeAsync(Node node, NodeContext nodeContext, WorkFlowExecutionContext workflowContext, CancellationToken cancellationToken)
-        {
-            var startTime = DateTime.Now;
-            var pausedBefore = workflowContext.ExecutionController?.TotalPausedDuration ?? TimeSpan.Zero;
-            workflowContext.OnNodeExecutionStarted?.Invoke(node, nodeContext);
-            var activeStopwatch = Stopwatch.StartNew();
-
-            ExecutionResult result;
-            try
-            {
-                // 使用扩展方法执行节点
-                result = await node.ExecuteAsync(nodeContext, cancellationToken);
-                result.StartTime = startTime;
-                result.EndTime = AdjustEndTimeForPause(DateTime.Now, pausedBefore, workflowContext);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                result = ExecutionResult.Failed($"节点 '{node.Name}' 执行异常: {ex.Message}", ex);
-                result.StartTime = startTime;
-                result.EndTime = AdjustEndTimeForPause(DateTime.Now, pausedBefore, workflowContext);
-            }
-            finally
-            {
-                activeStopwatch.Stop();
-            }
-
-            result.ActiveDurationMs = activeStopwatch.Elapsed.TotalMilliseconds;
-
-            node.LastExecutionResult = result;
-            workflowContext.OnNodeExecutionCompleted?.Invoke(node, nodeContext, result);
-            return result;
-        }
-
-        private static DateTime AdjustEndTimeForPause(
-            DateTime rawEndTime,
-            TimeSpan pausedBefore,
-            WorkFlowExecutionContext workflowContext)
-        {
-            var pausedAfter = workflowContext.ExecutionController?.TotalPausedDuration ?? pausedBefore;
-            var pausedDelta = pausedAfter - pausedBefore;
-            if (pausedDelta <= TimeSpan.Zero)
-            {
-                return rawEndTime;
-            }
-
-            return rawEndTime - pausedDelta;
         }
 
         private static void MarkDisabledNodesAsSkipped(WorkFlowNode workflow, WorkFlowExecutionContext workflowContext)

@@ -31,6 +31,12 @@ namespace Astra.Core.Nodes.Management
         OperationResult RegisterWorkFlow(string key, WorkFlowNode workflow);
 
         /// <summary>
+        /// 注册或替换已存在键对应的工作流（不注销、不删除执行锁字典项）。
+        /// 主流程多引用并行执行时须用唯一键（如引用节点 RefId），避免多个子流程共用同一 <see cref="WorkFlowNode.Id"/> 时互相踩踏。
+        /// </summary>
+        OperationResult RegisterOrReplaceWorkFlow(string key, WorkFlowNode workflow);
+
+        /// <summary>
         /// 批量注册工作流
         /// </summary>
         /// <param name="workflows">要注册的工作流集合</param>
@@ -101,7 +107,8 @@ namespace Astra.Core.Nodes.Management
         Task<OperationResult<ExecutionResult>> ExecuteWorkFlowAsync(
             string key,
             NodeContext context,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default,
+            string? workFlowKeyForContextMetadata = null);
 
         /// <summary>
         /// 执行工作流（使用自定义引擎）
@@ -110,12 +117,14 @@ namespace Astra.Core.Nodes.Management
         /// <param name="engine">工作流引擎实例</param>
         /// <param name="context">节点执行上下文</param>
         /// <param name="cancellationToken">取消令牌</param>
+        /// <param name="workFlowKeyForContextMetadata">写入节点上下文元数据 <c>WorkFlowKey</c> 的值（用于 UI 事件）；为 null 时与 <paramref name="key"/> 相同。</param>
         /// <returns>执行结果</returns>
         Task<OperationResult<ExecutionResult>> ExecuteWorkFlowAsync(
             string key,
             IWorkFlowEngine engine,
             NodeContext context,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default,
+            string? workFlowKeyForContextMetadata = null);
 
         /// <summary>
         /// 取消正在执行的工作流

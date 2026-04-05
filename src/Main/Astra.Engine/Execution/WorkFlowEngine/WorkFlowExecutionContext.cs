@@ -1,6 +1,7 @@
 using Astra.Core.Nodes.Models;
 using Astra.Engine.Execution.WorkFlowEngine.Management;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace Astra.Engine.Execution.WorkFlowEngine
@@ -60,6 +61,11 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// 节点执行开始事件处理器
         /// </summary>
         public Action<Node, NodeContext> OnNodeExecutionStarted { get; set; }
+
+        /// <summary>
+        /// 并行层内多节点同时开始：一次回调（项为 <see cref="NodeExecutionEventArgs"/>，仅 Node/Context 有效）。
+        /// </summary>
+        public Action<IReadOnlyList<NodeExecutionEventArgs>> OnParallelWaveNodesStarting { get; set; }
 
         /// <summary>
         /// 节点执行完成事件处理器

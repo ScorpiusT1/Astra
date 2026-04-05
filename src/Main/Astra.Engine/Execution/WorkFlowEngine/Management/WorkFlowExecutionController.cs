@@ -17,6 +17,15 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         private TimeSpan _accumulatedPausedDuration = TimeSpan.Zero;
         private DateTime? _pauseStartedAtUtc;
 
+        /// <inheritdoc />
+        public event EventHandler? Pausing;
+
+        /// <inheritdoc />
+        public event EventHandler? Resumed;
+
+        /// <inheritdoc />
+        public event EventHandler? Cancelling;
+
         public bool IsPaused
         {
             get
@@ -52,17 +61,27 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
 
         public void Pause()
         {
+            var becamePaused = false;
             lock (_stateLock)
             {
                 if (_isPaused) return;
                 _isPaused = true;
                 _pauseStartedAtUtc = DateTime.UtcNow;
                 _pauseGate.Reset();
+                becamePaused = true;
+            }
+
+            // 锁外触发，避免订阅方回调再次进入控制器导致死锁
+            if (becamePaused)
+            {
+                var h = Pausing;
+                h?.Invoke(this, EventArgs.Empty);
             }
         }
 
         public void Resume()
         {
+            var becameRunning = false;
             lock (_stateLock)
             {
                 if (!_isPaused) return;
@@ -73,13 +92,27 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     _pauseStartedAtUtc = null;
                 }
                 _pauseGate.Set();
+                becameRunning = true;
+            }
+
+            if (becameRunning)
+            {
+                var h = Resumed;
+                h?.Invoke(this, EventArgs.Empty);
             }
         }
 
         public void Cancel()
         {
+            var firstRequest = !_internalCts.IsCancellationRequested;
             _internalCts.Cancel();
             _pauseGate.Set(); // 防止暂停态下无法响应取消
+
+            if (firstRequest)
+            {
+                var h = Cancelling;
+                h?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         public async Task WaitIfPausedAsync(CancellationToken cancellationToken)

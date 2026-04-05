@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.Engine.Execution.WorkFlowEngine;
 using System;
 using System.Collections.Concurrent;
@@ -51,6 +52,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             record.Message = result.Message;
             record.ErrorCode = result.ErrorCode;
             record.OutputSnapshot = CloneDictionary(result.OutputData);
+            record.OutputSnapshot[ReportIncludeKeys.IncludeInReport] = node.IncludeInTestReport;
             record.SkipReason = result.GetOutput(EngineConstants.OutputKeys.SkipReason, string.Empty);
 
             foreach (var kvp in result.OutputData)

@@ -33,6 +33,9 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// </summary>
         public event EventHandler<NodeExecutionEventArgs> NodeExecutionStarted;
 
+        /// <inheritdoc />
+        public event EventHandler<ParallelWaveExecutionStartedEventArgs>? ParallelWaveExecutionStarted;
+
         /// <summary>
         /// 节点执行完成事件
         /// </summary>
@@ -134,6 +137,8 @@ namespace Astra.Engine.Execution.WorkFlowEngine
 
                 // 传递事件处理器
                 executionContext.OnNodeExecutionStarted = (node, ctx) => OnNodeExecutionStarted(new NodeExecutionEventArgs { Node = node, Context = ctx });
+                executionContext.OnParallelWaveNodesStarting = wave =>
+                    OnParallelWaveExecutionStarted(new ParallelWaveExecutionStartedEventArgs { Nodes = wave });
                 executionContext.OnNodeExecutionCompleted = (node, ctx, result) => OnNodeExecutionCompleted(new NodeExecutionEventArgs { Node = node, Context = ctx, Result = result });
                 executionContext.OnProgressChanged = (progress) => OnProgressChanged(new ProgressChangedEventArgs { Progress = progress });
 
@@ -153,6 +158,15 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 finalResult.EndTime = DateTime.Now;
                 Statistics.TotalDuration = finalResult.Duration;
                 Statistics.ExecutionStrategy = detectedStrategy.Type.ToString();
+
+                // 将最终执行结果回写到工作流节点本身，供 UI（如主流程引用节点、流程容器时间显示）统一读取。
+                workflow.LastExecutionResult = finalResult;
+                workflow.ExecutionState = finalResult.ResultType == ExecutionResultType.Cancelled
+                    ? NodeExecutionState.Cancelled
+                    : (finalResult.IsSkipped || finalResult.ResultType == ExecutionResultType.Skipped)
+                        ? NodeExecutionState.Skipped
+                        : finalResult.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
+                workflow.ExecutionTimeDisplay = FormatWorkflowElapsed(finalResult.ActiveDurationMs ?? finalResult.Duration?.TotalMilliseconds);
 
                 return finalResult;
             }
@@ -198,6 +212,16 @@ namespace Astra.Engine.Execution.WorkFlowEngine
 
             workflow.LastExecutionResult = null;
             workflow.ExecutionState = NodeExecutionState.Idle;
+            workflow.ExecutionTimeDisplay = "0.00 s";
+        }
+
+        private static string FormatWorkflowElapsed(double? ms)
+        {
+            var totalMs = ms.GetValueOrDefault();
+            if (totalMs < 0)
+                totalMs = 0;
+
+            return $"{(totalMs / 1000d):F2} s";
         }
 
         /// <summary>
@@ -317,6 +341,12 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// 触发节点执行开始事件
         /// </summary>
         protected virtual void OnNodeExecutionStarted(NodeExecutionEventArgs e) => NodeExecutionStarted?.Invoke(this, e);
+
+        /// <summary>
+        /// 触发并行层多节点同时开始事件
+        /// </summary>
+        protected virtual void OnParallelWaveExecutionStarted(ParallelWaveExecutionStartedEventArgs e) =>
+            ParallelWaveExecutionStarted?.Invoke(this, e);
 
         /// <summary>
         /// 触发节点执行完成事件

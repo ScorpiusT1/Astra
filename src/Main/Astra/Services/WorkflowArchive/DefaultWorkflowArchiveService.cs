@@ -1,5 +1,8 @@
+using Astra.Configuration;
 using Astra.Core.Archiving;
+using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Data;
+using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
@@ -10,45 +13,63 @@ using NVHDataBridge.Converters;
 using NVHDataBridge.IO.WAV;
 using NVHDataBridge.Models;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
-using System.Net;
 using System.Text;
 using System.Linq;
 
 namespace Astra.Services.WorkflowArchive
 {
     /// <summary>
-    /// 默认归档：目录为 根目录/SN/序号(1,2,3…)/；Raw 快照写 TDMS/WAV，全局变量写 CSV，结果链写 JSON 与 HTML/PDF 报告。
+    /// 默认归档服务：所有路径统一使用合并报告流程。
+    /// <list type="bullet">
+    ///   <item>批次模式（Home 多子流程）：共享目录，数据收集到 <see cref="ICombinedReportCollector"/>，由 Home 编排层统一落盘；各子流程 Raw 在内存中合并，批次结束时写入单个 TDMS（组 <c>Signal</c>，通道名 <c>设备+通道名</c>）。</item>
+    ///   <item>非批次模式（单流程 / 非 Home 入口）：与批次同一套采集逻辑，即时写合并报告（1 段）；总线上全部 Raw 合并为单个 TDMS。</item>
+    /// </list>
     /// </summary>
     public sealed class DefaultWorkflowArchiveService : IWorkflowArchiveService
     {
+        private const string TestDataFolderName = "测试数据";
+
         private readonly WorkflowArchiveOptions _options;
         private readonly ILogger<DefaultWorkflowArchiveService> _logger;
         private readonly ITestReportGenerator _testReportGenerator;
+        private readonly ICombinedReportCollector? _combinedReportCollector;
+        private readonly IConfigurationManager? _configurationManager;
+        private readonly IReportStationLineSource? _reportStationLineSource;
 
         private readonly ConcurrentDictionary<string, ArchiveSessionNaming> _sessionNamingByExecution = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, byte> _rawExportDone = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, byte> _runRecordExportDone = new(StringComparer.Ordinal);
-
-        /// <summary>按 SN 目录名分配序号（1、2、3…）时的互斥，避免同一 SN 并行测试拿到相同序号。</summary>
         private readonly ConcurrentDictionary<string, object> _sequenceLocksBySnFolder = new(StringComparer.Ordinal);
+
+        private readonly object _batchRawMergeGate = new();
+        private NvhMemoryFile? _batchMergedRaw;
+        private HashSet<string>? _batchRawUsedChannelNames;
+
+        /// <summary>保证批次内首次分配共享输出目录时互斥，避免多子流程并行归档各建一个序号文件夹。</summary>
+        private readonly object _batchSharedDirectoryGate = new();
 
         private sealed class ArchiveSessionNaming
         {
             public required string OutputDirectory { get; init; }
-
-            /// <summary>yyyyMMdd_HHmmss，同一次执行内固定。</summary>
             public required string FileTimeStamp { get; init; }
         }
 
         public DefaultWorkflowArchiveService(
             WorkflowArchiveOptions options,
             ILogger<DefaultWorkflowArchiveService> logger,
-            ITestReportGenerator testReportGenerator)
+            ITestReportGenerator testReportGenerator,
+            ICombinedReportCollector? combinedReportCollector = null,
+            IConfigurationManager? configurationManager = null,
+            IReportStationLineSource? reportStationLineSource = null)
         {
             _options = options ?? new WorkflowArchiveOptions();
             _logger = logger;
             _testReportGenerator = testReportGenerator;
+            _combinedReportCollector = combinedReportCollector;
+            _configurationManager = configurationManager;
+            _reportStationLineSource = reportStationLineSource;
         }
 
         public Task<WorkflowArchiveResult> ArchiveAsync(WorkflowArchiveRequest request, CancellationToken cancellationToken)
@@ -56,27 +77,63 @@ namespace Astra.Services.WorkflowArchive
             return Task.Run(() => ArchiveCore(request, cancellationToken), cancellationToken);
         }
 
+        /// <inheritdoc />
+        public void OnBatchArchiveStarted()
+        {
+            lock (_batchRawMergeGate)
+            {
+                _batchMergedRaw = null;
+                _batchRawUsedChannelNames = null;
+            }
+        }
+
+        /// <inheritdoc />
+        public void FlushBatchCombinedRawTdms(string outputDirectory, string combinedFilePrefix)
+        {
+            if (string.IsNullOrWhiteSpace(outputDirectory) || string.IsNullOrWhiteSpace(combinedFilePrefix))
+                return;
+
+            NvhMemoryFile? merged;
+            lock (_batchRawMergeGate)
+            {
+                merged = _batchMergedRaw;
+                _batchMergedRaw = null;
+                _batchRawUsedChannelNames = null;
+            }
+
+            if (merged == null)
+                return;
+
+            try
+            {
+                Directory.CreateDirectory(outputDirectory);
+                var tdmsPath = Path.Combine(outputDirectory, $"{combinedFilePrefix}_raw.tdms");
+                NvhTdmsConverter.SaveToTdms(merged, tdmsPath);
+                ExportWavPerChannel(merged, outputDirectory, $"{combinedFilePrefix}_raw");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "批次合并 Raw TDMS/WAV 写入失败");
+            }
+        }
+
         private WorkflowArchiveResult ArchiveCore(WorkflowArchiveRequest request, CancellationToken cancellationToken)
         {
             if (request?.NodeContext == null)
-            {
-                return new WorkflowArchiveResult
-                {
-                    Success = false,
-                    Message = "NodeContext 为空",
-                    Skipped = true
-                };
-            }
+                return new WorkflowArchiveResult { Success = false, Message = "NodeContext 为空", Skipped = true };
 
             if (string.IsNullOrWhiteSpace(request.ExecutionId))
-            {
                 return new WorkflowArchiveResult { Success = false, Message = "ExecutionId 为空", Skipped = true };
-            }
+
+            var batchMode = _combinedReportCollector is { IsActive: true };
 
             EnsureSnOrGenerate(request.NodeContext);
 
             var id = request.ExecutionId;
-            var session = _sessionNamingByExecution.GetOrAdd(id, _ => CreateSessionNaming(request));
+            var session = batchMode
+                ? ResolveOrCreateBatchSession(request)
+                : _sessionNamingByExecution.GetOrAdd(id, _ => CreateSessionNaming(request));
+
             var outputDir = session.OutputDirectory;
             var fileStamp = session.FileTimeStamp;
 
@@ -85,201 +142,425 @@ namespace Astra.Services.WorkflowArchive
                             ?? GetGlobalString(request.NodeContext, "Condition")
                             ?? "Default";
             var okNg = ResolveOkNg(request);
-            var filePrefix = BuildFileNamePrefix(sn, condition, okNg, fileStamp);
+            var (stationName, lineName) = _reportStationLineSource?.GetStationAndLine() ?? (string.Empty, string.Empty);
+            var filePrefix = ReportArchiveFileNaming.BuildFilePrefix(sn, stationName, lineName, okNg, fileStamp);
 
             var wroteRaw = false;
             var wroteRecord = false;
 
+            // ── 1. Raw 数据（TDMS/WAV）──────────────────────────
             var dataBus = request.NodeContext?.GetDataBus();
             if (_rawExportDone.TryAdd(id, 0))
             {
-                var rawRefs = dataBus?.Query(Astra.Core.Nodes.Models.DataArtifactCategory.Raw)
-                              ?? Array.Empty<Astra.Core.Nodes.Models.DataArtifactReference>();
-
-                var index = 0;
-                foreach (var rawRef in rawRefs)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (dataBus == null || !dataBus.TryGet<NvhMemoryFile>(rawRef.Key, out var nvh) || nvh == null)
-                    {
-                        continue;
-                    }
-
-                    var artifactTag = $"{filePrefix}_raw{index}_{SanitizeFileSegment(rawRef.Key)}";
-                    try
-                    {
-                        var tdmsPath = Path.Combine(outputDir, artifactTag + ".tdms");
-                        NvhTdmsConverter.SaveToTdms(nvh, tdmsPath);
-                        ExportWavPerChannel(nvh, outputDir, artifactTag);
-                        wroteRaw = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "归档 TDMS/WAV 失败: {Key}", rawRef.Key);
-                    }
-
-                    index++;
-                }
-
-                try
-                {
-                    WriteGlobalVariablesCsv(request.NodeContext, Path.Combine(outputDir, $"{filePrefix}_global_variables.csv"));
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "写入 global_variables.csv 失败");
-                }
+                wroteRaw = ExportRawArtifacts(dataBus, outputDir, filePrefix, batchMode, cancellationToken);
             }
 
+            // ── 2. RunRecord + 报告数据采集 ───────────────────
             if (request.RunRecord != null && _runRecordExportDone.TryAdd(id, 0))
             {
                 try
                 {
-                    WriteRunRecordJson(request.RunRecord, Path.Combine(outputDir, $"{filePrefix}_run_record.json"));
+                    var reportData = CollectReportData(request, dataBus, outputDir, filePrefix, stationName, lineName, cancellationToken);
 
-                    var reportResult = _testReportGenerator.GenerateAsync(new TestReportRequest
+                    if (batchMode)
                     {
-                        ArchiveRequest = request,
-                        DataBus = request.NodeContext?.GetDataBus(),
-                        OutputDirectory = outputDir,
-                        FilePrefix = filePrefix,
-                        ExportChartFiles = true,
-                        Formats = ReportExportFormats.Html | ReportExportFormats.Pdf,
-                        IncludeRawDataCharts = request.ReportOptions?.IncludeRawDataCharts ?? true,
-                        ReportOptions = request.ReportOptions
-                    }, cancellationToken).GetAwaiter().GetResult();
-
-                    if (!reportResult.Success)
+                        var seq = reportData?.SectionSequenceOrder ?? GetReportSectionSequence(request.NodeContext);
+                        _combinedReportCollector!.AddRunRecord(request.RunRecord, condition, seq);
+                        if (reportData != null)
+                            _combinedReportCollector.AddSection(reportData);
+                    }
+                    else
                     {
-                        WriteSummaryHtml(request, Path.Combine(outputDir, $"{filePrefix}_report.html"));
+                        ImmediateWriteAll(
+                            request.RunRecord, condition, reportData,
+                            request.NodeContext!, outputDir, sn, filePrefix, cancellationToken);
                     }
 
                     wroteRecord = true;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "写入结果链报告失败");
+                    _logger.LogWarning(ex, "归档报告/记录失败");
                 }
             }
 
-            var any = wroteRaw || wroteRecord;
             return new WorkflowArchiveResult
             {
                 Success = true,
-                Message = any ? "归档完成" : "本轮无可写入内容（可能已由他处写入）",
+                Message = wroteRaw || wroteRecord ? "归档完成" : "本轮无可写入内容（可能已由他处写入）",
                 OutputDirectory = outputDir,
-                Skipped = !any,
+                Skipped = !(wroteRaw || wroteRecord),
                 WroteRawArtifacts = wroteRaw,
                 WroteRunRecordArtifacts = wroteRecord
             };
         }
 
         /// <summary>
-        /// 目录：根目录 / SN / 序号（同 SN 第 1 次为 1，第 2 次为 2，依此类推）。同一次执行的时间戳在会话内固定。
+        /// 采集报告数据（含图表渲染），不写文件。
         /// </summary>
+        private TestReportData? CollectReportData(
+            WorkflowArchiveRequest request, ITestDataBus? dataBus,
+            string outputDir, string filePrefix,
+            string reportStationFromConfig, string reportLineFromConfig,
+            CancellationToken ct)
+        {
+            var result = _testReportGenerator.GenerateAsync(new TestReportRequest
+            {
+                ArchiveRequest = request,
+                DataBus = dataBus,
+                OutputDirectory = outputDir,
+                FilePrefix = filePrefix,
+                ExportChartFiles = false,
+                Formats = ReportExportFormats.Html | ReportExportFormats.Pdf,
+                IncludeRawDataCharts = request.ReportOptions?.IncludeRawDataCharts ?? true,
+                ReportOptions = request.ReportOptions,
+                ReportStationFromConfig = string.IsNullOrWhiteSpace(reportStationFromConfig) ? null : reportStationFromConfig,
+                ReportLineFromConfig = string.IsNullOrWhiteSpace(reportLineFromConfig) ? null : reportLineFromConfig
+            }, ct).GetAwaiter().GetResult();
+
+            return result.ReportData;
+        }
+
+        /// <summary>
+        /// 非批次（单次执行）：即时写合并报告（1 段）、合并 RunRecord。
+        /// </summary>
+        private void ImmediateWriteAll(
+            WorkFlowRunRecord runRecord, string condition,
+            TestReportData? reportData, NodeContext context,
+            string outputDir, string sn, string filePrefix,
+            CancellationToken ct)
+        {
+            WriteCombinedRunRecordJson(
+                [(runRecord, condition)],
+                sn, outputDir, filePrefix);
+
+            if (reportData == null) return;
+
+            _testReportGenerator.GenerateCombinedAsync(new CombinedTestReportRequest
+            {
+                Sections = [reportData],
+                OutputDirectory = outputDir,
+                FilePrefix = filePrefix,
+                Formats = ReportExportFormats.Html | ReportExportFormats.Pdf
+            }, ct).GetAwaiter().GetResult();
+        }
+
+        // ──────────────────────────────────────────────────────
+        // 共享静态 helper（供 HomeWorkflowExecutionService 复用）
+        // ──────────────────────────────────────────────────────
+
+        internal static void WriteCombinedRunRecordJson(
+            IReadOnlyList<(WorkFlowRunRecord Record, string Condition)> records,
+            string sn, string outputDir, string filePrefix)
+        {
+            if (records.Count == 0) return;
+
+            var combined = new
+            {
+                SN = sn,
+                StartTime = records.Min(r => r.Record.StartTime),
+                EndTime = records.Max(r => r.Record.EndTime),
+                OverallResult = records.All(r => r.Record.FinalResult?.Success == true) ? "OK" : "NG",
+                SubWorkflows = records.Select(r => new
+                {
+                    r.Condition,
+                    r.Record.WorkFlowName,
+                    r.Record.Strategy,
+                    r.Record.StartTime,
+                    r.Record.EndTime,
+                    r.Record.Status,
+                    FinalResult = r.Record.FinalResult?.Success == true ? "OK" : "NG",
+                    r.Record.NodeRuns
+                }).ToList()
+            };
+
+            var json = JsonConvert.SerializeObject(combined, Formatting.Indented, new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                NullValueHandling = NullValueHandling.Ignore
+            });
+            var path = Path.Combine(outputDir, $"{filePrefix}_run_record.json");
+            File.WriteAllText(path, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        }
+
+        // ──────────────────────────────────────────────────────
+        // 内部方法
+        // ──────────────────────────────────────────────────────
+
+        private bool ExportRawArtifacts(ITestDataBus? dataBus, string outputDir, string filePrefix, bool batchMode, CancellationToken ct)
+        {
+            var rawRefs = dataBus?.Query(DataArtifactCategory.Raw)
+                          ?? Array.Empty<DataArtifactReference>();
+
+            var items = new List<(NvhMemoryFile File, DataArtifactReference Meta)>();
+            foreach (var rawRef in rawRefs)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (dataBus == null || !dataBus.TryGet<NvhMemoryFile>(rawRef.Key, out var nvh) || nvh == null)
+                    continue;
+                items.Add((nvh, rawRef));
+            }
+
+            if (items.Count == 0)
+                return false;
+
+            try
+            {
+                if (batchMode)
+                {
+                    lock (_batchRawMergeGate)
+                    {
+                        _batchMergedRaw ??= new NvhMemoryFile();
+                        _batchRawUsedChannelNames ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var (nvh, meta) in items)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            var dev = ResolveRawArchiveDeviceDisplayName(meta);
+                            NvhMemoryFile.AppendAllChannelsRenamed(
+                                _batchMergedRaw,
+                                NvhArchiveSampleUtil.DefaultSignalGroupName,
+                                nvh,
+                                ch => SanitizeArchiveChannelName($"{dev}+{ch.Name}"),
+                                _batchRawUsedChannelNames);
+                        }
+                    }
+
+                    return true;
+                }
+
+                var merged = new NvhMemoryFile();
+                var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (nvh, meta) in items)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var dev = ResolveRawArchiveDeviceDisplayName(meta);
+                    NvhMemoryFile.AppendAllChannelsRenamed(
+                        merged,
+                        NvhArchiveSampleUtil.DefaultSignalGroupName,
+                        nvh,
+                        ch => SanitizeArchiveChannelName($"{dev}+{ch.Name}"),
+                        used);
+                }
+
+                Directory.CreateDirectory(outputDir);
+                NvhTdmsConverter.SaveToTdms(merged, Path.Combine(outputDir, $"{filePrefix}_raw.tdms"));
+                ExportWavPerChannel(merged, outputDir, $"{filePrefix}_raw");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "归档合并 Raw TDMS/WAV 失败");
+                return false;
+            }
+        }
+
+        /// <summary>从 Raw 产物引用解析设备显示名（与采集/导入 DisplayName、Preview 对齐）。</summary>
+        private static string ResolveRawArchiveDeviceDisplayName(DataArtifactReference r)
+        {
+            var dn = r.DisplayName?.Trim() ?? string.Empty;
+            foreach (var suf in new[] { "-RawData", "-Raw", "-Filtered" })
+            {
+                if (dn.EndsWith(suf, StringComparison.OrdinalIgnoreCase))
+                {
+                    var head = dn[..^suf.Length].Trim();
+                    if (head.Length > 0)
+                        return head;
+                    break;
+                }
+            }
+
+            if (r.Preview != null && r.Preview.TryGetValue("DeviceId", out var did) && did != null)
+            {
+                var id = Convert.ToString(did, CultureInfo.InvariantCulture)?.Trim();
+                if (!string.IsNullOrEmpty(id))
+                    return id;
+            }
+
+            return string.IsNullOrEmpty(dn) ? "Device" : dn;
+        }
+
+        private static string SanitizeArchiveChannelName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "ch";
+
+            var invalid = Path.GetInvalidFileNameChars();
+            var chars = value.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                if (invalid.Contains(chars[i]) || chars[i] == '\\')
+                    chars[i] = '_';
+            }
+
+            var s = new string(chars).Trim();
+            return s.Length > 200 ? s[..200] : s;
+        }
+
+        private ArchiveSessionNaming ResolveOrCreateBatchSession(WorkflowArchiveRequest request)
+        {
+            var existing = _combinedReportCollector!.SharedOutputDirectory;
+            if (existing != null)
+            {
+                return new ArchiveSessionNaming
+                {
+                    OutputDirectory = existing,
+                    FileTimeStamp = _combinedReportCollector.SharedFileTimestamp
+                                    ?? DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
+                };
+            }
+
+            lock (_batchSharedDirectoryGate)
+            {
+                existing = _combinedReportCollector.SharedOutputDirectory;
+                if (existing != null)
+                {
+                    return new ArchiveSessionNaming
+                    {
+                        OutputDirectory = existing,
+                        FileTimeStamp = _combinedReportCollector.SharedFileTimestamp
+                                        ?? DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
+                    };
+                }
+
+                var session = CreateSessionNaming(request);
+                _combinedReportCollector.SetSharedOutputDirectory(session.OutputDirectory, session.FileTimeStamp);
+                return session;
+            }
+        }
+
         private ArchiveSessionNaming CreateSessionNaming(WorkflowArchiveRequest request)
         {
-            var root = string.IsNullOrWhiteSpace(_options.RootDirectory)
-                ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestResults")
-                : _options.RootDirectory;
-
+            var root = ResolveEffectiveReportRootDirectory();
             Directory.CreateDirectory(root);
 
+            var dateFolder = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var dataRoot = Path.Combine(root, TestDataFolderName, dateFolder);
+            Directory.CreateDirectory(dataRoot);
+
             var sn = GetGlobalString(request.NodeContext, "SN") ?? "AUTO";
-            var snFolder = SanitizeFileSegment(sn);
-            var gate = _sequenceLocksBySnFolder.GetOrAdd(snFolder, _ => new object());
+            var snFolder = ReportArchiveFileNaming.SanitizeFileSegment(sn);
+            var snBasePath = Path.Combine(dataRoot, snFolder);
+            Directory.CreateDirectory(snBasePath);
+
+            var lockKey = $"{dateFolder}|{snFolder}";
+            var gate = _sequenceLocksBySnFolder.GetOrAdd(lockKey, _ => new object());
             string outputPath;
             lock (gate)
             {
-                var nextIndex = GetNextRunIndex(root, snFolder);
-                outputPath = Path.Combine(root, snFolder, nextIndex.ToString(CultureInfo.InvariantCulture));
+                var nextIndex = GetNextRunIndex(snBasePath);
+                outputPath = Path.Combine(snBasePath, nextIndex.ToString(CultureInfo.InvariantCulture));
                 Directory.CreateDirectory(outputPath);
             }
 
-            var fileStamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
             return new ArchiveSessionNaming
             {
                 OutputDirectory = outputPath,
-                FileTimeStamp = fileStamp
+                FileTimeStamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
             };
         }
 
         /// <summary>
-        /// 在「根/SN/」下扫描纯数字子目录名，返回 max+1；无子目录或不存在 SN 目录时为 1。
+        /// 与 <see cref="SoftwareConfig.ReportOutputRootDirectory"/> 对齐；留空则为程序所在磁盘（卷）根目录。
+        /// 无配置管理器时使用 <see cref="WorkflowArchiveOptions.RootDirectory"/>，仍为空则同上默认根目录。
         /// </summary>
-        private static int GetNextRunIndex(string root, string snFolderName)
+        private string ResolveEffectiveReportRootDirectory()
         {
-            var snPath = Path.Combine(root, snFolderName);
-            if (!Directory.Exists(snPath))
+            if (_configurationManager != null)
             {
-                return 1;
+                try
+                {
+                    var result = _configurationManager.GetAllAsync<SoftwareConfig>().GetAwaiter().GetResult();
+                    if (result.Success && result.Data != null)
+                    {
+                        var sc = result.Data.FirstOrDefault();
+                        var custom = sc?.ReportOutputRootDirectory?.Trim();
+                        if (!string.IsNullOrWhiteSpace(custom))
+                        {
+                            try
+                            {
+                                return Path.GetFullPath(custom);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "报告根目录无效，将使用程序所在磁盘根目录: {Path}", custom);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "读取软件配置中的报告根目录失败，使用程序所在磁盘根目录。");
+                }
+
+                return PathHelper.GetReportDefaultRootDirectory();
             }
 
+            var fallback = string.IsNullOrWhiteSpace(_options.RootDirectory)
+                ? PathHelper.GetReportDefaultRootDirectory()
+                : _options.RootDirectory.Trim();
+            try
+            {
+                return Path.GetFullPath(fallback);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "WorkflowArchiveOptions.RootDirectory 无效，使用程序所在磁盘根目录。");
+                return PathHelper.GetReportDefaultRootDirectory();
+            }
+        }
+
+        private static int GetNextRunIndex(string snRunRoot)
+        {
+            if (!Directory.Exists(snRunRoot)) return 1;
+
             var max = 0;
-            foreach (var dir in Directory.GetDirectories(snPath))
+            foreach (var dir in Directory.GetDirectories(snRunRoot))
             {
                 var name = Path.GetFileName(dir);
-                if (int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > 0 && n > max)
-                {
+                if (int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > max)
                     max = n;
-                }
             }
 
             return max + 1;
         }
 
-        /// <summary>
-        /// 文件名前缀：SN + 工况 + OK/NG（尚无最终结果时为 UNK）+ 时间。
-        /// </summary>
-        private static string BuildFileNamePrefix(string sn, string condition, string okNg, string fileStamp)
-        {
-            return $"{SanitizeFileSegment(sn)}_{SanitizeFileSegment(condition)}_{SanitizeFileSegment(okNg)}_{SanitizeFileSegment(fileStamp)}";
-        }
-
-        /// <summary>
-        /// 优先依据结果链 FinalResult；否则依据引擎传入的执行状态。流程内提前归档时尚无结果则为 UNK。
-        /// </summary>
         private static string ResolveOkNg(WorkflowArchiveRequest request)
         {
             if (request.RunRecord?.FinalResult != null)
-            {
                 return request.RunRecord.FinalResult.Success ? "OK" : "NG";
-            }
 
-            if (request.ExecutionStatus.HasValue)
+            return request.ExecutionStatus switch
             {
-                return request.ExecutionStatus.Value switch
-                {
-                    WorkFlowExecutionStatus.Completed => "OK",
-                    WorkFlowExecutionStatus.Failed => "NG",
-                    WorkFlowExecutionStatus.Cancelled => "NG",
-                    _ => "UNK"
-                };
-            }
-
-            return "UNK";
+                WorkFlowExecutionStatus.Completed => "OK",
+                WorkFlowExecutionStatus.Failed or WorkFlowExecutionStatus.Cancelled => "NG",
+                _ => "UNK"
+            };
         }
 
         private static string? GetGlobalString(NodeContext ctx, string key)
         {
             if (ctx.GlobalVariables.TryGetValue(key, out var v) && v != null)
-            {
                 return Convert.ToString(v, CultureInfo.InvariantCulture);
-            }
-
             return null;
         }
 
-        /// <summary>
-        /// 未设置或仅为空白时生成 SN（AUTO_时间_短随机码），并写回全局变量，便于目录与后续节点一致。
-        /// </summary>
+        private static int GetReportSectionSequence(NodeContext? ctx)
+        {
+            if (ctx?.GlobalVariables == null) return 0;
+            if (!ctx.GlobalVariables.TryGetValue(ReportContextKeys.SectionSequenceOrder, out var v) || v == null)
+                return 0;
+            try
+            {
+                return Convert.ToInt32(v, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
         private void EnsureSnOrGenerate(NodeContext ctx)
         {
-            var raw = GetGlobalString(ctx, "SN");
-            if (!string.IsNullOrWhiteSpace(raw))
-            {
-                return;
-            }
+            if (!string.IsNullOrWhiteSpace(GetGlobalString(ctx, "SN"))) return;
 
             var suffix = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture)[..8];
             var generated = $"AUTO_{DateTime.Now:yyyyMMdd_HHmmss}_{suffix}";
@@ -290,129 +571,30 @@ namespace Astra.Services.WorkflowArchive
         private static void ExportWavPerChannel(NvhMemoryFile file, string outputDir, string baseName)
         {
             if (!file.TryGetGroup(NvhArchiveSampleUtil.DefaultSignalGroupName, out var group) || group == null)
-            {
                 group = file.Groups.Values.FirstOrDefault();
-            }
+            if (group == null) return;
 
-            if (group == null)
-            {
-                return;
-            }
-
-            if (!NvhArchiveSampleUtil.TryGetFirstChannelSampleRateHz(file, NvhArchiveSampleUtil.DefaultSignalGroupName, out var rate) ||
-                rate <= 0)
-            {
+            if (!NvhArchiveSampleUtil.TryGetFirstChannelSampleRateHz(file, NvhArchiveSampleUtil.DefaultSignalGroupName, out var rate) || rate <= 0)
                 rate = 48000;
-            }
 
-            foreach (var chName in group.Channels.Keys)
+            foreach (var kv in group.Channels)
             {
-                if (!NvhArchiveSampleUtil.TryExtractAsDoubleArray(
-                        file,
-                        NvhArchiveSampleUtil.DefaultSignalGroupName,
-                        chName,
-                        out var samples) ||
-                    samples.Length == 0)
-                {
+                var chName = kv.Key;
+                var sensorType = kv.Value.Properties.Get<string>("SensorType", string.Empty);
+                if (string.IsNullOrWhiteSpace(sensorType))
                     continue;
-                }
 
-                var wavName = $"{baseName}_{SanitizeFileSegment(chName)}.wav";
-                var wavPath = Path.Combine(outputDir, wavName);
+                if (!NvhArchiveSampleUtil.TryExtractAsDoubleArray(file, NvhArchiveSampleUtil.DefaultSignalGroupName, chName, out var samples) || samples.Length == 0)
+                    continue;
+
                 var floats = new float[samples.Length];
                 for (var i = 0; i < samples.Length; i++)
-                {
                     floats[i] = (float)samples[i];
-                }
 
-                using var w = new WavWriter(wavPath, rate, 1, 32);
+                using var w = new WavWriter(Path.Combine(outputDir, $"{baseName}_{ReportArchiveFileNaming.SanitizeFileSegment(chName)}.wav"), rate, 1, 32);
                 w.WriteSamples(floats);
             }
         }
 
-        private static void WriteGlobalVariablesCsv(NodeContext ctx, string path)
-        {
-            using var sw = new StreamWriter(path, false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-            sw.WriteLine("Key,Value");
-            foreach (var kv in ctx.GlobalVariables.OrderBy(k => k.Key, StringComparer.Ordinal))
-            {
-                var v = kv.Value == null ? string.Empty : Convert.ToString(kv.Value, CultureInfo.InvariantCulture) ?? string.Empty;
-                sw.WriteLine($"{EscapeCsv(kv.Key)},{EscapeCsv(v)}");
-            }
-        }
-
-        private static string EscapeCsv(string s)
-        {
-            if (s.Contains('"') || s.Contains(',') || s.Contains('\n') || s.Contains('\r'))
-            {
-                return "\"" + s.Replace("\"", "\"\"") + "\"";
-            }
-
-            return s;
-        }
-
-        private static void WriteRunRecordJson(WorkFlowRunRecord record, string path)
-        {
-            var json = JsonConvert.SerializeObject(
-                record,
-                Formatting.Indented,
-                new JsonSerializerSettings
-                {
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                    NullValueHandling = NullValueHandling.Ignore
-                });
-            File.WriteAllText(path, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-        }
-
-        private static void WriteSummaryHtml(WorkflowArchiveRequest request, string path)
-        {
-            var rr = request.RunRecord;
-            var sb = new StringBuilder();
-            sb.AppendLine("<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>测试报告</title>");
-            sb.AppendLine("<style>body{font-family:Segoe UI,Microsoft YaHei,sans-serif;margin:24px;}table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:6px 10px;}th{background:#f0f0f0;}</style>");
-            sb.AppendLine("</head><body>");
-            sb.AppendLine($"<h1>{WebUtility.HtmlEncode(rr?.WorkFlowName ?? request.WorkFlowName)}</h1>");
-            sb.AppendLine($"<p>执行ID: {WebUtility.HtmlEncode(request.ExecutionId)}</p>");
-            sb.AppendLine($"<p>状态: {WebUtility.HtmlEncode(rr?.Status ?? request.ExecutionStatus?.ToString() ?? "")}</p>");
-            sb.AppendLine($"<p>触发: {WebUtility.HtmlEncode(request.Trigger.ToString())}</p>");
-            sb.AppendLine("<h2>节点输出摘要</h2><table><tr><th>节点</th><th>状态</th><th>消息</th></tr>");
-            if (rr?.NodeRuns != null)
-            {
-                foreach (var n in rr.NodeRuns)
-                {
-                    sb.AppendLine("<tr>");
-                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(n.NodeName ?? n.NodeId)}</td>");
-                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(n.State.ToString())}</td>");
-                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(n.Message ?? "")}</td>");
-                    sb.AppendLine("</tr>");
-                }
-            }
-
-            sb.AppendLine("</table>");
-            sb.AppendLine("<p><small>单值明细见 run_record.json；曲线可后续由图表引擎导出为 PNG 嵌入。</small></p>");
-            sb.AppendLine("</body></html>");
-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-        }
-
-        private static string SanitizeFileSegment(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return "x";
-            }
-
-            var invalid = Path.GetInvalidFileNameChars();
-            var chars = value.ToCharArray();
-            for (var i = 0; i < chars.Length; i++)
-            {
-                if (invalid.Contains(chars[i]) || chars[i] == ':' || chars[i] == '\\' || chars[i] == '/')
-                {
-                    chars[i] = '_';
-                }
-            }
-
-            var s = new string(chars).Trim();
-            return s.Length > 96 ? s[..96] : s;
-        }
     }
 }

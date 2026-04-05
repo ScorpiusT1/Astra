@@ -223,20 +223,32 @@ namespace Astra.Core.Nodes.Serialization
                     }
                 }
 
-                // 验证主流程中的连线是否有效
+                // 验证主流程中的连线是否有效（端点可为子流程引用或主画布插件/逻辑节点）
                 if (data.MasterWorkflow.Edges != null)
                 {
+                    var masterNodeIds = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var r in data.MasterWorkflow.SubWorkflowReferences.Where(x => x != null && !string.IsNullOrWhiteSpace(x.Id)))
+                        masterNodeIds.Add(r.Id);
+                    if (data.MasterWorkflow.MasterPluginNodes != null)
+                    {
+                        foreach (var n in data.MasterWorkflow.MasterPluginNodes)
+                        {
+                            if (n != null && !string.IsNullOrWhiteSpace(n.Id))
+                                masterNodeIds.Add(n.Id);
+                        }
+                    }
+
                     foreach (var edge in data.MasterWorkflow.Edges)
                     {
-                        var sourceRefExists = data.MasterWorkflow.SubWorkflowReferences.Any(r => r.Id == edge.SourceNodeId);
-                        var targetRefExists = data.MasterWorkflow.SubWorkflowReferences.Any(r => r.Id == edge.TargetNodeId);
+                        if (edge == null)
+                            continue;
 
-                        if (!sourceRefExists)
+                        if (!masterNodeIds.Contains(edge.SourceNodeId))
                         {
                             return OperationResult.Failure($"主流程连线中的源节点不存在: {edge.SourceNodeId}", ErrorCodes.InvalidData);
                         }
 
-                        if (!targetRefExists)
+                        if (!masterNodeIds.Contains(edge.TargetNodeId))
                         {
                             return OperationResult.Failure($"主流程连线中的目标节点不存在: {edge.TargetNodeId}", ErrorCodes.InvalidData);
                         }

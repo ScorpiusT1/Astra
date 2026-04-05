@@ -56,15 +56,15 @@ namespace Astra.ViewModels
             IWorkflowExecutionSessionService workflowExecutionSessionService,
             IConfigurationManager configurationManager,
             IManualBarcodeContext manualBarcodeContext,
-            IScanModeState scanModeState)
+            IScanModeState scanModeState,
+            Astra.Core.Orchestration.IMasterWorkflowOrchestrator? orchestrator = null)
         {
             _ = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
             _configurationManager = configurationManager ?? throw new ArgumentNullException(nameof(configurationManager));
             _ = manualBarcodeContext ?? throw new ArgumentNullException(nameof(manualBarcodeContext));
             _ = scanModeState ?? throw new ArgumentNullException(nameof(scanModeState));
 
-            // 创建 MultiFlowEditorViewModel 实例
-            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializers, workflowExecutionSessionService, manualBarcodeContext, scanModeState);
+            MultiFlowEditor = new MultiFlowEditorViewModel(pluginHost, manifestSerializers, workflowExecutionSessionService, manualBarcodeContext, scanModeState, orchestrator);
             
             Debug.WriteLine("[SequenceViewModel] 已创建 MultiFlowEditorViewModel");
 
