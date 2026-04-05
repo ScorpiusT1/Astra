@@ -25,6 +25,7 @@ namespace Astra.Configuration
         private int _barcodeMaxLength = 32;
         private bool _safetyInterlockEnabled = true;
         private int _safetyInterlockPollIntervalMs = 100;
+        private string _reportOutputRootDirectory = string.Empty;
         private bool _isSyncingCounts;
 
         public SoftwareConfig() : base()
@@ -198,6 +199,16 @@ namespace Astra.Configuration
         {
             get => _safetyInterlockEnabled;
             set => SetProperty(ref _safetyInterlockEnabled, value);
+        }
+
+        /// <summary>
+        /// 测试报告与归档输出的根目录。留空时使用程序所在磁盘（卷）的根目录（如 exe 在 D 盘则为 D:\）。
+        /// 实际输出路径为：根目录\测试数据\年-月-日\SN\测试次数。
+        /// </summary>
+        public string ReportOutputRootDirectory
+        {
+            get => _reportOutputRootDirectory;
+            set => SetProperty(ref _reportOutputRootDirectory, value ?? string.Empty);
         }
 
         /// <summary>
