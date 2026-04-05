@@ -12,6 +12,12 @@
 
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<!--
+			ScottPlot.WPF 提供 WpfPlot 交互控件（波形预览）。
+			ScottPlot.WPF.dll 需要随插件一起复制到输出目录；
+			ScottPlot.dll 由 ScottPlot.WPF 作为依赖自动引入。
+		-->
+		<PackageReference Include="ScottPlot.WPF" Version="5.1.57" />
 	</ItemGroup>
 
 	<ItemGroup>

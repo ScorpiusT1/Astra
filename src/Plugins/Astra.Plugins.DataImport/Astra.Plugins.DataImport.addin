@@ -22,8 +22,7 @@
 		</Permissions>
 	</Addin>
 	<Nodes>
-		<NodeInfo Name="TDMS 导入" TypeName="Astra.Plugins.DataImport.Nodes.TdmsImportRawNode" IconCode="FileImport" Description="TDMS → Raw（采集卡选「文件导入」）" Category="数据导入" />
-		<NodeInfo Name="WAV 导入" TypeName="Astra.Plugins.DataImport.Nodes.WavImportRawNode" IconCode="FileImport" Description="WAV → Raw（多声道取首路）" Category="数据导入" />
+		<NodeInfo Name="文件导入" TypeName="Astra.Plugins.DataImport.Nodes.NvhFileImportRawNode" IconCode="FileImport" Description="TDMS / WAV 等 → Raw（采集卡选「文件导入」；多格式由注册表解析）" Category="数据导入" />
 		<NodeInfo Name="TDMS 转 WAV" TypeName="Astra.Plugins.DataImport.Nodes.TdmsToWavExportNode" IconCode="FileExport" Description="TDMS Signal 通道导出为 WAV" Category="数据导入" />
 	</Nodes>
 </AddinManifest>

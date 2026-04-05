@@ -4,12 +4,13 @@ using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
 using Astra.Plugins.DataImport.Helpers;
 using Astra.Plugins.DataImport.Import;
+using Astra.Plugins.DataImport.Views;
 using Astra.UI.Abstractions.Attributes;
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.PropertyEditors;
 using Newtonsoft.Json;
-using NVHDataBridge.IO.WAV;
 using NVHDataBridge.Models;
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 
@@ -19,6 +20,7 @@ namespace Astra.Plugins.DataImport.Nodes
     /// 从文件加载 <see cref="NvhMemoryFile"/> 并发布与多采集相同键规则的 Raw（虚拟设备「文件导入」）。
     /// 支持多文件导入：每个文件作为独立虚拟设备发布 Raw，下游节点可分别选择。
     /// </summary>
+    [NodePropertyEditor(typeof(FileImportNodePropertyView))]
     public abstract class FileImportRawNodeBase : Node, IRawDataPipelineNode, IMultiRawDataPipelineNode, IDesignTimeDataSourceInfo, IHomeTestItemChartEligibleNode, IReportWhitelistChartProducerNode
     {
         private string _virtualDeviceAlias = string.Empty;
@@ -76,6 +78,7 @@ namespace Astra.Plugins.DataImport.Nodes
 
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(DataAcquisitionDeviceDisplayName));
+                DesignTimeUpstreamRegistry.NotifyUpstreamChannelOptionsChanged(Id);
             }
         }
 
@@ -127,81 +130,118 @@ namespace Astra.Plugins.DataImport.Nodes
             Description = "选择要传递给下游的通道；不选则传递全部通道")]
         [Editor(typeof(CheckComboBoxPropertyEditor))]
         [ItemsSource(nameof(DiscoveredChannelOptions), DisplayMemberPath = ".")]
-        public List<string> SelectedChannelNames { get; set; } = new();
-
-        /// <summary>用于预览图表：取第一个已选通道，若未选则为 null（使用首通道）。</summary>
-        private string? ResolvePreviewChannelKey()
+        public List<string> SelectedChannelNames
         {
-            var first = SelectedChannelNames?.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
-            return string.IsNullOrEmpty(first) ? null : first;
+            get => _selectedChannelNames;
+            set
+            {
+                value ??= new();
+                if (_selectedChannelNames.SequenceEqual(value, StringComparer.Ordinal))
+                    return;
+                _selectedChannelNames = value;
+                OnPropertyChanged();
+                DesignTimeUpstreamRegistry.NotifyUpstreamChannelOptionsChanged(Id);
+            }
+        }
+
+        private List<string> _selectedChannelNames = new();
+
+        /// <summary>多文件时勾选项持久化为「文件名|通道键」；单文件仍为纯通道键。文件名取自 <see cref="Path.GetFileName(string)"/>。</summary>
+        internal const char FileChannelSelectionSeparator = '|';
+
+        internal static bool TryParseFileChannelSelection(string? raw, out string fileNamePart, out string channelPart)
+        {
+            fileNamePart = string.Empty;
+            channelPart = string.Empty;
+            var s = raw?.Trim();
+            if (string.IsNullOrEmpty(s))
+                return false;
+            var i = s.IndexOf(FileChannelSelectionSeparator);
+            if (i <= 0 || i >= s.Length - 1)
+                return false;
+            fileNamePart = s[..i].Trim();
+            channelPart = s[(i + 1)..].Trim();
+            return fileNamePart.Length > 0 && channelPart.Length > 0;
+        }
+
+        /// <summary>
+        /// 多文件预览：在「本文件」的 Signal 组内解析通道。
+        /// 优先使用勾选列表中第一个在本文件实际存在的通道名；都无匹配或未勾选则返回 null（与 NVH 工具一致，回落为组内首通道）。
+        /// </summary>
+        private string? ResolvePreviewChannelKeyForFile(string sourcePath, NvhMemoryFile file)
+        {
+            if (!file.TryGetGroup(AstraSharedConstants.DataGroups.Signal, out var g) || g == null)
+                g = file.Groups.Values.FirstOrDefault();
+            if (g == null || g.Channels.Count == 0)
+                return null;
+
+            var thisFileName = Path.GetFileName(sourcePath);
+
+            foreach (var raw in SelectedChannelNames ?? Enumerable.Empty<string>())
+            {
+                var name = raw?.Trim();
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                if (TryParseFileChannelSelection(name, out var fn, out var ch))
+                {
+                    if (!string.Equals(fn, thisFileName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (g.Channels.ContainsKey(ch))
+                        return ch;
+                }
+                else if (g.Channels.ContainsKey(name))
+                {
+                    return name;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ChannelMatchesSavedSelection(string? selectionEntry, string channelKey, string currentFileName)
+        {
+            var s = selectionEntry?.Trim();
+            if (string.IsNullOrEmpty(s))
+                return false;
+            if (TryParseFileChannelSelection(s, out var fn, out var ch))
+            {
+                return string.Equals(fn, currentFileName, StringComparison.OrdinalIgnoreCase)
+                       && string.Equals(ch, channelKey, StringComparison.Ordinal);
+            }
+            return string.Equals(s, channelKey, StringComparison.Ordinal);
         }
 
         // ===== 通道发现 =====
 
         private void RefreshDiscoveredChannels()
         {
-            var channels = new List<string>();
-            var files = GetEffectiveFilePaths();
-            foreach (var path in files)
+            var files = GetEffectiveFilePaths().ToList();
+            if (files.Count == 0)
+            {
+                _discoveredChannels = new List<string>();
+            }
+            else
             {
                 try
                 {
-                    channels.AddRange(DiscoverChannelNamesForFile(path));
+                    var ordered = FileImportChannelDiscovery.DiscoverOrdered(
+                        files,
+                        FileImportIoParallelism.EffectiveDegree,
+                        CancellationToken.None);
+                    _discoveredChannels = ordered
+                        .SelectMany(t => t.Channels)
+                        .Distinct()
+                        .ToList();
                 }
-                catch { }
+                catch
+                {
+                    _discoveredChannels = new List<string>();
+                }
             }
-            _discoveredChannels = channels.Distinct().ToList();
+
             OnPropertyChanged(nameof(DiscoveredChannelOptions));
-        }
-
-        /// <summary>
-        /// 轻量级通道名发现。WAV 只读文件头；其他格式做完整导入后提取。
-        /// </summary>
-        private static List<string> DiscoverChannelNamesForFile(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                return new();
-
-            var ext = Path.GetExtension(path)?.ToLowerInvariant();
-            var baseName = Path.GetFileNameWithoutExtension(path) ?? "Data";
-
-            if (ext == ".wav")
-                return DiscoverWavChannels(path, baseName);
-
-            var importer = NvhFormatImporterRegistry.FindForPath(path);
-            if (importer == null)
-                return new() { baseName };
-
-            var file = importer.Import(path);
-            return ExtractChannelNamesFromFile(file, baseName);
-        }
-
-        private static List<string> DiscoverWavChannels(string path, string baseName)
-        {
-            using var reader = WavReader.Open(path);
-            var count = reader.Channels;
-            if (count <= 1)
-                return new List<string> { baseName };
-            return Enumerable.Range(1, count)
-                .Select(i => $"{baseName}_Ch{i}")
-                .ToList();
-        }
-
-        private static List<string> ExtractChannelNamesFromFile(NvhMemoryFile file, string baseName)
-        {
-            NvhMemoryGroup? group = null;
-            file.TryGetGroup(AstraSharedConstants.DataGroups.Signal, out group);
-            group ??= file.Groups.Values.FirstOrDefault();
-            if (group == null)
-                return new() { baseName };
-
-            var names = group.Channels.Keys.Where(k => !string.IsNullOrEmpty(k)).ToList();
-            if (names.Count == 0)
-            {
-                var count = Math.Max(group.Channels.Count, 1);
-                return Enumerable.Range(1, count).Select(i => $"{baseName}_Ch{i}").ToList();
-            }
-            return names;
+            DesignTimeUpstreamRegistry.NotifyUpstreamChannelOptionsChanged(Id);
         }
 
         // ===== 子类扩展点 =====
@@ -313,21 +353,71 @@ namespace Astra.Plugins.DataImport.Nodes
                 return Enumerable.Empty<string>();
 
             // 仅当请求的设备名属于本节点时才返回通道，避免"串台"
-            var myDevices = GetAvailableDeviceDisplayNames();
+            var myDevices = GetAvailableDeviceDisplayNames().ToList();
             if (!myDevices.Any(d => string.Equals(d, deviceDisplayName, StringComparison.Ordinal)))
                 return Enumerable.Empty<string>();
+
+            var files = GetEffectiveFilePaths();
+            var perFileDevices = GetPerFileDeviceDisplayNames().ToList();
+
+            // 多文件时每个虚拟设备只应暴露对应文件的通道；若用全量 _discoveredChannels（多文件并集），
+            // DesignTimeUpstreamRegistry 会对「设备 × 通道」组合，造成笛卡尔积式重复项。
+            List<string> baseChannels;
+            var resolvedFileIndex = -1;
+            if (files.Count > 1 && perFileDevices.Count == files.Count)
+            {
+                resolvedFileIndex = perFileDevices.FindIndex(d =>
+                    string.Equals(d, deviceDisplayName, StringComparison.Ordinal));
+                baseChannels = resolvedFileIndex >= 0 && resolvedFileIndex < files.Count
+                    ? ResolveChannelsForFileAtIndex(files[resolvedFileIndex], deviceDisplayName)
+                    : new List<string>();
+            }
+            else
+            {
+                baseChannels = VirtualDeviceChannelRegistry.GetChannels(deviceDisplayName)
+                    .Where(ch => !string.IsNullOrEmpty(ch))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                if (baseChannels.Count == 0)
+                {
+                    if (_discoveredChannels.Count > 0)
+                        baseChannels = _discoveredChannels.ToList();
+                    else if (files.Count == 1 && File.Exists(files[0]))
+                        baseChannels = FileImportChannelDiscovery.DiscoverChannelNames(files[0]);
+                }
+            }
 
             var selected = SelectedChannelNames?
                 .Where(ch => !string.IsNullOrEmpty(ch))
                 .ToList();
             if (selected != null && selected.Count > 0)
-                return selected;
+            {
+                var currentFileName = resolvedFileIndex >= 0 && resolvedFileIndex < files.Count
+                    ? Path.GetFileName(files[resolvedFileIndex])
+                    : (files.Count == 1 ? Path.GetFileName(files[0]) : string.Empty);
 
-            if (_discoveredChannels.Count > 0)
-                return _discoveredChannels;
+                return baseChannels.Where(ch =>
+                        selected.Any(sel => ChannelMatchesSavedSelection(sel, ch, currentFileName)))
+                    .ToList();
+            }
 
-            return VirtualDeviceChannelRegistry.GetChannels(deviceDisplayName)
-                .Where(ch => !string.IsNullOrEmpty(ch));
+            return baseChannels;
+        }
+
+        /// <summary>优先使用执行后写入注册表的通道，否则对该文件做轻量发现。</summary>
+        private List<string> ResolveChannelsForFileAtIndex(string path, string deviceDisplayName)
+        {
+            var fromReg = VirtualDeviceChannelRegistry.GetChannels(deviceDisplayName)
+                .Where(ch => !string.IsNullOrEmpty(ch))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (fromReg.Count > 0)
+                return fromReg;
+
+            return File.Exists(path)
+                ? FileImportChannelDiscovery.DiscoverChannelNames(path)
+                : new List<string>();
         }
 
         // ===== 生命周期 =====
@@ -363,7 +453,7 @@ namespace Astra.Plugins.DataImport.Nodes
             RegisterMultiFileAliases(deviceDisplayNames);
 
             var subclassImporter = GetImporter();
-            NvhMemoryFile? firstFile = null;
+            var importedForPreview = new List<(string DisplayName, NvhMemoryFile File)>();
             int importedCount = 0;
 
             for (var i = 0; i < files.Count; i++)
@@ -391,7 +481,7 @@ namespace Astra.Plugins.DataImport.Nodes
                         $"导入 \"{Path.GetFileName(path)}\" 失败: {ex.Message}", ex));
                 }
 
-                firstFile ??= file;
+                importedForPreview.Add((displayName, file));
 
                 RegisterChannelsFromFile(file, displayName);
 
@@ -400,7 +490,8 @@ namespace Astra.Plugins.DataImport.Nodes
                     artifactName: $"{deviceId}:raw",
                     rawData: file,
                     displayName: $"{displayName}-Raw",
-                    deviceId: deviceId);
+                    deviceId: deviceId,
+                    includeInTestReport: IncludeInTestReport);
 
                 importedCount++;
             }
@@ -408,27 +499,38 @@ namespace Astra.Plugins.DataImport.Nodes
             // 执行后刷新一次通道发现（确保与实际导入一致）
             RefreshDiscoveredChannels();
 
-            var chKey = ResolvePreviewChannelKey();
-            if (firstFile != null &&
-                DataImportNvhSampleUtil.TryExtractAsDoubleArray(
-                    firstFile, AstraSharedConstants.DataGroups.Signal, chKey, out var samples) &&
-                samples.Length > 0)
+            var previewSeries = new List<(string SeriesName, ChartDisplayPayload Chart)>();
+            for (var pi = 0; pi < importedForPreview.Count; pi++)
             {
-                if (!DataImportNvhSampleUtil.TryGetWaveformIncrement(
-                        firstFile, AstraSharedConstants.DataGroups.Signal, chKey, out var dt) || dt <= 0)
-                    dt = 1.0 / 48000.0;
+                var (displayName, file) = importedForPreview[pi];
+                var sourcePath = files[pi];
+                var chKey = ResolvePreviewChannelKeyForFile(sourcePath, file);
+                if (!DataImportNvhSampleUtil.TryExtractAsDoubleArray(
+                        file, AstraSharedConstants.DataGroups.Signal, chKey, out var samples) ||
+                    samples.Length == 0)
+                    continue;
 
-                var n = samples.Length;
-                var t = new double[n];
-                for (var k = 0; k < n; k++)
-                    t[k] = k * dt;
-                var chart = ChartDisplayPayloadFactory.XYLine(t, samples, "时间 (s)", "幅值");
+                var dt = 1.0 / 48000.0;
+                if (DataImportNvhSampleUtil.TryGetWaveformIncrement(
+                        file, AstraSharedConstants.DataGroups.Signal, chKey, out var inc) && inc > 0)
+                    dt = inc;
 
+                var period = dt > 0 ? dt : 1.0 / 48000.0;
+                var chart = ChartDisplayPayloadFactory.Signal1D(
+                    samples,
+                    samplePeriod: period,
+                    bottomAxisLabel: "时间 (s)",
+                    leftAxisLabel: "幅值");
+                previewSeries.Add((displayName, chart));
+            }
+
+            if (previewSeries.Count > 0)
+            {
                 var msg = importedCount > 1
                     ? $"已导入 {importedCount} 个文件并发布 Raw"
                     : "完成";
-                return Task.FromResult(DataImportResultPublisher.SuccessWithChart(
-                    context, Id, ChartArtifactName, chart, tag: ResultTag, message: msg));
+                return Task.FromResult(DataImportResultPublisher.SuccessWithMultiChart(
+                    context, Id, ChartArtifactName, previewSeries, tag: ResultTag, message: msg, includeInTestReport: IncludeInTestReport));
             }
 
             return Task.FromResult(ExecutionResult.Successful(

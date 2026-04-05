@@ -19,20 +19,70 @@ namespace Astra.Plugins.DataImport.Helpers
             if (!TryResolveGroup(file, groupName, out var group))
                 return false;
 
-            NvhMemoryChannelBase? channel;
-            if (!string.IsNullOrWhiteSpace(channelName) &&
-                !string.Equals(channelName.Trim(), AstraSharedConstants.DesignTimeLabels.UseFirstChannelInGroup, StringComparison.Ordinal) &&
-                group.Channels.TryGetValue(channelName.Trim(), out var named))
-            {
-                channel = named;
-            }
-            else
-            {
-                channel = group.Channels.Values.FirstOrDefault();
-            }
-
+            var channel = ResolveChannel(group, channelName);
             if (channel == null)
                 return false;
+
+            return TryCopyChannelToDoubles(channel, out samples);
+        }
+
+        public static bool TryGetWaveformIncrement(NvhMemoryFile? file, string? groupName, string? channelName, out double deltaTime)
+        {
+            deltaTime = 0;
+            if (file == null)
+                return false;
+            if (!TryResolveGroup(file, groupName, out var group))
+                return false;
+
+            var channel = ResolveChannel(group, channelName);
+            if (channel?.WfIncrement is { } inc && inc > 0)
+            {
+                deltaTime = inc;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 从已解析的 <see cref="NvhMemoryChannelBase"/> 复制采样（多通道预览等，避免按名查找时误回落到首通道）。
+        /// </summary>
+        internal static bool TryExtractFromChannel(NvhMemoryChannelBase? channel, out double[] samples)
+        {
+            samples = Array.Empty<double>();
+            if (channel == null)
+                return false;
+            return TryCopyChannelToDoubles(channel, out samples);
+        }
+
+        internal static double GetWaveformIncrementOrDefault(NvhMemoryChannelBase? channel, double fallbackSeconds)
+        {
+            if (channel?.WfIncrement is { } inc && inc > 0)
+                return inc;
+            return fallbackSeconds;
+        }
+
+        /// <summary>
+        /// 解析通道：未指定或“组内首通道”占位符 → 组内第一个通道；
+        /// 否则必须能在字典中按名命中，<b>不得</b>在未命中时回落到首通道（否则会误把多路数据都当成同一路）。
+        /// </summary>
+        private static NvhMemoryChannelBase? ResolveChannel(NvhMemoryGroup group, string? channelName)
+        {
+            if (string.IsNullOrWhiteSpace(channelName) ||
+                string.Equals(
+                    channelName.Trim(),
+                    AstraSharedConstants.DesignTimeLabels.UseFirstChannelInGroup,
+                    StringComparison.Ordinal))
+            {
+                return group.Channels.Values.FirstOrDefault();
+            }
+
+            return group.Channels.TryGetValue(channelName.Trim(), out var named) ? named : null;
+        }
+
+        private static bool TryCopyChannelToDoubles(NvhMemoryChannelBase channel, out double[] samples)
+        {
+            samples = Array.Empty<double>();
 
             if (channel.DataType == typeof(float))
             {
@@ -54,31 +104,6 @@ namespace Astra.Plugins.DataImport.Helpers
                     return false;
                 samples = new double[span.Length];
                 span.CopyTo(samples);
-                return true;
-            }
-
-            return false;
-        }
-
-        public static bool TryGetWaveformIncrement(NvhMemoryFile? file, string? groupName, string? channelName, out double deltaTime)
-        {
-            deltaTime = 0;
-            if (file == null)
-                return false;
-            if (!TryResolveGroup(file, groupName, out var group))
-                return false;
-
-            NvhMemoryChannelBase? channel;
-            if (!string.IsNullOrWhiteSpace(channelName) &&
-                !string.Equals(channelName.Trim(), AstraSharedConstants.DesignTimeLabels.UseFirstChannelInGroup, StringComparison.Ordinal) &&
-                group.Channels.TryGetValue(channelName.Trim(), out var named))
-                channel = named;
-            else
-                channel = group.Channels.Values.FirstOrDefault();
-
-            if (channel?.WfIncrement is { } inc && inc > 0)
-            {
-                deltaTime = inc;
                 return true;
             }
 
