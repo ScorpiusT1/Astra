@@ -810,9 +810,9 @@ namespace Astra.Engine.Execution.Orchestration
                     return false;
                 }
 
-                var contextWorkFlowKey = string.IsNullOrWhiteSpace(entry.Workflow.Id)
-                    ? registrationKey
-                    : entry.Workflow.Id;
+                // 与注册键一致使用主流程引用 RefId 作为 UI/节点元数据中的 WorkFlowKey。
+                // 若改用子流程 WorkFlow.Id，则多引用并行指向同一子流程时事件无法区分，主页树只会更新第一条分支。
+                var contextWorkFlowKey = registrationKey;
 
                 _workFlowManager.RegisterOrReplaceWorkFlow(registrationKey, entry.Workflow);
 
