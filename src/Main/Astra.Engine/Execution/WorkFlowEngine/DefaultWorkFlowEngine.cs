@@ -202,12 +202,21 @@ namespace Astra.Engine.Execution.WorkFlowEngine
         /// </summary>
         private static void ResetNodesRuntimeState(WorkFlowNode workflow)
         {
-            if (workflow?.Nodes == null) return;
+            if (workflow == null) return;
 
-            foreach (var node in workflow.Nodes)
+            // 运行期 Variables 不写入脚本；每次执行前清空，避免跨次污染（持久化参数在 PersistedParameters）。
+            if (workflow.Variables == null)
+                workflow.Variables = new Dictionary<string, object>();
+            else
+                workflow.Variables.Clear();
+
+            if (workflow.Nodes != null)
             {
-                node.LastExecutionResult = null;
-                node.ExecutionState = NodeExecutionState.Idle;
+                foreach (var node in workflow.Nodes)
+                {
+                    node.LastExecutionResult = null;
+                    node.ExecutionState = NodeExecutionState.Idle;
+                }
             }
 
             workflow.LastExecutionResult = null;
@@ -241,9 +250,16 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 Metadata = new Dictionary<string, object>(baseContext?.Metadata ?? new Dictionary<string, object>())
             };
 
-            foreach (var kvp in workflow.Variables)
+            if (workflow.PersistedParameters != null)
             {
-                context.GlobalVariables[kvp.Key] = kvp.Value;
+                foreach (var kvp in workflow.PersistedParameters)
+                    context.GlobalVariables[kvp.Key] = kvp.Value;
+            }
+
+            if (workflow.Variables != null)
+            {
+                foreach (var kvp in workflow.Variables)
+                    context.GlobalVariables[kvp.Key] = kvp.Value;
             }
 
             return context;

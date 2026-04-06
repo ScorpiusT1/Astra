@@ -444,20 +444,8 @@ namespace Astra.UI.Styles.Controls
                             if (workflowTab.Type == Core.Nodes.Models.WorkflowType.Sub)
                             {
                                 var subWorkflow = workflowTab.GetSubWorkflow();
-                                if (subWorkflow != null && subWorkflow.Variables != null &&
-                                    subWorkflow.Variables.TryGetValue("ZoomPercentage", out var zoomObj))
-                                {
-                                    if (zoomObj is double d)
-                                        zoom = d;
-                                    else if (zoomObj is float f)
-                                        zoom = f;
-                                    else if (zoomObj is int i)
-                                        zoom = i;
-                                    else if (zoomObj is long l)
-                                        zoom = l;
-                                    else if (zoomObj is string s && double.TryParse(s, out var parsed))
-                                        zoom = parsed;
-                                }
+                                if (subWorkflow != null && subWorkflow.TryGetPersistedZoomPercentage(out var z))
+                                    zoom = z;
                             }
 
                             // 应用到当前 FlowEditor 对应的 InfiniteCanvas

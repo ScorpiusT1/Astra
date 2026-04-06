@@ -365,19 +365,12 @@ namespace Astra.UI.ViewModels
 
         partial void OnZoomPercentageChanged(double value)
         {
-            // 将当前缩放值写回当前子流程的数据结构，做到每个子流程各自记住缩放
+            // 将当前缩放值写入可持久化参数字典（不进入运行期 Variables）
             if (CurrentTab != null && CurrentTab.Type == WorkflowType.Sub)
             {
                 var subWorkflow = CurrentTab.GetSubWorkflow();
                 if (subWorkflow != null)
-                {
-                    if (subWorkflow.Variables == null)
-                    {
-                        subWorkflow.Variables = new Dictionary<string, object>();
-                    }
-
-                    subWorkflow.Variables["ZoomPercentage"] = value;
-                }
+                    subWorkflow.SetPersistedParameter(WorkFlowPersistedParameterKeys.ZoomPercentage, value);
             }
         }
 
@@ -936,38 +929,14 @@ namespace Astra.UI.ViewModels
             // 同步到画布
             SyncTabToCanvas(tab);
 
-            // 根据目标标签页的子流程变量还原缩放百分比（每个子流程独立缩放）
+            // 根据目标标签页的子流程持久化参数还原缩放百分比（每个子流程独立缩放）
             if (tab.Type == WorkflowType.Sub)
             {
                 var subWorkflow = tab.GetSubWorkflow();
-                if (subWorkflow != null && subWorkflow.Variables != null && subWorkflow.Variables.TryGetValue("ZoomPercentage", out var zoomObj))
-                {
-                    if (zoomObj is double d)
-                    {
-                        ZoomPercentage = d;
-                    }
-                    else if (zoomObj is float f)
-                    {
-                        ZoomPercentage = f;
-                    }
-                    else if (zoomObj is int i)
-                    {
-                        ZoomPercentage = i;
-                    }
-                    else if (zoomObj is long l)
-                    {
-                        ZoomPercentage = l;
-                    }
-                    else if (zoomObj is string s && double.TryParse(s, out var parsed))
-                    {
-                        ZoomPercentage = parsed;
-                    }
-                }
+                if (subWorkflow != null && subWorkflow.TryGetPersistedZoomPercentage(out var z))
+                    ZoomPercentage = z;
                 else
-                {
-                    // 没有保存过则使用默认值
                     ZoomPercentage = 100.0;
-                }
             }
 
             Debug.WriteLine($"[SwitchWorkflow] === 切换完成 ===");
