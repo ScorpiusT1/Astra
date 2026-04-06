@@ -209,7 +209,7 @@ namespace Astra.Services.Home
                         {
                             series.Add(new ChartSeriesEntry
                             {
-                                Name = "曲线",
+                                Name = string.IsNullOrWhiteSpace(chKey) ? "曲线" : chKey.Trim(),
                                 IsVisibleByDefault = true,
                                 Data = new ChartDisplayPayload
                                 {
@@ -226,9 +226,13 @@ namespace Astra.Services.Home
                     var channels = NvhMemoryFileSampleExtractor.ExtractAllChannels(nvh);
                     foreach (var ch in channels)
                     {
-                        var seriesName = channels.Count == 1
-                            ? $"曲线 {series.Count + 1}"
-                            : $"{ch.GroupName}/{ch.ChannelName}";
+                        // 与上方单文件多通道分支一致：图例使用 NVH 通道键（及组/设备名），
+                        // 避免「每卡仅一路」时被误标为「曲线 1、曲线 2」。
+                        var seriesName = string.IsNullOrWhiteSpace(ch.ChannelName)
+                            ? $"系列 {series.Count + 1}"
+                            : string.IsNullOrWhiteSpace(ch.GroupName)
+                                ? ch.ChannelName.Trim()
+                                : $"{ch.GroupName}/{ch.ChannelName}";
 
                         series.Add(new ChartSeriesEntry
                         {
