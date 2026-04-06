@@ -64,7 +64,7 @@ namespace Astra.Services.Home
 
         /// <summary>
         /// 构建首页测试树根列表：主流程上可见的「引用块 + 插件节点」按 <see cref="MasterWorkflow.Edges"/> 拓扑排序；
-        /// 同一子流程仅对应一行根（多引用指向同一子流程时，首次在拓扑中出现时输出）。
+        /// 每个引用块一行根；多引用指向同一子流程定义时仍各占一行，且 <see cref="TestTreeNodeItem.SubWorkflowId"/> 取引用 <see cref="WorkflowReference.Id"/> 以便与并行执行事件对齐。
         /// </summary>
         private static List<TestTreeNodeItem> BuildHomeTestTreeRootsOrderedByMasterTopology(
             MasterWorkflow? master,
@@ -74,7 +74,7 @@ namespace Astra.Services.Home
             var roots = new List<TestTreeNodeItem>();
             if (master == null || string.IsNullOrWhiteSpace(master.Id))
             {
-                AppendSubWorkflowRootsLegacyOrder(roots, master, subWorkflows);
+                AppendSubWorkflowRootsLegacyOrder(roots, master, subWorkflows, data);
                 return roots;
             }
 
@@ -84,7 +84,8 @@ namespace Astra.Services.Home
 
             // 并列（同层入度为 0）时：先按主流程引用块在脚本中的顺序，再按插件在脚本中的顺序，避免与画布拓扑无关的插件抢到子流程前面。
             var pluginRootByCanvasId = new Dictionary<string, TestTreeNodeItem>(StringComparer.Ordinal);
-            var subRootBySubWorkflowId = new Dictionary<string, TestTreeNodeItem>(StringComparer.Ordinal);
+            // 每个主流程「引用块」一行根，键为主画布节点 Id（与编排器 SubWorkflowEntry.RefId、执行上下文 WorkFlowKey 一致）
+            var subRootByRefCanvasId = new Dictionary<string, TestTreeNodeItem>(StringComparer.Ordinal);
             var refCanvasIdToSubWorkflowId = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var reference in master.SubWorkflowReferences ?? new List<WorkflowReference>())
@@ -103,11 +104,7 @@ namespace Astra.Services.Home
                 if (!declarationOrder.ContainsKey(reference.Id))
                     declarationOrder[reference.Id] = order++;
 
-                if (subRootBySubWorkflowId.ContainsKey(reference.SubWorkflowId))
-                    continue;
-
-                var root = CreateSubWorkflowGroupRoot(workflow);
-                subRootBySubWorkflowId[reference.SubWorkflowId] = root;
+                subRootByRefCanvasId[reference.Id] = CreateSubWorkflowGroupRoot(workflow, reference.Id);
             }
 
             foreach (var plugin in master.MasterPluginNodes ?? new List<Node>())
@@ -142,7 +139,7 @@ namespace Astra.Services.Home
 
             if (vertices.Count == 0)
             {
-                AppendSubWorkflowRootsLegacyOrder(roots, master, subWorkflows);
+                AppendSubWorkflowRootsLegacyOrder(roots, master, subWorkflows, data);
                 return roots;
             }
 
@@ -159,25 +156,34 @@ namespace Astra.Services.Home
 
                 if (!refCanvasIdToSubWorkflowId.TryGetValue(canvasId, out var subId))
                     continue;
-                if (!emittedSubWorkflowIds.Add(subId))
+                if (!subRootByRefCanvasId.TryGetValue(canvasId, out var subRoot))
                     continue;
-                if (subRootBySubWorkflowId.TryGetValue(subId, out var subRoot))
-                    roots.Add(subRoot);
+                roots.Add(subRoot);
+                emittedSubWorkflowIds.Add(subId);
             }
 
             AppendOrphanSubWorkflowRoots(roots, master, subWorkflows, data, emittedSubWorkflowIds);
             return roots;
         }
 
-        private static TestTreeNodeItem CreateSubWorkflowGroupRoot(WorkFlowNode workflow)
+        /// <param name="homeExecutionScopeId">
+        /// 主页执行与引擎事件对齐的作用域键：有主流程引用时为引用节点 <see cref="WorkflowReference.Id"/>，否则为子流程 <see cref="WorkFlowNode.Id"/>。
+        /// </param>
+        private static TestTreeNodeItem CreateSubWorkflowGroupRoot(WorkFlowNode workflow, string homeExecutionScopeId)
         {
+            var scope = string.IsNullOrWhiteSpace(homeExecutionScopeId)
+                ? workflow.Id ?? string.Empty
+                : homeExecutionScopeId.Trim();
+
             var root = new TestTreeNodeItem
             {
                 Name = string.IsNullOrWhiteSpace(workflow.Name) ? "未命名流程" : workflow.Name,
                 Status = "Ready",
                 IsRoot = true,
                 TestTime = DateTime.Now,
-                SubWorkflowId = workflow.Id ?? string.Empty
+                SubWorkflowId = scope,
+                // 与主流程引用 RefId 一致，便于编排器并行波次（ParallelRunningGroup）更新根行状态
+                NodeId = string.IsNullOrWhiteSpace(scope) ? string.Empty : scope
             };
 
             var orderedNodes = SortNodesByTopology(workflow);
@@ -189,7 +195,7 @@ namespace Astra.Services.Home
                 root.Children.Add(new TestTreeNodeItem
                 {
                     NodeId = node.Id,
-                    SubWorkflowId = workflow.Id ?? string.Empty,
+                    SubWorkflowId = scope,
                     Name = string.IsNullOrWhiteSpace(node.Name) ? node.NodeType ?? "未命名节点" : node.Name,
                     Status = MapStatus(node.ExecutionState),
                     TestTime = DateTime.Now,
@@ -204,12 +210,34 @@ namespace Astra.Services.Home
             return root;
         }
 
-        /// <summary>主流程无拓扑顶点时的回退：保持子流程字典迭代顺序。</summary>
+        /// <summary>主流程无拓扑顶点时的回退：优先按主流程引用块各建一行（与同脚本拓扑模式一致）。</summary>
         private static void AppendSubWorkflowRootsLegacyOrder(
             List<TestTreeNodeItem> roots,
             MasterWorkflow? master,
-            List<WorkFlowNode> subWorkflows)
+            List<WorkFlowNode> subWorkflows,
+            MultiWorkflowData? data)
         {
+            if (master?.SubWorkflowReferences != null && data?.SubWorkflows != null)
+            {
+                foreach (var reference in master.SubWorkflowReferences)
+                {
+                    if (reference == null ||
+                        string.IsNullOrWhiteSpace(reference.Id) ||
+                        string.IsNullOrWhiteSpace(reference.SubWorkflowId))
+                        continue;
+                    if (!data.SubWorkflows.TryGetValue(reference.SubWorkflowId, out var wf) || wf == null)
+                        continue;
+                    var showW = wf.ShowInHomeTestItems;
+                    var showR = reference.ShowInHomeTestItems;
+                    if (!showW || !showR)
+                        continue;
+                    roots.Add(CreateSubWorkflowGroupRoot(wf, reference.Id));
+                }
+
+                if (roots.Count > 0)
+                    return;
+            }
+
             var refBySubId = (master?.SubWorkflowReferences ?? Enumerable.Empty<WorkflowReference>())
                 .Where(r => r != null && !string.IsNullOrWhiteSpace(r.SubWorkflowId))
                 .ToDictionary(r => r.SubWorkflowId!, r => r, StringComparer.Ordinal);
@@ -224,7 +252,7 @@ namespace Astra.Services.Home
                     showFromReference = reference.ShowInHomeTestItems;
                 if (!showFromWorkflow || !showFromReference)
                     continue;
-                roots.Add(CreateSubWorkflowGroupRoot(workflow));
+                roots.Add(CreateSubWorkflowGroupRoot(workflow, workflow.Id ?? string.Empty));
             }
         }
 
@@ -257,7 +285,7 @@ namespace Astra.Services.Home
                 if (!data.SubWorkflows.ContainsKey(workflow.Id))
                     continue;
 
-                roots.Add(CreateSubWorkflowGroupRoot(workflow));
+                roots.Add(CreateSubWorkflowGroupRoot(workflow, workflow.Id ?? string.Empty));
             }
         }
 
