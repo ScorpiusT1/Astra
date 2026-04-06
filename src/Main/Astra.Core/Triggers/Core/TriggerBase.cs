@@ -220,8 +220,8 @@ namespace Astra.Core.Triggers
             // 5. 增强事件参数（子类可重写）
             await EnhanceTriggerArgsAsync(args);
 
-            // 6. 异步触发事件（Fire-and-Forget）
-            _ = RaiseTriggerEventAsync(args);
+            // 6. 分发至 TriggerManager（await：BlockUntilTestComplete 模式下轮询将阻塞至测试结束）
+            await RaiseTriggerEventAsync(args);
 
             // 7. 增加计数
             Interlocked.Increment(ref _triggerCount);

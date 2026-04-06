@@ -22,6 +22,8 @@ namespace Astra.Core.Triggers.Manager
 
         private TestExecutionConfig _executionConfig;
         private SemaphoreSlim _concurrencySemaphore;
+        /// <summary><see cref="TestExecutionMode.BlockUntilTestComplete"/> 下多路触发器共享，保证全局单场测试。</summary>
+        private readonly SemaphoreSlim _blockUntilTestCompleteGate;
         private readonly ConcurrentQueue<TriggerEventArgs> _testQueue;
         private int _runningTests;
         private int _completedTests;
@@ -60,6 +62,7 @@ namespace Astra.Core.Triggers.Manager
                 _executionConfig.MaxConcurrency,
                 _executionConfig.MaxConcurrency
             );
+            _blockUntilTestCompleteGate = new SemaphoreSlim(1, 1);
 
             _runningTests = 0;
             _completedTests = 0;
@@ -283,6 +286,10 @@ namespace Astra.Core.Triggers.Manager
                 case TestExecutionMode.SkipIfBusy:
                     await HandleSkipIfBusyModeAsync(e);
                     break;
+
+                case TestExecutionMode.BlockUntilTestComplete:
+                    await HandleBlockUntilTestCompleteAsync(e);
+                    break;
             }
         }
 
@@ -365,6 +372,24 @@ namespace Astra.Core.Triggers.Manager
 
             Console.WriteLine($"[TriggerManager] 开始执行（SkipIfBusy模式）- SN: {e.GetSN()}");
             await ExecuteTestAsync(e);
+        }
+
+        /// <summary>
+        /// 阻塞模式：等待轮到本事件后完整执行测试；与 <see cref="TriggerBase"/> 中 await 事件分发配合，
+        /// 使轮询触发器在测试结束后再继续采样 PLC。
+        /// </summary>
+        private async Task HandleBlockUntilTestCompleteAsync(TriggerEventArgs e)
+        {
+            await _blockUntilTestCompleteGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                Console.WriteLine($"[TriggerManager] BlockUntilTestComplete - 开始执行 - SN: {e.GetSN()}");
+                await ExecuteTestAsync(e).ConfigureAwait(false);
+            }
+            finally
+            {
+                _blockUntilTestCompleteGate.Release();
+            }
         }
 
         #endregion
@@ -595,6 +620,7 @@ namespace Astra.Core.Triggers.Manager
         /// <para>
         /// 在 <see cref="TestExecutionConfig.ExecutionMode"/> 为 <see cref="TestExecutionMode.Serial"/> 时，会<strong>先</strong>启动串行队列处理器
         ///（与 <see cref="SwitchModeAsync"/> 中单触发器场景一致），避免仅依赖首次 <see cref="HandleSerialModeAsync"/> 才创建队列的竞态。
+        /// <see cref="TestExecutionMode.BlockUntilTestComplete"/> 不使用该队列，依赖触发器侧 await 与 <c>_blockUntilTestCompleteGate</c>。
         /// </para>
         /// <para>
         /// <see cref="SwitchModeAsync"/> 适用于「一次只激活一个触发器」的切换；本方法适用于 Home 自动模式下多路 PLC/触发器同时轮询。
@@ -809,6 +835,7 @@ namespace Astra.Core.Triggers.Manager
         {
             StopAllAsync().Wait();
             _concurrencySemaphore?.Dispose();
+            _blockUntilTestCompleteGate?.Dispose();
             _queueCts?.Dispose();
         }
 
