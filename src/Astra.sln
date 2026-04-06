@@ -53,8 +53,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Astra.Plugins.Logic", "Plug
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Astra.Workflow.AlgorithmChannel", "Libraries\Astra.Workflow.AlgorithmChannel\Astra.Workflow.AlgorithmChannel.csproj", "{23D88226-6911-4DB0-BF81-51EBE562AB3D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Astra.Plugins.NVHAlgorithms", "Plugins\Astra.Plugins.NVHAlgorithms\Astra.Plugins.NVHAlgorithms.csproj", "{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -317,18 +315,6 @@ Global
 		{23D88226-6911-4DB0-BF81-51EBE562AB3D}.Release|x64.Build.0 = Release|Any CPU
 		{23D88226-6911-4DB0-BF81-51EBE562AB3D}.Release|x86.ActiveCfg = Release|Any CPU
 		{23D88226-6911-4DB0-BF81-51EBE562AB3D}.Release|x86.Build.0 = Release|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Debug|x64.Build.0 = Debug|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Debug|x86.Build.0 = Debug|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Release|x64.ActiveCfg = Release|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Release|x64.Build.0 = Release|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Release|x86.ActiveCfg = Release|Any CPU
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -355,7 +341,6 @@ Global
 		{2B611554-4629-443E-AE55-E3E0881E31DB} = {A3A1C007-A25D-49FE-A1C9-A125320218DA}
 		{7A4BC8D1-9E2F-4A3B-8C5D-1E2F3A4B5C6D} = {34E86E80-A304-4E65-ABD7-C334E10BC1A6}
 		{23D88226-6911-4DB0-BF81-51EBE562AB3D} = {A3A1C007-A25D-49FE-A1C9-A125320218DA}
-		{E4B7B72E-8268-829D-66CF-7B34E8B9C47F} = {34E86E80-A304-4E65-ABD7-C334E10BC1A6}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {74A17629-BD90-4E53-AD8F-76A0E4C20D66}
