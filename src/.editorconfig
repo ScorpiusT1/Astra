@@ -1,0 +1,6 @@
+# C# 使用 UTF-8 带 BOM，避免中文注释在 Windows / 部分编辑器中变成问号
+# （Main 下各项目与 Astra.Reporting 同级，不会继承 Astra.Core 子目录内的 .editorconfig）
+root = false
+
+[*.cs]
+charset = utf-8-bom

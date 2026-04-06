@@ -19,6 +19,9 @@ namespace Astra.Core.Reporting
         /// <summary>批次共享的文件时间戳（首次由归档服务设置）。</summary>
         string? SharedFileTimestamp { get; }
 
+        /// <summary>批次内多子流程共享的「单次测试」运行日志文件绝对路径（由运行日志工厂首次分配）。</summary>
+        string? SharedRunLogFilePath { get; }
+
         /// <summary>开启一轮合并归档收集；会清除上一轮残留数据。</summary>
         void BeginBatch();
 
@@ -34,6 +37,12 @@ namespace Astra.Core.Reporting
         /// <summary>添加一个子流程的 RunRecord（含工况标签）。</summary>
         /// <param name="reportSequenceOrder">与 <see cref="TestReportData.SectionSequenceOrder"/> 一致，用于合并结果排序。</param>
         void AddRunRecord(WorkFlowRunRecord record, string condition, int reportSequenceOrder = 0);
+
+        /// <summary>
+        /// 在批次激活且目录、时间戳有效时，分配唯一共享运行日志路径（与测试数据输出目录同文件夹），供本轮测试内所有子流程追加写入。
+        /// </summary>
+        /// <param name="serialNumberFilePart">已净化、可用于文件名的 SN 段；文件名为 <c>{SN}_{时间戳}_batch_workflow_run.log</c>；空则按 SN_PENDING。</param>
+        string? TryAllocateSharedRunLogFilePath(string directory, string fileTimestamp, string? serialNumberFilePart = null);
 
         /// <summary>
         /// 结束本轮收集，返回全部已收集的数据。

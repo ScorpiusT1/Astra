@@ -1,5 +1,6 @@
 using Astra.Core.Archiving;
 using Astra.Core.Constants;
+using Astra.Core.Logs;
 using Astra.Core.Data;
 using Astra.Core.Devices;
 using Astra.Core.Foundation.Common;
@@ -39,6 +40,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
         private readonly INodeRunCollector _nodeRunCollector;
         private readonly int _maxHistorySize;
         private readonly IWorkflowArchiveService _workflowArchiveService;
+        private readonly IExecutionRunLogSessionFactory? _runLogSessionFactory;
 
         /// <summary>
         /// 工作流注册事件
@@ -69,7 +71,8 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             IWorkFlowEngine defaultEngine = null,
             int maxHistorySize = 1000,
             INodeRunCollector nodeRunCollector = null,
-            IWorkflowArchiveService workflowArchiveService = null)
+            IWorkflowArchiveService workflowArchiveService = null,
+            IExecutionRunLogSessionFactory? runLogSessionFactory = null)
         {
             _workflows = new ConcurrentDictionary<string, WorkFlowNode>();
             _runningExecutions = new ConcurrentDictionary<string, WorkFlowExecutionInfo>();
@@ -84,6 +87,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             _nodeRunCollector = nodeRunCollector ?? new InMemoryNodeRunCollector();
             _maxHistorySize = maxHistorySize;
             _workflowArchiveService = workflowArchiveService;
+            _runLogSessionFactory = runLogSessionFactory;
             EnsureEngineWired(_defaultEngine);
         }
 
@@ -409,6 +413,31 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                 var dataBus = new TestDataBus(executionId, rawDataStore);
                 context.SetDataBus(dataBus);
 
+                var runDataOutputDir = _workflowArchiveService?.AllocateRunOutputDirectoryIfNeeded(executionId, context);
+
+                IExecutionRunLogSession? runLogSession = null;
+                if (_runLogSessionFactory != null)
+                {
+                    var sn = ResolveSnFromGlobalVariables(context);
+                    runLogSession = _runLogSessionFactory.Create(executionId, sn, runDataOutputDir, contextMetadataWorkFlowKey);
+                    context.SetMetadata(ExecutionContextMetadataKeys.ExecutionRunLogSession, runLogSession);
+                    if (context.Metadata.TryGetValue(AstraSharedConstants.MetadataKeys.UiLogWriter, out var uw) &&
+                        uw is Action<string, string> existingWriter)
+                    {
+                        context.SetMetadata(AstraSharedConstants.MetadataKeys.UiLogWriter,
+                            (Action<string, string>)((lvl, msg) =>
+                            {
+                                runLogSession.Write(lvl, msg);
+                                existingWriter(lvl, msg);
+                            }));
+                    }
+                    else
+                    {
+                        context.SetMetadata(AstraSharedConstants.MetadataKeys.UiLogWriter,
+                            (Action<string, string>)((lvl, msg) => runLogSession.Write(lvl, msg)));
+                    }
+                }
+
                 // 触发执行开始事件
                 OnWorkFlowExecutionStarted(new WorkFlowExecutionStartedEventArgs
                 {
@@ -423,7 +452,7 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, controller.Token);
 
                     // 执行工作流
-                    var result = await engine.ExecuteAsync(workflow, context, linkedCts.Token);
+                    var result = await engine.ExecuteAsync(workflow, context, linkedCts.Token).ConfigureAwait(false);
 
                     // 更新执行信息
                     executionInfo.EndTime = DateTime.Now;
@@ -475,6 +504,22 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
                     });
 
                     completionResult = OperationResult<ExecutionResult>.Failure($"工作流执行失败: {ex.Message}", ErrorCodes.ExecutionFailed);
+                }
+                finally
+                {
+                    if (runLogSession != null)
+                    {
+                        try
+                        {
+                            await runLogSession.DisposeAsync().ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            // 避免日志收尾影响主流程结果
+                        }
+
+                        context.Metadata?.Remove(ExecutionContextMetadataKeys.ExecutionRunLogSession);
+                    }
                 }
 
                 // 归档须先于本轮 Store/总线清理；finally 中收尾保证异常路径也会释放本轮资源
@@ -945,6 +990,16 @@ namespace Astra.Engine.Execution.WorkFlowEngine.Management
             }
 
             return string.Empty;
+        }
+
+        private static string? ResolveSnFromGlobalVariables(NodeContext context)
+        {
+            if (context?.GlobalVariables == null)
+                return null;
+            if (!context.GlobalVariables.TryGetValue("SN", out var o) || o == null)
+                return null;
+            var s = o.ToString();
+            return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
         }
 
         private string ResolveCanonicalWorkflowKey(string requestedKey, WorkFlowNode workflow)

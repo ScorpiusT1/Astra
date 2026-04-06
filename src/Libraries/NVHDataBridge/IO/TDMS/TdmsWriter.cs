@@ -11,7 +11,8 @@ using System.Text;
 namespace NVHDataBridge.IO.TDMS
 {
     /// <summary>
-    /// 零拷贝高性能TDMS写入类
+    /// 高性能 TDMS 写入：大缓冲 <see cref="FileStream"/>、批量 API、<see cref="ArrayPool{T}"/> 复用装箱缓冲区等。
+    /// （底层 <c>WriteRawData</c> 仅接受 <see cref="IEnumerable{T}"/> of <see cref="object"/>，装箱无法避免。）
     /// </summary>
     public class TdmsWriter : IDisposable
     {
@@ -23,13 +24,10 @@ namespace NVHDataBridge.IO.TDMS
         private bool _isDisposed;
 
         // 缓冲区配置
-        private const int DEFAULT_BUFFER_SIZE = 1024 * 1024; // 1MB 内部缓冲
+        private const int DEFAULT_BUFFER_SIZE = 1024 * 1024; // 1MB FileStream 缓冲
         private const int LARGE_DATA_THRESHOLD = 50 * 1024 * 1024; // 50MB
         private const int CHUNK_SIZE = 100000; // 每次处理10万条
 
-        // 内部写入缓冲（关键优化）
-        private readonly MemoryStream _writeBuffer;
-        private readonly int _flushThreshold;
         private int _bufferWriteCount;
 
         // 泛型批量缓冲（避免装箱）
@@ -77,9 +75,6 @@ namespace NVHDataBridge.IO.TDMS
             _metadataLock = new object();
             _isDisposed = false;
 
-            // 内部缓冲区（关键优化）
-            _writeBuffer = new MemoryStream(DEFAULT_BUFFER_SIZE);
-            _flushThreshold = DEFAULT_BUFFER_SIZE / 2; // 512KB时触发刷新
             _bufferWriteCount = 0;
         }
 
@@ -97,8 +92,6 @@ namespace NVHDataBridge.IO.TDMS
             _metadataLock = new object();
             _isDisposed = false;
 
-            _writeBuffer = new MemoryStream(DEFAULT_BUFFER_SIZE);
-            _flushThreshold = DEFAULT_BUFFER_SIZE / 2;
             _bufferWriteCount = 0;
         }
 
@@ -166,9 +159,10 @@ namespace NVHDataBridge.IO.TDMS
 
             config = config ?? new ChannelConfig();
 
-            int dataCountForNi = config.WfSamples.HasValue
-                ? (int)Math.Min(config.WfSamples.Value, int.MaxValue)
-                : 0;
+            // 必须为 0：若把 WfSamples 传入 GenerateStandardChannel，NI 会在 RawData 中预置样本计数；
+            // 随后 WriteBatch/WriteRawData 再执行 RawData.Count += n，会导致声明长度约为实际写入的 2 倍，
+            // 读端 ReadRawFixed 按元数据读满长度时即 EndOfStream。wf_samples 仍由 ApplyStandardWaveformChannelProperties 写入属性。
+            const int initialRawSampleCountForNi = 0;
 
             var meta = WriteSegment.GenerateStandardChannel(
                 groupName,
@@ -180,9 +174,16 @@ namespace NVHDataBridge.IO.TDMS
                 config.StartTime ?? DateTime.Now,
                 config.Increment,
                 typeof(T),
-                dataCountForNi,
+                initialRawSampleCountForNi,
                 0
             );
+
+            // 通道不保留 TDMS description / wf_description（与 NvhTdmsConverter 保存策略一致）
+            if (meta.Properties != null)
+            {
+                meta.Properties.Remove("description");
+                meta.Properties.Remove("wf_description");
+            }
 
             ApplyStandardWaveformChannelProperties(meta, config);
 
@@ -202,6 +203,11 @@ namespace NVHDataBridge.IO.TDMS
 
             return this;
         }
+
+        /// <summary>
+        /// 在已登记全部根/组/通道元数据后调用，再写入各通道 Raw，使首个 TDMS 数据段包含完整通道表（与 NvhTdmsConverter 保存流程的两阶段写入配合）。
+        /// </summary>
+        public void EnsureDataSegmentOpen() => EnsureSegmentCreated();
 
         /// <summary>
         /// 批量设置多个通道（泛型版本）
@@ -436,9 +442,7 @@ namespace NVHDataBridge.IO.TDMS
                 meta.RawData.Count += buffer.Count;
             }
 
-            // 按通道规范写入原始数据
-            T[] data = buffer.GetArray();
-            WriteArrayValues(meta, data);
+            WriteArrayValues(meta, buffer.Items);
 
             _segmentDataCount += buffer.Count;
             buffer.Clear();
@@ -481,28 +485,27 @@ namespace NVHDataBridge.IO.TDMS
 
             int totalCount = data.Count;
             int offset = 0;
+            // 整块复用缓冲，避免每个分片 new T[chunkCount]（长度取首个分片大小，后续分片不超过该值）
+            int firstChunk = Math.Min(CHUNK_SIZE, totalCount);
+            var reusableChunk = new T[firstChunk];
 
             while (offset < totalCount)
             {
                 int chunkCount = Math.Min(CHUNK_SIZE, totalCount - offset);
 
-                // 创建分块数组
-                T[] chunk;
                 if (data is T[] array)
                 {
-                    chunk = new T[chunkCount];
-                    Array.Copy(array, offset, chunk, 0, chunkCount);
+                    Array.Copy(array, offset, reusableChunk, 0, chunkCount);
                 }
                 else
                 {
-                    chunk = new T[chunkCount];
                     for (int i = 0; i < chunkCount; i++)
                     {
-                        chunk[i] = data[offset + i];
+                        reusableChunk[i] = data[offset + i];
                     }
                 }
 
-                WriteArrayValues(meta, chunk);
+                WriteArrayValues(meta, reusableChunk, chunkCount);
 
                 offset += chunkCount;
                 _segmentDataCount += chunkCount;
@@ -560,15 +563,14 @@ namespace NVHDataBridge.IO.TDMS
                 meta.RawData.Count += data.Count;
             }
 
-            // 按通道规范写入原始数据
-            if (data is T[] array)
+            // T[]、List<T> 等均实现 IReadOnlyList<T>，避免先 ToArray 再写入的双重复制
+            if (data is IReadOnlyList<T> readOnlyList)
             {
-                WriteArrayValues(meta, array);
+                WriteArrayValues(meta, readOnlyList);
             }
             else
             {
-                T[] tempArray = data.ToArray();
-                WriteArrayValues(meta, tempArray);
+                WriteArrayValues(meta, data);
             }
 
             _segmentDataCount += data.Count;
@@ -677,28 +679,92 @@ namespace NVHDataBridge.IO.TDMS
         {
             if (meta?.RawData == null) throw new InvalidOperationException("元数据 RawData 未初始化。");
 
-            // Writer.WriteRawData 会根据 RawData.DataType 等信息，以 TDMS 规范格式写入
+            // 单点写入不用 ArrayPool，避免高频路径与池锁竞争
             _writer.WriteRawData(meta.RawData, new object[] { value });
         }
 
         /// <summary>
-        /// 数组批量写入：通过 TDMSReader.Writer 按通道格式写 RawData
+        /// 数组批量写入：装箱后调用 <see cref="Writer.WriteRawData"/>（<c>object[]</c> 来自 <see cref="ArrayPool{T}.Shared"/>）。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteArrayValues<T>(Reader.Metadata meta, T[] values) where T : struct
         {
             if (values == null || values.Length == 0) return;
+            WriteArrayValues(meta, values, values.Length);
+        }
+
+        /// <summary>
+        /// 将 <paramref name="buffer"/> 前 <paramref name="count"/> 个元素写入 Raw（用于流式分块复用数组）。
+        /// </summary>
+        private void WriteArrayValues<T>(Reader.Metadata meta, T[] buffer, int count) where T : struct
+        {
+            if (count <= 0 || buffer == null) return;
 
             if (meta?.RawData == null) throw new InvalidOperationException("元数据 RawData 未初始化。");
 
-            // 将值装箱为 object[]，交给 Writer.WriteRawData 根据 DataType 写入
-            var objects = new object[values.Length];
-            for (int i = 0; i < values.Length; i++)
+            object[] objects = ArrayPool<object>.Shared.Rent(count);
+            try
             {
-                objects[i] = values[i];
-            }
+                for (int i = 0; i < count; i++)
+                    objects[i] = buffer[i]!;
 
-            _writer.WriteRawData(meta.RawData, objects);
+                _writer.WriteRawData(meta.RawData, new ArraySegment<object>(objects, 0, count));
+            }
+            finally
+            {
+                Array.Clear(objects, 0, count);
+                ArrayPool<object>.Shared.Return(objects);
+            }
+        }
+
+        /// <summary>
+        /// 从只读列表装箱写入（避免先 <c>ToArray()</c> 再装箱的双重复制）。
+        /// </summary>
+        private void WriteArrayValues<T>(Reader.Metadata meta, IReadOnlyList<T> values) where T : struct
+        {
+            int n = values.Count;
+            if (n == 0) return;
+
+            if (meta?.RawData == null) throw new InvalidOperationException("元数据 RawData 未初始化。");
+
+            object[] objects = ArrayPool<object>.Shared.Rent(n);
+            try
+            {
+                for (int i = 0; i < n; i++)
+                    objects[i] = values[i]!;
+
+                _writer.WriteRawData(meta.RawData, new ArraySegment<object>(objects, 0, n));
+            }
+            finally
+            {
+                Array.Clear(objects, 0, n);
+                ArrayPool<object>.Shared.Return(objects);
+            }
+        }
+
+        /// <summary>
+        /// 从 <see cref="IList{T}"/> 装箱写入（非数组的 <see cref="IList{T}"/> 通用路径）。
+        /// </summary>
+        private void WriteArrayValues<T>(Reader.Metadata meta, IList<T> values) where T : struct
+        {
+            int n = values.Count;
+            if (n == 0) return;
+
+            if (meta?.RawData == null) throw new InvalidOperationException("元数据 RawData 未初始化。");
+
+            object[] objects = ArrayPool<object>.Shared.Rent(n);
+            try
+            {
+                for (int i = 0; i < n; i++)
+                    objects[i] = values[i]!;
+
+                _writer.WriteRawData(meta.RawData, new ArraySegment<object>(objects, 0, n));
+            }
+            finally
+            {
+                Array.Clear(objects, 0, n);
+                ArrayPool<object>.Shared.Return(objects);
+            }
         }
 
         /// <summary>
@@ -752,6 +818,7 @@ namespace NVHDataBridge.IO.TDMS
 
         #region 分段管理
 
+        /// <summary>若尚未创建当前 TDMS 数据段则创建（将当前 <see cref="_metadataCache"/> 快照写入段头并 Open）。</summary>
         private void EnsureSegmentCreated()
         {
             if (_currentSegment == null)
@@ -817,6 +884,12 @@ namespace NVHDataBridge.IO.TDMS
 
             string xUnitStr = config.XUnitString ?? string.Empty;
             meta.Properties["wf_xunit_string"] = xUnitStr;
+
+            // Y 轴人可读单位：仅写标准属性 unit_string（不写 wf_yunit_string，避免 TDMS 通道重复单位属性）
+            string yUnitLocalized = config.YUnitLocalizedString ?? string.Empty;
+            if (string.IsNullOrEmpty(yUnitLocalized))
+                yUnitLocalized = config.YUnitString ?? string.Empty;
+            meta.Properties["unit_string"] = yUnitLocalized;
         }
 
         #region 辅助方法
@@ -866,8 +939,6 @@ namespace NVHDataBridge.IO.TDMS
             FlushAllBatches();
             ForceFlush();
             CloseCurrentSegment();
-
-            _writeBuffer?.Dispose();
 
             if (_ownsStream)
             {
@@ -927,6 +998,9 @@ namespace NVHDataBridge.IO.TDMS
         public string ChannelName { get; }
         private List<T> _data;
 
+        /// <summary>供 flush 时直接按索引装箱，避免 <c>List.ToArray()</c>。</summary>
+        internal IReadOnlyList<T> Items => _data;
+
         public int Count
         {
             get { return _data.Count; }
@@ -951,11 +1025,6 @@ namespace NVHDataBridge.IO.TDMS
             _data.AddRange(values);
         }
 
-        public T[] GetArray()
-        {
-            return _data.ToArray();
-        }
-
         public void Clear()
         {
             _data.Clear();
@@ -963,9 +1032,7 @@ namespace NVHDataBridge.IO.TDMS
 
         public void Flush(TdmsWriter writer)
         {
-            System.Reflection.MethodInfo method = typeof(TdmsWriter).GetMethod("FlushBatch");
-            System.Reflection.MethodInfo genericMethod = method.MakeGenericMethod(typeof(T));
-            genericMethod.Invoke(writer, new object[] { GroupName, ChannelName });
+            writer.FlushBatch<T>(GroupName, ChannelName);
         }
     }
 
@@ -1021,11 +1088,13 @@ namespace NVHDataBridge.IO.TDMS
     {
         public string Description { get; set; }
         public string YUnitString { get; set; }
+        /// <summary>Y 轴人可读单位，写入 TDMS <c>unit_string</c>（与 <see cref="YUnitString"/> 技术性缩写配套）。</summary>
+        public string YUnitLocalizedString { get; set; }
         public string XUnitString { get; set; }
         public string XName { get; set; }
         public DateTime? StartTime { get; set; }
         public double Increment { get; set; }
-        /// <summary>波形采样点数，对应 TDMS 通道属性 wf_samples，并传入 GenerateStandardChannel 的 dataCount。</summary>
+        /// <summary>波形采样点数，写入 TDMS 属性 wf_samples；Raw 长度仅由实际 WriteRawData 累加，不再传入 GenerateStandardChannel 的预置计数。</summary>
         public long? WfSamples { get; set; }
         /// <summary>波形 X 轴起点偏移，对应 wf_start_offset。</summary>
         public double? WfStartOffset { get; set; }

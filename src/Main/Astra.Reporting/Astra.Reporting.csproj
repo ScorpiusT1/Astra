@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Astra.Core\Astra.Core.csproj" />
     <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Libraries\NVHDataBridge\NVHDataBridge.csproj" />
   </ItemGroup>
 
 </Project>

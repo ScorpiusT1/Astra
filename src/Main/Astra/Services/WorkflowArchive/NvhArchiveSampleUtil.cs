@@ -76,6 +76,27 @@ namespace Astra.Services.WorkflowArchive
             return false;
         }
 
+        /// <summary>
+        /// 从单通道元数据解析 WAV 采样率（Hz）：优先 <c>SampleRate</c>，否则由 <see cref="NvhMemoryChannelBase.WfIncrement"/> 倒数得到。
+        /// </summary>
+        public static bool TryGetChannelSampleRateHz(NvhMemoryChannelBase channel, out int sampleRateHz)
+        {
+            sampleRateHz = 0;
+            if (channel.Properties.TryGet<double>("SampleRate", out var sr) && sr > 0)
+            {
+                sampleRateHz = (int)Math.Round(sr);
+                return sampleRateHz > 0;
+            }
+
+            if (channel.WfIncrement is { } inc && inc > 0)
+            {
+                sampleRateHz = (int)Math.Round(1.0 / inc);
+                return sampleRateHz > 0;
+            }
+
+            return false;
+        }
+
         public static bool TryGetFirstChannelSampleRateHz(NvhMemoryFile file, string groupName, out int sampleRateHz)
         {
             sampleRateHz = 0;
@@ -91,17 +112,8 @@ namespace Astra.Services.WorkflowArchive
 
             foreach (var ch in group.Channels.Values)
             {
-                if (ch.Properties.TryGet<double>("SampleRate", out var sr) && sr > 0)
-                {
-                    sampleRateHz = (int)Math.Round(sr);
+                if (TryGetChannelSampleRateHz(ch, out sampleRateHz))
                     return true;
-                }
-
-                if (ch.WfIncrement is { } inc && inc > 0)
-                {
-                    sampleRateHz = (int)Math.Round(1.0 / inc);
-                    return sampleRateHz > 0;
-                }
             }
 
             return false;

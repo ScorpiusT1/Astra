@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Astra.Contract.Communication.Abstractions;
 using Astra.Core.Constants;
 using Astra.Core.Data;
@@ -134,18 +134,16 @@ namespace Astra.Plugins.DataAcquisition.Nodes
             {
                 var xLabel = string.IsNullOrWhiteSpace(ChartXAxisLabel) ? DefaultChartXAxisLabel : ChartXAxisLabel.Trim();
                 var xUnit = string.IsNullOrWhiteSpace(ChartXAxisUnit) ? DefaultChartXAxisUnit : ChartXAxisUnit.Trim();
-                return (
-                    xLabel,
-                    xUnit,
-                    ChartYAxisLabel ?? string.Empty,
-                    ChartYAxisUnit ?? string.Empty);
+                var yLabel = string.IsNullOrWhiteSpace(ChartYAxisLabel) ? CodeDefinedChartYAxisLabel : ChartYAxisLabel.Trim();
+                var panelYAxisUnit = ChartYAxisUnit?.Trim() ?? string.Empty;
+                return (xLabel, xUnit, yLabel, panelYAxisUnit);
             }
 
-            var yUnit = string.IsNullOrWhiteSpace(physicalYAxisUnitFromSensor)
+            var physicalyUnit = string.IsNullOrWhiteSpace(physicalYAxisUnitFromSensor)
                 ? CodeDefinedChartYAxisUnitFallback
                 : physicalYAxisUnitFromSensor.Trim();
 
-            return (DefaultChartXAxisLabel, DefaultChartXAxisUnit, CodeDefinedChartYAxisLabel, yUnit);
+            return (DefaultChartXAxisLabel, DefaultChartXAxisUnit, CodeDefinedChartYAxisLabel, physicalyUnit);
         }
 
         protected override async Task<ExecutionResult> ExecuteCoreAsync(
@@ -200,6 +198,16 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 log.Warn("采集卡列表为空或无效，节点跳过。");
                 return ExecutionResult.Skip("采集卡列表为空或无效");
             }
+
+            var deviceLabelList = string.Join(", ",
+                distinctDevices.Select(d =>
+                {
+                    var dev = d as IDevice;
+                    return dev != null && !string.IsNullOrWhiteSpace(dev.DeviceName)
+                        ? $"{dev.DeviceName}({d.DeviceId})"
+                        : d.DeviceId;
+                }));
+            log.Info($"解析到采集设备 {distinctDevices.Count} 台: {deviceLabelList}。配置: 时长={DurationSeconds:F2}s, 完成后自动停止={StopAcquisitionAfterCompletion}。");
 
             var startedDevices = new ConcurrentBag<string>();
             var runningDevices = new ConcurrentBag<string>();
@@ -265,6 +273,9 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 await Task.WhenAll(prepareTasks).ConfigureAwait(false);
                 await WaitIfPausedAsync().ConfigureAwait(false);
 
+                var prepareCandidateCount = startCandidates.Count;
+                log.Info($"并行预热(初始化/连接)完成，待统一启动设备数: {prepareCandidateCount}，此前已在运行跳过预热: {runningDevices.Count}。");
+
                 if (!startErrors.IsEmpty)
                 {
                     // 有任意一块采集卡启动失败，则整体返回失败（但已经启动成功的卡仍保持运行）
@@ -306,6 +317,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                 await Task.WhenAll(startTasks).ConfigureAwait(false);
                 await WaitIfPausedAsync().ConfigureAwait(false);
 
+                log.Info($"统一启动硬件完成，本轮新启动: {startedDevices.Count}，此前已在运行: {runningDevices.Count}。");
+
                 if (!startErrors.IsEmpty)
                 {
                     var errorArray = startErrors.ToArray();
@@ -322,6 +335,15 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     .Concat(runningDevices)
                     .Distinct()
                     .ToList();
+
+                if (DurationSeconds <= 0)
+                {
+                    log.Info("采集时长≤0：仅完成启动，不进入按时长/样本等待；是否自动停采取决于「采集完成后自动停止」与后续流程。");
+                }
+                else if (activeDevices.Count == 0)
+                {
+                    log.Warn("无活动采集设备，跳过按时长等待。");
+                }
 
                 // 如果配置了采集时长：优先按「采样率 × 时长」得到目标样本数并轮询，否则回退为墙上时钟等待
                 if (DurationSeconds > 0 && activeDevices.Count > 0)
@@ -425,6 +447,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                             }
 
                             actualMinSamplesAcrossDevices = crossMin;
+                            log.Info(
+                                $"按样本等待结束，有效耗时约 {actualDurationSeconds:F2}s，各启用通道最小样本数(跨卡): {(crossMin?.ToString() ?? "未知")}。");
                         }
                         else
                         {
@@ -446,6 +470,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
                             durationStopwatch.Stop();
                             actualDurationSeconds = durationStopwatch.Elapsed.TotalSeconds;
+                            log.Info($"按时间等待结束，实际耗时约 {actualDurationSeconds:F2}s。");
                         }
                     }
                     finally
@@ -499,6 +524,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                             }).ToList();
 
                         await Task.WhenAll(stopTasks).ConfigureAwait(false);
+                        log.Info($"已对本节点本轮启动的 {startedList.Count} 台设备发起停采（StopAcquisitionAfterCompletion=true）。");
                     }
                 }
             }
@@ -563,6 +589,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                     var dataFile = daqDevice.GetDataFile();
                     if (dataFile == null)
                     {
+                        log.Warn($"设备 {daqDevice.DeviceId} 无可用内存数据文件，跳过发布至总线。");
                         continue;
                     }
 
@@ -579,6 +606,8 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         {
                             codePathPhysicalYUnit = yUnitFromSensor;
                         }
+
+                        log.Info($"设备 {daqDevice.DeviceId} 已按灵敏度换算为物理量副本发布（Y 单位: {yUnitFromSensor ?? "未解析"}）。");
                     }
 
                     var artifactRef = dataBus.PublishRawData(
@@ -598,6 +627,7 @@ namespace Astra.Plugins.DataAcquisition.Nodes
 
                 if (rawDataKeys.Count > 0)
                 {
+                    log.Info($"已向 TestDataBus 发布 Raw 工件 {rawDataKeys.Count} 个，首键: {rawDataKeys[0]}。");
                     var axis = ResolveChartAxisOutputs(codePathPhysicalYUnit);
                     result = result
                         .WithOutput("RawDataKeys", rawDataKeys)
@@ -610,6 +640,14 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         .WithOutput(NodeUiOutputKeys.ChartYAxisLabel, axis.YLabel)
                         .WithOutput(NodeUiOutputKeys.ChartYAxisUnit, axis.YUnit);
                 }
+                else if (activeDeviceListForOutput.Count > 0)
+                {
+                    log.Warn("存在活动设备但未发布任何 Raw 工件（可能无内存文件或类型不匹配），下游算法将无法从本节点取数。");
+                }
+            }
+            else
+            {
+                log.Warn("NodeContext 未绑定 TestDataBus，跳过 Raw 数据发布。");
             }
 
             return result;

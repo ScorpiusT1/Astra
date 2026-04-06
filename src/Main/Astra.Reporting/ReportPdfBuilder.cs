@@ -50,7 +50,7 @@ namespace Astra.Reporting
         private const int ChartsPerPdfStackPage = 2;
 
         /// <summary>
-        /// 根据有序的多工况报告数据生成合并 PDF：封面总览、各工况摘要页、曲线附图与算法/原始数据图表按固定槽高分页堆叠。
+        /// 根据有序的多工况报告数据生成合并 PDF：封面总览、各工况摘要页；图像栈顺序为原始数据图表、算法数据图表、曲线数据（总线），最后为曲线判定表内嵌附图，按固定槽高分页堆叠。
         /// </summary>
         /// <param name="sections">按展示顺序排列的各工况 <see cref="TestReportData"/>；不得为 null 或空集合。</param>
         /// <param name="outputPath">输出 PDF 的完整文件路径；父目录应已存在或由调用方创建。</param>
@@ -68,24 +68,26 @@ namespace Astra.Reporting
 
                     var imagePages = new List<(string Title, byte[] Png, string? Description)>();
 
+                    // 图表分层：原始数据图表 → 算法数据图表 → 曲线数据（总线）→ 曲线判定表内嵌附图
+                    AppendChartSectionsForKind(imagePages, data, ReportChartSourceKind.Raw, "原始数据图表");
+                    AppendChartSectionsForKind(imagePages, data, ReportChartSourceKind.Algorithm, "算法数据图表");
+                    AppendChartSectionsForKind(imagePages, data, ReportChartSourceKind.CurveResult, "曲线数据图表");
+
+                    var hadCurveBusChart = data.Charts.Any(c =>
+                        c.SourceKind == ReportChartSourceKind.CurveResult &&
+                        !string.IsNullOrEmpty(c.ImageBase64));
+                    var firstCurveJudgmentImage = true;
                     foreach (var cj in data.CurveJudgments.Where(c => !string.IsNullOrEmpty(c.ChartImageBase64)))
                     {
                         var bytes = TryDecodeBase64(cj.ChartImageBase64);
                         if (bytes == null) continue;
                         var title = !string.IsNullOrWhiteSpace(cj.ReportHeading)
                             ? cj.ReportHeading
-                            : $"曲线图: {cj.CurveName}";
+                            : $"曲线数据图表: {cj.CurveName}";
+                        if (firstCurveJudgmentImage && !hadCurveBusChart)
+                            title = $"曲线数据图表\n{title}";
+                        firstCurveJudgmentImage = false;
                         imagePages.Add((title, bytes, null));
-                    }
-
-                    foreach (var chart in data.Charts.Where(c => !string.IsNullOrEmpty(c.ImageBase64)))
-                    {
-                        var bytes = TryDecodeBase64(chart.ImageBase64);
-                        if (bytes == null) continue;
-                        var title = !string.IsNullOrWhiteSpace(chart.ReportHeading)
-                            ? chart.ReportHeading
-                            : (chart.SourceKind == ReportChartSourceKind.Raw ? "[原始数据] " : "[算法] ") + chart.Title;
-                        imagePages.Add((title, bytes, chart.Description));
                     }
 
                     var totalCharts = imagePages.Count;
@@ -241,6 +243,39 @@ namespace Astra.Reporting
         public static void Build(TestReportData data, string outputPath)
             => BuildCombined([data], outputPath);
 
+        private static string ChartSectionFallbackTitlePrefix(ReportChartSourceKind kind) =>
+            kind switch
+            {
+                ReportChartSourceKind.Raw => "[原始数据图表] ",
+                ReportChartSourceKind.CurveResult => "[曲线数据图表] ",
+                _ => "[算法数据图表] "
+            };
+
+        private static void AppendChartSectionsForKind(
+            List<(string Title, byte[] Png, string? Description)> imagePages,
+            TestReportData data,
+            ReportChartSourceKind kind,
+            string sectionHeadingLine)
+        {
+            var firstInLayer = true;
+            foreach (var chart in data.Charts.Where(c =>
+                         !string.IsNullOrEmpty(c.ImageBase64) && c.SourceKind == kind))
+            {
+                var bytes = TryDecodeBase64(chart.ImageBase64);
+                if (bytes == null) continue;
+                var title = !string.IsNullOrWhiteSpace(chart.ReportHeading)
+                    ? chart.ReportHeading
+                    : ChartSectionFallbackTitlePrefix(chart.SourceKind) + chart.Title;
+                if (firstInLayer)
+                {
+                    title = $"{sectionHeadingLine}\n{title}";
+                    firstInLayer = false;
+                }
+
+                imagePages.Add((title, bytes, chart.Description));
+            }
+        }
+
         /// <summary>
         /// 将 Base64 字符串解码为字节数组；格式非法时返回 null。
         /// </summary>
@@ -258,7 +293,7 @@ namespace Astra.Reporting
         }
 
         /// <summary>
-        /// 排版某一工况的摘要页：分节标题（流程/工况名）、判定统计（与 HTML 一致；开始时间/耗时/总体结果见封面工况概览）。
+        /// 排版某一工况的摘要页：分节标题（流程/工况名）以及单值/曲线判定明细（开始时间/耗时/总体结果见封面工况概览）。
         /// </summary>
         private static void ComposeSummaryPage(PageDescriptor page, TestReportData d)
         {
@@ -275,19 +310,9 @@ namespace Astra.Reporting
                 var sectionTitle = ReportConditionDisplay.FormatSectionTitle(d.Condition);
                 column.Item().PaddingTop(2).Text(sectionTitle).FontSize(22).Bold();
 
-                var ts = d.ScalarJudgments.Count;
-                var ps = d.ScalarJudgments.Count(j => j.Pass);
-                var tc = d.CurveJudgments.Count;
-                var pc = d.CurveJudgments.Count(j => j.Pass);
-                if (ts > 0 || tc > 0)
-                {
-                    column.Item().PaddingTop(4).Text("判定统计").FontSize(12).Bold();
-                    column.Item().Text($"单值数据: {ps}/{ts} 项 OK  |  曲线判定: {pc}/{tc} 项 OK");
-                }
-
                 if (d.ScalarJudgments.Count > 0)
                 {
-                    column.Item().PaddingTop(8).Text("单值数据").FontSize(12).Bold();
+                    column.Item().PaddingTop(8).Text("单值判定").FontSize(12).Bold();
                     column.Item().Table(table =>
                     {
                         table.ColumnsDefinition(cols =>
@@ -334,14 +359,20 @@ namespace Astra.Reporting
                         {
                             cols.RelativeColumn();
                             cols.RelativeColumn();
-                            cols.RelativeColumn(0.7f);
-                            cols.RelativeColumn(2);
+                            cols.RelativeColumn(0.85f);
+                            cols.RelativeColumn(0.85f);
+                            cols.RelativeColumn(0.85f);
+                            cols.RelativeColumn(0.65f);
+                            cols.RelativeColumn(1.6f);
                         });
 
                         table.Header(header =>
                         {
                             header.Cell().Element(GridTableHeaderCell).Text("节点");
                             header.Cell().Element(GridTableHeaderCell).Text("曲线");
+                            header.Cell().Element(GridTableHeaderCell).Text("实际值");
+                            header.Cell().Element(GridTableHeaderCell).Text("下限");
+                            header.Cell().Element(GridTableHeaderCell).Text("上限");
                             header.Cell().Element(GridTableHeaderCell).Text("结果");
                             header.Cell().Element(GridTableHeaderCell).Text("失败详情");
                         });
@@ -351,6 +382,9 @@ namespace Astra.Reporting
                         {
                             table.Cell().Element(c => GridTableBodyCell(c, cRow)).Text(r.NodeName);
                             table.Cell().Element(c => GridTableBodyCell(c, cRow)).Text(r.CurveName);
+                            table.Cell().Element(c => GridTableBodyCell(c, cRow)).Text(FormatDouble(r.ActualValue));
+                            table.Cell().Element(c => GridTableBodyCell(c, cRow)).Text(FormatDouble(r.LowerLimit));
+                            table.Cell().Element(c => GridTableBodyCell(c, cRow)).Text(FormatDouble(r.UpperLimit));
                             var resText = r.Pass ? "OK" : "NG";
                             table.Cell().Element(c => GridTableBodyCell(c, cRow)).Text(resText)
                                 .FontColor(r.Pass ? Colors.Green.Medium : Colors.Red.Medium);

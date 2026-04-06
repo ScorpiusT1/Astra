@@ -13,6 +13,8 @@ namespace Astra.Core.Constants
             public const string ExecutionId = "ExecutionId";
             public const string WorkFlowKey = "WorkFlowKey";
             public const string TestDataBus = "TestDataBus";
+            /// <summary>单次执行的成块日志会话（<see cref="Astra.Core.Logs.IExecutionRunLogSession"/>）。</summary>
+            public const string ExecutionRunLogSession = "ExecutionRunLogSession";
         }
 
         public static class WorkflowOutputKeys
@@ -71,10 +73,15 @@ namespace Astra.Core.Constants
         {
             public const string CodeDefinedChartXAxisLabel = "时间";
             public const string CodeDefinedChartXAxisUnit = "s";
-            /// <summary>TDMS 波形通道 wf_xunit_string 默认值（中文单位）。</summary>
-            public const string CodeDefinedWfXUnitString = "秒";
+            /// <summary>NVH/TDMS 波形通道 <c>wf_xunit_string</c> 默认值，与 <see cref="CodeDefinedChartXAxisUnit"/> 一致用 SI 缩写「s」（便于 TDMS/LabVIEW 等工具识别）。</summary>
+            public const string CodeDefinedWfXUnitString = "s";
             public const string CodeDefinedChartYAxisLabel = "幅值";
             public const string CodeDefinedChartYAxisUnitFallback = "";
+
+            /// <summary>
+            /// 无传感器时 Y 轴不写默认单位：技术性单位 <c>wf_yunit</c> 与人可读 <c>unit_string</c> 共用此默认（空串）。
+            /// </summary>
+            public const string TdmsWaveformYAxisNoSensorUnitDefault = "";
             public const int DelaySliceMs = 100;
             public const int PublishQueueCapacity = 256;
             public const string BrcSdkDllPath = "Lib/x64/brc_daq_sdk.dll";

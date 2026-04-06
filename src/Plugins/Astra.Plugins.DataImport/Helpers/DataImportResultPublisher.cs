@@ -1,5 +1,6 @@
 using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
+using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,6 +9,12 @@ namespace Astra.Plugins.DataImport.Helpers
 {
     internal static class DataImportResultPublisher
     {
+        /// <summary>导入预览波形走总线 Algorithm 类别，但报告分层与采集 Raw 一并归入「原始数据图表」。</summary>
+        private static readonly Dictionary<string, object> ImportPreviewReportLayerPreview = new()
+        {
+            [ReportArtifactPreviewKeys.ChartReportSourceKind] = nameof(ReportChartSourceKind.Raw)
+        };
+
         public static ExecutionResult SuccessWithChart(
             NodeContext context,
             string producerNodeId,
@@ -21,7 +28,13 @@ namespace Astra.Plugins.DataImport.Helpers
             if (bus == null)
                 return ExecutionResult.Failed("测试数据总线不可用，请确认工作流由引擎正常启动。");
 
-            var r = bus.PublishAlgorithmResult(producerNodeId, artifactName, chart, tag: tag, includeInTestReport: includeInTestReport);
+            var r = bus.PublishAlgorithmResult(
+                producerNodeId,
+                artifactName,
+                chart,
+                tag: tag,
+                parameters: ImportPreviewReportLayerPreview,
+                includeInTestReport: includeInTestReport);
             return ExecutionResult.Successful(message)
                 .WithOutput(NodeUiOutputKeys.HasChartData, true)
                 .WithOutput(NodeUiOutputKeys.ChartArtifactKey, r.Key)

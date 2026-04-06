@@ -513,17 +513,12 @@
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
-                <!-- 子流程分组根（无 NodeId）隐藏图表；主流程插件单行根保留按钮 -->
-                <MultiDataTrigger>
-                    <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding IsRoot}"
-                                   Value="True" />
-                        <Condition Binding="{Binding NodeId}"
-                                   Value="" />
-                    </MultiDataTrigger.Conditions>
+                <!-- 树顶层分组根、主流程插件单行根等：凡 IsRoot 均不显示图表按钮 -->
+                <DataTrigger Binding="{Binding IsRoot}"
+                             Value="True">
                     <Setter Property="Visibility"
                             Value="Collapsed" />
-                </MultiDataTrigger>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsChartButtonVisible}"
                              Value="False">
                     <Setter Property="Visibility"

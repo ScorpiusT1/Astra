@@ -14,6 +14,7 @@ namespace Astra.Utilities
 		public const string Debug = "Debug";
 		public const string Sequence = "Sequence";
 		public const string Permission = "Permission";
+		public const string DataQuery = "DataQuery";
 	}
 }
 

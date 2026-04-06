@@ -7,5 +7,6 @@
         public const string Permission = "Permission";
         public const string Config = "Config";
         public const string Debug = "Debug";
+        public const string DataQuery = "DataQuery";
     }
 }

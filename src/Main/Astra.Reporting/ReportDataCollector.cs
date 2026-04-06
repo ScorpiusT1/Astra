@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Astra.Core.Data;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
+using NVHDataBridge.Models;
 
 namespace Astra.Reporting
 {
@@ -61,7 +63,7 @@ namespace Astra.Reporting
 
             if (runRecord.NodeRuns != null)
             {
-                foreach (var nr in runRecord.NodeRuns)
+                foreach (var nr in OrderNodeRunsByWorkflowTree(runRecord.NodeRuns, context))
                 {
                     ExtractScalarJudgments(nr, data.ScalarJudgments, scalarIds);
                     ExtractCurveJudgments(nr, data, curveIds);
@@ -76,12 +78,83 @@ namespace Astra.Reporting
                     CollectRawCharts(dataBus, data, chartProducerIds, chartKeys);
             }
 
+            // 曲线判定附图已单独渲染；同一总线键不应再出现在「算法与数据图表」中，避免与用户「仅纳入报告」逻辑下的重复展示。
+            ExcludeChartSectionsDuplicatedAsCurveAttachments(data);
+
+            StableSortChartsByReportLayer(data.Charts);
+
             data.SectionSequenceOrder = GetReportSectionSequence(context);
             return data;
         }
 
         /// <summary>
+        /// 报告输出顺序：原始数据图表 → 算法数据图表 → 曲线数据；同层内保持采集时的相对顺序。
+        /// </summary>
+        private static void StableSortChartsByReportLayer(List<ChartSection> charts)
+        {
+            if (charts.Count <= 1)
+                return;
+
+            static int Rank(ReportChartSourceKind k) =>
+                k switch
+                {
+                    ReportChartSourceKind.Raw => 0,
+                    ReportChartSourceKind.Algorithm => 1,
+                    ReportChartSourceKind.CurveResult => 2,
+                    _ => 1
+                };
+
+            var indexed = new List<(ChartSection Chart, int Index)>(charts.Count);
+            for (var i = 0; i < charts.Count; i++)
+                indexed.Add((charts[i], i));
+
+            indexed.Sort((a, b) =>
+            {
+                var cmp = Rank(a.Chart.SourceKind).CompareTo(Rank(b.Chart.SourceKind));
+                return cmp != 0 ? cmp : a.Index.CompareTo(b.Index);
+            });
+
+            charts.Clear();
+            foreach (var (c, _) in indexed)
+                charts.Add(c);
+        }
+
+        /// <summary>
+        /// 从图库中移除与某条曲线判定行 <see cref="CurveJudgmentRow.PreferredChartArtifactKey"/> 相同的节（含子图拆条共用同一 ArtifactKey 的情况）。
+        /// </summary>
+        private static void ExcludeChartSectionsDuplicatedAsCurveAttachments(TestReportData data)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var cj in data.CurveJudgments)
+            {
+                var k = cj.PreferredChartArtifactKey;
+                if (!string.IsNullOrEmpty(k))
+                    keys.Add(k);
+            }
+
+            if (keys.Count == 0)
+                return;
+
+            data.Charts.RemoveAll(c => !string.IsNullOrEmpty(c.ArtifactKey) && keys.Contains(c.ArtifactKey));
+        }
+
+        /// <summary>
+        /// 从算法类产物预览 <see cref="ReportArtifactPreviewKeys.ChartReportSourceKind"/> 解析报告分层；缺省为 <see cref="ReportChartSourceKind.Algorithm"/>。
+        /// </summary>
+        private static ReportChartSourceKind ResolveAlgorithmChartSourceKind(DataArtifactReference r)
+        {
+            var s = GetPreviewString(r, ReportArtifactPreviewKeys.ChartReportSourceKind);
+            if (string.Equals(s, nameof(ReportChartSourceKind.CurveResult), StringComparison.OrdinalIgnoreCase))
+                return ReportChartSourceKind.CurveResult;
+            if (string.Equals(s, nameof(ReportChartSourceKind.Raw), StringComparison.OrdinalIgnoreCase))
+                return ReportChartSourceKind.Raw;
+            return ReportChartSourceKind.Algorithm;
+        }
+
+        /// <summary>
         /// 从数据总线收集算法类图表：仅包含可解析为 <see cref="ChartDisplayPayload"/> 且通过包含键与白名单过滤的条目；子图布局时按系列拆成多个 <see cref="ChartSection"/>。
+        /// 分层由 <see cref="ResolveAlgorithmChartSourceKind"/> 决定（原始数据图表 / 算法数据图表 / 曲线数据）。
+        /// 预览标记为 <see cref="ReportChartSourceKind.Raw"/> 的算法产物（如文件导入预览）不在此收录，避免与 <see cref="CollectRawCharts"/> 中同类 Raw 数据重复。
         /// </summary>
         private static void CollectAlgorithmCharts(
             ITestDataBus dataBus,
@@ -98,13 +171,18 @@ namespace Astra.Reporting
                 if (!ChartArtifactMatches(algRef, producerWhitelist, artifactKeyWhitelist))
                     continue;
 
-                if (payload.Series is { Count: > 0 } && payload.LayoutMode == ChartLayoutMode.SubPlots)
+                var algoLayer = ResolveAlgorithmChartSourceKind(algRef);
+                if (algoLayer == ReportChartSourceKind.Raw)
+                    continue;
+                var baseTitle = algRef.DisplayName ?? "算法图表";
+
+                // 多系列一律拆成多张报告图，不再保留「所有通道叠在一张图」的单节（含 SinglePlot 多 Series）。
+                if (payload.Series is { Count: > 1 })
                 {
                     for (var i = 0; i < payload.Series.Count; i++)
                     {
                         var ser = payload.Series[i];
-                        var part = string.IsNullOrWhiteSpace(ser.Name) ? $"子图 {i + 1}" : ser.Name.Trim();
-                        var baseTitle = algRef.DisplayName ?? "算法图表";
+                        var part = string.IsNullOrWhiteSpace(ser.Name) ? $"系列 {i + 1}" : ser.Name.Trim();
                         var algoLabel = $"{baseTitle} — {part}";
                         data.Charts.Add(new ChartSection
                         {
@@ -113,29 +191,44 @@ namespace Astra.Reporting
                             Description = algRef.Description,
                             ArtifactKey = algRef.Key,
                             SubPlotSeriesIndex = i,
-                            SourceKind = ReportChartSourceKind.Algorithm,
+                            SourceKind = algoLayer,
                             ReportHeading = BuildArtifactChartReportHeading(data, algRef, algoLabel)
                         });
                     }
                 }
-                else
+                else if (payload.Series is { Count: 1 })
                 {
-                    var algoSingle = algRef.DisplayName ?? "算法图表";
+                    var ser = payload.Series[0];
+                    var part = string.IsNullOrWhiteSpace(ser.Name) ? "系列 1" : ser.Name.Trim();
+                    var algoLabel = $"{baseTitle} — {part}";
                     data.Charts.Add(new ChartSection
                     {
-                        Title = algoSingle,
+                        Title = algoLabel,
                         NodeName = GetProducerNodeId(algRef),
                         Description = algRef.Description,
                         ArtifactKey = algRef.Key,
-                        SourceKind = ReportChartSourceKind.Algorithm,
-                        ReportHeading = BuildArtifactChartReportHeading(data, algRef, algoSingle)
+                        SubPlotSeriesIndex = 0,
+                        SourceKind = algoLayer,
+                        ReportHeading = BuildArtifactChartReportHeading(data, algRef, algoLabel)
+                    });
+                }
+                else
+                {
+                    data.Charts.Add(new ChartSection
+                    {
+                        Title = baseTitle,
+                        NodeName = GetProducerNodeId(algRef),
+                        Description = algRef.Description,
+                        ArtifactKey = algRef.Key,
+                        SourceKind = algoLayer,
+                        ReportHeading = BuildArtifactChartReportHeading(data, algRef, baseTitle)
                     });
                 }
             }
         }
 
         /// <summary>
-        /// 从数据总线收集原始数据类图表：规则与算法图类似，标题前缀为「原始数据」。
+        /// 从数据总线收集原始数据类图表：<see cref="ChartDisplayPayload"/> 与采集/导入常见的 <see cref="NvhMemoryFile"/> Raw；标题前缀为「原始数据图表」。
         /// </summary>
         private static void CollectRawCharts(
             ITestDataBus dataBus,
@@ -146,42 +239,101 @@ namespace Astra.Reporting
             var rawRefs = dataBus.Query(DataArtifactCategory.Raw);
             foreach (var rawRef in rawRefs)
             {
-                if (!dataBus.TryGet<ChartDisplayPayload>(rawRef.Key, out var payload) || payload == null)
-                    continue;
-
                 if (!ChartArtifactMatches(rawRef, producerWhitelist, artifactKeyWhitelist))
                     continue;
 
-                var rawBase = rawRef.DisplayName ?? "Raw";
-                if (payload.Series is { Count: > 0 } && payload.LayoutMode == ChartLayoutMode.SubPlots)
+                if (dataBus.TryGet<ChartDisplayPayload>(rawRef.Key, out var payload) && payload != null)
                 {
-                    for (var i = 0; i < payload.Series.Count; i++)
+                    var rawBase = rawRef.DisplayName ?? "Raw";
+
+                    if (payload.Series is { Count: > 1 })
                     {
-                        var ser = payload.Series[i];
-                        var part = string.IsNullOrWhiteSpace(ser.Name) ? $"子图 {i + 1}" : ser.Name.Trim();
-                        var rawAlgo = $"原始数据: {rawBase} — {part}";
+                        for (var i = 0; i < payload.Series.Count; i++)
+                        {
+                            var ser = payload.Series[i];
+                            var part = string.IsNullOrWhiteSpace(ser.Name) ? $"系列 {i + 1}" : ser.Name.Trim();
+                            var rawAlgo = $"原始数据图表: {rawBase} — {part}";
+                            data.Charts.Add(new ChartSection
+                            {
+                                Title = rawAlgo,
+                                NodeName = GetProducerNodeId(rawRef),
+                                ArtifactKey = rawRef.Key,
+                                SubPlotSeriesIndex = i,
+                                SourceKind = ReportChartSourceKind.Raw,
+                                ReportHeading = BuildArtifactChartReportHeading(data, rawRef, rawAlgo)
+                            });
+                        }
+                    }
+                    else if (payload.Series is { Count: 1 })
+                    {
+                        var ser = payload.Series[0];
+                        var part = string.IsNullOrWhiteSpace(ser.Name) ? "系列 1" : ser.Name.Trim();
+                        var rawAlgo = $"原始数据图表: {rawBase} — {part}";
                         data.Charts.Add(new ChartSection
                         {
                             Title = rawAlgo,
                             NodeName = GetProducerNodeId(rawRef),
                             ArtifactKey = rawRef.Key,
-                            SubPlotSeriesIndex = i,
+                            SubPlotSeriesIndex = 0,
                             SourceKind = ReportChartSourceKind.Raw,
                             ReportHeading = BuildArtifactChartReportHeading(data, rawRef, rawAlgo)
                         });
                     }
-                }
-                else
-                {
-                    var rawSingle = $"原始数据: {rawBase}";
-                    data.Charts.Add(new ChartSection
+                    else
                     {
-                        Title = rawSingle,
-                        NodeName = GetProducerNodeId(rawRef),
-                        ArtifactKey = rawRef.Key,
-                        SourceKind = ReportChartSourceKind.Raw,
-                        ReportHeading = BuildArtifactChartReportHeading(data, rawRef, rawSingle)
-                    });
+                        var rawSingle = $"原始数据图表: {rawBase}";
+                        data.Charts.Add(new ChartSection
+                        {
+                            Title = rawSingle,
+                            NodeName = GetProducerNodeId(rawRef),
+                            ArtifactKey = rawRef.Key,
+                            SourceKind = ReportChartSourceKind.Raw,
+                            ReportHeading = BuildArtifactChartReportHeading(data, rawRef, rawSingle)
+                        });
+                    }
+
+                    continue;
+                }
+
+                if (dataBus.TryGet<NvhMemoryFile>(rawRef.Key, out var nvh) && nvh != null)
+                {
+                    var channels = RawNvhMemoryFileChartHelper.ExtractChannelSeries(nvh);
+                    if (channels.Count == 0)
+                        continue;
+
+                    var rawBase = rawRef.DisplayName ?? "Raw";
+                    if (channels.Count > 1)
+                    {
+                        for (var i = 0; i < channels.Count; i++)
+                        {
+                            var ch = channels[i];
+                            var part = string.IsNullOrWhiteSpace(ch.DisplayName)
+                                ? $"通道 {i + 1}"
+                                : ch.DisplayName.Trim();
+                            var rawAlgo = $"原始数据图表: {rawBase} — {part}";
+                            data.Charts.Add(new ChartSection
+                            {
+                                Title = rawAlgo,
+                                NodeName = GetProducerNodeId(rawRef),
+                                ArtifactKey = rawRef.Key,
+                                SubPlotSeriesIndex = i,
+                                SourceKind = ReportChartSourceKind.Raw,
+                                ReportHeading = BuildArtifactChartReportHeading(data, rawRef, rawAlgo)
+                            });
+                        }
+                    }
+                    else
+                    {
+                        var rawSingle = $"原始数据图表: {rawBase}";
+                        data.Charts.Add(new ChartSection
+                        {
+                            Title = rawSingle,
+                            NodeName = GetProducerNodeId(rawRef),
+                            ArtifactKey = rawRef.Key,
+                            SourceKind = ReportChartSourceKind.Raw,
+                            ReportHeading = BuildArtifactChartReportHeading(data, rawRef, rawSingle)
+                        });
+                    }
                 }
             }
         }
@@ -233,6 +385,15 @@ namespace Astra.Reporting
             if (!output.TryGetValue(NodeUiOutputKeys.ActualValue, out var av) || av == null)
                 return;
 
+            // 值卡控用 ValueCheckPass；曲线范围卡控仅输出 CurveCheckPass，需一并纳入单值表以展示上下限与结果。
+            bool pass;
+            if (output.TryGetValue(NodeUiOutputKeys.ValueCheckPass, out var vp) && vp is bool vb)
+                pass = vb;
+            else if (output.TryGetValue(NodeUiOutputKeys.CurveCheckPass, out var cp) && cp is bool cb)
+                pass = cb;
+            else
+                return;
+
             rows.Add(new ScalarJudgmentRow
             {
                 NodeName = nr.NodeName ?? nr.NodeId ?? string.Empty,
@@ -240,7 +401,7 @@ namespace Astra.Reporting
                 ActualValue = TryConvertDouble(av),
                 LowerLimit = TryGetDouble(output, NodeUiOutputKeys.LowerLimit),
                 UpperLimit = TryGetDouble(output, NodeUiOutputKeys.UpperLimit),
-                Pass = TryGetBool(output, NodeUiOutputKeys.ValueCheckPass)
+                Pass = pass
             });
         }
 
@@ -268,15 +429,29 @@ namespace Astra.Reporting
 
             var nodeName = nr.NodeName ?? nr.NodeId ?? string.Empty;
             var curveName = nr.NodeName ?? nr.NodeId ?? string.Empty;
+            string? preferredChartKey = null;
+            if (output.TryGetValue(NodeUiOutputKeys.ChartArtifactKey, out var ck) && ck != null)
+            {
+                preferredChartKey = Convert.ToString(ck, CultureInfo.InvariantCulture)?.Trim();
+                if (preferredChartKey?.Length == 0)
+                    preferredChartKey = null;
+            }
+
             data.CurveJudgments.Add(new CurveJudgmentRow
             {
                 NodeId = nr.NodeId ?? string.Empty,
                 NodeName = nodeName,
                 CurveName = curveName,
+                ActualValue = output.TryGetValue(NodeUiOutputKeys.ActualValue, out var act)
+                    ? TryConvertDouble(act)
+                    : null,
+                LowerLimit = TryGetDouble(output, NodeUiOutputKeys.LowerLimit),
+                UpperLimit = TryGetDouble(output, NodeUiOutputKeys.UpperLimit),
                 Pass = TryGetBool(output, NodeUiOutputKeys.CurveCheckPass),
                 FailDetail = output.TryGetValue(NodeUiOutputKeys.CurveFailDetail, out var fd)
                     ? fd?.ToString() : null,
-                ReportHeading = BuildCurveJudgmentReportHeading(data, nodeName, curveName)
+                ReportHeading = BuildCurveJudgmentReportHeading(data, nodeName, curveName),
+                PreferredChartArtifactKey = preferredChartKey
             });
         }
 
@@ -438,6 +613,141 @@ namespace Astra.Reporting
         {
             if (d.TryGetValue(key, out var v) && v is bool b) return b;
             return false;
+        }
+
+        /// <summary>
+        /// 将节点运行记录按主界面树项对应的工作流顺序重排（拓扑 + 声明顺序兜底），避免并行执行时按完成先后打乱报表行序。
+        /// </summary>
+        private static IReadOnlyList<NodeRunRecord> OrderNodeRunsByWorkflowTree(
+            IReadOnlyList<NodeRunRecord> runs,
+            NodeContext? context)
+        {
+            if (runs == null || runs.Count <= 1)
+                return runs ?? Array.Empty<NodeRunRecord>();
+
+            var orderMap = BuildWorkflowNodeOrderMap(context?.ParentWorkFlow);
+            var indexed = new List<(NodeRunRecord Run, int Index)>(runs.Count);
+            for (var i = 0; i < runs.Count; i++)
+                indexed.Add((runs[i], i));
+
+            indexed.Sort((a, b) =>
+            {
+                var aKey = a.Run?.NodeId ?? string.Empty;
+                var bKey = b.Run?.NodeId ?? string.Empty;
+                var aOrder = orderMap.TryGetValue(aKey, out var ao) ? ao : int.MaxValue;
+                var bOrder = orderMap.TryGetValue(bKey, out var bo) ? bo : int.MaxValue;
+                var cmp = aOrder.CompareTo(bOrder);
+                if (cmp != 0)
+                    return cmp;
+
+                // 同层/未知顺序时按主页展示习惯做二级排序：曲线范围卡控在前，曲线统计卡控在后。
+                cmp = CompareNodeDisplayPriority(a.Run?.NodeName, b.Run?.NodeName);
+                return cmp != 0 ? cmp : a.Index.CompareTo(b.Index);
+            });
+
+            var ordered = new List<NodeRunRecord>(indexed.Count);
+            foreach (var (run, _) in indexed)
+                ordered.Add(run);
+            return ordered;
+        }
+
+        /// <summary>
+        /// 主页树项同层节点的兜底顺序：曲线范围卡控（逐点）优先于曲线统计卡控；其余保持稳定序。
+        /// </summary>
+        private static int CompareNodeDisplayPriority(string? leftName, string? rightName)
+        {
+            static int Priority(string? nodeName)
+            {
+                if (string.IsNullOrWhiteSpace(nodeName))
+                    return int.MaxValue;
+
+                var n = nodeName.Trim();
+                if (n.Contains("曲线范围卡控", StringComparison.Ordinal))
+                    return 10;
+                if (n.Contains("曲线统计卡控", StringComparison.Ordinal))
+                    return 20;
+                return 100;
+            }
+
+            return Priority(leftName).CompareTo(Priority(rightName));
+        }
+
+        /// <summary>
+        /// 构建工作流节点序映射：优先依赖拓扑，层内按节点声明顺序。
+        /// </summary>
+        private static Dictionary<string, int> BuildWorkflowNodeOrderMap(WorkFlowNode? workflow)
+        {
+            var map = new Dictionary<string, int>(StringComparer.Ordinal);
+            var nodes = (workflow?.Nodes ?? new List<Node>())
+                .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Id))
+                .ToList();
+            if (nodes.Count == 0)
+                return map;
+
+            var nodeById = nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+            var originalIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < nodes.Count; i++)
+                originalIndex[nodes[i].Id] = i;
+
+            var indegree = new Dictionary<string, int>(StringComparer.Ordinal);
+            var adjacency = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                indegree[node.Id] = 0;
+                adjacency[node.Id] = new List<string>();
+            }
+
+            foreach (var c in workflow?.Connections ?? new List<Connection>())
+            {
+                if (c == null ||
+                    string.IsNullOrWhiteSpace(c.SourceNodeId) ||
+                    string.IsNullOrWhiteSpace(c.TargetNodeId) ||
+                    string.Equals(c.SourceNodeId, c.TargetNodeId, StringComparison.Ordinal) ||
+                    !nodeById.ContainsKey(c.SourceNodeId) ||
+                    !nodeById.ContainsKey(c.TargetNodeId))
+                {
+                    continue;
+                }
+
+                adjacency[c.SourceNodeId].Add(c.TargetNodeId);
+                indegree[c.TargetNodeId]++;
+            }
+
+            var ordered = new List<string>(nodes.Count);
+            var queue = nodes
+                .Where(n => indegree[n.Id] == 0)
+                .OrderBy(n => originalIndex[n.Id])
+                .ToList();
+
+            while (queue.Count > 0)
+            {
+                var current = queue[0];
+                queue.RemoveAt(0);
+                ordered.Add(current.Id);
+
+                foreach (var targetId in adjacency[current.Id])
+                {
+                    indegree[targetId]--;
+                    if (indegree[targetId] == 0)
+                        queue.Add(nodeById[targetId]);
+                }
+
+                queue = queue.OrderBy(n => originalIndex[n.Id]).ToList();
+            }
+
+            if (ordered.Count < nodes.Count)
+            {
+                var exists = new HashSet<string>(ordered, StringComparer.Ordinal);
+                foreach (var node in nodes)
+                {
+                    if (!exists.Contains(node.Id))
+                        ordered.Add(node.Id);
+                }
+            }
+
+            for (var i = 0; i < ordered.Count; i++)
+                map[ordered[i]] = i;
+            return map;
         }
     }
 }

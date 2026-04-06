@@ -58,6 +58,7 @@ namespace Astra.Engine.Execution.NodeExecutor
                 .WithLogging()
                 .WithRetry(maxRetries)
                 .WithPerformanceMonitoring()
+                .WithNodeExecutionBlockLogging()
                 .Build();
         }
 
@@ -73,6 +74,7 @@ namespace Astra.Engine.Execution.NodeExecutor
                 .WithCache(cacheSeconds)
                 .WithLogging()
                 .WithPerformanceMonitoring()
+                .WithNodeExecutionBlockLogging()
                 .Build();
         }
 

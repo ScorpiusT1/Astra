@@ -10,6 +10,7 @@ using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
 using Astra.UI.Abstractions.Nodes;
 using Microsoft.Extensions.Logging;
+using NVHDataBridge.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Astra.Reporting
@@ -203,13 +204,16 @@ namespace Astra.Reporting
                 return null;
 
             var effective = payload;
+            // 报告按系列拆条时不再要求 LayoutMode==SubPlots，避免 SinglePlot 多通道叠图进入 HTML。
             if (chart.SubPlotSeriesIndex is { } si
-                && payload.LayoutMode == ChartLayoutMode.SubPlots
                 && payload.Series is { Count: > 0 }
                 && si >= 0 && si < payload.Series.Count)
             {
                 effective = ReportChartPayloadSliceHelper.BuildSubPlotSlice(payload, si);
             }
+
+            if (chart.SourceKind == ReportChartSourceKind.Raw)
+                effective = ReportRawWaveformChartAxisHelper.ApplySignal1DRawReportAxes(effective);
 
             var png = ReportChartRenderer.RenderToPng(effective, chart.Width, chart.Height, chart.Title, out var rw, out var rh);
             chart.Width = rw;
@@ -218,30 +222,36 @@ namespace Astra.Reporting
         }
 
         /// <summary>
-        /// 预留的 NVH 等非标准载荷渲染入口：当前实现仅在总线中对象类型非预期时提前返回 <c>null</c>，与 <see cref="TryRenderChartPayload"/> 形成回退链。
+        /// Raw 总线中为 <see cref="NvhMemoryFile"/>（多采集等）时，按 <see cref="ChartSection.SubPlotSeriesIndex"/> 取通道并渲染为 PNG。
         /// </summary>
-        /// <param name="bus">测试数据总线。</param>
-        /// <param name="chart">目标图表节。</param>
-        /// <returns>当前始终为 <c>null</c>（占位扩展点）。</returns>
         private static byte[]? TryRenderNvhRaw(ITestDataBus? bus, ChartSection chart)
         {
             if (bus == null || string.IsNullOrEmpty(chart.ArtifactKey))
                 return null;
 
-            if (!bus.TryGet<object>(chart.ArtifactKey, out var rawObj) || rawObj == null)
+            if (!bus.TryGet<NvhMemoryFile>(chart.ArtifactKey, out var file) || file == null)
                 return null;
 
-            if (rawObj is not ChartDisplayPayload)
-            {
+            var channels = RawNvhMemoryFileChartHelper.ExtractChannelSeries(file);
+            if (channels.Count == 0)
                 return null;
-            }
 
-            return null;
+            ChartDisplayPayload effective;
+            if (chart.SubPlotSeriesIndex is { } si && si >= 0 && si < channels.Count)
+                effective = RawNvhMemoryFileChartHelper.BuildSignalPayload(channels[si]);
+            else
+                effective = RawNvhMemoryFileChartHelper.BuildSignalPayload(channels[0]);
+
+            var png = ReportChartRenderer.RenderToPng(effective, chart.Width, chart.Height, chart.Title, out var rw, out var rh);
+            chart.Width = rw;
+            chart.Height = rh;
+            return png;
         }
 
         /// <summary>
-        /// 为每条 <see cref="CurveJudgmentRow"/> 在数据总线的算法产物中查找可纳入报告的 <see cref="ChartDisplayPayload"/>（优先匹配生产者节点），
-        /// 渲染为固定尺寸 PNG 后写入 <see cref="CurveJudgmentRow.ChartImageBase64"/>。失败时静默跳过，不影响主报告数据。
+        /// 为每条 <see cref="CurveJudgmentRow"/> 渲染曲线附图：
+        /// 优先使用运行记录中的 <see cref="CurveJudgmentRow.PreferredChartArtifactKey"/>（与节点输出的图表总线键一致），
+        /// 否则在算法类产物中按生产者节点 Id 匹配，再回退为总线顺序（兼容旧数据）。
         /// </summary>
         /// <param name="request">报告请求；需要非空的 <see cref="TestReportRequest.DataBus"/>。</param>
         /// <param name="reportData">含 <see cref="TestReportData.CurveJudgments"/> 的报告数据。</param>
@@ -253,6 +263,12 @@ namespace Astra.Reporting
             {
                 try
                 {
+                    if (TryRenderCurveJudgmentFromPreferredArtifactKey(request.DataBus, cj, out var preferredB64))
+                    {
+                        cj.ChartImageBase64 = preferredB64;
+                        continue;
+                    }
+
                     var algRefs = request.DataBus.Query(DataArtifactCategory.Algorithm);
                     var ordered = OrderAlgorithmRefsForCurveJudgment(algRefs, cj);
                     foreach (var algRef in ordered)
@@ -263,7 +279,9 @@ namespace Astra.Reporting
                         if (!request.DataBus.TryGet<ChartDisplayPayload>(algRef.Key, out var p) || p == null)
                             continue;
 
-                        var png = ReportChartRenderer.RenderToPng(p, 800, 400, cj.CurveName);
+                        var title = string.IsNullOrWhiteSpace(cj.CurveName) ? cj.NodeName : cj.CurveName;
+                        var effectivePayload = MergeCurveJudgmentLimitsIntoPayload(p, cj);
+                        var png = ReportChartRenderer.RenderToPng(effectivePayload, 800, 400, title);
                         if (png is { Length: > 0 })
                         {
                             cj.ChartImageBase64 = Convert.ToBase64String(png);
@@ -276,6 +294,63 @@ namespace Astra.Reporting
                     // 曲线附图为增强展示，异常不向上抛出
                 }
             }
+        }
+
+        /// <summary>
+        /// 按节点输出中保存的总线键查找算法产物并渲染；键对应项须 <see cref="ReportIncludeKeys.PreviewIncludesInReport"/> 为 true。
+        /// </summary>
+        private static bool TryRenderCurveJudgmentFromPreferredArtifactKey(
+            ITestDataBus bus,
+            CurveJudgmentRow cj,
+            out string? base64)
+        {
+            base64 = null;
+            var key = cj.PreferredChartArtifactKey;
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            var refs = bus.Query(DataArtifactCategory.Algorithm);
+            DataArtifactReference? matched = null;
+            foreach (var r in refs)
+            {
+                if (string.Equals(r.Key, key, StringComparison.Ordinal))
+                {
+                    matched = r;
+                    break;
+                }
+            }
+
+            if (matched == null || !ReportIncludeKeys.PreviewIncludesInReport(matched.Preview))
+                return false;
+
+            if (!bus.TryGet<ChartDisplayPayload>(key, out var payload) || payload == null)
+                return false;
+
+            var title = string.IsNullOrWhiteSpace(cj.CurveName) ? cj.NodeName : cj.CurveName;
+            var effectivePayload = MergeCurveJudgmentLimitsIntoPayload(payload, cj);
+            var png = ReportChartRenderer.RenderToPng(effectivePayload, 800, 400, title);
+            if (png is not { Length: > 0 })
+                return false;
+
+            base64 = Convert.ToBase64String(png);
+            return true;
+        }
+
+        /// <summary>
+        /// 将判定行上的卡控上下限写入附图载荷，保证报告 PNG 中绘制水平合格带（总线快照可能未含 <see cref="ChartDisplayPayload.HorizontalLimitLower"/>）。
+        /// </summary>
+        private static ChartDisplayPayload MergeCurveJudgmentLimitsIntoPayload(
+            ChartDisplayPayload payload,
+            CurveJudgmentRow cj)
+        {
+            var merge = new Dictionary<string, object>();
+            if (cj.LowerLimit.HasValue)
+                merge[NodeUiOutputKeys.LowerLimit] = cj.LowerLimit.Value;
+            if (cj.UpperLimit.HasValue)
+                merge[NodeUiOutputKeys.UpperLimit] = cj.UpperLimit.Value;
+            if (merge.Count == 0)
+                return payload;
+            return ChartDisplayPayload.MergeAxisMetadata(payload.Clone(), merge);
         }
 
         /// <summary>

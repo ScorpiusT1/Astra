@@ -205,6 +205,11 @@ namespace Astra.Workflow.AlgorithmChannel.Nodes
             Description = "单图叠加：所有系列绘在同一坐标系；分子图：每个系列独立子图（多路柱状图、混合类型图表等建议使用分子图）。")]
         public ChartLayoutMode ChartDisplayLayout { get; set; } = ChartLayoutMode.SinglePlot;
 
+        [Order(4, 0)]
+        [Display(Name = "导出算法数据", GroupName = "基础配置", Order = 4,
+            Description = "控制该算法节点产出的算法图表数据是否导出为 TDMS。关闭后仍可正常计算与显示，但不会写入算法数据归档。")]
+        public bool ExportAlgorithmData { get; set; } = true;
+
         /// <summary>
         /// 发布多系列图表，布局由 <see cref="ChartDisplayLayout"/> 决定。
         /// </summary>
@@ -267,12 +272,17 @@ namespace Astra.Workflow.AlgorithmChannel.Nodes
             return AlgorithmResultPublisher.AppendScalarOutputs(chartResult, scalars);
         }
 
-        /// <summary>供测试报告标题「设备/通道」段写入总线 Preview（<see cref="ReportArtifactPreviewKeys.DeviceChannel"/>）。</summary>
-        protected Dictionary<string, object>? BuildReportArtifactPreviewDictionary()
+        /// <summary>供测试报告标题「设备/通道」段与算法导出开关写入总线 Preview。</summary>
+        protected Dictionary<string, object> BuildReportArtifactPreviewDictionary()
         {
+            var preview = new Dictionary<string, object>
+            {
+                [ReportArtifactPreviewKeys.ExportAlgorithmData] = ExportAlgorithmData
+            };
+
             var specs = ResolveInputSpecs();
             if (specs.Count == 0)
-                return null;
+                return preview;
 
             var parts = new List<string>();
             foreach (var (dev, ch) in specs)
@@ -284,9 +294,10 @@ namespace Astra.Workflow.AlgorithmChannel.Nodes
             }
 
             if (parts.Count == 0)
-                return null;
+                return preview;
 
-            return new Dictionary<string, object> { [ReportArtifactPreviewKeys.DeviceChannel] = string.Join("; ", parts) };
+            preview[ReportArtifactPreviewKeys.DeviceChannel] = string.Join("; ", parts);
+            return preview;
         }
 
         protected List<(string DeviceName, string? ChannelName)> ResolveInputSpecs()

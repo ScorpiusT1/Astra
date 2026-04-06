@@ -719,7 +719,13 @@ namespace Astra.Plugins.DataAcquisition.Devices
                 dataChannel.Properties.Set("wf_xunit", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartXAxisUnit);
                 dataChannel.Properties.Set("wf_xunit_string", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedWfXUnitString);
 
+                // TDMS / 图表：纵轴语义为幅值；wf_description 映射到 TDMS 通道 description（NvhTdmsConverter）
+                dataChannel.Properties.Set("wf_description", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel);
+                dataChannel.Properties.Set("description", AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel);
+
                 dataChannel.Properties.Set("ChannelId", channelConfig.ChannelId);
+                // 测试点位 → TDMS 通道自定义属性 MeasurementLocation（空则写空串）
+                dataChannel.Properties.Set("MeasurementLocation", channelConfig.MeasurementLocation?.Trim() ?? string.Empty);
                 dataChannel.Properties.Set("SampleRate", channelConfig.SampleRate);
                 dataChannel.Properties.Set("Gain", channelConfig.Gain);
                 dataChannel.Properties.Set("Offset", channelConfig.Offset);
@@ -732,10 +738,20 @@ namespace Astra.Plugins.DataAcquisition.Devices
                     var sensorSn = channelConfig.Sensor.SerialNumber;
                     if (!string.IsNullOrWhiteSpace(sensorSn))
                         dataChannel.Properties.Set("SensorSerialNumber", sensorSn.Trim());
-                    var yAxisUnit = channelConfig.Sensor.GetYAxisDisplayUnit();
-                    if (!string.IsNullOrEmpty(yAxisUnit))
-                        dataChannel.Properties.Set("wf_yunit", yAxisUnit);
                 }
+
+                // 默认（无传感器或未配置物理单位）：纵轴技术性单位与人可读单位均保持为空，不写默认 mV/毫伏等
+                var wfYUnit = channelConfig.Sensor?.GetYAxisDisplayUnit()?.Trim() ?? string.Empty;
+                if (string.IsNullOrEmpty(wfYUnit))
+                    wfYUnit = AstraSharedConstants.DataAcquisitionDefaults.TdmsWaveformYAxisNoSensorUnitDefault.Trim();
+                if (!string.IsNullOrEmpty(wfYUnit))
+                    dataChannel.Properties.Set("wf_yunit", wfYUnit);
+
+                string wfYUnitString = channelConfig.Sensor != null
+                    ? (channelConfig.Sensor.GetYAxisDisplayUnitLocalizedString()?.Trim() ?? string.Empty)
+                    : AstraSharedConstants.DataAcquisitionDefaults.TdmsWaveformYAxisNoSensorUnitDefault.Trim();
+                if (!string.IsNullOrEmpty(wfYUnitString))
+                    dataChannel.Properties.Set("unit_string", wfYUnitString);
 
                 _channelMap[channelConfig.ChannelId] = dataChannel;
             }

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Astra.UI.Abstractions.Nodes;
@@ -264,7 +266,9 @@ public sealed class ChartDisplayPayload
     }
 
     /// <summary>
-    /// 将 <paramref name="outputData"/> 中的轴标题/单位（若存在键）覆盖到 <paramref name="payload"/>，用于执行结果与 Raw/内联快照合并。
+    /// 将 <paramref name="outputData"/> 中的轴标题/单位（若存在键）覆盖到 <paramref name="payload"/>，用于执行结果与 Raw/内联快照合并；
+    /// 若存在 <see cref="NodeUiOutputKeys.LowerLimit"/> / <see cref="NodeUiOutputKeys.UpperLimit"/> 且可解析为数值，则同步到
+    /// <see cref="HorizontalLimitLower"/> / <see cref="HorizontalLimitUpper"/>（供报告与主页绘制合格带参考线）。
     /// </summary>
     public static ChartDisplayPayload MergeAxisMetadata(ChartDisplayPayload payload, IDictionary<string, object>? outputData)
     {
@@ -298,6 +302,20 @@ public sealed class ChartDisplayPayload
             leftUnit = yu?.ToString() ?? string.Empty;
         }
 
+        var horizLo = payload.HorizontalLimitLower;
+        var horizHi = payload.HorizontalLimitUpper;
+        if (outputData.TryGetValue(NodeUiOutputKeys.LowerLimit, out var loObj) && loObj != null)
+        {
+            if (TryMergeLimitDouble(loObj, out var loParsed))
+                horizLo = loParsed;
+        }
+
+        if (outputData.TryGetValue(NodeUiOutputKeys.UpperLimit, out var hiObj) && hiObj != null)
+        {
+            if (TryMergeLimitDouble(hiObj, out var hiParsed))
+                horizHi = hiParsed;
+        }
+
         return new ChartDisplayPayload
         {
             Kind = payload.Kind,
@@ -314,8 +332,8 @@ public sealed class ChartDisplayPayload
             HeatmapYCoordinates = payload.HeatmapYCoordinates,
             HeatmapYAxisIsLog10OfQuantity = payload.HeatmapYAxisIsLog10OfQuantity,
             SegmentLines = payload.SegmentLines,
-            HorizontalLimitLower = payload.HorizontalLimitLower,
-            HorizontalLimitUpper = payload.HorizontalLimitUpper,
+            HorizontalLimitLower = horizLo,
+            HorizontalLimitUpper = horizHi,
             Categories = payload.Categories,
             BarGroups = payload.BarGroups,
             DonutFraction = payload.DonutFraction,
@@ -398,6 +416,39 @@ public sealed class ChartDisplayPayload
         };
     }
 
+    /// <summary>与 <see cref="Clone"/> 相同数据，但清除 <see cref="HorizontalLimitLower"/> / <see cref="HorizontalLimitUpper"/>（主页不画合格带参考线）。</summary>
+    public ChartDisplayPayload WithoutHorizontalLimitLines()
+    {
+        var c = Clone();
+        return new ChartDisplayPayload
+        {
+            Kind = c.Kind,
+            BottomAxisLabel = c.BottomAxisLabel,
+            BottomAxisUnit = c.BottomAxisUnit,
+            LeftAxisLabel = c.LeftAxisLabel,
+            LeftAxisUnit = c.LeftAxisUnit,
+            SignalY = c.SignalY,
+            SamplePeriod = c.SamplePeriod,
+            X = c.X,
+            Y = c.Y,
+            HeatmapZ = c.HeatmapZ,
+            HeatmapXCoordinates = c.HeatmapXCoordinates,
+            HeatmapYCoordinates = c.HeatmapYCoordinates,
+            HeatmapYAxisIsLog10OfQuantity = c.HeatmapYAxisIsLog10OfQuantity,
+            SegmentLines = c.SegmentLines,
+            HorizontalLimitLower = null,
+            HorizontalLimitUpper = null,
+            Categories = c.Categories,
+            BarGroups = c.BarGroups,
+            DonutFraction = c.DonutFraction,
+            ExplodeFraction = c.ExplodeFraction,
+            RadarAxisMaxValues = c.RadarAxisMaxValues,
+            Series = c.Series,
+            LayoutMode = c.LayoutMode,
+            ScalarAnnotations = c.ScalarAnnotations
+        };
+    }
+
     private static double[]? Clone1D(double[]? a)
     {
         if (a == null || a.Length == 0)
@@ -422,6 +473,20 @@ public sealed class ChartDisplayPayload
         var c = new double[r0, r1];
         Array.Copy(m, c, m.Length);
         return c;
+    }
+
+    private static bool TryMergeLimitDouble(object raw, out double value)
+    {
+        try
+        {
+            value = Convert.ToDouble(raw, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            value = default;
+            return false;
+        }
     }
 }
 

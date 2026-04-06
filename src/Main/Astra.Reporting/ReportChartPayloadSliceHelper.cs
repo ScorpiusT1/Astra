@@ -3,7 +3,7 @@ using Astra.UI.Abstractions.Nodes;
 namespace Astra.Reporting
 {
     /// <summary>
-    /// 图表载荷切片辅助类：把 <see cref="ChartLayoutMode.SubPlots"/> 布局下的某一子系列克隆为独立的
+    /// 图表载荷切片辅助类：把含 <see cref="ChartDisplayPayload.Series"/> 的载荷中某一子系列克隆为独立的
     /// <see cref="ChartLayoutMode.SinglePlot"/> <see cref="ChartDisplayPayload"/>，便于报告引擎按子图分别调用
     /// <see cref="ReportChartRenderer"/>。
     /// </summary>
@@ -12,7 +12,7 @@ namespace Astra.Reporting
         /// <summary>
         /// 从父级子图载荷中取出指定索引的子系列，克隆为根级 <see cref="ChartLayoutMode.SinglePlot"/> 载荷，供报告逐张 PNG 渲染。
         /// </summary>
-        /// <param name="parent">布局为 <see cref="ChartLayoutMode.SubPlots"/> 且含 <see cref="ChartDisplayPayload.Series"/> 的父载荷。</param>
+        /// <param name="parent">含非空 <see cref="ChartDisplayPayload.Series"/> 的父载荷（与 <see cref="ChartLayoutMode"/> 无关）。</param>
         /// <param name="index">子系列在 <see cref="ChartDisplayPayload.Series"/> 中的从零开始索引。</param>
         /// <returns>
         /// 索引有效时返回新的单图载荷（轴标签在子项为空时继承父项，上下限等择优合并）；

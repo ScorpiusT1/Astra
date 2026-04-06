@@ -1,3 +1,4 @@
+using Astra.Core.Logs;
 using Astra.Core.Nodes.Models;
 using Astra.Engine.Execution.WorkFlowEngine;
 using Astra.Engine.Execution.WorkFlowEngine.Management;
@@ -142,33 +143,43 @@ namespace Astra.Engine.Execution.WorkFlowEngine
                 executionContext.OnNodeExecutionCompleted = (node, ctx, result) => OnNodeExecutionCompleted(new NodeExecutionEventArgs { Node = node, Context = ctx, Result = result });
                 executionContext.OnProgressChanged = (progress) => OnProgressChanged(new ProgressChangedEventArgs { Progress = progress });
 
-                // 6. 主阶段执行
-                var mainResult = await strategy.ExecuteAsync(executionContext);
-
-                // 7. 最后执行阶段（与主阶段失败正交；取消则不再运行）
-                ExecutionResult finalResult = mainResult;
-                if (!cancellationToken.IsCancellationRequested)
+                var runLog = executionContext.NodeContext?.GetMetadata<IExecutionRunLogSession>(ExecutionContextMetadataKeys.ExecutionRunLogSession, null);
+                try
                 {
-                    var finallyOutcome = await FinallyPhaseRunner.RunAsync(executionContext);
-                    finalResult = CombineMainAndFinallyResults(mainResult, finallyOutcome);
+                    runLog?.PushWorkflowScope(workflow.Id ?? string.Empty, workflow.Name ?? workflow.Id ?? string.Empty, executionContext.WorkFlowKey ?? string.Empty);
+
+                    // 6. 主阶段执行
+                    var mainResult = await strategy.ExecuteAsync(executionContext);
+
+                    // 7. 最后执行阶段（与主阶段失败正交；取消则不再运行）
+                    ExecutionResult finalResult = mainResult;
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        var finallyOutcome = await FinallyPhaseRunner.RunAsync(executionContext);
+                        finalResult = CombineMainAndFinallyResults(mainResult, finallyOutcome);
+                    }
+
+                    // 8. 更新统计
+                    finalResult.StartTime = startTime;
+                    finalResult.EndTime = DateTime.Now;
+                    Statistics.TotalDuration = finalResult.Duration;
+                    Statistics.ExecutionStrategy = detectedStrategy.Type.ToString();
+
+                    // 将最终执行结果回写到工作流节点本身，供 UI（如主流程引用节点、流程容器时间显示）统一读取。
+                    workflow.LastExecutionResult = finalResult;
+                    workflow.ExecutionState = finalResult.ResultType == ExecutionResultType.Cancelled
+                        ? NodeExecutionState.Cancelled
+                        : (finalResult.IsSkipped || finalResult.ResultType == ExecutionResultType.Skipped)
+                            ? NodeExecutionState.Skipped
+                            : finalResult.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
+                    workflow.ExecutionTimeDisplay = FormatWorkflowElapsed(finalResult.ActiveDurationMs ?? finalResult.Duration?.TotalMilliseconds);
+
+                    return finalResult;
                 }
-
-                // 8. 更新统计
-                finalResult.StartTime = startTime;
-                finalResult.EndTime = DateTime.Now;
-                Statistics.TotalDuration = finalResult.Duration;
-                Statistics.ExecutionStrategy = detectedStrategy.Type.ToString();
-
-                // 将最终执行结果回写到工作流节点本身，供 UI（如主流程引用节点、流程容器时间显示）统一读取。
-                workflow.LastExecutionResult = finalResult;
-                workflow.ExecutionState = finalResult.ResultType == ExecutionResultType.Cancelled
-                    ? NodeExecutionState.Cancelled
-                    : (finalResult.IsSkipped || finalResult.ResultType == ExecutionResultType.Skipped)
-                        ? NodeExecutionState.Skipped
-                        : finalResult.Success ? NodeExecutionState.Success : NodeExecutionState.Failed;
-                workflow.ExecutionTimeDisplay = FormatWorkflowElapsed(finalResult.ActiveDurationMs ?? finalResult.Duration?.TotalMilliseconds);
-
-                return finalResult;
+                finally
+                {
+                    runLog?.PopWorkflowScope();
+                }
             }
             catch (OperationCanceledException)
             {

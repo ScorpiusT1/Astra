@@ -16,14 +16,15 @@ using System.Threading.Tasks;
 namespace Astra.Plugins.Limits.Nodes
 {
     /// <summary>
-    /// 从 Raw 数据存储读取 NVH 曲线，逐样本检查是否落在闭区间 [下限, 上限] 内。通道为上游「设备/通道」。
+    /// 逐样本检查曲线是否落在闭区间 [下限, 上限] 内。样本可来自上游算法图表（<see cref="Astra.UI.Abstractions.Nodes.ChartDisplayPayload"/>）
+    /// 或 Raw（采集/导入等 <see cref="NVHDataBridge.Models.NvhMemoryFile"/>），由 <see cref="CurveSampleSource"/> 控制。
     /// </summary>
     public class CurveLimitCheckNode : Node, IHomeTestItemChartEligibleNode, IReportWhitelistScalarNode, IReportWhitelistCurveNode, IReportWhitelistChartProducerNode
     {
         [JsonIgnore]
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();
 
-        /// <summary>设计期：与值卡控一致登记标量上游，便于仅从算法等标量侧连线时解析「通道」下拉（运行时仍按 Raw 解析曲线）。</summary>
+        /// <summary>设计期：与值卡控一致登记标量上游，便于仅从算法等标量侧连线时解析「通道」下拉。</summary>
         [JsonIgnore]
         private readonly List<IDesignTimeScalarOutputProvider> _upstreamScalarProviders = new();
 
@@ -124,6 +125,10 @@ namespace Astra.Plugins.Limits.Nodes
                 return LimitCurveChannelOptionsHelper.BuildOptions(Id, CachedChannelOptions, _curveChannelName);
             }
         }
+
+        [Display(Name = "曲线数据来源", GroupName = "曲线数据", Order = 0,
+            Description = "自动：上游有图表工件则卡算法曲线，否则卡 Raw。仅原始数据/仅上游图表为强制模式。")]
+        public CurveLimitSampleSource CurveSampleSource { get; set; } = CurveLimitSampleSource.Auto;
 
         [Display(Name = "通道", GroupName = "曲线数据", Order = 1,
             Description = "与算法节点一致：连线后由上游驱动通道列表；删除/断开上游后仍保留已选与缓存；上游通道或设备配置变化时再剔除无效项。")]
@@ -228,19 +233,85 @@ namespace Astra.Plugins.Limits.Nodes
                 return Task.FromResult(ExecutionResult.Failed(selErr ?? "请选择通道"));
             }
 
-            if (!LimitCurveArtifactResolver.TryResolveRawArtifactKey(context, Id, deviceForRaw, out var artifact, out var resolveErr))
-            {
-                return Task.FromResult(ExecutionResult.Failed(resolveErr));
-            }
+            double[] samples;
+            var samplesFromUpstreamChart = false;
+            string? rawArtifactKeyForChartOutputs;
 
-            if (!context.TryGetArtifact<NVHDataBridge.Models.NvhMemoryFile>(artifact, out var file) || file == null)
+            switch (CurveSampleSource)
             {
-                return Task.FromResult(ExecutionResult.Failed($"无法从数据总线读取曲线数据: {artifact}"));
-            }
+                case CurveLimitSampleSource.ChartOnly:
+                    if (!LimitNodeShared.TryGetCurveLimitSamplesFromUpstreamChart(
+                            context,
+                            nvhCh,
+                            out var chartSamples,
+                            out var chartErr))
+                    {
+                        return Task.FromResult(ExecutionResult.Failed(chartErr ?? "无法读取上游图表曲线"));
+                    }
 
-            if (!NvhCurveSampleUtil.TryExtractAsDoubleArray(file, LimitCurveArtifactResolver.NvhSignalGroupName, nvhCh, out var samples) || samples.Length == 0)
-            {
-                return Task.FromResult(ExecutionResult.Failed("曲线样本为空或通道类型不支持"));
+                    samples = chartSamples!;
+                    samplesFromUpstreamChart = true;
+                    rawArtifactKeyForChartOutputs = null;
+                    break;
+
+                case CurveLimitSampleSource.RawOnly:
+                    if (!LimitCurveArtifactResolver.TryResolveRawArtifactKey(context, Id, deviceForRaw, out var rawKey, out var rawOnlyErr))
+                    {
+                        return Task.FromResult(ExecutionResult.Failed(rawOnlyErr));
+                    }
+
+                    if (!context.TryGetArtifact<NVHDataBridge.Models.NvhMemoryFile>(rawKey, out var rawOnlyFile) || rawOnlyFile == null)
+                    {
+                        return Task.FromResult(ExecutionResult.Failed($"无法从数据总线读取曲线数据: {rawKey}"));
+                    }
+
+                    if (!NvhCurveSampleUtil.TryExtractAsDoubleArray(
+                            rawOnlyFile,
+                            LimitCurveArtifactResolver.NvhSignalGroupName,
+                            nvhCh,
+                            out samples) ||
+                        samples.Length == 0)
+                    {
+                        return Task.FromResult(ExecutionResult.Failed("曲线样本为空或通道类型不支持"));
+                    }
+
+                    rawArtifactKeyForChartOutputs = rawKey;
+                    break;
+
+                default:
+                    if (LimitNodeShared.TryResolveUpstreamCurveSamplesForAuto(context, nvhCh, out var autoChart) &&
+                        autoChart is { Length: > 0 })
+                    {
+                        samples = autoChart;
+                        samplesFromUpstreamChart = true;
+                        rawArtifactKeyForChartOutputs = null;
+                    }
+                    else
+                    {
+                        if (!LimitCurveArtifactResolver.TryResolveRawArtifactKey(context, Id, deviceForRaw, out var autoRawKey, out var autoRawErr))
+                        {
+                            return Task.FromResult(ExecutionResult.Failed(autoRawErr));
+                        }
+
+                        if (!context.TryGetArtifact<NVHDataBridge.Models.NvhMemoryFile>(autoRawKey, out var autoRawFile) || autoRawFile == null)
+                        {
+                            return Task.FromResult(ExecutionResult.Failed($"无法从数据总线读取曲线数据: {autoRawKey}"));
+                        }
+
+                        if (!NvhCurveSampleUtil.TryExtractAsDoubleArray(
+                                autoRawFile,
+                                LimitCurveArtifactResolver.NvhSignalGroupName,
+                                nvhCh,
+                                out samples) ||
+                            samples.Length == 0)
+                        {
+                            return Task.FromResult(ExecutionResult.Failed("曲线样本为空或通道类型不支持"));
+                        }
+
+                        rawArtifactKeyForChartOutputs = autoRawKey;
+                    }
+
+                    break;
             }
 
             var lo = LowerLimit;
@@ -274,9 +345,10 @@ namespace Astra.Plugins.Limits.Nodes
                 }
             }
 
+            var sourceHint = samplesFromUpstreamChart ? "，来源=上游图表" : "，来源=Raw";
             var summary = pass
-                ? $"曲线卡控通过，样本数={samples.Length}，min={min:F6} max={max:F6}，带 [{lo:F6},{hi:F6}]"
-                : $"曲线卡控失败，索引={failIndex}，值={samples[failIndex]:F6}，带 [{lo:F6},{hi:F6}]";
+                ? $"曲线卡控通过，样本数={samples.Length}，min={min:F6} max={max:F6}，带 [{lo:F6},{hi:F6}]{sourceHint}"
+                : $"曲线卡控失败，索引={failIndex}，值={samples[failIndex]:F6}，带 [{lo:F6},{hi:F6}]{sourceHint}";
 
             ExecutionResult result;
             if (pass)
@@ -295,7 +367,7 @@ namespace Astra.Plugins.Limits.Nodes
                 .WithOutput(NodeUiOutputKeys.CurveCheckPass, pass)
                 .WithOutput(NodeUiOutputKeys.Summary, summary);
 
-            result = LimitNodeShared.WithNvhCurveChartOutputs(result, context, Id, true, artifact, nvhCh, IncludeInTestReport);
+            result = LimitNodeShared.WithNvhCurveChartOutputs(result, context, Id, true, rawArtifactKeyForChartOutputs, nvhCh, IncludeInTestReport);
 
             if (!pass)
             {

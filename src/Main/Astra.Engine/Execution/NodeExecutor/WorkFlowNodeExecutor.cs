@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.Engine.Execution.Middleware;
 using Astra.Engine.Execution.WorkFlowEngine;
 using System;
 using System.Collections.Generic;
@@ -26,6 +27,8 @@ namespace Astra.Engine.Execution.NodeExecutor
         public WorkFlowNodeExecutor(IWorkFlowEngine workFlowEngine = null)
         {
             _workFlowEngine = workFlowEngine ?? WorkFlowEngineFactory.CreateDefault();
+            // 与 DefaultNodeExecutor 一致：流程节点整体也成块（子流程内容并入本块）
+            _middlewares.Add(new NodeExecutionBlockLogMiddleware());
         }
 
         /// <summary>
@@ -82,13 +85,26 @@ namespace Astra.Engine.Execution.NodeExecutor
                 }
 
                 ExecutionResult result;
+                var wfLog = context.CreateExecutionLogger($"流程节点:{workflow.Name ?? workflow.Id}");
+                wfLog.Info($"子流程引擎开始 Id={workflow.Id}");
                 try
                 {
                     // 使用工作流引擎执行工作流
-                    result = await _workFlowEngine.ExecuteAsync(workflow, context, token);
+                    result = await _workFlowEngine.ExecuteAsync(workflow, context, token).ConfigureAwait(false);
+                    if (result == null)
+                        wfLog.Warn("子流程引擎返回 null");
+                    else if (result.Success)
+                        wfLog.Info("子流程引擎结束: 成功");
+                    else if (result.IsSkipped || result.ResultType == ExecutionResultType.Skipped)
+                        wfLog.Info(string.IsNullOrWhiteSpace(result.Message) ? "子流程引擎: 已跳过" : $"子流程引擎: 已跳过 ({result.Message})");
+                    else if (result.ResultType == ExecutionResultType.Cancelled)
+                        wfLog.Warn(string.IsNullOrWhiteSpace(result.Message) ? "子流程引擎: 已取消" : $"子流程引擎: 已取消 ({result.Message})");
+                    else
+                        wfLog.Warn(string.IsNullOrWhiteSpace(result.Message) ? "子流程引擎: 失败" : $"子流程引擎: 失败 ({result.Message})");
                 }
                 catch (Exception ex)
                 {
+                    wfLog.Error($"子流程引擎异常: {ex.Message}");
                     // 执行拦截器：异常
                     foreach (var interceptor in _interceptors)
                     {

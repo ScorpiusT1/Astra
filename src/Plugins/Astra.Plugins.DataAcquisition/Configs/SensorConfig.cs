@@ -272,6 +272,41 @@ namespace Astra.Plugins.DataAcquisition.Configs
             return GetPhysicalUnitFromSensitivityUnit(SensitivityUnit, SensorType) ?? string.Empty;
         }
 
+        /// <summary>
+        /// TDMS 波形 Y 轴人可读单位（标准属性 <c>unit_string</c>），与 <see cref="GetYAxisDisplayUnit"/> 对应。
+        /// 能解析为 <see cref="PhysicalUnit"/> 时返回中文习惯写法，否则回退为 <see cref="GetYAxisDisplayUnit"/> 原文。
+        /// </summary>
+        public string GetYAxisDisplayUnitLocalizedString()
+        {
+            var code = GetYAxisDisplayUnit();
+            if (string.IsNullOrWhiteSpace(code))
+                return string.Empty;
+            var trimmed = code.Trim();
+            if (Enum.TryParse<PhysicalUnitEnum>(trimmed, ignoreCase: true, out var u))
+                return PhysicalUnitToDisplayString(u);
+            return trimmed;
+        }
+
+        private static string PhysicalUnitToDisplayString(PhysicalUnitEnum u) => u switch
+        {
+            PhysicalUnitEnum.Volt => "伏",
+            PhysicalUnitEnum.MilliVolt => "毫伏",
+            PhysicalUnitEnum.Ampere => "安",
+            PhysicalUnitEnum.MilliAmpere => "毫安",
+            PhysicalUnitEnum.MeterPerSecond2 => "米/秒²",
+            PhysicalUnitEnum.G => "g",
+            PhysicalUnitEnum.Pascal => "帕",
+            PhysicalUnitEnum.Newton => "牛",
+            PhysicalUnitEnum.Meter => "米",
+            PhysicalUnitEnum.MilliMeter => "毫米",
+            PhysicalUnitEnum.MeterPerSecond => "米/秒",
+            PhysicalUnitEnum.RPM => "转/分",
+            PhysicalUnitEnum.Decibel => "分贝",
+            PhysicalUnitEnum.Celsius => "摄氏度",
+            PhysicalUnitEnum.MicroStrain => "微应变",
+            _ => u.ToString()
+        };
+
         public string Manufacturer
         {
             get => _manufacturer;

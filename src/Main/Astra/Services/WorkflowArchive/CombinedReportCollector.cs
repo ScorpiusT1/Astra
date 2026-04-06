@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
@@ -17,6 +18,7 @@ namespace Astra.Services.WorkflowArchive
         public bool IsActive { get; private set; }
         public string? SharedOutputDirectory { get; private set; }
         public string? SharedFileTimestamp { get; private set; }
+        public string? SharedRunLogFilePath { get; private set; }
 
         public void BeginBatch()
         {
@@ -26,6 +28,7 @@ namespace Astra.Services.WorkflowArchive
                 _runRecords.Clear();
                 SharedOutputDirectory = null;
                 SharedFileTimestamp = null;
+                SharedRunLogFilePath = null;
                 IsActive = true;
             }
         }
@@ -60,6 +63,39 @@ namespace Astra.Services.WorkflowArchive
             }
         }
 
+        /// <inheritdoc />
+        public string? TryAllocateSharedRunLogFilePath(string directory, string fileTimestamp, string? serialNumberFilePart = null)
+        {
+            if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileTimestamp))
+                return null;
+
+            lock (_gate)
+            {
+                if (!IsActive)
+                    return null;
+                if (SharedRunLogFilePath != null)
+                    return SharedRunLogFilePath;
+
+                try
+                {
+                    var dir = Path.GetFullPath(directory.Trim());
+                    Directory.CreateDirectory(dir);
+                    var snSeg = string.IsNullOrWhiteSpace(serialNumberFilePart)
+                        ? "SN_PENDING"
+                        : serialNumberFilePart.Trim();
+                    if (snSeg.Length > 80)
+                        snSeg = snSeg[..80];
+                    var name = $"{snSeg}_{fileTimestamp.Trim()}_batch_workflow_run.log";
+                    SharedRunLogFilePath = Path.Combine(dir, name);
+                    return SharedRunLogFilePath;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
+
         public CombinedReportBatch EndBatch()
         {
             lock (_gate)
@@ -84,6 +120,7 @@ namespace Astra.Services.WorkflowArchive
                 _runRecords.Clear();
                 SharedOutputDirectory = null;
                 SharedFileTimestamp = null;
+                SharedRunLogFilePath = null;
                 return batch;
             }
         }

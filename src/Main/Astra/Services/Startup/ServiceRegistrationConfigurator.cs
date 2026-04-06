@@ -156,6 +156,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<HomeView>();
             services.AddSingleton<SequenceView>();
             services.AddSingleton<PermissionView>();
+            services.AddSingleton<DataQueryView>();
            
             Debug.WriteLine("✅ 视图注册完成");
         }
@@ -197,6 +198,7 @@ namespace Astra.Services.Startup
             services.AddSingleton(new WorkflowArchiveOptions());
             services.AddSingleton<ICombinedReportCollector, CombinedReportCollector>();
             services.AddSingleton<ITestReportGenerator, DefaultTestReportGenerator>();
+            services.AddSingleton<ArchivedTestDataQueryService>();
             services.AddSingleton<IReportStationLineSource, ReportStationLineSource>();
             services.AddSingleton<IWorkflowArchiveService>(sp => new DefaultWorkflowArchiveService(
                 sp.GetRequiredService<WorkflowArchiveOptions>(),
@@ -216,11 +218,14 @@ namespace Astra.Services.Startup
                     sp.GetService<Astra.Core.Logs.IExecutionLogSink>(),
                     sp.GetService<Microsoft.Extensions.Logging.ILogger<Astra.Engine.Execution.Orchestration.MasterWorkflowOrchestrator>>(),
                     sp.GetService<IReportStationLineSource>()));
+            services.AddSingleton<IExecutionRunLogSessionFactory>(sp =>
+                new Astra.Services.Logging.ExecutionRunLogSessionFactory(null, sp.GetService<ICombinedReportCollector>()));
             services.AddSingleton<IWorkFlowManager>(sp => new WorkFlowManager(
                 defaultEngine: null,
                 maxHistorySize: 1000,
                 nodeRunCollector: null,
-                workflowArchiveService: sp.GetService<IWorkflowArchiveService>()));
+                workflowArchiveService: sp.GetService<IWorkflowArchiveService>(),
+                runLogSessionFactory: sp.GetService<IExecutionRunLogSessionFactory>()));
             services.AddSingleton<IWorkflowEngineProvider>(sp =>
                 new DefaultWorkflowEngineProvider(sp.GetService<INodeExecutionUiHydrator>()));
             services.AddSingleton<ChartDisplayDataCache>();
@@ -580,6 +585,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<ViewModels.SequenceViewModel>();
             // ⭐ HomeViewModel 注册为单例，切换 Home/Sequence 时保留运行态数据，避免每次导航刷新
             services.AddSingleton<ViewModels.HomeViewModel>();
+            services.AddSingleton<ViewModels.DataQueryViewModel>();
 
             Debug.WriteLine("✅ 重构后的 ViewModels 注册完成");
         }

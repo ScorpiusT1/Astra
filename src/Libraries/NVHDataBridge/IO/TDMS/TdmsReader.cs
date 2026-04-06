@@ -274,9 +274,9 @@ namespace NVHDataBridge.IO.TDMS
                 throw new ChannelNotFoundException(groupName, channelName);
 
             if (!channel.HasData)
-                return new T[0];
+                return Array.Empty<T>();
 
-            return channel.GetData<T>().ToArray();
+            return MaterializeChannelData(channel.GetData<T>());
         }
 
         /// <summary>
@@ -298,11 +298,11 @@ namespace NVHDataBridge.IO.TDMS
 
                 if (!channel.HasData)
                 {
-                    data = new T[0];
+                    data = Array.Empty<T>();
                     return true;
                 }
 
-                data = channel.GetData<T>().ToArray();
+                data = MaterializeChannelData(channel.GetData<T>());
                 return true;
             }
             catch
@@ -448,6 +448,38 @@ namespace NVHDataBridge.IO.TDMS
         #endregion
 
         #region 私有辅助方法
+
+        /// <summary>
+        /// 若底层已返回 <typeparamref name="T"/>[] 则直接复用，否则尽量用 <see cref="ICollection{T}.CopyTo"/> 一次拷贝，避免 <c>Linq.ToArray()</c> 的枚举器开销。
+        /// </summary>
+        private static T[] MaterializeChannelData<T>(IEnumerable<T> source)
+        {
+            if (source is T[] arr)
+                return arr;
+
+            if (source is ICollection<T> coll)
+            {
+                int n = coll.Count;
+                if (n == 0)
+                    return Array.Empty<T>();
+                var buffer = new T[n];
+                coll.CopyTo(buffer, 0);
+                return buffer;
+            }
+
+            if (source is IReadOnlyList<T> rol)
+            {
+                int n = rol.Count;
+                if (n == 0)
+                    return Array.Empty<T>();
+                var buffer = new T[n];
+                for (int i = 0; i < n; i++)
+                    buffer[i] = rol[i];
+                return buffer;
+            }
+
+            return source.ToArray();
+        }
 
         private int CalculateTotalChannelCount()
         {

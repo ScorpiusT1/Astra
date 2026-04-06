@@ -1,4 +1,3 @@
-using Astra.Core.Logs;
 using Astra.Core.Nodes.Models;
 using Astra.Engine.Execution.Interceptors;
 using Astra.Engine.Execution.Middleware;
@@ -35,6 +34,15 @@ namespace Astra.Engine.Execution.NodeExecutor
         public ExecutorBuilder WithLogging(Microsoft.Extensions.Logging.ILogger logger = null, string fallbackLoggerName = "NodePipeline")
         {
             _middlewares.Add(new LoggingMiddleware(logger, fallbackLoggerName));
+            return this;
+        }
+
+        /// <summary>
+        /// 节点日志成块缓冲（最外层）。依赖 <see cref="NodeContext"/> 元数据中的 <c>ExecutionRunLogSession</c>。
+        /// </summary>
+        public ExecutorBuilder WithNodeExecutionBlockLogging()
+        {
+            _middlewares.Add(new NodeExecutionBlockLogMiddleware());
             return this;
         }
 
@@ -205,7 +213,8 @@ namespace Astra.Engine.Execution.NodeExecutor
                 .WithConditional()
                 .WithLogging()
                 .WithPerformanceMonitoring(500)
-                .WithAudit();
+                .WithAudit()
+                .WithNodeExecutionBlockLogging();
         }
 
         /// <summary>
@@ -217,7 +226,8 @@ namespace Astra.Engine.Execution.NodeExecutor
             return new ExecutorBuilder()
                 .WithValidation()
                 .WithLogging()
-                .WithPerformanceMonitoring(200); // 更严格的性能阈值
+                .WithPerformanceMonitoring(200) // 更严格的性能阈值
+                .WithNodeExecutionBlockLogging();
         }
 
         /// <summary>
@@ -232,7 +242,8 @@ namespace Astra.Engine.Execution.NodeExecutor
                 .WithExponentialBackoffRetry(maxRetries: 5, initialDelayMs: 1000)
                 .WithLogging()
                 .WithPerformanceMonitoring(1000)
-                .WithAudit();
+                .WithAudit()
+                .WithNodeExecutionBlockLogging();
         }
     }
 }

@@ -433,11 +433,46 @@ namespace Astra.Core.Nodes.Models
         /// <param name="context">节点执行上下文</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>执行结果</returns>
-        public Task<ExecutionResult> InvokeExecuteCoreAsync(
+        public async Task<ExecutionResult> InvokeExecuteCoreAsync(
             NodeContext context,
             CancellationToken cancellationToken)
         {
-            return ExecuteCoreAsync(context, cancellationToken);
+            var scopeLabel = string.IsNullOrWhiteSpace(NodeType)
+                ? (string.IsNullOrWhiteSpace(Name) ? "Node" : Name)
+                : (string.IsNullOrWhiteSpace(Name) ? NodeType : $"{NodeType}:{Name}");
+            var log = context.CreateExecutionLogger(scopeLabel);
+            log.Info($"进入核心业务 Id={Id}");
+
+            try
+            {
+                var result = await ExecuteCoreAsync(context, cancellationToken).ConfigureAwait(false);
+                if (result == null)
+                {
+                    log.Warn("核心业务返回 null");
+                    return null!;
+                }
+
+                if (result.Success)
+                    log.Info("核心业务完成: 成功");
+                else if (result.IsSkipped || result.ResultType == ExecutionResultType.Skipped)
+                    log.Info(string.IsNullOrWhiteSpace(result.Message) ? "核心业务: 已跳过" : $"核心业务: 已跳过 ({result.Message})");
+                else if (result.ResultType == ExecutionResultType.Cancelled)
+                    log.Warn(string.IsNullOrWhiteSpace(result.Message) ? "核心业务: 已取消" : $"核心业务: 已取消 ({result.Message})");
+                else
+                    log.Warn(string.IsNullOrWhiteSpace(result.Message) ? "核心业务: 失败" : $"核心业务: 失败 ({result.Message})");
+
+                return result;
+            }
+            catch (OperationCanceledException)
+            {
+                log.Warn("核心业务: 已取消 (OperationCanceledException)");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                log.Error($"核心业务异常: {ex.Message}");
+                throw;
+            }
         }
 
         /// <summary>

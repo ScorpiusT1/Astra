@@ -22,6 +22,11 @@ public static class NodeUiOutputKeys
     /// </summary>
     public const string ChartNvhChannelFilter = "Ui.ChartNvhChannelFilter";
 
+    /// <summary>
+    /// 为 true 时：主页图表合并轴元数据时不把 <see cref="LowerLimit"/>/<see cref="UpperLimit"/> 同步为水平参考线（如曲线统计卡控仅展示波形）。
+    /// </summary>
+    public const string ChartSuppressHorizontalLimits = "Ui.ChartSuppressHorizontalLimits";
+
     /// <summary>主页图表横轴标题（与 <see cref="ChartDisplayPayload.BottomAxisLabel"/> 一致）。</summary>
     public const string ChartXAxisLabel = "Ui.ChartXAxisLabel";
 
@@ -62,6 +67,7 @@ public static class NodeUiOutputKeys
         ChartArtifactKeys,
         ChartUseSubPlots,
         ChartNvhChannelFilter,
+        ChartSuppressHorizontalLimits,
         ChartXAxisLabel,
         ChartXAxisUnit,
         ChartYAxisLabel,

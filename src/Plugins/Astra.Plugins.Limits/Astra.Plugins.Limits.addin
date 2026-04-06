@@ -5,7 +5,7 @@
 		<Id>Astra.Plugins.Limits</Id>
 		<Name>范围卡控插件</Name>
 		<Version>1.0.0</Version>
-		<Description>值卡控、曲线卡控与组合卡控节点</Description>
+		<Description>值卡控、曲线卡控、曲线统计卡控与组合卡控节点</Description>
 		<Author>Astra Team</Author>
 		<Copyright>Copyright © Astra Team</Copyright>
 		<Website />
@@ -34,11 +34,17 @@
 			IconCode="MagnifyingGlassChart"
 			Description="从 Raw 数据存储读取 NVH 曲线，逐点检查是否在上下限带内"
 			Category="测试/卡控" />
-		<NodeInfo
+		<!--<NodeInfo
 			Name="值与曲线卡控"
 			TypeName="Astra.Plugins.Limits.Nodes.ValueAndCurveLimitCheckNode"
 			IconCode="LayerGroup"
 			Description="可分别启用值卡控与曲线卡控；可仅做值卡控同时保留曲线展示"
+			Category="测试/卡控" />-->
+		<NodeInfo
+			Name="曲线统计卡控"
+			TypeName="Astra.Plugins.Limits.Nodes.CurveScalarStatisticLimitCheckNode"
+			IconCode="ChartLine"
+			Description="从 Raw 或上游图表取曲线，可选 X 轴区间筛选后计算单一统计量并与上下限比较；标量写入报告，主页可看图但不纳入报告图、不画规格线"
 			Category="测试/卡控" />
 	</Nodes>
 </AddinManifest>

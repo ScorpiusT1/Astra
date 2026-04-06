@@ -1,4 +1,5 @@
 using Astra.Core.Nodes.Models;
+using Astra.UI.Abstractions.Interfaces;
 using Size2D = Astra.Core.Nodes.Geometry.Size2D;
 using PortDirection = Astra.Core.Nodes.Models.PortDirection;
 using Newtonsoft.Json;
@@ -16,7 +17,7 @@ namespace Astra.Plugins.Logic.Nodes
     /// 根据与本节点相连的直连上游节点的最近一次执行结果做聚合判断（如全部通过、全部失败、任一失败等）。
     /// 不传递业务数据，仅依赖工作流图中入边所指向的上游节点及其 <see cref="Node.LastExecutionResult"/>。
     /// </summary>
-    public sealed class UpstreamTestAggregationNode : Node
+    public sealed class UpstreamTestAggregationNode : Node, IPropertyVisibilityProvider
     {
         public UpstreamTestAggregationNode()
         {
@@ -37,6 +38,16 @@ namespace Astra.Plugins.Logic.Nodes
 
         [Display(Name = "要求上游均已执行", GroupName = "判定", Order = 3, Description = "若勾选，任一上游缺少 LastExecutionResult 时本节点直接失败。")]
         public bool RequireEachUpstreamExecuted { get; set; } = true;
+
+        /// <inheritdoc />
+        public bool IsPropertyVisible(string propertyName)
+        {
+            if (string.IsNullOrEmpty(propertyName))
+                return true;
+            if (string.Equals(propertyName, nameof(IncludeInTestReport), StringComparison.Ordinal))
+                return false;
+            return true;
+        }
 
         private void InitializePorts()
         {

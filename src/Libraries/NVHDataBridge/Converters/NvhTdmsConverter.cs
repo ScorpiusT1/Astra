@@ -39,24 +39,25 @@ namespace NVHDataBridge.Converters
                 maxSegmentSize: options.MaxSegmentSize,
                 flushMode: options.FlushMode))
             {
-                // 1. 设置文件级别属性
+                // 1. 文件与全部组/通道元数据（先登记完再开段，保证首个数据段含完整通道表）
                 SetFileProperties(writer, nvhFile, options);
 
-                // 2. 遍历所有组
                 foreach (var group in nvhFile.Groups.Values)
                 {
-                    // 3. 设置组级别属性
                     SetGroupProperties(writer, group, options);
-
-                    // 4. 遍历组内所有通道
                     foreach (var channel in group.Channels.Values)
-                    {
-                        // 5. 写入通道数据和属性
-                        WriteChannelData(writer, group.Name, channel, options);
-                    }
+                        WriteChannelData(writer, group.Name, channel, options, metadataOnly: true);
                 }
 
-                // 6. 确保所有数据已刷新
+                writer.EnsureDataSegmentOpen();
+
+                // 2. 再写入各通道样本（勿再次 SetChannelProperties，以免替换已挂接 Raw 的 Metadata 实例）
+                foreach (var group in nvhFile.Groups.Values)
+                {
+                    foreach (var channel in group.Channels.Values)
+                        WriteChannelData(writer, group.Name, channel, options, metadataOnly: false);
+                }
+
                 writer.ForceFlush();
             }
         }
@@ -116,12 +117,10 @@ namespace NVHDataBridge.Converters
         /// <summary>
         /// 写入通道数据和属性
         /// </summary>
-        private static void WriteChannelData(TdmsWriter writer, string groupName, NvhMemoryChannelBase channel, TdmsConversionOptions options)
+        private static void WriteChannelData(TdmsWriter writer, string groupName, NvhMemoryChannelBase channel, TdmsConversionOptions options, bool metadataOnly)
         {
-            // 获取通道的数据类型
             Type dataType = channel.DataType;
 
-            // 使用反射调用泛型方法
             MethodInfo writeMethod = typeof(NvhTdmsConverter).GetMethod(
                 nameof(WriteChannelDataGeneric),
                 BindingFlags.NonPublic | BindingFlags.Static);
@@ -129,29 +128,27 @@ namespace NVHDataBridge.Converters
             if (writeMethod == null)
                 throw new InvalidOperationException("无法找到 WriteChannelDataGeneric 方法");
 
-            // 创建泛型方法
             MethodInfo genericMethod = writeMethod.MakeGenericMethod(dataType);
-
-            // 调用泛型方法
-            genericMethod.Invoke(null, new object[] { writer, groupName, channel, options });
+            genericMethod.Invoke(null, new object[] { writer, groupName, channel, options, metadataOnly });
         }
 
         /// <summary>
-        /// 写入通道数据（泛型版本）
+        /// 写入通道元数据与/或样本：<paramref name="metadataOnly"/> 为 true 时仅登记 TDMS 通道属性（用于开段前）；为 false 时仅写 Raw（假定元数据已登记）。
         /// </summary>
-        private static void WriteChannelDataGeneric<T>(TdmsWriter writer, string groupName, NvhMemoryChannelBase channel, TdmsConversionOptions options)
+        private static void WriteChannelDataGeneric<T>(TdmsWriter writer, string groupName, NvhMemoryChannelBase channel, TdmsConversionOptions options, bool metadataOnly)
             where T : unmanaged
         {
-            // 转换为具体类型的通道
             if (!(channel is NvhMemoryChannel<T> typedChannel))
             {
                 throw new InvalidOperationException($"通道类型不匹配: 期望 {typeof(T)}, 实际 {channel.DataType}");
             }
 
-            // 1. 设置通道属性
-            SetChannelProperties(writer, groupName, typedChannel, options);
+            if (metadataOnly)
+            {
+                SetChannelProperties(writer, groupName, typedChannel, options);
+                return;
+            }
 
-            // 2. 读取所有数据
             ReadOnlySpan<T> allData = typedChannel.PeekAll();
 
             if (allData.IsEmpty)
@@ -194,10 +191,13 @@ namespace NVHDataBridge.Converters
         {
             var config = new ChannelConfig();
 
-            // 从 PropertyBag 获取标准波形属性
-            config.Description = channel.Properties.Get<string>("description", 
-                channel.Properties.Get<string>("wf_description", string.Empty));
+            // 不在 TDMS 通道写入 description / wf_description（避免与工具链冗余；内存通道仍可保留二者供界面等使用）
+            config.Description = string.Empty;
             config.YUnitString = channel.Properties.Get<string>("wf_yunit", string.Empty);
+            var yUnitLocalized = channel.Properties.Get<string>("unit_string", string.Empty);
+            if (string.IsNullOrEmpty(yUnitLocalized))
+                yUnitLocalized = channel.Properties.Get<string>("wf_yunit_string", string.Empty);
+            config.YUnitLocalizedString = yUnitLocalized;
             var xUnitString = channel.Properties.Get<string>("wf_xunit_string", string.Empty);
             if (string.IsNullOrEmpty(xUnitString))
                 xUnitString = channel.Properties.Get<string>("wf_xunit", string.Empty);
@@ -234,6 +234,8 @@ namespace NVHDataBridge.Converters
             return lowerKey == "description" ||
                    lowerKey == "wf_description" ||
                    lowerKey == "wf_yunit" ||
+                   lowerKey == "wf_yunit_string" ||
+                   lowerKey == "unit_string" ||
                    lowerKey == "wf_xunit" ||
                    lowerKey == "wf_xname" ||
                    lowerKey == "wf_start_time" ||
@@ -464,6 +466,16 @@ namespace NVHDataBridge.Converters
             if (channel.Properties.TryGetValue("wf_yunit", out var yUnit))
             {
                 nvhChannel.Properties.Set("wf_yunit", yUnit);
+            }
+
+            if (channel.Properties.TryGetValue("unit_string", out var yUnitString))
+            {
+                nvhChannel.Properties.Set("unit_string", yUnitString);
+            }
+            else if (channel.Properties.TryGetValue("wf_yunit_string", out var legacyYUnitString))
+            {
+                // 旧版 TDMS 仅含 wf_yunit_string 时，迁入 unit_string，不在 NVH 上保留 wf_yunit_string
+                nvhChannel.Properties.Set("unit_string", legacyYUnitString);
             }
 
             bool hasWfXUnit = channel.Properties.TryGetValue("wf_xunit", out var xUnit);

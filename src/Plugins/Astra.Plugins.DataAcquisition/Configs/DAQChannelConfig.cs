@@ -351,6 +351,7 @@ namespace Astra.Plugins.DataAcquisition.Configs
 
         #region 测点位置
 
+        /// <summary>测试点位；归档 TDMS 时写入通道属性 <c>MeasurementLocation</c>，未填写时仍写入空字符串。</summary>
         public string MeasurementLocation
         {
             get => _measurementLocation;

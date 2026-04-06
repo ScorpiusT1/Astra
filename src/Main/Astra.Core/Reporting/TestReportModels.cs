@@ -7,6 +7,14 @@ namespace Astra.Core.Reporting
     public static class ReportArtifactPreviewKeys
     {
         public const string DeviceChannel = "__ReportDeviceChannel";
+        public const string ExportAlgorithmData = "__ExportAlgorithmData";
+
+        /// <summary>
+        /// 可选：总线为 <c>Algorithm</c> 的产物在报告中的分层，取值为 <see cref="ReportChartSourceKind"/> 枚举名：
+        /// <c>Raw</c>（如文件导入预览波形）、<c>CurveResult</c>（限值曲线重发布）、缺省为 <c>Algorithm</c>（频谱等）。
+        /// 总线类别已为 <c>Raw</c> 的采集/导入 Raw 数据不需本键。
+        /// </summary>
+        public const string ChartReportSourceKind = "__ChartReportSourceKind";
     }
 
     /// <summary>写入 <see cref="Astra.Core.Nodes.Models.NodeContext"/> 全局变量的键（合并报告按工况编排顺序排序）。</summary>
@@ -17,12 +25,18 @@ namespace Astra.Core.Reporting
     }
 
     /// <summary>
-    /// 图表在报告中的来源分类（用于章节与排版）。
+    /// 图表在报告中的来源分类（用于 HTML/PDF 分层章节与标题前缀）。
     /// </summary>
     public enum ReportChartSourceKind
     {
+        /// <summary>算法数据图表：频谱、阶次、滤波等算法节点输出（总线缺省分层）。</summary>
         Algorithm = 0,
-        Raw = 1
+
+        /// <summary>原始数据图表：数据采集、文件导入 Raw 及导入预览（经 Preview 标记的 Algorithm 载荷）等。</summary>
+        Raw = 1,
+
+        /// <summary>曲线数据：Limits 库节点为报告重新发布的曲线图（与曲线判定表配套）。</summary>
+        CurveResult = 2
     }
 
     /// <summary>
@@ -72,6 +86,16 @@ namespace Astra.Core.Reporting
 
         public string NodeName { get; set; } = string.Empty;
         public string CurveName { get; set; } = string.Empty;
+
+        /// <summary>曲线卡控等节点输出的标量摘要（如失败点值或通过后 max）；可选。</summary>
+        public double? ActualValue { get; set; }
+
+        /// <summary>合格带下限；曲线逐点卡控等场景写入报告表与附图参考线。</summary>
+        public double? LowerLimit { get; set; }
+
+        /// <summary>合格带上限。</summary>
+        public double? UpperLimit { get; set; }
+
         public bool Pass { get; set; }
         public string? FailDetail { get; set; }
 
@@ -80,6 +104,12 @@ namespace Astra.Core.Reporting
 
         /// <summary>报告图表上方标题：测试项-设备/通道-名称（曲线判定场景下中段多为判定节点名）。</summary>
         public string ReportHeading { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 节点输出中的图表产物总线键（与运行记录里 <c>Ui.ChartArtifactKey</c> 一致）；
+        /// 渲染曲线附图时优先使用该键，避免仅按生产者 Id 扫描时误选其它已纳入报告的算法图（如导入预览）。
+        /// </summary>
+        public string? PreferredChartArtifactKey { get; set; }
     }
 
     public sealed class ChartSection
@@ -88,6 +118,7 @@ namespace Astra.Core.Reporting
         public string NodeName { get; set; } = string.Empty;
         public string? Description { get; set; }
 
+        /// <summary>报告分层：<see cref="ReportChartSourceKind.Raw"/> / <see cref="ReportChartSourceKind.Algorithm"/> / <see cref="ReportChartSourceKind.CurveResult"/>。</summary>
         public ReportChartSourceKind SourceKind { get; set; } = ReportChartSourceKind.Algorithm;
 
         /// <summary>渲染后的图表 PNG base64。</summary>

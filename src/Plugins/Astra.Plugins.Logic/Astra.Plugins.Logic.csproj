@@ -14,6 +14,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Libraries\Astra.UI.Abstractions\Astra.UI.Abstractions.csproj">
+      <Private>false</Private>
+      <CopyLocal>false</CopyLocal>
+    </ProjectReference>
     <ProjectReference Include="..\..\Main\Astra.Core\Astra.Core.csproj">
       <Private>false</Private>
       <CopyLocal>false</CopyLocal>

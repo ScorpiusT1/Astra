@@ -8,13 +8,14 @@ using System.Runtime.CompilerServices;
 namespace Astra.Plugins.DataAcquisition.Nodes
 {
     /// <summary>
-    /// 将 NVH Signal 组首通道的原始量按 <see cref="DAQChannelConfig.ConvertToPhysical"/> 转为物理量，
-    /// 并生成新的 <see cref="NvhMemoryFile"/> 供主页图表与 Raw 存储使用。
+    /// 将各通道原始量按传感器配置尽量转为物理量；若无法得到仿射换算则仍拷贝原始采样，
+    /// 保证总线/归档 TDMS 与源通道数一致。
     /// </summary>
     internal static class NvhMemoryFileSensitivityConversion
     {
         /// <summary>
-        /// 尝试按通道绑定的传感器灵敏度生成物理量副本；失败时调用方应继续使用原始文件。
+        /// 尝试按通道绑定的传感器灵敏度生成副本：能仿射则写物理量，否则各通道仍保留原始采样；
+        /// 若完全无法产出任何通道则返回 false，调用方继续使用原始文件。
         /// </summary>
         /// <param name="source">采集产生的内存文件</param>
         /// <param name="device">同一采集设备（用于解析通道配置）</param>
@@ -83,12 +84,9 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         ConvertFloatAffine(span, buffer, (float)linearScaleF, (float)linearOffsetF);
                         outChannel.WriteSamples(buffer);
                     }
-                    else if (hasSensor)
-                    {
-                        continue;
-                    }
                     else
                     {
+                        // 无传感器或灵敏度无法仿射换算：仍写入原始量，避免归档 TDMS 丢通道
                         outChannel.WriteSamples(span);
                     }
 
@@ -98,6 +96,11 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         var yu = channelConfig!.Sensor!.GetYAxisDisplayUnit();
                         if (!string.IsNullOrEmpty(yu))
                             outChannel.Properties.Set("wf_yunit", yu);
+                        var yus = channelConfig.Sensor!.GetYAxisDisplayUnitLocalizedString();
+                        if (string.IsNullOrWhiteSpace(yus))
+                            yus = yu ?? string.Empty;
+                        if (!string.IsNullOrEmpty(yus))
+                            outChannel.Properties.Set("unit_string", yus);
                     }
 
                     CopyWfIncrementAndFlush(channel, outChannel);
@@ -133,10 +136,6 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         ConvertDoubleAffineToFloat(span, buffer, linearScaleD, linearOffsetD);
                         outChannel.WriteSamples(buffer);
                     }
-                    else if (hasSensor)
-                    {
-                        continue;
-                    }
                     else
                     {
                         var buffer = GC.AllocateUninitializedArray<float>(span.Length);
@@ -150,6 +149,11 @@ namespace Astra.Plugins.DataAcquisition.Nodes
                         var yu = channelConfig!.Sensor!.GetYAxisDisplayUnit();
                         if (!string.IsNullOrEmpty(yu))
                             outChannel.Properties.Set("wf_yunit", yu);
+                        var yus = channelConfig.Sensor!.GetYAxisDisplayUnitLocalizedString();
+                        if (string.IsNullOrWhiteSpace(yus))
+                            yus = yu ?? string.Empty;
+                        if (!string.IsNullOrEmpty(yus))
+                            outChannel.Properties.Set("unit_string", yus);
                     }
 
                     CopyWfIncrementAndFlush(channel, outChannel);

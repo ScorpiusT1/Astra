@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using Astra.UI.Abstractions.Nodes;
 using Astra.Services.Home;
 using Astra.ViewModels.HomeModules;
@@ -21,8 +25,10 @@ namespace Astra.Views.HomeModules
         private bool _isUpdatingLayoutCombo;
         private bool _isMixedKind;
 
-        private readonly List<SeriesVisibilityOption> _seriesOptions = new();
         private readonly Dictionary<int, IPlottable> _singlePlotPlottables = new();
+
+        /// <summary>多系列左侧显隐列表（由 <see cref="BuildMultiSeriesUi"/> 填充，模板见 XAML）。</summary>
+        public ObservableCollection<SeriesVisibilityRowModel> SeriesVisibilityRows { get; } = new();
 
         public TestItemChartWindow()
         {
@@ -155,27 +161,74 @@ namespace Astra.Views.HomeModules
 
             LayoutModeCombo.IsEnabled = !_isMixedKind;
 
-            CurveVisibilityPanel.Children.Clear();
-            foreach (var opt in _seriesOptions) opt.Changed -= OnSeriesVisibilityChanged;
-            _seriesOptions.Clear();
+            foreach (var row in SeriesVisibilityRows)
+                row.Changed -= OnSeriesVisibilityChanged;
+            SeriesVisibilityRows.Clear();
 
             for (var i = 0; i < series.Count; i++)
             {
                 var name = string.IsNullOrWhiteSpace(series[i].Name) ? $"系列 {i + 1}" : series[i].Name.Trim();
-                var option = new SeriesVisibilityOption { Name = name, IsVisible = series[i].IsVisibleByDefault };
-                option.Changed += OnSeriesVisibilityChanged;
-                _seriesOptions.Add(option);
+                var model = new SeriesVisibilityRowModel(
+                    name,
+                    SeriesSwatchBrush(series[i].Color, i),
+                    series[i].IsVisibleByDefault);
+                model.Changed += OnSeriesVisibilityChanged;
+                SeriesVisibilityRows.Add(model);
+            }
+        }
 
-                var checkBox = new CheckBox
-                {
-                    Content = name,
-                    IsChecked = option.IsVisible,
-                    Margin = new Thickness(0, 0, 0, 6)
-                };
-                var captured = option;
-                checkBox.Checked += (_, _) => captured.IsVisible = true;
-                checkBox.Unchecked += (_, _) => captured.IsVisible = false;
-                CurveVisibilityPanel.Children.Add(checkBox);
+        private void OnSeriesVisibilityItemsPreviewMouseLeft(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not ItemsControl)
+                return;
+
+            for (var d = e.OriginalSource as DependencyObject; d != null; d = VisualTreeHelper.GetParent(d))
+            {
+                if (d is CheckBox)
+                    return;
+            }
+
+            var model = FindSeriesVisibilityRowModel(e.OriginalSource as DependencyObject);
+            if (model == null)
+                return;
+
+            model.IsVisible = !model.IsVisible;
+            e.Handled = true;
+        }
+
+        private static SeriesVisibilityRowModel? FindSeriesVisibilityRowModel(DependencyObject? leaf)
+        {
+            for (var d = leaf; d != null; d = VisualTreeHelper.GetParent(d))
+            {
+                if (d is FrameworkElement fe && fe.DataContext is SeriesVisibilityRowModel m)
+                    return m;
+            }
+
+            return null;
+        }
+
+        private static Brush SeriesSwatchBrush(string? entryColorHex, int index)
+        {
+            try
+            {
+                var plotColor = PaletteColor(entryColorHex, index);
+                var hex = plotColor.ToHex();
+                if (string.IsNullOrWhiteSpace(hex))
+                    throw new FormatException();
+                if (!hex.StartsWith('#'))
+                    hex = "#" + hex;
+                var wpfColor = (System.Windows.Media.Color)ColorConverter.ConvertFromString(hex)!;
+                var brush = new SolidColorBrush(wpfColor);
+                brush.Freeze();
+                return brush;
+            }
+            catch
+            {
+                var fallbackHex = ChartPalette[index % ChartPalette.Length];
+                var wpfColor = (System.Windows.Media.Color)ColorConverter.ConvertFromString(fallbackHex)!;
+                var brush = new SolidColorBrush(wpfColor);
+                brush.Freeze();
+                return brush;
             }
         }
 
@@ -184,9 +237,9 @@ namespace Astra.Views.HomeModules
             ToolbarPanel.Visibility = Visibility.Collapsed;
             LeftPanelBorder.Visibility = Visibility.Collapsed;
             SplitterBorder.Visibility = Visibility.Collapsed;
-            CurveVisibilityPanel.Children.Clear();
-            foreach (var opt in _seriesOptions) opt.Changed -= OnSeriesVisibilityChanged;
-            _seriesOptions.Clear();
+            foreach (var row in SeriesVisibilityRows)
+                row.Changed -= OnSeriesVisibilityChanged;
+            SeriesVisibilityRows.Clear();
 
             ItemPlot.Visibility = Visibility.Visible;
             SubPlotScrollViewer.Visibility = Visibility.Collapsed;
@@ -232,7 +285,7 @@ namespace Astra.Views.HomeModules
 
             for (var i = 0; i < series.Count; i++)
             {
-                var isVisible = i < _seriesOptions.Count && _seriesOptions[i].IsVisible;
+                var isVisible = i < SeriesVisibilityRows.Count && SeriesVisibilityRows[i].IsVisible;
                 var plottable = AddSeriesEntryToPlot(plt, series[i], i);
                 if (plottable != null)
                 {
@@ -247,7 +300,7 @@ namespace Astra.Views.HomeModules
                 var item = DataContext as TestTreeNodeItem ?? new TestTreeNodeItem();
                 AddHorizontalLimits(plt, payload, item);
                 plt.Axes.AutoScale();
-                AddScalarAnnotations(plt, CollectVisibleScalarAnnotations(payload, _seriesOptions));
+                AddScalarAnnotations(plt, CollectVisibleScalarAnnotations(payload, SeriesVisibilityRows));
             }
 
             ApplyItemPlotStyleToAllPlots();
@@ -268,7 +321,7 @@ namespace Astra.Views.HomeModules
 
             for (var i = 0; i < series.Count; i++)
             {
-                var isVisible = i < _seriesOptions.Count && _seriesOptions[i].IsVisible;
+                var isVisible = i < SeriesVisibilityRows.Count && SeriesVisibilityRows[i].IsVisible;
                 if (!isVisible)
                     continue;
 
@@ -386,11 +439,11 @@ namespace Astra.Views.HomeModules
                     return;
                 }
 
-                for (var i = 0; i < _seriesOptions.Count; i++)
+                for (var i = 0; i < SeriesVisibilityRows.Count; i++)
                 {
                     if (_singlePlotPlottables.TryGetValue(i, out var p))
                     {
-                        p.IsVisible = _seriesOptions[i].IsVisible;
+                        p.IsVisible = SeriesVisibilityRows[i].IsVisible;
                     }
                 }
                 ItemPlot.Plot.Axes.AutoScale();
@@ -669,7 +722,7 @@ namespace Astra.Views.HomeModules
         /// <summary>单图叠加：根载荷标量 + 各可见系列的子 Data 标量。</summary>
         private static List<ChartScalarAnnotation>? CollectVisibleScalarAnnotations(
             ChartDisplayPayload payload,
-            IReadOnlyList<SeriesVisibilityOption> options)
+            IReadOnlyList<SeriesVisibilityRowModel> options)
         {
             var list = new List<ChartScalarAnnotation>();
             if (payload.ScalarAnnotations is { Count: > 0 })
@@ -723,6 +776,9 @@ namespace Astra.Views.HomeModules
 
         private static void AddHorizontalLimits(Plot plot, ChartDisplayPayload payload, TestTreeNodeItem item)
         {
+            if (item.SuppressChartHorizontalLimits)
+                return;
+
             var lo = payload.HorizontalLimitLower ?? item.LowerLimit;
             var hi = payload.HorizontalLimitUpper ?? item.UpperLimit;
             if (double.IsFinite(lo))
@@ -753,10 +809,21 @@ namespace Astra.Views.HomeModules
         }
     }
 
-    internal sealed class SeriesVisibilityOption
+    /// <summary>多系列图表左侧「系列显隐」单行绑定模型。</summary>
+    public sealed class SeriesVisibilityRowModel : INotifyPropertyChanged
     {
         private bool _isVisible;
-        public string Name { get; set; } = string.Empty;
+
+        public SeriesVisibilityRowModel(string name, Brush swatchBrush, bool initialVisible)
+        {
+            Name = name;
+            SwatchBrush = swatchBrush;
+            _isVisible = initialVisible;
+        }
+
+        public string Name { get; }
+        public Brush SwatchBrush { get; }
+
         public bool IsVisible
         {
             get => _isVisible;
@@ -764,10 +831,15 @@ namespace Astra.Views.HomeModules
             {
                 if (_isVisible == value) return;
                 _isVisible = value;
+                OnPropertyChanged(nameof(IsVisible));
                 Changed?.Invoke();
             }
         }
 
         public event Action? Changed;
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged(string propertyName)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

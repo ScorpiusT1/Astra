@@ -29,10 +29,12 @@ namespace Astra.Services.Home
                 return;
             }
 
+            var axisMergeSource = OutputDataForChartAxisMerge(result.OutputData);
+
             if (result.OutputData.TryGetValue(NodeUiOutputKeys.ChartPayloadSnapshot, out var snap) &&
                 snap is ChartDisplayPayload inlineSnapshot)
             {
-                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(inlineSnapshot, result.OutputData));
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(inlineSnapshot, axisMergeSource));
                 return;
             }
 
@@ -52,7 +54,7 @@ namespace Astra.Services.Home
 
             if (TryBuildMultiSeriesPayload(context, result.OutputData, out var multiPayload))
             {
-                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(multiPayload!, result.OutputData));
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(multiPayload!, axisMergeSource));
                 return;
             }
 
@@ -63,7 +65,7 @@ namespace Astra.Services.Home
 
             if (raw is ChartDisplayPayload payloadFromStore)
             {
-                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(payloadFromStore, result.OutputData));
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(payloadFromStore, axisMergeSource));
                 return;
             }
 
@@ -74,7 +76,7 @@ namespace Astra.Services.Home
 
             if (TryBuildFilteredNvhPayloadFromLimitsOutput(file, result.OutputData, out var filteredPayload))
             {
-                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(filteredPayload, result.OutputData));
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(filteredPayload, axisMergeSource));
                 return;
             }
 
@@ -93,9 +95,9 @@ namespace Astra.Services.Home
                     SignalY = ch.Samples,
                     SamplePeriod = ch.WfIncrement > 0 ? ch.WfIncrement : 1.0,
                     BottomAxisLabel = "样本",
-                    LeftAxisLabel = "数值"
+                    LeftAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel
                 };
-                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(nvhPayload, result.OutputData));
+                _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(nvhPayload, axisMergeSource));
                 return;
             }
 
@@ -121,9 +123,25 @@ namespace Astra.Services.Home
                 Series = singleFileSeries,
                 LayoutMode = ChartDisplayPayload.InferDefaultLayout(singleFileSeries),
                 BottomAxisLabel = "样本",
-                LeftAxisLabel = "数值"
+                LeftAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel
             };
-            _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(singleFilePayload, result.OutputData));
+            _cache.SetPayload(nodeId, ChartDisplayPayload.MergeAxisMetadata(singleFilePayload, axisMergeSource));
+        }
+
+        /// <summary>
+        /// 供 <see cref="ChartDisplayPayload.MergeAxisMetadata"/>：统计类节点可抑制将上下限画成水平参考线。
+        /// </summary>
+        private static IDictionary<string, object>? OutputDataForChartAxisMerge(IReadOnlyDictionary<string, object> outputData)
+        {
+            if (!outputData.TryGetValue(NodeUiOutputKeys.ChartSuppressHorizontalLimits, out var v) || v is not bool b || !b)
+            {
+                return outputData as IDictionary<string, object>;
+            }
+
+            var copy = new Dictionary<string, object>(outputData);
+            copy.Remove(NodeUiOutputKeys.LowerLimit);
+            copy.Remove(NodeUiOutputKeys.UpperLimit);
+            return copy;
         }
 
         /// <summary>
@@ -158,7 +176,7 @@ namespace Astra.Services.Home
                 SignalY = samples,
                 SamplePeriod = wfInc > 0 ? wfInc : 1.0,
                 BottomAxisLabel = "样本",
-                LeftAxisLabel = "数值"
+                LeftAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel
             };
             return true;
         }
@@ -266,7 +284,7 @@ namespace Astra.Services.Home
                 Series = series,
                 LayoutMode = layoutMode,
                 BottomAxisLabel = "样本",
-                LeftAxisLabel = "数值"
+                LeftAxisLabel = AstraSharedConstants.DataAcquisitionDefaults.CodeDefinedChartYAxisLabel
             };
             return true;
         }

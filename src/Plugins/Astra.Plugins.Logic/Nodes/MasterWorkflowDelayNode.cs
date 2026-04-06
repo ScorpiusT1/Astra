@@ -2,7 +2,9 @@
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Nodes.Geometry;
+using Astra.UI.Abstractions.Interfaces;
 using Newtonsoft.Json;
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Threading;
@@ -15,7 +17,7 @@ namespace Astra.Plugins.Logic.Nodes
     /// 精确延时（基于 <see cref="Task.Delay"/>，受系统定时器分辨率影响；记录配置值与 Stopwatch 实测）。
     /// 用于主流程/子流程编排；主流程画布上使用与流程引用块相同的外框样式。
     /// </summary>
-    public sealed class MasterWorkflowDelayNode : Node
+    public sealed class MasterWorkflowDelayNode : Node, IPropertyVisibilityProvider
     {
         public const int MaxDelayMilliseconds = 86_400_000; // 24h
 
@@ -33,6 +35,16 @@ namespace Astra.Plugins.Logic.Nodes
         [Range(0, MaxDelayMilliseconds)]
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Include)]
         public int DelayMilliseconds { get; set; } = 1000;
+
+        /// <inheritdoc />
+        public bool IsPropertyVisible(string propertyName)
+        {
+            if (string.IsNullOrEmpty(propertyName))
+                return true;
+            if (string.Equals(propertyName, nameof(IncludeInTestReport), StringComparison.Ordinal))
+                return false;
+            return true;
+        }
 
         private void InitializePorts()
         {

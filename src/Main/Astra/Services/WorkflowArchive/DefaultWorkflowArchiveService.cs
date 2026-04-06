@@ -1,11 +1,10 @@
-using Astra.Configuration;
-using Astra.Core.Archiving;
+﻿using Astra.Core.Archiving;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Core.Data;
-using Astra.Core.Foundation.Common;
 using Astra.Core.Nodes.Management;
 using Astra.Core.Nodes.Models;
 using Astra.Core.Reporting;
+using Astra.Reporting;
 using Microsoft.Extensions.Logging;
 using System.IO;
 using Newtonsoft.Json;
@@ -29,8 +28,6 @@ namespace Astra.Services.WorkflowArchive
     /// </summary>
     public sealed class DefaultWorkflowArchiveService : IWorkflowArchiveService
     {
-        private const string TestDataFolderName = "测试数据";
-
         private readonly WorkflowArchiveOptions _options;
         private readonly ILogger<DefaultWorkflowArchiveService> _logger;
         private readonly ITestReportGenerator _testReportGenerator;
@@ -40,6 +37,7 @@ namespace Astra.Services.WorkflowArchive
 
         private readonly ConcurrentDictionary<string, ArchiveSessionNaming> _sessionNamingByExecution = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, byte> _rawExportDone = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, byte> _algorithmExportDone = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, byte> _runRecordExportDone = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, object> _sequenceLocksBySnFolder = new(StringComparer.Ordinal);
 
@@ -88,6 +86,29 @@ namespace Astra.Services.WorkflowArchive
         }
 
         /// <inheritdoc />
+        /// <inheritdoc />
+        public string? AllocateRunOutputDirectoryIfNeeded(string executionId, NodeContext context)
+        {
+            if (string.IsNullOrWhiteSpace(executionId) || context == null)
+                return null;
+
+            EnsureSnOrGenerate(context);
+            var batchMode = _combinedReportCollector is { IsActive: true };
+            var request = new WorkflowArchiveRequest
+            {
+                ExecutionId = executionId,
+                NodeContext = context
+            };
+
+            var session = batchMode
+                ? ResolveOrCreateBatchSession(request)
+                : _sessionNamingByExecution.GetOrAdd(executionId, _ => CreateSessionNaming(request));
+
+            return string.IsNullOrWhiteSpace(session.OutputDirectory)
+                ? null
+                : session.OutputDirectory;
+        }
+
         public void FlushBatchCombinedRawTdms(string outputDirectory, string combinedFilePrefix)
         {
             if (string.IsNullOrWhiteSpace(outputDirectory) || string.IsNullOrWhiteSpace(combinedFilePrefix))
@@ -137,7 +158,7 @@ namespace Astra.Services.WorkflowArchive
             var outputDir = session.OutputDirectory;
             var fileStamp = session.FileTimeStamp;
 
-            var sn = GetGlobalString(request.NodeContext, "SN") ?? "AUTO";
+            var sn = GetGlobalString(request.NodeContext, "SN") ?? "NO_SN";
             var condition = GetGlobalString(request.NodeContext, "工况")
                             ?? GetGlobalString(request.NodeContext, "Condition")
                             ?? "Default";
@@ -146,6 +167,7 @@ namespace Astra.Services.WorkflowArchive
             var filePrefix = ReportArchiveFileNaming.BuildFilePrefix(sn, stationName, lineName, okNg, fileStamp);
 
             var wroteRaw = false;
+            var wroteAlgorithm = false;
             var wroteRecord = false;
 
             // ── 1. Raw 数据（TDMS/WAV）──────────────────────────
@@ -153,6 +175,12 @@ namespace Astra.Services.WorkflowArchive
             if (_rawExportDone.TryAdd(id, 0))
             {
                 wroteRaw = ExportRawArtifacts(dataBus, outputDir, filePrefix, batchMode, cancellationToken);
+            }
+
+            // ── 1.1 算法图表数据（每个算法产物一个 TDMS）───────────
+            if (_algorithmExportDone.TryAdd(id, 0))
+            {
+                wroteAlgorithm = ExportAlgorithmArtifacts(dataBus, request.RunRecord, outputDir, filePrefix, cancellationToken);
             }
 
             // ── 2. RunRecord + 报告数据采集 ───────────────────
@@ -187,10 +215,10 @@ namespace Astra.Services.WorkflowArchive
             return new WorkflowArchiveResult
             {
                 Success = true,
-                Message = wroteRaw || wroteRecord ? "归档完成" : "本轮无可写入内容（可能已由他处写入）",
+                Message = wroteRaw || wroteAlgorithm || wroteRecord ? "归档完成" : "本轮无可写入内容（可能已由他处写入）",
                 OutputDirectory = outputDir,
-                Skipped = !(wroteRaw || wroteRecord),
-                WroteRawArtifacts = wroteRaw,
+                Skipped = !(wroteRaw || wroteAlgorithm || wroteRecord),
+                WroteRawArtifacts = wroteRaw || wroteAlgorithm,
                 WroteRunRecordArtifacts = wroteRecord
             };
         }
@@ -354,6 +382,26 @@ namespace Astra.Services.WorkflowArchive
             }
         }
 
+        private bool ExportAlgorithmArtifacts(ITestDataBus? dataBus, WorkFlowRunRecord? runRecord, string outputDir, string filePrefix, CancellationToken ct)
+        {
+            try
+            {
+                var count = AlgorithmTdmsArchiveExporter.ExportAlgorithmChartsToTdms(
+                    dataBus,
+                    outputDir,
+                    filePrefix,
+                    runRecord,
+                    ct,
+                    _logger);
+                return count > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "归档算法 TDMS 失败");
+                return false;
+            }
+        }
+
         /// <summary>从 Raw 产物引用解析设备显示名（与采集/导入 DisplayName、Preview 对齐）。</summary>
         private static string ResolveRawArchiveDeviceDisplayName(DataArtifactReference r)
         {
@@ -433,7 +481,7 @@ namespace Astra.Services.WorkflowArchive
             Directory.CreateDirectory(root);
 
             var dateFolder = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var dataRoot = Path.Combine(root, TestDataFolderName, dateFolder);
+            var dataRoot = Path.Combine(root, ReportArchiveLayout.TestDataFolderName, dateFolder);
             Directory.CreateDirectory(dataRoot);
 
             var sn = GetGlobalString(request.NodeContext, "SN") ?? "AUTO";
@@ -458,55 +506,8 @@ namespace Astra.Services.WorkflowArchive
             };
         }
 
-        /// <summary>
-        /// 与 <see cref="SoftwareConfig.ReportOutputRootDirectory"/> 对齐；留空则为程序所在磁盘（卷）根目录。
-        /// 无配置管理器时使用 <see cref="WorkflowArchiveOptions.RootDirectory"/>，仍为空则同上默认根目录。
-        /// </summary>
-        private string ResolveEffectiveReportRootDirectory()
-        {
-            if (_configurationManager != null)
-            {
-                try
-                {
-                    var result = _configurationManager.GetAllAsync<SoftwareConfig>().GetAwaiter().GetResult();
-                    if (result.Success && result.Data != null)
-                    {
-                        var sc = result.Data.FirstOrDefault();
-                        var custom = sc?.ReportOutputRootDirectory?.Trim();
-                        if (!string.IsNullOrWhiteSpace(custom))
-                        {
-                            try
-                            {
-                                return Path.GetFullPath(custom);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "报告根目录无效，将使用程序所在磁盘根目录: {Path}", custom);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "读取软件配置中的报告根目录失败，使用程序所在磁盘根目录。");
-                }
-
-                return PathHelper.GetReportDefaultRootDirectory();
-            }
-
-            var fallback = string.IsNullOrWhiteSpace(_options.RootDirectory)
-                ? PathHelper.GetReportDefaultRootDirectory()
-                : _options.RootDirectory.Trim();
-            try
-            {
-                return Path.GetFullPath(fallback);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "WorkflowArchiveOptions.RootDirectory 无效，使用程序所在磁盘根目录。");
-                return PathHelper.GetReportDefaultRootDirectory();
-            }
-        }
+        private string ResolveEffectiveReportRootDirectory() =>
+            ReportArchivePath.ResolveRoot(_configurationManager, _options, _logger);
 
         private static int GetNextRunIndex(string snRunRoot)
         {
@@ -574,18 +575,20 @@ namespace Astra.Services.WorkflowArchive
                 group = file.Groups.Values.FirstOrDefault();
             if (group == null) return;
 
-            if (!NvhArchiveSampleUtil.TryGetFirstChannelSampleRateHz(file, NvhArchiveSampleUtil.DefaultSignalGroupName, out var rate) || rate <= 0)
-                rate = 48000;
-
             foreach (var kv in group.Channels)
             {
                 var chName = kv.Key;
-                var sensorType = kv.Value.Properties.Get<string>("SensorType", string.Empty);
+                var channel = kv.Value;
+                var sensorType = channel.Properties.Get<string>("SensorType", string.Empty);
                 if (string.IsNullOrWhiteSpace(sensorType))
                     continue;
 
                 if (!NvhArchiveSampleUtil.TryExtractAsDoubleArray(file, NvhArchiveSampleUtil.DefaultSignalGroupName, chName, out var samples) || samples.Length == 0)
                     continue;
+
+                // 每通道使用自身 wf_increment / SampleRate；勿用组内「首通道」或统一 48k 回退，否则声明采样率与真实 Δt 不一致会导致播放时长错误（例如 7s 被听成约 3s）。
+                if (!NvhArchiveSampleUtil.TryGetChannelSampleRateHz(channel, out var rate) || rate <= 0)
+                    rate = 48000;
 
                 var floats = new float[samples.Length];
                 for (var i = 0; i < samples.Length; i++)

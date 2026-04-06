@@ -45,8 +45,9 @@ namespace Astra.Core.Data
 
             preview["__ProducerNodeId"] = entry.ProducerNodeId ?? string.Empty;
 
-            if (!preview.ContainsKey(ReportIncludeKeys.IncludeInReport))
-                preview[ReportIncludeKeys.IncludeInReport] = entry.IncludeInTestReport;
+            // 必须以 DataEntry.IncludeInTestReport 为准：若 Preview 参数里已带 __IncludeInReport（历史/误传），
+            // 不能覆盖节点当前「纳入测试报告」设置，否则算法节点关闭纳入仍可能按 true 进入报告。
+            preview[ReportIncludeKeys.IncludeInReport] = entry.IncludeInTestReport;
 
             var reference = new DataArtifactReference
             {

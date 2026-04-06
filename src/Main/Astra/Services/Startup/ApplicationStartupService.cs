@@ -315,6 +315,7 @@ namespace Astra.Services.Startup
                 (Astra.Utilities.NavigationKeys.Debug, typeof(Astra.Views.DebugView), typeof(Astra.ViewModels.DebugViewModel)),
                 (Astra.Utilities.NavigationKeys.Sequence, typeof(Astra.Views.SequenceView), typeof(Astra.ViewModels.SequenceViewModel)),
                 (Astra.Utilities.NavigationKeys.Permission, typeof(Astra.Views.PermissionView), typeof(Astra.ViewModels.PermissionViewModel)),
+                (Astra.Utilities.NavigationKeys.DataQuery, typeof(Astra.Views.DataQueryView), typeof(Astra.ViewModels.DataQueryViewModel)),
             };
 
             foreach (var (key, viewType, viewModelType) in routes)

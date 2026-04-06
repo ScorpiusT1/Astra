@@ -31,6 +31,7 @@ namespace Astra.Models
             configuration.RegisterPage<PermissionView, PermissionViewModel>(NavigationKeys.Permission); // ⭐ 使用重构后的 ViewModel
             configuration.RegisterPage<ConfigView, ConfigViewModel>(NavigationKeys.Config);
             configuration.RegisterPage<DebugView, DebugViewModel>(NavigationKeys.Debug);
+            configuration.RegisterPage<DataQueryView, DataQueryViewModel>(NavigationKeys.DataQuery);
 
             System.Diagnostics.Debug.WriteLine($"[{ModuleName}] 注册类型完成");
         }
@@ -69,13 +70,23 @@ namespace Astra.Models
                     RequiredPermissionLevel = 0, // 所有用户可访问
                     PermissionDeniedMessage = "您没有权限访问首页"
                 },
-              
+                new NavigationMenuItem
+                {
+                    Title = "查询",
+                    NavigationKey = NavigationKeys.DataQuery,
+                    Icon = "Search",
+                    Order = 2,
+                    Description = "按 SN、日期与类型查询原始数据、算法数据与报告",
+                    Group = "Core",
+                    RequiredPermissionLevel = 1,
+                    PermissionDeniedMessage = "需要登录后查询归档数据"
+                },
                 new NavigationMenuItem
                 {
                     Title = "配置",
                     NavigationKey = NavigationKeys.Config,
                     Icon = "Cog", // FontAwesome (设置/齿轮)
-                    Order = 2,
+                    Order = 3,
                     Description = "系统配置",
                     Group = "Core",
                     RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
@@ -86,7 +97,7 @@ namespace Astra.Models
                     Title = "调试",
                     NavigationKey = NavigationKeys.Debug,
                     Icon = "Wrench", // FontAwesome
-                    Order = 3,
+                    Order = 4,
                     Description = "调试和诊断工具",
                     Group = "Core",
                     RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上
@@ -97,7 +108,7 @@ namespace Astra.Models
                     Title = "流程",
                     NavigationKey = NavigationKeys.Sequence,
                     Icon = "List", // FontAwesome
-                    Order = 4,
+                    Order = 5,
                     Description = "配置测试流程",
                     Group = "Core",
                     RequiredPermissionLevel = (int)UserRole.Engineer, // 工程师及以上

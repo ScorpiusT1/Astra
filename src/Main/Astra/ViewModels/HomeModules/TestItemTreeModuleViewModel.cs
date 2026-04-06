@@ -475,7 +475,7 @@ namespace Astra.ViewModels.HomeModules
                     {
                         var statusText = MapStatus(state);
                         var msg = BuildRunningStatusMessage(node, detailMessage);
-                        var chartVis = ShowChartAction &&
+                        var chartVis = !node.IsRoot && ShowChartAction &&
                             (node.SupportsHomeChartButton || node.HasChartData);
                         node.ApplyRunningBatchVisual(now, statusText, msg, chartVis, uiPayload);
                         _nodeStartTimes[timingKey] = now;
@@ -494,7 +494,7 @@ namespace Astra.ViewModels.HomeModules
                         ApplyUiPayload(node, uiPayload);
                     }
 
-                    node.IsChartButtonVisible = ShowChartAction &&
+                    node.IsChartButtonVisible = !node.IsRoot && ShowChartAction &&
                         (node.SupportsHomeChartButton || node.HasChartData);
 
                     if (state == NodeExecutionState.Running)
@@ -553,6 +553,11 @@ namespace Astra.ViewModels.HomeModules
             {
                 node.UpperLimit = hi;
             }
+
+            if (payload.TryGetValue(NodeUiOutputKeys.ChartSuppressHorizontalLimits, out var sup) && sup is bool sb)
+                node.SuppressChartHorizontalLimits = sb;
+            else
+                node.SuppressChartHorizontalLimits = false;
 
             if (payload.TryGetValue(NodeUiOutputKeys.HasChartData, out var hc) && hc is bool hasChart)
             {
@@ -684,11 +689,8 @@ namespace Astra.ViewModels.HomeModules
 
         private void ApplyChartButtonVisibility(TestTreeNodeItem node, bool showChartActionPreference)
         {
-            if (!node.IsRoot || !string.IsNullOrWhiteSpace(node.NodeId))
-            {
-                node.IsChartButtonVisible = showChartActionPreference &&
-                    (node.SupportsHomeChartButton || node.HasChartData);
-            }
+            node.IsChartButtonVisible = !node.IsRoot && showChartActionPreference &&
+                (node.SupportsHomeChartButton || node.HasChartData);
 
             foreach (var child in node.Children)
             {
@@ -884,7 +886,8 @@ namespace Astra.ViewModels.HomeModules
                 {
                     node.HasChartData = false;
                     node.ChartArtifactKey = string.Empty;
-                    node.IsChartButtonVisible = ShowChartAction && node.SupportsHomeChartButton;
+                    node.SuppressChartHorizontalLimits = false;
+                    node.IsChartButtonVisible = !node.IsRoot && ShowChartAction && node.SupportsHomeChartButton;
                 }
 
                 if (node.Children.Count > 0)
@@ -993,7 +996,7 @@ namespace Astra.ViewModels.HomeModules
         [RelayCommand]
         private void OpenChart(TestTreeNodeItem? item)
         {
-            if (item == null || (item.IsRoot && string.IsNullOrWhiteSpace(item.NodeId)))
+            if (item == null || item.IsRoot)
                 return;
 
             var chartWindow = new TestItemChartWindow
@@ -1088,6 +1091,12 @@ namespace Astra.ViewModels.HomeModules
         [ObservableProperty]
         private double _upperLimit;
 
+        /// <summary>
+        /// 为 true 时主页曲线图不绘制合格带水平参考线（与 <see cref="NodeUiOutputKeys.ChartSuppressHorizontalLimits"/> 一致；树项仍可显示数值）。
+        /// </summary>
+        [ObservableProperty]
+        private bool _suppressChartHorizontalLimits;
+
         [ObservableProperty]
         private bool _isRoot;
 
@@ -1150,6 +1159,11 @@ namespace Astra.ViewModels.HomeModules
 
             if (TryGetDoubleFromPayload(payload, NodeUiOutputKeys.UpperLimit, out var hi))
                 _upperLimit = hi;
+
+            if (payload.TryGetValue(NodeUiOutputKeys.ChartSuppressHorizontalLimits, out var sup) && sup is bool sb)
+                _suppressChartHorizontalLimits = sb;
+            else
+                _suppressChartHorizontalLimits = false;
 
             if (payload.TryGetValue(NodeUiOutputKeys.HasChartData, out var hc) && hc is bool hasChart)
                 _hasChartData = hasChart;

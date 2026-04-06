@@ -55,6 +55,12 @@ namespace Astra.Plugins.Limits.Helpers
                 wfIncrement = inc;
             }
 
+            return TryReadChannelSamples(channel, out samples);
+        }
+
+        private static bool TryReadChannelSamples(NvhMemoryChannelBase channel, out double[] samples)
+        {
+            samples = Array.Empty<double>();
             if (channel.DataType == typeof(float))
             {
                 var typed = (NvhMemoryChannel<float>)channel;

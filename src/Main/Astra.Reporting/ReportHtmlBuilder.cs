@@ -18,7 +18,7 @@ namespace Astra.Reporting
         private const int DefaultEmbeddedChartHeight = 400;
 
         /// <summary>
-        /// 生成合并多工况的完整 HTML 字符串：总览封面、各工况分节、单值/曲线表及带 Base64 图片的图库。
+        /// 生成合并多工况的完整 HTML 字符串：总览封面、各工况分节、单值/曲线表及按「原始数据图表 → 算法数据图表 → 曲线数据」分层的图库。
         /// </summary>
         /// <param name="sections">按展示顺序排列的各工况数据；为 null 或空时返回空字符串。</param>
         /// <returns>完整 HTML 文档文本。</returns>
@@ -62,16 +62,13 @@ namespace Astra.Reporting
                 var sectionTitle = ReportConditionDisplay.FormatSectionTitle(d.Condition);
                 sb.AppendLine($"<h2 class='h2-condition'>{E(sectionTitle)}</h2>");
 
-                AppendJudgmentSummary(sb, d);
-
                 if (d.ScalarJudgments.Count > 0)
                     AppendScalarJudgmentTable(sb, d.ScalarJudgments);
 
                 if (d.CurveJudgments.Count > 0)
                     AppendCurveJudgmentTable(sb, d.CurveJudgments);
 
-                if (d.Charts.Any(c => !string.IsNullOrEmpty(c.ImageBase64)))
-                    AppendChartGallery(sb, d.Charts);
+                AppendLayeredChartGalleries(sb, d.Charts, d.CurveJudgments);
             }
 
             sb.AppendLine("<footer style='margin-top:40px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:11px;color:#94a3b8;'>");
@@ -163,27 +160,11 @@ th{background:var(--bg-header);font-weight:600;}
         }
 
         /// <summary>
-        /// 单值/曲线通过项统计（总体 OK/NG 已在工况概览中展示，此处不再重复）。
-        /// </summary>
-        private static void AppendJudgmentSummary(StringBuilder sb, TestReportData d)
-        {
-            var ts = d.ScalarJudgments.Count;
-            var ps = d.ScalarJudgments.Count(j => j.Pass);
-            var tc = d.CurveJudgments.Count;
-            var pc = d.CurveJudgments.Count(j => j.Pass);
-            if (ts == 0 && tc == 0)
-                return;
-
-            sb.AppendLine("<h3 class='section'>判定统计</h3>");
-            sb.AppendLine($"<p>单值数据：{ps}/{ts} 项 OK &nbsp;|&nbsp; 曲线判定：{pc}/{tc} 项 OK</p>");
-        }
-
-        /// <summary>
         /// 追加单值判定数据表（节点、参数、实际值、上下限、结果）。
         /// </summary>
         private static void AppendScalarJudgmentTable(StringBuilder sb, List<ScalarJudgmentRow> rows)
         {
-            sb.AppendLine("<h3 class='section'>单值数据</h3><table>");
+            sb.AppendLine("<h3 class='section'>单值判定</h3><table>");
             sb.AppendLine("<tr><th>节点</th><th>参数</th><th>实际值</th><th>下限</th><th>上限</th><th>结果</th></tr>");
             foreach (var r in rows)
             {
@@ -197,44 +178,22 @@ th{background:var(--bg-header);font-weight:600;}
         }
 
         /// <summary>
-        /// 追加曲线判定表，并在存在附图 Base64 时继续输出曲线附图网格。
+        /// 追加曲线判定表（仅文字）；附图在下方「曲线数据」分层中与 Limits 总线图一并展示。
         /// </summary>
         private static void AppendCurveJudgmentTable(StringBuilder sb, List<CurveJudgmentRow> rows)
         {
             sb.AppendLine("<h3 class='section'>曲线判定</h3><table>");
-            sb.AppendLine("<tr><th>节点</th><th>曲线</th><th>结果</th><th>失败详情</th></tr>");
+            sb.AppendLine("<tr><th>节点</th><th>曲线</th><th>实际值</th><th>下限</th><th>上限</th><th>结果</th><th>失败详情</th></tr>");
             foreach (var r in rows)
             {
                 var cls = r.Pass ? "pass" : "fail";
                 var res = r.Pass ? "OK" : "NG";
                 sb.AppendLine($"<tr><td>{E(r.NodeName)}</td><td>{E(r.CurveName)}</td>");
+                sb.AppendLine($"<td>{Fmt(r.ActualValue)}</td><td>{Fmt(r.LowerLimit)}</td><td>{Fmt(r.UpperLimit)}</td>");
                 sb.AppendLine($"<td class='{cls}'>{res}</td>");
                 sb.AppendLine($"<td>{E(r.FailDetail ?? "-")}</td></tr>");
             }
             sb.AppendLine("</table>");
-
-            AppendCurveJudgmentChartGrid(sb, rows);
-        }
-
-        /// <summary>
-        /// 为含 <see cref="CurveJudgmentRow.ChartImageBase64"/> 的曲线行输出单列图库表格。
-        /// </summary>
-        private static void AppendCurveJudgmentChartGrid(StringBuilder sb, List<CurveJudgmentRow> rows)
-        {
-            var withImg = rows.Where(r => !string.IsNullOrEmpty(r.ChartImageBase64)).ToList();
-            if (withImg.Count == 0)
-                return;
-
-            sb.AppendLine("<h3 class='section' style='margin-top:20px;'>曲线附图</h3>");
-            sb.AppendLine("<table class='chart-gallery-table' role='presentation'><tbody>");
-            foreach (var row in withImg)
-            {
-                sb.AppendLine("<tr>");
-                AppendChartCellCurve(sb, row);
-                sb.AppendLine("</tr>");
-            }
-
-            sb.AppendLine("</tbody></table>");
         }
 
         /// <summary>
@@ -254,15 +213,81 @@ th{background:var(--bg-header);font-weight:600;}
         }
 
         /// <summary>
-        /// 输出算法与原始数据图表图库：仅包含有 <see cref="ChartSection.ImageBase64"/> 的节。
+        /// 按 <see cref="ReportChartSourceKind"/> 分三层输出图库：原始数据图表 → 算法数据图表 → 曲线数据；
+        /// 「曲线数据」含总线 <see cref="ReportChartSourceKind.CurveResult"/> 图与曲线判定行内嵌附图。
         /// </summary>
-        private static void AppendChartGallery(StringBuilder sb, List<ChartSection> charts)
+        private static void AppendLayeredChartGalleries(
+            StringBuilder sb,
+            List<ChartSection> charts,
+            List<CurveJudgmentRow> curveJudgments)
         {
-            var list = charts.Where(c => !string.IsNullOrEmpty(c.ImageBase64)).ToList();
-            if (list.Count == 0)
+            charts ??= new List<ChartSection>();
+            curveJudgments ??= new List<CurveJudgmentRow>();
+
+            var withImg = charts.Where(c => !string.IsNullOrEmpty(c.ImageBase64)).ToList();
+            var curveRowsWithImg = curveJudgments.Where(r => !string.IsNullOrEmpty(r.ChartImageBase64)).ToList();
+
+            if (charts.Count == 0 && curveRowsWithImg.Count == 0)
                 return;
 
-            sb.AppendLine("<h3 class='section'>算法与数据图表</h3>");
+            const string emptyNote =
+                "<p class='chart-section-empty' style='color:#94a3b8;font-size:13px;margin:8px 0 24px 0;'>（暂无图表）</p>";
+
+            AppendChartGalleryLayer(sb, withImg, ReportChartSourceKind.Raw, "原始数据图表", emptyNote);
+            AppendChartGalleryLayer(sb, withImg, ReportChartSourceKind.Algorithm, "算法数据图表", emptyNote);
+            AppendCurveDataLayer(sb, withImg, curveRowsWithImg, emptyNote);
+        }
+
+        /// <summary>
+        /// 「曲线数据」：Limits 总线渲染图 + 曲线判定附图，同一标题下连续排列。
+        /// </summary>
+        private static void AppendCurveDataLayer(
+            StringBuilder sb,
+            List<ChartSection> allWithImage,
+            List<CurveJudgmentRow> curveRowsWithImg,
+            string emptyNoteHtml)
+        {
+            sb.AppendLine("<h3 class='section'>曲线数据图表</h3>");
+            var busCurve = allWithImage.Where(c => c.SourceKind == ReportChartSourceKind.CurveResult).ToList();
+            if (busCurve.Count == 0 && curveRowsWithImg.Count == 0)
+            {
+                sb.AppendLine(emptyNoteHtml);
+                return;
+            }
+
+            sb.AppendLine("<table class='chart-gallery-table' role='presentation'><tbody>");
+            foreach (var c in busCurve)
+            {
+                sb.AppendLine("<tr>");
+                AppendChartCellSection(sb, c);
+                sb.AppendLine("</tr>");
+            }
+
+            foreach (var row in curveRowsWithImg)
+            {
+                sb.AppendLine("<tr>");
+                AppendChartCellCurve(sb, row);
+                sb.AppendLine("</tr>");
+            }
+
+            sb.AppendLine("</tbody></table>");
+        }
+
+        private static void AppendChartGalleryLayer(
+            StringBuilder sb,
+            List<ChartSection> allWithImage,
+            ReportChartSourceKind kind,
+            string h3Title,
+            string emptyNoteHtml)
+        {
+            sb.AppendLine($"<h3 class='section'>{E(h3Title)}</h3>");
+            var list = allWithImage.Where(c => c.SourceKind == kind).ToList();
+            if (list.Count == 0)
+            {
+                sb.AppendLine(emptyNoteHtml);
+                return;
+            }
+
             sb.AppendLine("<table class='chart-gallery-table' role='presentation'><tbody>");
             foreach (var c in list)
             {
@@ -281,7 +306,7 @@ th{background:var(--bg-header);font-weight:600;}
         {
             var heading = !string.IsNullOrWhiteSpace(c.ReportHeading)
                 ? c.ReportHeading
-                : (c.SourceKind == ReportChartSourceKind.Raw ? "[原始数据] " : "[算法] ") + (c.Title ?? string.Empty);
+                : ChartSectionFallbackTitlePrefix(c.SourceKind) + (c.Title ?? string.Empty);
             sb.AppendLine("<td class='chart-cell'>");
             sb.AppendLine("<div class='chart-card'>");
             sb.AppendLine($"<div class='chart-title'>{E(heading)}</div>");
@@ -290,6 +315,14 @@ th{background:var(--bg-header);font-weight:600;}
                 sb.AppendLine($"<div class='chart-desc'>{E(c.Description)}</div>");
             sb.AppendLine("</div></td>");
         }
+
+        private static string ChartSectionFallbackTitlePrefix(ReportChartSourceKind kind) =>
+            kind switch
+            {
+                ReportChartSourceKind.Raw => "[原始数据图表] ",
+                ReportChartSourceKind.CurveResult => "[曲线数据图表] ",
+                _ => "[算法数据图表] "
+            };
 
         /// <summary>
         /// 向元数据表追加一行（经 HTML 转义的标签与值）。

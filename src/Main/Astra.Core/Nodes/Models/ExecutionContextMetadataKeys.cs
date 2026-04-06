@@ -9,5 +9,6 @@ namespace Astra.Core.Nodes.Models
         public const string WorkflowExecutionController = AstraSharedConstants.MetadataKeys.WorkflowExecutionController;
         public const string ExecutionId = AstraSharedConstants.MetadataKeys.ExecutionId;
         public const string WorkFlowKey = AstraSharedConstants.MetadataKeys.WorkFlowKey;
+        public const string ExecutionRunLogSession = AstraSharedConstants.MetadataKeys.ExecutionRunLogSession;
     }
 }

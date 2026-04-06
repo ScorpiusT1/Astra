@@ -1,4 +1,7 @@
-﻿﻿﻿namespace Astra.Core.Nodes.Models
+﻿using System;
+using Astra.Core.Logs;
+
+namespace Astra.Core.Nodes.Models
 {
     /// <summary>
     /// 节点执行上下文
@@ -87,6 +90,46 @@
         public void SetGlobalVariable<T>(string key, T value)
         {
             GlobalVariables[key] = value;
+            TryRenameRunLogWithSerialNumber(key, value);
+        }
+
+        /// <summary>
+        /// 当写入 <c>SN</c> 且存在本轮 <see cref="IExecutionRunLogSession"/> 时，尝试将磁盘上的 <c>SN_PENDING</c> 日志文件改为实际 SN。
+        /// </summary>
+        private void TryRenameRunLogWithSerialNumber<T>(string key, T value)
+        {
+            if (string.IsNullOrEmpty(key) || !key.Equals("SN", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (!TryResolveSnString(value, out var sn))
+                return;
+
+            try
+            {
+                var session = GetMetadata<IExecutionRunLogSession>(ExecutionContextMetadataKeys.ExecutionRunLogSession, null);
+                session?.TryRenameFileWithSerialNumber(sn);
+            }
+            catch
+            {
+                // 重命名失败不影响测试执行
+            }
+        }
+
+        private static bool TryResolveSnString<T>(T value, out string sn)
+        {
+            sn = string.Empty;
+            if (value == null)
+                return false;
+            if (value is string s)
+            {
+                sn = s.Trim();
+                return sn.Length > 0;
+            }
+
+            var t = value.ToString();
+            if (string.IsNullOrWhiteSpace(t))
+                return false;
+            sn = t.Trim();
+            return sn.Length > 0;
         }
 
         /// <summary>

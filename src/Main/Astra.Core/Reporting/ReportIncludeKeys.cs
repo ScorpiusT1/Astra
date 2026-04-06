@@ -6,8 +6,8 @@ namespace Astra.Core.Reporting
 {
     /// <summary>
     /// 测试报告纳入标记：由引擎写入 <see cref="NodeRunRecord.OutputSnapshot"/>，
-    /// 由 <see cref="Data.TestDataBus"/> 写入产物 <see cref="DataArtifactReference.Preview"/>。
-    /// 缺省视为纳入（兼容旧流程与未走统一发布路径的产物）。
+    /// 由 <see cref="Data.TestDataBus"/> 在每次 <see cref="Data.TestDataBus.Publish"/> 时写入产物 Preview。
+    /// 运行记录快照缺省视为纳入（兼容旧数据）；产物 Preview 缺省视为不纳入（仅显式发布且 IncludeInTestReport 为 true 的进报告）。
     /// </summary>
     public static class ReportIncludeKeys
     {
@@ -23,8 +23,8 @@ namespace Astra.Core.Reporting
         public static bool PreviewIncludesInReport(IReadOnlyDictionary<string, object>? preview)
         {
             if (preview == null || !preview.TryGetValue(IncludeInReport, out var v))
-                return true;
-            return CoerceToBool(v, defaultIfUnrecognized: true);
+                return false;
+            return CoerceToBool(v, defaultIfUnrecognized: false);
         }
 
         public static bool NodeRunIncludesInReport(NodeRunRecord? nr) =>

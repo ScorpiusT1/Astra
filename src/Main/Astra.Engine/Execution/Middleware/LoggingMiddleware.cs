@@ -39,8 +39,10 @@ namespace Astra.Engine.Execution.Middleware
             Func<CancellationToken, Task<ExecutionResult>> next)
         {
             var logger = ResolveLogger(context) ?? NullLogger.Instance;
+            var execUi = context?.CreateExecutionLogger(node.Name ?? node.Id);
 
             logger.LogNodeStart(node);
+            execUi?.Info($"节点开始执行: {node.Name} ({node.NodeType})");
             var stopwatch = Stopwatch.StartNew();
 
             try
@@ -49,12 +51,14 @@ namespace Astra.Engine.Execution.Middleware
                 stopwatch.Stop();
 
                 logger.LogNodeComplete(node, stopwatch.Elapsed, result);
+                execUi?.Info($"节点执行完成: {node.Name} 耗时={stopwatch.Elapsed.TotalMilliseconds:F2}ms 成功={result?.Success}");
                 return result;
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 logger.LogNodeError(node, ex, stopwatch.Elapsed);
+                execUi?.Error($"节点执行失败: {ex.Message}");
                 throw;
             }
         }
