@@ -21,6 +21,7 @@ namespace Astra.Configuration
         private string _currentWorkflowId = string.Empty;
         private string _currentWorkflowName = string.Empty;
         private bool _enableHomeSequenceLinkage = true;
+        private bool _homeStartInManualScanMode;
         private int _barcodeMinLength = 6;
         private int _barcodeMaxLength = 32;
         private bool _safetyInterlockEnabled = true;
@@ -156,6 +157,15 @@ namespace Astra.Configuration
         {
             get => _enableHomeSequenceLinkage;
             set => SetProperty(ref _enableHomeSequenceLinkage, value);
+        }
+
+        /// <summary>
+        /// 程序启动后 Home 是否默认使用手动扫码模式；false 为自动触发（PLC 等）模式。
+        /// </summary>
+        public bool HomeStartInManualScanMode
+        {
+            get => _homeStartInManualScanMode;
+            set => SetProperty(ref _homeStartInManualScanMode, value);
         }
 
         /// <summary>
