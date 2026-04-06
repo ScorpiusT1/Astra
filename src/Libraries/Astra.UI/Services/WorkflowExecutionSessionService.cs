@@ -59,32 +59,49 @@ namespace Astra.UI.Services
         }
 
         /// <summary>
-        /// 主流程混合执行中的插件节点不经 <see cref="IWorkFlowManager"/> 子流程引擎，将编排器进度转为与引擎一致的 <see cref="NodeExecutionChanged"/>。
+        /// 将编排器 <see cref="SubWorkflowProgressChanged"/> 转为 <see cref="NodeExecutionChanged"/>：
+        /// 混合主画布插件项依赖 <see cref="SubWorkflowProgressEventArgs.ScopeWorkflowKey"/>；
+        /// 普通子流程引用项用 <see cref="SubWorkflowParallelStartItem.RefId"/> 作为 WorkflowKey（与主页树、引擎元数据一致）。
         /// </summary>
         private void OnMasterOrchestratorSubWorkflowProgress(object? sender, SubWorkflowProgressEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(e.ScopeWorkflowKey))
-                return;
+            void RaiseForItem(string workflowKey, string nodeId)
+            {
+                if (string.IsNullOrWhiteSpace(workflowKey) || string.IsNullOrWhiteSpace(nodeId))
+                    return;
+
+                if (e.State != SubWorkflowState.Running && e.Result != null)
+                    _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(null, nodeId, e.Result);
+
+                NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
+                {
+                    ExecutionId = string.Empty,
+                    WorkflowKey = workflowKey.Trim(),
+                    NodeId = nodeId.Trim(),
+                    State = MapOrchestratorPluginState(e.State),
+                    DetailMessage = BuildOrchestratorPluginDetailMessage(e.State, e.Result),
+                    UiPayload = e.Result != null ? NodeUiPayloadFactory.FromOutputData(e.Result.OutputData) : null
+                });
+            }
 
             if (e.ParallelRunningGroup is { Count: > 0 } grp)
             {
                 foreach (var it in grp)
                 {
-                    if (!it.IsHybridMasterPlugin || string.IsNullOrWhiteSpace(it.RefId))
+                    if (string.IsNullOrWhiteSpace(it.RefId))
                         continue;
 
-                    if (e.State != SubWorkflowState.Running && e.Result != null)
-                        _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(null, it.RefId, e.Result);
-
-                    NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
+                    if (it.IsHybridMasterPlugin)
                     {
-                        ExecutionId = string.Empty,
-                        WorkflowKey = e.ScopeWorkflowKey,
-                        NodeId = it.RefId,
-                        State = MapOrchestratorPluginState(e.State),
-                        DetailMessage = BuildOrchestratorPluginDetailMessage(e.State, e.Result),
-                        UiPayload = e.Result != null ? NodeUiPayloadFactory.FromOutputData(e.Result.OutputData) : null
-                    });
+                        if (string.IsNullOrWhiteSpace(e.ScopeWorkflowKey))
+                            continue;
+                        RaiseForItem(e.ScopeWorkflowKey, it.RefId);
+                    }
+                    else
+                    {
+                        var rid = it.RefId.Trim();
+                        RaiseForItem(rid, rid);
+                    }
                 }
 
                 return;
@@ -93,18 +110,9 @@ namespace Astra.UI.Services
             if (string.IsNullOrWhiteSpace(e.RefId))
                 return;
 
-            if (e.State != SubWorkflowState.Running && e.Result != null)
-                _nodeExecutionUiHydrator?.OnNodeExecutionCompleted(null, e.RefId, e.Result);
-
-            NodeExecutionChanged?.Invoke(this, new WorkflowNodeExecutionChangedEventArgs
-            {
-                ExecutionId = string.Empty,
-                WorkflowKey = e.ScopeWorkflowKey,
-                NodeId = e.RefId,
-                State = MapOrchestratorPluginState(e.State),
-                DetailMessage = BuildOrchestratorPluginDetailMessage(e.State, e.Result),
-                UiPayload = e.Result != null ? NodeUiPayloadFactory.FromOutputData(e.Result.OutputData) : null
-            });
+            var scope = e.ScopeWorkflowKey?.Trim();
+            var wfKey = string.IsNullOrWhiteSpace(scope) ? e.RefId.Trim() : scope;
+            RaiseForItem(wfKey, e.RefId.Trim());
         }
 
         private static NodeExecutionState MapOrchestratorPluginState(SubWorkflowState state)
