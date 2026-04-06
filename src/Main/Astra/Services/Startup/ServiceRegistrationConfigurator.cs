@@ -47,6 +47,7 @@ using Astra.Core.Archiving;
 using Astra.Core.Configuration;
 using Astra.UI.Abstractions.Services;
 using Astra.Services.UI;
+using Astra.UI.Abstractions.Home;
 using Astra.Core.Triggers;
 using Astra.Core.Triggers.Interlock;
 using Astra.Core.Triggers.Manager;
@@ -190,6 +191,7 @@ namespace Astra.Services.Startup
             services.AddSingleton<IAutoTriggerLifecycle, AutoTriggerLifecycleService>();
             services.AddSingleton<IAutoTriggerWorkflowHandler, AutoTriggerWorkflowHandlerService>();
             services.AddSingleton<IAutoTriggerHomeRunContext>(sp => sp.GetRequiredService<ViewModels.HomeViewModel>());
+            services.AddSingleton<IHomeDisplayedSnSink>(sp => sp.GetRequiredService<ViewModels.HomeViewModel>());
             services.AddSingleton<IManualBarcodeContext, ManualBarcodeContext>();
             services.AddSingleton<INavigationPermissionService, NavigationPermissionService>();
             services.AddSingleton(new WorkflowArchiveOptions());

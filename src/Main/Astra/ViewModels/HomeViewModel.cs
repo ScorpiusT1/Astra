@@ -3,6 +3,7 @@ using Astra.Services.Logging;
 using Astra.Core.Configuration.Abstractions;
 using Astra.Configuration;
 using Astra.Core.Configuration;
+using Astra.UI.Abstractions.Home;
 using Astra.Core.Triggers;
 using Astra.UI.Helpers;
 using Astra.UI.Services;
@@ -15,10 +16,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace Astra.ViewModels
 {
-    public partial class HomeViewModel : ObservableObject, IDisposable, IAutoTriggerHomeRunContext
+    public partial class HomeViewModel : ObservableObject, IDisposable, IAutoTriggerHomeRunContext, IHomeDisplayedSnSink
     {
         private bool _disposed;
         private bool _hasPendingYieldRecord;
@@ -391,6 +393,19 @@ namespace Astra.ViewModels
             CurrentSn = string.IsNullOrWhiteSpace(sn) ? "-" : sn.Trim();
         }
 
+        async Task IHomeDisplayedSnSink.SetDisplayedSnAsync(string? sn, CancellationToken cancellationToken)
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                return;
+            }
+
+            await dispatcher
+                .InvokeAsync(() => UpdateCurrentSn(sn), DispatcherPriority.Normal, cancellationToken)
+                .Task.ConfigureAwait(false);
+        }
+
         async Task IAutoTriggerHomeRunContext.CompleteAutoTriggerRunAsync()
         {
             var dispatcher = Application.Current?.Dispatcher;
@@ -427,6 +442,7 @@ namespace Astra.ViewModels
                     Application.Current?.Dispatcher?.Invoke(() =>
                     {
                         IsSequenceLinkageEnabled = latest.EnableHomeSequenceLinkage;
+                        IsManualScanMode = latest.HomeStartInManualScanMode;
                         _barcodeMinLength = latest.BarcodeMinLength;
                         _barcodeMaxLength = latest.BarcodeMaxLength;
                     });
@@ -446,6 +462,7 @@ namespace Astra.ViewModels
             Application.Current?.Dispatcher?.Invoke(() =>
             {
                 IsSequenceLinkageEnabled = config.EnableHomeSequenceLinkage;
+                IsManualScanMode = config.HomeStartInManualScanMode;
                 _barcodeMinLength = config.BarcodeMinLength;
                 _barcodeMaxLength = config.BarcodeMaxLength;
             });
