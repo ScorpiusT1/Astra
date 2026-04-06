@@ -165,38 +165,69 @@ namespace Astra.Plugins.DataImport.Nodes
         }
 
         /// <summary>
-        /// 多文件预览：在「本文件」的 Signal 组内解析通道。
-        /// 优先使用勾选列表中第一个在本文件实际存在的通道名；都无匹配或未勾选则返回 null（与 NVH 工具一致，回落为组内首通道）。
+        /// 主页预览：本文件 Signal 组内应绘制的通道键列表（顺序与勾选列表一致，去重）。
+        /// 未勾选时返回单元素 null（与 <see cref="DataImportNvhSampleUtil.TryExtractAsDoubleArray"/> 一致，回落为组内首通道）。
         /// </summary>
-        private string? ResolvePreviewChannelKeyForFile(string sourcePath, NvhMemoryFile file)
+        private List<string?> ResolvePreviewChannelKeysForFile(string sourcePath, NvhMemoryFile file)
         {
             if (!file.TryGetGroup(AstraSharedConstants.DataGroups.Signal, out var g) || g == null)
                 g = file.Groups.Values.FirstOrDefault();
             if (g == null || g.Channels.Count == 0)
-                return null;
+                return new List<string?>();
 
             var thisFileName = Path.GetFileName(sourcePath);
+            var selected = SelectedChannelNames?
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToList();
+            if (selected == null || selected.Count == 0)
+                return new List<string?> { null };
 
-            foreach (var raw in SelectedChannelNames ?? Enumerable.Empty<string>())
+            var added = new HashSet<string>(StringComparer.Ordinal);
+            var keys = new List<string?>();
+            foreach (var name in selected)
             {
-                var name = raw?.Trim();
-                if (string.IsNullOrEmpty(name))
-                    continue;
-
+                string? chKey = null;
                 if (TryParseFileChannelSelection(name, out var fn, out var ch))
                 {
                     if (!string.Equals(fn, thisFileName, StringComparison.OrdinalIgnoreCase))
                         continue;
                     if (g.Channels.ContainsKey(ch))
-                        return ch;
+                        chKey = ch;
                 }
                 else if (g.Channels.ContainsKey(name))
-                {
-                    return name;
-                }
+                    chKey = name;
+
+                if (chKey != null && added.Add(chKey))
+                    keys.Add(chKey);
             }
 
-            return null;
+            // 与旧版 ResolvePreviewChannelKeyForFile 一致：勾选了项但本文件无匹配时仍预览首通道
+            if (keys.Count == 0)
+                keys.Add(null);
+
+            return keys;
+        }
+
+        private static string BuildPreviewSeriesName(
+            IReadOnlyList<string> allFilePaths,
+            string sourcePath,
+            string displayName,
+            string? channelKeyOrNull,
+            NvhMemoryFile file)
+        {
+            string? labelKey = channelKeyOrNull;
+            if (labelKey == null)
+            {
+                if (!file.TryGetGroup(AstraSharedConstants.DataGroups.Signal, out var g) || g == null)
+                    g = file.Groups.Values.FirstOrDefault();
+                labelKey = g?.Channels.Keys.FirstOrDefault();
+            }
+
+            var stem = Path.GetFileNameWithoutExtension(sourcePath);
+            if (allFilePaths.Count > 1)
+                return string.IsNullOrEmpty(labelKey) ? displayName : $"{stem}/{labelKey}";
+            return string.IsNullOrEmpty(labelKey) ? displayName : labelKey;
         }
 
         private static bool ChannelMatchesSavedSelection(string? selectionEntry, string channelKey, string currentFileName)
@@ -504,24 +535,27 @@ namespace Astra.Plugins.DataImport.Nodes
             {
                 var (displayName, file) = importedForPreview[pi];
                 var sourcePath = files[pi];
-                var chKey = ResolvePreviewChannelKeyForFile(sourcePath, file);
-                if (!DataImportNvhSampleUtil.TryExtractAsDoubleArray(
-                        file, AstraSharedConstants.DataGroups.Signal, chKey, out var samples) ||
-                    samples.Length == 0)
-                    continue;
+                foreach (var chKey in ResolvePreviewChannelKeysForFile(sourcePath, file))
+                {
+                    if (!DataImportNvhSampleUtil.TryExtractAsDoubleArray(
+                            file, AstraSharedConstants.DataGroups.Signal, chKey, out var samples) ||
+                        samples.Length == 0)
+                        continue;
 
-                var dt = 1.0 / 48000.0;
-                if (DataImportNvhSampleUtil.TryGetWaveformIncrement(
-                        file, AstraSharedConstants.DataGroups.Signal, chKey, out var inc) && inc > 0)
-                    dt = inc;
+                    var dt = 1.0 / 48000.0;
+                    if (DataImportNvhSampleUtil.TryGetWaveformIncrement(
+                            file, AstraSharedConstants.DataGroups.Signal, chKey, out var inc) && inc > 0)
+                        dt = inc;
 
-                var period = dt > 0 ? dt : 1.0 / 48000.0;
-                var chart = ChartDisplayPayloadFactory.Signal1D(
-                    samples,
-                    samplePeriod: period,
-                    bottomAxisLabel: "时间 (s)",
-                    leftAxisLabel: "幅值");
-                previewSeries.Add((displayName, chart));
+                    var period = dt > 0 ? dt : 1.0 / 48000.0;
+                    var chart = ChartDisplayPayloadFactory.Signal1D(
+                        samples,
+                        samplePeriod: period,
+                        bottomAxisLabel: "时间 (s)",
+                        leftAxisLabel: "幅值");
+                    var seriesName = BuildPreviewSeriesName(files, sourcePath, displayName, chKey, file);
+                    previewSeries.Add((seriesName, chart));
+                }
             }
 
             if (previewSeries.Count > 0)
