@@ -55,5 +55,33 @@ namespace Astra.Core.Nodes.Models
                 return baseName ?? "";
             return (baseName ?? "") + Separator + s;
         }
+
+        /// <summary>
+        /// 反序列化后「自动通道后缀」未持久化时，用当前 <paramref name="channelNames"/> 重建标题后缀。
+        /// 基标题取首个 <see cref="Separator"/> 之前（视为用户/默认节点名）；其后无论多长（含历史错误叠层、或「垃圾前缀 + 正确尾部」）一律丢弃。
+        /// 不能仅用 <c>EndsWith(Separator + frag)</c> 跳过重建，否则末尾已是当前通道但前面仍残留多轮追加的长串。
+        /// </summary>
+        public static (string? TrackedSuffix, string? RecomposedFullName) ReconcileAutoSuffixAfterDeserialization(
+            string? currentName,
+            string defaultDisplayName,
+            IEnumerable<string>? channelNames)
+        {
+            var frag = BuildMultiQualifiedChannelSuffix(channelNames);
+            if (string.IsNullOrEmpty(frag))
+                return (null, null);
+
+            string basePart;
+            if (string.IsNullOrWhiteSpace(currentName))
+                basePart = defaultDisplayName ?? "";
+            else
+            {
+                var idx = currentName.IndexOf(Separator, StringComparison.Ordinal);
+                basePart = idx >= 0 ? currentName[..idx].TrimEnd() : currentName.TrimEnd();
+                if (string.IsNullOrEmpty(basePart))
+                    basePart = defaultDisplayName ?? "";
+            }
+
+            return (frag, ComposeWithAutoSuffix(basePart, frag));
+        }
     }
 }

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json;
 using System.Runtime.Serialization;
@@ -37,6 +38,7 @@ namespace Astra.Core.Nodes.Models
 
             Nodes = new List<Node>();
             Connections = new List<Connection>();
+            PersistedParameters = new Dictionary<string, object>();
             Variables = new Dictionary<string, object>();
 
             // 配置
@@ -51,8 +53,27 @@ namespace Astra.Core.Nodes.Models
         [JsonProperty(Order = 21)]
         public List<Connection> Connections { get; set; }
 
+        /// <summary>
+        /// 可随脚本保存的流程参数（如编辑器缩放）。与 <see cref="Variables"/> 分离，避免执行期中间量写入工程文件。
+        /// </summary>
         [JsonProperty(Order = 22)]
+        public Dictionary<string, object> PersistedParameters { get; set; }
+
+        /// <summary>
+        /// 运行期变量（节点输出汇聚等），不序列化到脚本；旧脚本中的 <c>Variables</c> 仅反序列化用于迁移白名单键到 <see cref="PersistedParameters"/>。
+        /// </summary>
+        [JsonIgnore]
         public Dictionary<string, object> Variables { get; set; }
+
+        /// <summary>旧版 JSON 中的 Variables；仅反序列化，保存时不再写出。</summary>
+        [JsonProperty("Variables", NullValueHandling = NullValueHandling.Ignore)]
+        public Dictionary<string, object> LegacyScriptVariablesImport
+        {
+            get => null;
+            set => ImportLegacyScriptVariables(value);
+        }
+
+        public bool ShouldSerializeLegacyScriptVariablesImport() => false;
 
         // ===== 配置 =====
 
@@ -115,7 +136,75 @@ namespace Astra.Core.Nodes.Models
         [OnDeserialized]
         private void OnDeserialized(StreamingContext context)
         {
+            PersistedParameters ??= new Dictionary<string, object>();
+            Variables ??= new Dictionary<string, object>();
             RebindChildWorkflowReferences();
+        }
+
+        private void ImportLegacyScriptVariables(Dictionary<string, object> legacy)
+        {
+            if (legacy == null || legacy.Count == 0)
+                return;
+
+            PersistedParameters ??= new Dictionary<string, object>();
+            foreach (var kv in legacy)
+            {
+                if (WorkFlowPersistedParameterKeys.IsPersistedKey(kv.Key))
+                    PersistedParameters[kv.Key] = kv.Value;
+            }
+        }
+
+        /// <summary>写入可持久化参数（如缩放）。</summary>
+        public void SetPersistedParameter(string key, object value)
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException("键不能为空", nameof(key));
+            PersistedParameters ??= new Dictionary<string, object>();
+            PersistedParameters[key] = value;
+        }
+
+        /// <summary>读取持久化缩放比例；未配置时返回 false，调用方可用默认 100。</summary>
+        public bool TryGetPersistedZoomPercentage(out double zoomPercentage)
+        {
+            zoomPercentage = 100.0;
+            if (PersistedParameters == null ||
+                !PersistedParameters.TryGetValue(WorkFlowPersistedParameterKeys.ZoomPercentage, out var zoomObj) ||
+                zoomObj == null)
+            {
+                return false;
+            }
+
+            switch (zoomObj)
+            {
+                case double d:
+                    zoomPercentage = d;
+                    return true;
+                case float f:
+                    zoomPercentage = f;
+                    return true;
+                case int i:
+                    zoomPercentage = i;
+                    return true;
+                case long l:
+                    zoomPercentage = l;
+                    return true;
+                case string s when double.TryParse(s, NumberStyles.Float, CultureInfo.CurrentCulture, out var p):
+                    zoomPercentage = p;
+                    return true;
+                case string s2 when double.TryParse(s2, NumberStyles.Float, CultureInfo.InvariantCulture, out var p2):
+                    zoomPercentage = p2;
+                    return true;
+                default:
+                    try
+                    {
+                        zoomPercentage = Convert.ToDouble(zoomObj, CultureInfo.InvariantCulture);
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+            }
         }
 
         /// <summary>

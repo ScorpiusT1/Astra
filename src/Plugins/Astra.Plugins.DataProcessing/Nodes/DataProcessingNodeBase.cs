@@ -21,7 +21,9 @@ namespace Astra.Plugins.DataProcessing.Nodes
         private readonly List<IDesignTimeDataSourceInfo> _upstreamSources = new();
         [JsonIgnore] private bool _registrySubscribed;
 
-        [JsonIgnore] private string? _autoChannelListNameSuffix;
+        /// <summary>与算法节点一致：持久化自动通道标题后缀，避免加载后叠层。</summary>
+        [JsonProperty("AutoChannelListSuffix", NullValueHandling = NullValueHandling.Ignore)]
+        private string? _autoChannelListNameSuffix;
 
         /// <summary>旧版工程仅保存了采集卡显示名；未选通道时用于回退为「该卡首通道」。</summary>
         [JsonProperty("DataAcquisitionDeviceName", NullValueHandling = NullValueHandling.Ignore)]
@@ -34,10 +36,13 @@ namespace Astra.Plugins.DataProcessing.Nodes
         [JsonProperty("ChannelName", NullValueHandling = NullValueHandling.Ignore)]
         private string? _legacyChannelName;
 
+        protected readonly string DefaultDataProcessingDisplayName;
+
         protected DataProcessingNodeBase(string nodeTypeKey, string defaultName)
         {
             NodeType = nodeTypeKey;
             Name = defaultName;
+            DefaultDataProcessingDisplayName = defaultName ?? "";
         }
 
         [OnDeserialized]
@@ -47,6 +52,17 @@ namespace Astra.Plugins.DataProcessing.Nodes
             MigrateLegacyDataAcquisitionDeviceNameIfNeeded();
             if (CachedChannelOptions?.Count > 0 && !string.IsNullOrEmpty(Id))
                 DesignTimeUpstreamRegistry.CacheChannelOptions(Id, CachedChannelOptions);
+
+            if (string.IsNullOrEmpty(_autoChannelListNameSuffix))
+            {
+                var (tracked, recomposed) = NodeNameChannelSuffixHelper.ReconcileAutoSuffixAfterDeserialization(
+                    Name, DefaultDataProcessingDisplayName, _channelNames);
+                if (tracked != null)
+                    _autoChannelListNameSuffix = tracked;
+                if (recomposed != null)
+                    Name = recomposed;
+            }
+
             SyncDisplayNameFromSelectedChannels();
         }
 

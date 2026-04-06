@@ -28,17 +28,24 @@ namespace Astra.Workflow.AlgorithmChannel.Nodes
         [JsonIgnore]
         private bool _registrySubscribed;
 
-        [JsonIgnore]
+        /// <summary>
+        /// 当前自动追加在节点标题后的「设备/通道」片段，与 <see cref="Node.Name"/> 同步持久化，
+        /// 以便反序列化时能正确剥离旧后缀，避免再次同步时在标题上叠多层通道列表。
+        /// </summary>
+        [JsonProperty("AutoChannelListSuffix", NullValueHandling = NullValueHandling.Ignore)]
         private string? _autoChannelListNameSuffix;
 
         /// <summary>旧版工程中的采集卡多选，仅用于未选通道时回退为「各卡首通道」。</summary>
         [JsonProperty("DataAcquisitionDeviceNames", NullValueHandling = NullValueHandling.Ignore)]
         private List<string>? _legacyDataAcquisitionDeviceNames = null;
 
+        protected readonly string DefaultAlgorithmDisplayName;
+
         protected AlgorithmNodeBase(string nodeTypeKey, string defaultName)
         {
             NodeType = nodeTypeKey;
             Name = defaultName;
+            DefaultAlgorithmDisplayName = defaultName ?? "";
         }
 
         [OnDeserialized]
@@ -46,6 +53,17 @@ namespace Astra.Workflow.AlgorithmChannel.Nodes
         {
             if (CachedChannelOptions?.Count > 0 && !string.IsNullOrEmpty(Id))
                 DesignTimeUpstreamRegistry.CacheChannelOptions(Id, CachedChannelOptions);
+
+            if (string.IsNullOrEmpty(_autoChannelListNameSuffix))
+            {
+                var (tracked, recomposed) = NodeNameChannelSuffixHelper.ReconcileAutoSuffixAfterDeserialization(
+                    Name, DefaultAlgorithmDisplayName, _channelNames);
+                if (tracked != null)
+                    _autoChannelListNameSuffix = tracked;
+                if (recomposed != null)
+                    Name = recomposed;
+            }
+
             SyncDisplayNameFromSelectedChannels();
         }
 
