@@ -2,6 +2,7 @@
 using Astra.UI.Abstractions.Nodes;
 using Astra.UI.Controls;
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
@@ -120,30 +121,56 @@ namespace Astra.UI.Windows
             editable.Id = source.Id;
             editable.ContainingWorkflow = source.ContainingWorkflow;
 
-            var props = sourceType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            foreach (var prop in props)
+            CopyDisplayMarkedProperties(source, editable);
+
+            return editable;
+        }
+
+        /// <summary>
+        /// 沿继承链（派生类 → 基类直至 <see cref="Node"/>）按 <see cref="BindingFlags.DeclaredOnly"/> 收集带
+        /// <see cref="DisplayAttribute"/> 的可读写属性；派生声明同名属性时优先于基类。
+        /// 避免仅用 <see cref="Type.GetProperties()"/> 扁平枚举时漏掉基类「纳入测试报告」等字段，导致编辑副本退化为默认值 true。
+        /// </summary>
+        private static IEnumerable<PropertyInfo> EnumerateDisplayMarkedProperties(Type concreteNodeType)
+        {
+            if (!typeof(Node).IsAssignableFrom(concreteNodeType))
+                yield break;
+
+            var types = new List<Type>();
+            for (var t = concreteNodeType; t != null && typeof(Node).IsAssignableFrom(t); t = t.BaseType)
+                types.Add(t);
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var t in types)
             {
-                if (!prop.CanRead || !prop.CanWrite)
-                    continue;
+                foreach (var prop in t.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                {
+                    if (!prop.CanRead || !prop.CanWrite)
+                        continue;
+                    if (prop.GetCustomAttribute<DisplayAttribute>() == null)
+                        continue;
+                    if (prop.Name is nameof(Node.Id) or nameof(Node.Position) or nameof(Node.Size))
+                        continue;
+                    // 派生类已用 [Display] 声明同名属性时优先，避免仅占名无特性的属性挡住基类字段
+                    if (!seen.Add(prop.Name))
+                        continue;
+                    yield return prop;
+                }
+            }
+        }
 
-                var displayAttr = prop.GetCustomAttribute<DisplayAttribute>();
-                if (displayAttr == null)
-                    continue;
-
-                if (prop.Name is nameof(Node.Id) or nameof(Node.Position) or nameof(Node.Size))
-                    continue;
-
+        private static void CopyDisplayMarkedProperties(Node from, Node to)
+        {
+            foreach (var prop in EnumerateDisplayMarkedProperties(from.GetType()))
+            {
                 try
                 {
-                    var value = prop.GetValue(source);
-                    prop.SetValue(editable, value);
+                    prop.SetValue(to, prop.GetValue(from));
                 }
                 catch
                 {
                 }
             }
-
-            return editable;
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
@@ -181,19 +208,8 @@ namespace Astra.UI.Windows
             if (editableType != targetType && !editableType.IsSubclassOf(targetType))
                 return;
 
-            var props = targetType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            foreach (var prop in props)
+            foreach (var prop in EnumerateDisplayMarkedProperties(targetType))
             {
-                if (!prop.CanRead || !prop.CanWrite)
-                    continue;
-
-                var displayAttr = prop.GetCustomAttribute<DisplayAttribute>();
-                if (displayAttr == null)
-                    continue;
-
-                if (prop.Name is nameof(Node.Id) or nameof(Node.Position) or nameof(Node.Size))
-                    continue;
-
                 try
                 {
                     var newValue = prop.GetValue(_editableNode);

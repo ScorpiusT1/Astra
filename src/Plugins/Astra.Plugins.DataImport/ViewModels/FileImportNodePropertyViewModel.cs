@@ -34,6 +34,7 @@ namespace Astra.Plugins.DataImport.ViewModels
         private readonly Dictionary<string, List<Signal>> _signalMap = new(StringComparer.Ordinal);
 
         private string _virtualDeviceAlias = string.Empty;
+        private bool _includeInTestReport = true;
         private bool _isLoadingPreview;
         private string _previewStatus = string.Empty;
         private bool _hasPreviewData;
@@ -50,6 +51,18 @@ namespace Astra.Plugins.DataImport.ViewModels
         {
             get => _virtualDeviceAlias;
             set { _virtualDeviceAlias = value ?? string.Empty; Notify(); }
+        }
+
+        /// <summary>与 <see cref="Astra.Core.Nodes.Models.Node.IncludeInTestReport"/> 一致：控制本节点图表等是否写入 HTML/PDF 测试报告。</summary>
+        public bool IncludeInTestReport
+        {
+            get => _includeInTestReport;
+            set
+            {
+                if (_includeInTestReport == value) return;
+                _includeInTestReport = value;
+                Notify();
+            }
         }
 
         public bool IsLoadingPreview
@@ -96,6 +109,7 @@ namespace Astra.Plugins.DataImport.ViewModels
             _refreshPlot = refreshPlot;
 
             VirtualDeviceAlias = node.VirtualDeviceAlias ?? string.Empty;
+            IncludeInTestReport = node.IncludeInTestReport;
 
             foreach (var p in node.SourceFilePaths ?? new List<string>())
                 FilePaths.Add(p);
@@ -136,6 +150,7 @@ namespace Astra.Plugins.DataImport.ViewModels
         public void Apply(FileImportRawNodeBase target)
         {
             target.VirtualDeviceAlias = VirtualDeviceAlias;
+            target.IncludeInTestReport = IncludeInTestReport;
             target.SourceFilePaths = FilePaths.ToList();
             var multi = FilePaths.Count > 1;
             target.SelectedChannelNames = ChannelItems

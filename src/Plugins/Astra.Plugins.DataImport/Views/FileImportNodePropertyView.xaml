@@ -180,6 +180,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <!-- ════════════════════════════════════════ 文件配置 ════════════════════════════════════════ -->
@@ -289,8 +290,29 @@
             </StackPanel>
         </Border>
 
-        <!-- ════════════════════════════════════════ 通道选择 ════════════════════════════════════════ -->
+        <!-- ════════════════════════════════════════ 基础配置（与 Node.IncludeInTestReport 一致） ════════════════════════════════════════ -->
         <Border Grid.Row="1" Style="{StaticResource SectionCard}">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,10">
+                    <Border DockPanel.Dock="Left"
+                            Width="4"
+                            CornerRadius="2"
+                            Background="{DynamicResource PrimaryBrush}"
+                            Margin="0,1,10,1" />
+                    <TextBlock Style="{StaticResource SectionTitle}"
+                               Text="基础配置" />
+                </DockPanel>
+                <CheckBox IsChecked="{Binding IncludeInTestReport, Mode=TwoWay}"
+                          Content="纳入测试报告"
+                          FontSize="13"
+                          Foreground="{DynamicResource PrimaryTextBrush}"
+                          Cursor="Hand"
+                          ToolTip="关闭后该节点结果不出现在测试报告（图表与单值/曲线判定）；归档原始数据仍可按策略导出。" />
+            </StackPanel>
+        </Border>
+
+        <!-- ════════════════════════════════════════ 通道选择 ════════════════════════════════════════ -->
+        <Border Grid.Row="2" Style="{StaticResource SectionCard}">
             <StackPanel>
 
                 <!-- 标题行 + 全选/全不选快捷按钮 -->
@@ -362,7 +384,7 @@
         </Border>
 
         <!-- ════════════════════════════════════════ 波形预览 ════════════════════════════════════════ -->
-        <Border Grid.Row="2" Style="{StaticResource SectionCard}">
+        <Border Grid.Row="3" Style="{StaticResource SectionCard}">
 
             <Grid>
                 <Grid.RowDefinitions>
