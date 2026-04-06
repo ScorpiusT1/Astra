@@ -97,7 +97,6 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="4" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <!-- 左侧 4px 实色竖线 -->
@@ -128,59 +127,73 @@
                         </Border.Style>
                     </Border>
 
-                    <!-- 中间：时间戳 + 消息 -->
-                    <StackPanel Grid.Column="1"
-                                Margin="12,10,8,10"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm:ss.fff'}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource SecondaryTextBrush}"
-                                   Margin="0,0,0,13" />
-                        <TextBlock Text="{Binding Message}"
+                    <!-- 首行：时间戳靠左，级别徽章靠右；次行为消息 -->
+                    <Grid Grid.Column="1"
+                          Margin="12,10,12,10"
+                          VerticalAlignment="Center">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0"
+                              Margin="0,0,0,10"
+                              VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Timestamp, StringFormat='yyyy-MM-dd HH:mm:ss.fff'}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <Border Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Margin="12,0,0,0"
+                                    CornerRadius="4"
+                                    Padding="10,4"
+                                    MinWidth="52"
+                                    HorizontalAlignment="Right">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background"
+                                                Value="{DynamicResource SuccessBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding NormalizedLevel}"
+                                                         Value="WARN">
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource WarningBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding NormalizedLevel}"
+                                                         Value="ERROR">
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource DangerBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding NormalizedLevel}"
+                                                         Value="FATAL">
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource DarkWarningBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding NormalizedLevel}"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource ReverseTextBrush}"
+                                           HorizontalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                        <TextBlock Grid.Row="1"
+                                   Text="{Binding Message}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryTextBrush}"
                                    LineHeight="20"
                                    TextWrapping="Wrap"
                                    TextTrimming="None" />
-                    </StackPanel>
-
-                    <!-- 右侧 Badge：实色背景 + 白色文字 -->
-                    <Border Grid.Column="2"
-                            Margin="0,0,12,0"
-                            VerticalAlignment="Center"
-                            CornerRadius="4"
-                            Padding="0,3"
-                            MinWidth="52">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background"
-                                        Value="{DynamicResource SuccessBrush}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding NormalizedLevel}"
-                                                 Value="WARN">
-                                        <Setter Property="Background"
-                                                Value="{DynamicResource WarningBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding NormalizedLevel}"
-                                                 Value="ERROR">
-                                        <Setter Property="Background"
-                                                Value="{DynamicResource DangerBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding NormalizedLevel}"
-                                                 Value="FATAL">
-                                        <Setter Property="Background"
-                                                Value="{DynamicResource DarkWarningBrush}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <TextBlock Text="{Binding NormalizedLevel}"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   Foreground="{DynamicResource ReverseTextBrush}"
-                                   HorizontalAlignment="Center" />
-                    </Border>
+                    </Grid>
 
                 </Grid>
             </Border>
@@ -206,9 +219,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                
-                <RowDefinition Height="*"
-                               />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
         <!-- 标题栏 -->
@@ -250,22 +262,49 @@
                     <TextBlock FontSize="12"
                                FontWeight="SemiBold"
                            Foreground="{DynamicResource SecondaryTextBrush}">
-                        <Run Text="{Binding Logs.Count, Mode=OneWay}" /><Run Text=" 条" />
+                        <Run Text="{Binding VisibleLogCount, Mode=OneWay}" /><Run Text=" 条" />
                     </TextBlock>
                 </Border>
             </Border>
         </Grid>
         <TextBlock Grid.Row="1"
                    Text="展示最新日志级别、时间与消息内容。"
-                   Margin="16,0,16,8"
+                   Margin="16,0,16,6"
                    FontSize="12"
                    LineHeight="18"
                    Foreground="{DynamicResource SecondaryTextBrush}" />
 
-
+        <!-- 级别筛选：默认仅警告 + 错误；勾选「信息」可查看 INFO / DEBUG 等 -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    Margin="16,0,16,8"
+                    VerticalAlignment="Center">
+            <TextBlock Text="显示级别："
+                       VerticalAlignment="Center"
+                       Margin="0,0,10,0"
+                       FontSize="12"
+                       Foreground="{DynamicResource SecondaryTextBrush}" />
+            <CheckBox Content="信息"
+                      IsChecked="{Binding ShowInfoLogs, Mode=TwoWay}"
+                      VerticalAlignment="Center"
+                      Margin="0,0,14,0"
+                      FontSize="12"
+                      Foreground="{DynamicResource PrimaryTextBrush}" />
+            <CheckBox Content="警告"
+                      IsChecked="{Binding ShowWarnLogs, Mode=TwoWay}"
+                      VerticalAlignment="Center"
+                      Margin="0,0,14,0"
+                      FontSize="12"
+                      Foreground="{DynamicResource PrimaryTextBrush}" />
+            <CheckBox Content="错误"
+                      IsChecked="{Binding ShowErrorLogs, Mode=TwoWay}"
+                      VerticalAlignment="Center"
+                      FontSize="12"
+                      Foreground="{DynamicResource PrimaryTextBrush}" />
+        </StackPanel>
 
         <!-- 日志区：单独 ScrollViewer，限制高度后列表在模块内滚动（左侧栏不再整体滚动） -->
-        <ScrollViewer Grid.Row="2"
+        <ScrollViewer Grid.Row="3"
                       VerticalAlignment="Stretch"
                     
                       VerticalScrollBarVisibility="Auto"
@@ -288,7 +327,7 @@
                     </Style>
                 </Grid.Style>-->
 
-                <ItemsControl ItemsSource="{Binding Logs}"
+                <ItemsControl ItemsSource="{Binding FilteredLogs}"
                               ItemTemplate="{StaticResource LogItemTemplate}">
                     <ItemsControl.ItemContainerStyle>
                         <Style TargetType="ContentPresenter">
@@ -299,7 +338,7 @@
                 </ItemsControl>
 
                 <!-- 空状态：三行布局使中间块在剩余高度内垂直居中 -->
-                <Grid Visibility="{Binding Logs.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                <Grid Visibility="{Binding VisibleLogCount, Converter={StaticResource CountToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
