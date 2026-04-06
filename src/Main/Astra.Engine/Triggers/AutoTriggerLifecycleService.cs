@@ -1,4 +1,4 @@
-using Astra.Core.Triggers;
+﻿using Astra.Core.Triggers;
 using Astra.Core.Triggers.Manager;
 
 namespace Astra.Engine.Triggers
@@ -24,7 +24,7 @@ namespace Astra.Engine.Triggers
 
         public async Task ApplyCurrentModeAsync(CancellationToken cancellationToken = default)
         {
-            if (_homeScanModeState.IsAutoScanMode)
+             if (_homeScanModeState.IsAutoScanMode)
             {
                 await _triggerManager.StartAutoListeningAsync(cancellationToken).ConfigureAwait(false);
             }
